@@ -1,0 +1,32 @@
+const CLIP_RANGE_TOLERANCE_SEC = 0.05;
+
+export interface RestoredClipAnalysisBlob {
+  clipStart: number;
+  clipEnd: number;
+  samples: unknown[];
+}
+
+export function isRestoredClipAnalysisValid(
+  blob: RestoredClipAnalysisBlob | null | undefined,
+  options: {
+    start: number;
+    end: number;
+    version: string;
+    blobVersion: string | undefined;
+    minSamples?: number;
+  },
+): boolean {
+  if (!blob || options.blobVersion !== options.version) {
+    return false;
+  }
+
+  const minSamples = options.minSamples ?? 1;
+  if (blob.samples.length < minSamples) {
+    return false;
+  }
+
+  return (
+    Math.abs(blob.clipStart - options.start) < CLIP_RANGE_TOLERANCE_SEC &&
+    Math.abs(blob.clipEnd - options.end) < CLIP_RANGE_TOLERANCE_SEC
+  );
+}

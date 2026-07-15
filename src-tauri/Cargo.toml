@@ -1,0 +1,62 @@
+[package]
+name = "open-clipper"
+version = "0.1.0"
+description = "Open Clipper desktop app"
+authors = ["GrepCut"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "tauri_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+vcpkg = "0.2"
+serde_json = "1.0"
+sha2 = "0.10"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+sea-orm = { version = "=2.0.0-rc.42", default-features = false, features = ["sqlx-sqlite", "runtime-tokio", "macros", "schema-sync", "with-chrono", "with-json"] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2"
+serialize-to-javascript = "0.1.2"
+log = "0.4"
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-log = "2"
+ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git", version = "8.1.0" }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+base64 = "0.22.1"
+image = "0.25.6"
+fast_image_resize = "4.2.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+url = "2"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2"] }
+sha2 = "0.10"
+sherpa-onnx = { version = "1.13.4", default-features = false, features = ["shared"] }
+crossbeam-channel = "0.5"
+tar = "0.4"
+bzip2 = "0.5"
+
+[[example]]
+name = "parakeet_smoke"
+path = "examples/parakeet_smoke.rs"
+
+[dev-dependencies]
+tempfile = "3"
+
+[target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[target."cfg(windows)".dependencies]
+webview2-com = "0.38"
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "AI_MachineLearning",
+  "Foundation_Collections",
+  "Win32_System_Com"
+] }

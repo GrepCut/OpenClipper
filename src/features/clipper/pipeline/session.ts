@@ -1,0 +1,252 @@
+import type { WordCue } from "../lib/media/transcription-export";
+import type { ClipperSettings, ClipperSmoothingStrength } from "../settings/settings";
+import {
+  buildCollageTracksForRegions,
+  deriveCollageTracks,
+  deriveTwoSpeakerRegions,
+  type CollageRegion,
+  type CollageTracks,
+} from "../engine/collage";
+import type { ClipperGeneratedClip } from "../engine/clip-segmentation";
+import { findClipByIndex } from "../engine/clip-segmentation";
+import {
+  FACE_SAMPLE_INTERVAL_SEC,
+  FaceSampleCache,
+  deriveSingleFocusTrack,
+  hasAnyFaces,
+  type CentroidSample,
+} from "../engine/reframe";
+import type { ClipperFrameContext } from "../engine/frame-draw";
+import type { AutoFlipStaticFeatureSample, ClipperSmartCropBlob, SubjectDetectionSample } from "../shared/smart-crop";
+import { groupCaptionWords } from "../engine/transcript";
+import type { ClipSourceMode } from "../persistence/project-metadata";
+import type { PipelineReporter } from "./reporter";
+import { resolveAutoFlipDisplayTrack } from "../engine/autoflip/build-autoflip-track";
+import type { RmsEnvelope } from "../engine/audio-envelope";
+import type { FaceActionBenchmark } from "../shared/face-action-benchmark";
+
+/**
+ * Handoff from the faces stage (which now owns the single native decode
+ * pass shared with subject/motion extraction) to the subjects stage: the
+ * face stage kicks off ML detection on each streamed subject frame as it
+ * arrives, and the subjects stage awaits those already-in-flight tasks
+ * instead of invoking a second, independent decode.
+ */
+export interface PendingSubjectExtraction {
+  /** Legacy shared frame-cache job id; native WinML jobs intentionally omit it. */
+  jobId: string;
+  detectionTasks: Promise<SubjectDetectionSample>[];
+  /** Releases the legacy worker after all queued tasks settle. */
+  dispose?: () => void;
+  /** Completed atomic WinML result set; mutually compatible with legacy tasks. */
+  detections?: SubjectDetectionSample[];
+  engine?: "winml" | "wasm";
+  trackerVersion?: "bytetrack-v1";
+  sceneCutTimestamps: number[];
+  sourceFrameRate?: number;
+  hasSolidColorBackground?: boolean;
+  solidBackgroundColor?: { r: number; g: number; b: number } | null;
+  staticFeatureSamples?: AutoFlipStaticFeatureSample[];
+  contentRect?: { x: number; y: number; width: number; height: number };
+  degradedReason?: string;
+}
+
+export interface ClipperSession {
+  sourceFile: File;
+  sourceUrl: string;
+  sourceDuration: number;
+  mediaFileId: string;
+  /** Trimmed file for the full selected source range (used for preview + sub-trim at render). */
+  rangeTrimmedFile: File | null;
+  rangeTrimmedVideoUrl: string | null;
+  /** @deprecated Alias for rangeTrimmedFile — kept for stages that read trimmedFile. */
+  trimmedFile: File | null;
+  trimmedVideoUrl: string | null;
+  /** Full transcription for the selected range (0-based relative to range start). */
+  rangeWords: WordCue[];
+  words: WordCue[];
+  audioEnvelope?: RmsEnvelope | null;
+  /** Source timeline bounds for the selected range. */
+  rangeStart: number;
+  rangeEnd: number;
+  clipStart: number;
+  clipEnd: number;
+  autoPartsClips: ClipperGeneratedClip[];
+  aiClips: ClipperGeneratedClip[];
+  clipSourceMode: ClipSourceMode;
+  /** Ids of auto-detected two-speaker regions (see CollageRegion) where the user turned split-screen off. */
+  disabledCollageRegionIds: string[];
+  /** Active clip set used for preview/render (auto-parts or AI). */
+  clips: ClipperGeneratedClip[];
+  activeClipIndex: number;
+  faceCache: FaceSampleCache | null;
+  smartCropAnalysis?: ClipperSmartCropBlob | null;
+  smartFollowTrackCache?: {
+    smoothing: ClipperSmoothingStrength;
+    aspectRatio: number;
+    blob: ClipperSmartCropBlob;
+    track: CentroidSample[];
+  } | null;
+  /** Set by the faces stage when it also ran subject/motion extraction (see `PendingSubjectExtraction`); consumed and cleared by the subjects stage. */
+  pendingSubjectExtraction?: PendingSubjectExtraction | null;
+  /** Wall-clock phase timings for "Detect faces & track action"; finalized in the subjects stage. */
+  faceActionBenchmark?: FaceActionBenchmark | null;
+  /** Cached keyframe timestamps from the trimmed range file — reused for live auto-parts re-segmentation. */
+  keyframeTimestamps?: number[];
+  captionGroupsCache: { wordsPerGroup: number; clip: ClipperGeneratedClip; groups: import("../../lib/media/transcription-export").CaptionGroup[] } | null;
+  faceRenderCache: {
+    reframeKey: string;
+    sampleRevision: number;
+    focusTrack: CentroidSample[];
+    collageTracks: CollageTracks;
+    collageRegions: CollageRegion[];
+  } | null;
+}
+
+/** Ensures legacy/in-memory sessions have auto-parts/AI clip fields after hot reload. */
+export function normalizeClipperSession(session: ClipperSession): ClipperSession {
+  const legacyClips = session.clips ?? [];
+  session.autoPartsClips = session.autoPartsClips ?? legacyClips;
+  session.aiClips = session.aiClips ?? [];
+  session.clipSourceMode = session.clipSourceMode ?? "auto-parts";
+  session.disabledCollageRegionIds = session.disabledCollageRegionIds ?? [];
+  session.smartCropAnalysis = session.smartCropAnalysis ?? null;
+  session.clips =
+    session.clipSourceMode === "ai" ? session.aiClips : session.autoPartsClips;
+  return session;
+}
+
+/** Cache key for derived face-render tracks from reframe settings + the session's region overrides. */
+export function reframeCacheKey(settings: ClipperSettings, disabledCollageRegionIds: string[]): string {
+  const { cropMode, facePickStrategy, smoothing } = settings.reframe;
+  return `${cropMode}|${facePickStrategy}|${smoothing}|${[...disabledCollageRegionIds].sort().join(",")}`;
+}
+
+/** Creates a face sample cache that reports detection summary via the reporter. */
+export function createFaceCache(
+  session: ClipperSession,
+  reporter: PipelineReporter,
+): FaceSampleCache {
+  return new FaceSampleCache(FACE_SAMPLE_INTERVAL_SEC, () => {
+    const samples = session.faceCache!.sortedSamples();
+    if (samples.length === 0) return;
+    const hasFaces = hasAnyFaces(samples);
+    const hasTwoSpeakers = deriveCollageTracks(samples, "balanced").hasTwoSpeakers;
+    reporter.faces(hasFaces, hasTwoSpeakers, session.faceCache!.sampleRevision);
+  });
+}
+
+/** Resolves or rebuilds cached focus/collage tracks for frame drawing. */
+export function resolveFaceRender(
+  session: ClipperSession,
+  settings: ClipperSettings,
+): ClipperFrameContext["faceRender"] {
+  const cache = session.faceCache;
+  if (!cache) return undefined;
+
+  const disabledCollageRegionIds = session.disabledCollageRegionIds ?? [];
+  const reframeKey = reframeCacheKey(settings, disabledCollageRegionIds);
+  const sampleRevision = cache.sampleRevision;
+  let cached = session.faceRenderCache;
+  if (!cached || cached.reframeKey !== reframeKey || cached.sampleRevision !== sampleRevision) {
+    const samples = cache.sortedSamples();
+    const collageRegions = deriveTwoSpeakerRegions(samples);
+    cached = {
+      reframeKey,
+      sampleRevision,
+      focusTrack: deriveSingleFocusTrack(samples, settings.reframe.facePickStrategy, settings.reframe.smoothing),
+      collageTracks: buildCollageTracksForRegions(
+        samples,
+        settings.reframe.smoothing,
+        collageRegions,
+        disabledCollageRegionIds,
+      ),
+      collageRegions,
+    };
+    session.faceRenderCache = cached;
+  }
+
+  return {
+    focusTrack: cached.focusTrack,
+    collageTracks: cached.collageTracks,
+    collageRegions: cached.collageRegions,
+  };
+}
+
+/** Resolves the display-ready smart-follow path (AutoFlip-smoothed samples). */
+export function resolveSmartFollowTrack(
+  session: ClipperSession,
+  smoothing: ClipperSmoothingStrength,
+): CentroidSample[] {
+  const blob = session.smartCropAnalysis;
+  if (!blob) return [];
+  const aspectRatio = blob.targetAspectRatio ?? 9 / 16;
+  let cached = session.smartFollowTrackCache;
+  if (!cached || cached.blob !== blob || cached.smoothing !== smoothing || cached.aspectRatio !== aspectRatio) {
+    cached = {
+      blob,
+      smoothing,
+      aspectRatio,
+      track: resolveAutoFlipDisplayTrack(blob, smoothing),
+    };
+    session.smartFollowTrackCache = cached;
+  }
+  return cached.track;
+}
+
+/** Builds frame draw context for a specific generated clip within the trimmed range. */
+export function buildFrameContext(
+  session: ClipperSession,
+  settings: ClipperSettings,
+  clipIndex = session.activeClipIndex,
+): ClipperFrameContext | null {
+  if (!session) return null;
+
+  normalizeClipperSession(session);
+  const clip = findClipByIndex(getActiveClips(session), clipIndex);
+  if (!clip) return null;
+
+  const wordsPerGroup = settings.captions.wordsPerGroup;
+  let cached = session.captionGroupsCache;
+  if (!cached || cached.wordsPerGroup !== wordsPerGroup || cached.clip !== clip) {
+    cached = {
+      wordsPerGroup,
+      clip,
+      groups:
+        clip.captionGroups.length > 0
+          ? clip.captionGroups
+          : groupCaptionWords(clip.words, wordsPerGroup),
+    };
+    session.captionGroupsCache = cached;
+  }
+
+  return {
+    settings,
+    captionGroups: cached.groups,
+    faceCache: session.faceCache,
+    faceRender: resolveFaceRender(session, settings),
+    smartFocusTrack: resolveSmartFollowTrack(session, settings.reframe.smoothing),
+    smartCropAnalysis: session.smartCropAnalysis,
+    disabledCollageRegionIds: session.disabledCollageRegionIds ?? [],
+    segments: clip.segments,
+  };
+}
+
+/** Returns the active clip list based on source mode. */
+export function getActiveClips(session: ClipperSession): ClipperGeneratedClip[] {
+  const autoPartsClips = session.autoPartsClips ?? session.clips ?? [];
+  const aiClips = session.aiClips ?? [];
+  const mode = session.clipSourceMode ?? "auto-parts";
+  return mode === "ai" ? aiClips : autoPartsClips;
+}
+
+/** Syncs session.clips to the active auto-parts/AI set. */
+export function syncSessionActiveClips(session: ClipperSession): void {
+  normalizeClipperSession(session);
+  session.clips = getActiveClips(session);
+}
+
+/** Active generated clip, if any. */
+export function getActiveClip(session: ClipperSession): ClipperGeneratedClip | null {
+  return findClipByIndex(getActiveClips(session), session.activeClipIndex);
+}

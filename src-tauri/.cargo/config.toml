@@ -1,0 +1,7 @@
+[env]
+VCPKG_ROOT = "C:\\ffmpeg\\vcpkg"
+VCPKG_DEFAULT_TRIPLET = "x64-windows-static"
+VCPKGRS_TRIPLET = "x64-windows-static"
+FFMPEG_DIR = "C:\\ffmpeg\\vcpkg\\installed\\x64-windows-static"
+# Added by npm run sherpa:directml
+SHERPA_ONNX_LIB_DIR = { value = "../third_party/sherpa-onnx-directml/install/lib", relative = true }

@@ -1,0 +1,25 @@
+.app-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.app-drag-region button,
+.app-drag-region a,
+.app-drag-region input,
+.app-drag-region select,
+.app-drag-region textarea,
+.app-drag-region label,
+.app-drag-region [role="button"],
+.app-drag-region [role="tab"],
+.app-drag-region [role="menuitem"],
+.app-drag-region [role="menu"],
+.app-drag-region [role="combobox"],
+.app-drag-region [role="slider"],
+.app-drag-region [data-scope="menu"],
+.app-drag-region [data-part="content"],
+.app-drag-region [data-titlebar-btn],
+.app-drag-region [data-no-drag],
+[data-no-drag] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

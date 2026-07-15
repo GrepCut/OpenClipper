@@ -1,0 +1,110 @@
+use sha2::{Digest, Sha256};
+use std::{fs, path::Path};
+
+fn verify_clipper_vision_models() {
+    let root = Path::new("resources/models/clipper-vision");
+    let manifest_path = root.join("manifest.json");
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    let manifest_bytes = fs::read(&manifest_path)
+        .unwrap_or_else(|error| panic!("Cannot read {}: {error}", manifest_path.display()));
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+        .unwrap_or_else(|error| panic!("Invalid {}: {error}", manifest_path.display()));
+    let models = manifest["models"]
+        .as_object()
+        .expect("clipper vision manifest must contain a models object");
+    for (name, model) in models {
+        let file_name = model["onnxFile"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{name}: missing onnxFile"));
+        let expected = model["onnxSha256"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{name}: missing onnxSha256"));
+        let path = root.join(file_name);
+        println!("cargo:rerun-if-changed={}", path.display());
+        let bytes = fs::read(&path).unwrap_or_else(|error| {
+            panic!("Cannot read bundled model {}: {error}", path.display())
+        });
+        let actual = format!("{:x}", Sha256::digest(bytes));
+        assert_eq!(actual, expected, "{name}: bundled ONNX SHA-256 mismatch");
+    }
+    let label = &manifest["labelMap"];
+    let label_file = label["file"]
+        .as_str()
+        .expect("manifest labelMap.file missing");
+    let label_hash = label["sha256"]
+        .as_str()
+        .expect("manifest labelMap.sha256 missing");
+    let label_path = root.join(label_file);
+    println!("cargo:rerun-if-changed={}", label_path.display());
+    let label_bytes = fs::read(&label_path).unwrap_or_else(|error| {
+        panic!(
+            "Cannot read bundled label map {}: {error}",
+            label_path.display()
+        )
+    });
+    assert_eq!(
+        format!("{:x}", Sha256::digest(label_bytes)),
+        label_hash,
+        "bundled label map SHA-256 mismatch"
+    );
+}
+
+fn verify_sherpa_directml_libs() {
+    println!("cargo:rerun-if-env-changed=SHERPA_ONNX_LIB_DIR");
+
+    let lib_dir = match std::env::var("SHERPA_ONNX_LIB_DIR") {
+        Ok(path) if !path.trim().is_empty() => Path::new(&path).to_path_buf(),
+        _ => {
+            println!(
+                "cargo:warning=Parakeet uses CPU-only sherpa-onnx prebuilds. \
+                 For DirectML on Windows run: npm run sherpa:directml"
+            );
+            return;
+        }
+    };
+
+    let marker = lib_dir.join("sherpa-onnx-c-api.lib");
+    if marker.is_file() {
+        println!(
+            "cargo:warning=Parakeet DirectML: using sherpa-onnx libs from {}",
+            lib_dir.display()
+        );
+        return;
+    }
+
+    println!(
+        "cargo:warning=SHERPA_ONNX_LIB_DIR is set but sherpa-onnx-c-api.lib is missing at {}. \
+         Run: npm run sherpa:directml — then cargo clean && npm run tauri:dev.",
+        lib_dir.display()
+    );
+}
+
+fn main() {
+    verify_clipper_vision_models();
+    if cfg!(target_os = "windows") {
+        verify_sherpa_directml_libs();
+        println!(
+            "cargo:rustc-link-search=native=C:\\ffmpeg\\vcpkg\\installed\\x64-windows-static\\lib"
+        );
+        println!("cargo:rustc-link-lib=static=avcodec");
+        println!("cargo:rustc-link-lib=static=avdevice");
+        println!("cargo:rustc-link-lib=static=avfilter");
+        println!("cargo:rustc-link-lib=static=avformat");
+        println!("cargo:rustc-link-lib=static=avutil");
+        println!("cargo:rustc-link-lib=static=swresample");
+        println!("cargo:rustc-link-lib=static=swscale");
+
+        println!("cargo:rustc-link-lib=ole32");
+        println!("cargo:rustc-link-lib=oleaut32");
+        println!("cargo:rustc-link-lib=strmiids");
+        println!("cargo:rustc-link-lib=secur32");
+        println!("cargo:rustc-link-lib=ws2_32");
+        println!("cargo:rustc-link-lib=bcrypt");
+        println!("cargo:rustc-link-lib=user32");
+        println!("cargo:rustc-link-lib=mfplat");
+        println!("cargo:rustc-link-lib=mfuuid");
+        println!("cargo:rustc-link-lib=gdi32");
+        println!("cargo:rustc-link-lib=advapi32");
+    }
+    tauri_build::build()
+}

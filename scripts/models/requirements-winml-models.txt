@@ -1,0 +1,7 @@
+# Python 3.10 or 3.11 is required. TensorFlow 2.15 has no Python 3.12 wheel.
+tensorflow-cpu==2.15.1
+tf2onnx==1.16.1
+onnx==1.17.0
+onnxruntime==1.17.3
+numpy==1.26.4
+

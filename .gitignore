@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# sherpa-onnx DirectML build output (npm run sherpa:directml)
+third_party/sherpa-onnx-directml/
+
+# Parakeet ASR model (~640 MB total; exceeds GitHub 100 MB file limit)
+public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/*
+!public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/.gitkeep
+!public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/README.md
