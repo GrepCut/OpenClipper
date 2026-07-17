@@ -6,6 +6,7 @@ import { isTauri } from "../../shared/utils/platform";
 import { OAuthProcessingLayout } from "./components/OAuthProcessingLayout";
 import { exchangeDesktopTicketIfNeeded } from "./oauth-callback-utils";
 import { trackEvent } from "../../lib/analytics";
+import { consumeAuthReturnPath } from "../../shared/auth/auth-return-path";
 
 export function OAuthSuccess() {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export function OAuthSuccess() {
         );
       }
 
-      navigate("/clipper", { replace: true });
+      navigate(consumeAuthReturnPath(), { replace: true });
     } catch (error) {
       handleLoginError();
     }

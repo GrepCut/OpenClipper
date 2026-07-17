@@ -140,4 +140,42 @@ mod tests {
         .expect("record exists");
         assert_eq!(loaded_record, record);
     }
+
+    #[tokio::test]
+    async fn migration_moves_existing_projects_to_shared_workspace() {
+        use crate::migrator::m002_shared_workspace::SHARED_WORKSPACE_OWNER_ID;
+
+        let dir = tempdir().expect("tempdir");
+        let db_path = dir.path().join("clipper.sqlite3");
+        let database = open_test_database(&db_path).await;
+        synchronize_schema(&database).await.expect("schema sync");
+
+        let project = json!({
+            "id": "legacy-project",
+            "name": "Legacy",
+            "projectType": "clipper",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z"
+        });
+        ProjectRepository::put(&database, "legacy-user", project.clone())
+            .await
+            .expect("put legacy project");
+
+        ManualMigrator::run(&database).await.expect("run migrations");
+
+        assert!(ProjectRepository::get(&database, "legacy-project", "legacy-user")
+            .await
+            .expect("query legacy owner")
+            .is_none());
+        assert_eq!(
+            ProjectRepository::get(
+                &database,
+                "legacy-project",
+                SHARED_WORKSPACE_OWNER_ID,
+            )
+            .await
+            .expect("query shared owner"),
+            Some(project),
+        );
+    }
 }

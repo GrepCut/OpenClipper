@@ -28,7 +28,7 @@ let authInitializationPromise: Promise<void> | null = null;
 
 // --- Constants ---
 const clearLocalSessionData = () => {
-  const allCookies = Cookies.get();
+  const allCookies = Cookies.get() ?? {};
   Object.keys(allCookies).forEach((key) => {
     Cookies.remove(key);
     Cookies.remove(key, { path: "/" });
@@ -129,7 +129,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
       await safeServerLogout();
       await clearActiveAuthProfile();
       clearLocalSessionData();
-      sessionStorage.removeItem("subscription_intent_token");
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.removeItem("subscription_intent_token");
+      }
     },
 
     finalizeLogout: () => {

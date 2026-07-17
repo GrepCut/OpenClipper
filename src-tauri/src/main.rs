@@ -2,5 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    tauri_app_lib::install_startup_diagnostics();
     tauri_app_lib::run()
 }

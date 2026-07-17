@@ -3703,6 +3703,7 @@ dependencies = [
  "bzip2 0.5.2",
  "chrono",
  "crossbeam-channel",
+ "dirs",
  "fast_image_resize",
  "ffmpeg-next",
  "image",

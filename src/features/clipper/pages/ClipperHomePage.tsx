@@ -35,13 +35,11 @@ import {
   saveClipperSettings,
 } from "../settings/settings-storage";
 import type { ClipperSettings } from "../settings/settings";
-import { useAuth } from "../../../shared/hooks/useAuth";
 
 const ITEMS_PER_PAGE = 10;
 
 export function ClipperHomePage() {
   const { theme } = useTheme();
-  const { user, logout, isLoggingOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ClipperHomeTab>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -120,10 +118,6 @@ export function ClipperHomePage() {
     [],
   );
 
-  const handleLogout = useCallback(() => {
-    void logout();
-  }, [logout]);
-
   return (
     <ClipperTauriGate>
       <ClipperLayout
@@ -133,9 +127,6 @@ export function ClipperHomePage() {
         headerActions={
           <ClipperHomeHeaderActions
             onOpenSettings={onSettingsOpen}
-            onLogout={handleLogout}
-            isLoggingOut={isLoggingOut}
-            userEmail={user?.email}
           />
         }
       >

@@ -26,6 +26,7 @@ serialize-to-javascript = "0.1.2"
 log = "0.4"
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-log = "2"
+dirs = "6"
 ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git", version = "8.1.0" }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"

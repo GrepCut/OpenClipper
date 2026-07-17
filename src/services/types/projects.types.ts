@@ -40,7 +40,8 @@ export interface Project {
   metadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
-  user: User;
+  /** Legacy projects may retain their creator; guest-created projects are installation-owned. */
+  user: User | null;
   videos: Video[];
 
   storageLocation: StorageLocation;

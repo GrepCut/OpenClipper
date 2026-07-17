@@ -21,6 +21,10 @@ import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.f
 import { OutlinedActionButton } from "../../../shared/components/buttons/OutlinedActionButton";
 import { StyledModal } from "../../../shared/components/StyledModal";
 import { appToast } from "../../../shared/utils/toast.service";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import { AppLoader } from "../../../shared/components/AppLoader";
+import { useLocation, useNavigate } from "react-router-dom";
+import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path";
 
 const INTEGRATIONS_RETURN_PATH = "/clipper?tab=integrations";
 
@@ -122,7 +126,7 @@ function XIcon() {
   );
 }
 
-export const ClipperIntegrationsView: React.FC = () => {
+const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const { theme } = useTheme();
   const {
     isConnected: isYoutubeConnected,
@@ -374,4 +378,51 @@ export const ClipperIntegrationsView: React.FC = () => {
       </StyledModal>
     </VStack>
   );
+};
+
+export const ClipperIntegrationsView: React.FC = () => {
+  const { theme } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, token, isAuthenticated, hasTriedInit, isLoading, sessionMode } = useAuth();
+
+  if (!hasTriedInit || isLoading) {
+    return (
+      <Box minH="260px">
+        <AppLoader message="Checking account…" />
+      </Box>
+    );
+  }
+
+  const online = Boolean(user && token && isAuthenticated && sessionMode === "online");
+  if (!online) {
+    const guest = !user || !isAuthenticated;
+    return (
+      <VStack align="stretch" gap={6} maxW="680px">
+        <SecondaryMainTitle fontSize={{ base: "2xl", md: "3xl" }} color={theme.text.primary}>
+          Integrations
+        </SecondaryMainTitle>
+        <Box p={6} borderRadius="2xl" border="1px solid" borderColor={theme.dashboard.border} bg={theme.background.card}>
+          <Text color={theme.text.primary} fontWeight="semibold" mb={2}>
+            {guest ? "Log in to use integrations" : "Integrations are unavailable offline"}
+          </Text>
+          <Text color={theme.text.muted} mb={5}>
+            Local projects, editing and export to disk remain available without an account.
+          </Text>
+          {guest ? (
+            <OutlinedActionButton
+              onClick={() => {
+                rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
+                navigate("/auth");
+              }}
+            >
+              Log in
+            </OutlinedActionButton>
+          ) : null}
+        </Box>
+      </VStack>
+    );
+  }
+
+  return <AuthenticatedClipperIntegrationsView />;
 };

@@ -10,6 +10,7 @@ export const isTauriBuild = import.meta.env.VITE_APP_PLATFORM === 'tauri';
  * This works at runtime by checking for Tauri-specific globals.
  */
 export const isTauri = (): boolean => {
+  if (typeof window === "undefined") return isTauriBuild;
   // Check for Tauri v2/v1 globals or build-time flag
   return (
     isTauriBuild ||

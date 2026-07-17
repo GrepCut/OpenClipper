@@ -6,8 +6,8 @@ import {
   localProjectPut,
   localRecordGet,
 } from "../shared/persistence/local-database";
-import { useAuthStore } from "../shared/stores/useAuthStore";
 import { StorageLocation } from "../shared/types/storage.types";
+import { LOCAL_WORKSPACE_OWNER_ID } from "../shared/persistence/local-workspace";
 export * from "./types/projects.types";
 import type {
   Project,
@@ -17,15 +17,8 @@ import type {
   ProjectType,
 } from "./types/projects.types";
 
-function currentUser() {
-  const user = useAuthStore.getState().user;
-  if (!user)
-    throw new Error("A local user profile is required to access projects.");
-  return user;
-}
-
 function ownerId(): string {
-  return currentUser().id;
+  return LOCAL_WORKSPACE_OWNER_ID;
 }
 
 export const projectsService = {
@@ -82,7 +75,6 @@ export const projectsService = {
   },
 
   create: async (data: CreateProjectDto): Promise<Project> => {
-    const user = currentUser();
     const now = new Date().toISOString();
     const project: Project = {
       id: uuidv4(),
@@ -93,12 +85,12 @@ export const projectsService = {
       metadata: data.metadata ?? null,
       createdAt: now,
       updatedAt: now,
-      user,
+      user: null,
       videos: [],
       storageLocation: data.storageLocation ?? StorageLocation.LOCAL,
       localDirectoryPath: data.localDirectoryPath ?? null,
     };
-    return localProjectPut(user.id, project);
+    return localProjectPut(ownerId(), project);
   },
 
   update: async (id: string, data: UpdateProjectDto): Promise<Project> => {

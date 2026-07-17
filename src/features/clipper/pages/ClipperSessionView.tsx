@@ -36,6 +36,10 @@ import {
 } from "../../../services/socialAuth.service";
 import { logYoutubeDebug } from "../shared/youtube-debug";
 import type { ClipperLoadedProject } from "../hooks/useClipperProjectLoader";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import { useLocation, useNavigate } from "react-router-dom";
+import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path";
+import { appToast } from "../../../shared/utils/toast.service";
 
 interface ClipperSessionViewProps {
   project: Project;
@@ -47,6 +51,12 @@ type QueuePhase = "setup" | "progress" | "complete";
 
 export function ClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
   const { theme, errorPanel } = useClipperUi();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const auth = useAuth();
+  const canUseAccountFeatures = Boolean(
+    auth.user && auth.token && auth.isAuthenticated && auth.sessionMode === "online",
+  );
   const [view, setView] = useState<"preview" | "queue" | "exports">("preview");
   const [queuePhase, setQueuePhase] = useState<QueuePhase>("setup");
   const [queuePublishTarget, setQueuePublishTarget] = useState<ClipperFormatResult | null>(null);
@@ -261,6 +271,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
 
   const handleRequestConnect = useCallback(
     (platform: SocialPublishablePlatform) => {
+      if (!canUseAccountFeatures) return;
       const returnPath = `${window.location.pathname}${window.location.search}`;
       const flow = oauthFlowForPlatform(platform);
       if (flow === "youtube") {
@@ -278,8 +289,18 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
       }
       void socialAuthService.redirectToConnect(flow, returnPath);
     },
-    [project.id],
+    [canUseAccountFeatures, project.id],
   );
+
+  const requestAccount = useCallback(() => {
+    if (auth.user && auth.isAuthenticated) {
+      appToast.error("Account offline", "Connect to the internet to use this feature.");
+      return false;
+    }
+    rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
+    navigate("/auth");
+    return false;
+  }, [auth.isAuthenticated, auth.user, location.hash, location.pathname, location.search, navigate]);
 
   const queuePublishPlatform: SocialPublishablePlatform = useMemo(() => {
     if (!queuePublishTarget) return "youtube";
@@ -306,9 +327,10 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
   ]);
 
   useEffect(() => {
+    if (!canUseAccountFeatures) return;
     void refreshYoutubeStatus();
     void refreshSocial();
-  }, [refreshYoutubeStatus, refreshSocial]);
+  }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
 
   const step: ClipperLayoutStep | undefined = (() => {
     switch (state.stage) {
@@ -436,7 +458,13 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
             clipSourceMode={state.clipSourceMode ?? "auto-parts"}
             activeClipIndex={state.activeClipIndex}
             onSelectClip={setActiveClipIndex}
-            onClipSourceModeChange={setClipSourceMode}
+            onClipSourceModeChange={(mode) => {
+              if (mode === "ai" && !canUseAccountFeatures) {
+                requestAccount();
+                return;
+              }
+              setClipSourceMode(mode);
+            }}
             aiChatMessages={aiChatMessages}
             aiChatLoading={aiChatLoading}
             aiChatError={aiChatError}
@@ -445,12 +473,21 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
             aiChatModel={aiChatModel}
             onAiChatModelChange={setAiChatModel}
             onSendAiChatMessage={(message, preset) => {
+              if (!canUseAccountFeatures) {
+                requestAccount();
+                return;
+              }
               void sendAiClipChatMessage(message, { preset });
             }}
             onLoadAiChatHistory={() => {
+              if (!canUseAccountFeatures) return;
               void loadAiChatHistory();
             }}
             onNewAiChat={() => {
+              if (!canUseAccountFeatures) {
+                requestAccount();
+                return;
+              }
               void startNewAiChat();
             }}
             onDeleteAiClip={deleteAiClip}
@@ -507,6 +544,10 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onOpenFolder={handleOpenExportsFolder}
           onPublish={(result, target) => {
             if (result.isMissing) return;
+            if (!canUseAccountFeatures) {
+              requestAccount();
+              return;
+            }
             setQueuePublishTargetPlatform(target);
             setQueuePublishTarget(result);
           }}

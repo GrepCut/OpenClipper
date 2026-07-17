@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -8,7 +8,6 @@ import {
 import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
 import { AuthInitializer } from "./features/authentication/AuthInitalizer";
 import { PublicRoute } from "./features/authentication/PublicRoute";
-import { ProtectedRoute } from "./features/authentication/ProtectedRoute";
 import { ThemeProvider, useTheme } from "./theme";
 import { ProjectLoadingScreen } from "./shared/components/ProjectLoadingScreen";
 import { Toaster } from "./shared/components/ui/toaster";
@@ -104,79 +103,72 @@ const system = createSystem(defaultConfig, {
 function FrontendReadySignal() {
   useEffect(() => {
     if (!isTauri()) return;
-    let cancelled = false;
-    requestAnimationFrame(() => {
-      if (cancelled) return;
-      void ensureTauriFrontendSession().catch(() => {});
-    });
-    return () => {
-      cancelled = true;
-    };
+    void ensureTauriFrontendSession().catch(() => {});
   }, []);
   return null;
+}
+
+function InteractiveRoute({ name, children }: { name: string; children: React.ReactNode }) {
+  useLayoutEffect(() => {
+    (
+      window as Window & {
+        __OPEN_CLIPPER_MARK_INTERACTIVE__?: (route: string) => void;
+      }
+    ).__OPEN_CLIPPER_MARK_INTERACTIVE__?.(name);
+  }, [name]);
+  return <>{children}</>;
 }
 
 function AppRoutes() {
   return (
     <Suspense fallback={<ProjectLoadingScreen type="loading" />}>
-      <FrontendReadySignal />
       <Routes>
         <Route
           path="/"
-          element={
-            <ProtectedRoute>
-              <Navigate to="/clipper" replace />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/clipper" replace />}
         />
         <Route
           path="/auth"
           element={
-            <PublicRoute>
-              <AuthPage />
-            </PublicRoute>
+            <InteractiveRoute name="auth">
+              <PublicRoute>
+                <AuthPage />
+              </PublicRoute>
+            </InteractiveRoute>
           }
         />
         <Route path="/login" element={<Navigate to="/auth" replace />} />
-        <Route path="/oauth/success" element={<OAuthSuccess />} />
+        <Route path="/oauth/success" element={<InteractiveRoute name="oauth-success"><OAuthSuccess /></InteractiveRoute>} />
         <Route
           path="/oauth/google-drive-connected"
-          element={<OAuthDriveCallback />}
+          element={<InteractiveRoute name="oauth-drive"><OAuthDriveCallback /></InteractiveRoute>}
         />
         <Route
           path="/oauth/youtube-connected"
-          element={<OAuthYoutubeCallback />}
+          element={<InteractiveRoute name="oauth-youtube"><OAuthYoutubeCallback /></InteractiveRoute>}
         />
-        <Route path="/oauth/meta-connected" element={<OAuthMetaCallback />} />
-        <Route path="/oauth/instagram-connected" element={<OAuthInstagramCallback />} />
+        <Route path="/oauth/meta-connected" element={<InteractiveRoute name="oauth-meta"><OAuthMetaCallback /></InteractiveRoute>} />
+        <Route path="/oauth/instagram-connected" element={<InteractiveRoute name="oauth-instagram"><OAuthInstagramCallback /></InteractiveRoute>} />
         <Route
           path="/oauth/tiktok-connected"
-          element={<OAuthTikTokCallback />}
+          element={<InteractiveRoute name="oauth-tiktok"><OAuthTikTokCallback /></InteractiveRoute>}
         />
         <Route
           path="/oauth/linkedin-connected"
-          element={<OAuthLinkedInCallback />}
+          element={<InteractiveRoute name="oauth-linkedin"><OAuthLinkedInCallback /></InteractiveRoute>}
         />
-        <Route path="/oauth/x-connected" element={<OAuthXCallback />} />
+        <Route path="/oauth/x-connected" element={<InteractiveRoute name="oauth-x"><OAuthXCallback /></InteractiveRoute>} />
         <Route
           path="/clipper"
-          element={
-            <ProtectedRoute>
-              <ClipperHomePage />
-            </ProtectedRoute>
-          }
+          element={<InteractiveRoute name="clipper-home"><ClipperHomePage /></InteractiveRoute>}
         />
         <Route
           path="/clipper/:projectId"
-          element={
-            <ProtectedRoute>
-              <ClipperSessionPage />
-            </ProtectedRoute>
-          }
+          element={<InteractiveRoute name="clipper-session"><ClipperSessionPage /></InteractiveRoute>}
         />
         <Route
           path="*"
-          element={<Navigate to={isTauri() ? "/auth" : "/clipper"} replace />}
+          element={<Navigate to="/clipper" replace />}
         />
       </Routes>
     </Suspense>
@@ -226,8 +218,9 @@ function App() {
   return (
     <ThemeProvider defaultMode="dark">
       <ChakraProvider value={system}>
+        <FrontendReadySignal />
         <Toaster />
-        <Router basename={import.meta.env.BASE_URL.replace(/\/+$/, "") || "/"}>
+        <Router basename={isTauri() ? "/" : import.meta.env.BASE_URL.replace(/\/+$/, "") || "/"}>
           <AppContent />
         </Router>
       </ChakraProvider>

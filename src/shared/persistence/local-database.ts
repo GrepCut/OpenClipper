@@ -1,12 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { User } from "../types/auth.types";
 import { isTauri } from "../utils/platform";
+import { LOCAL_WORKSPACE_OWNER_ID } from "./local-workspace";
 
 const WEB_PREFIX = "openclipper_local_db:";
 const inFlightReads = new Map<string, Promise<unknown>>();
 
 function webKey(namespace: string, key: string): string {
   return `${WEB_PREFIX}${namespace}:${key}`;
+}
+
+let webWorkspaceMigrated = false;
+
+function migrateWebProjectsToSharedWorkspace(): void {
+  if (webWorkspaceMigrated || isTauri()) return;
+  webWorkspaceMigrated = true;
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(webKey("project-owner", ""))) continue;
+    localStorage.setItem(key, LOCAL_WORKSPACE_OWNER_ID);
+  }
 }
 
 /**
@@ -51,6 +64,7 @@ export async function localRecordGet<T>(
   key: string,
 ): Promise<T | null> {
   if (!isTauri()) {
+    migrateWebProjectsToSharedWorkspace();
     const raw = localStorage.getItem(webKey(namespace, key));
     return raw ? (JSON.parse(raw) as T) : null;
   }
@@ -104,6 +118,7 @@ export async function localProjectGet<T>(
   ownerId: string,
 ): Promise<T | null> {
   if (!isTauri()) {
+    migrateWebProjectsToSharedWorkspace();
     if (localStorage.getItem(webKey("project-owner", id)) !== ownerId)
       return null;
     const raw = localStorage.getItem(webKey("project", id));
@@ -119,6 +134,7 @@ export async function localProjectList<T>(
   query: LocalProjectListQuery,
 ): Promise<{ data: T[]; total: number }> {
   if (!isTauri()) {
+    migrateWebProjectsToSharedWorkspace();
     const all: T[] = [];
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);

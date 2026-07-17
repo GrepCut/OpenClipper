@@ -8,6 +8,7 @@ import { asset } from "../../../shared/utils/asset";
 import { isTauri } from "../../../shared/utils/platform";
 import { colors, useTheme } from "../../../theme";
 import { clipperTheme } from "../shared/theme";
+import { AccountHeaderAction } from "../../authentication/AccountHeaderAction";
 
 export interface ClipperLayoutStep {
   current?: number;
@@ -160,6 +161,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
             {isTauri() ? (
               <HStack gap={1} flexShrink={0}>
                 {headerActions}
+                <AccountHeaderAction />
                 <WindowControls
                   textColor={theme.text.muted}
                   btnHoverBg={theme.surface.hover}
@@ -168,6 +170,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
             ) : (
               <HStack gap={1} flexShrink={0}>
                 {headerActions}
+                <AccountHeaderAction />
               </HStack>
             )}
           </HStack>

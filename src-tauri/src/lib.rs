@@ -7,34 +7,73 @@ mod media_protocol;
 mod migrator;
 mod model_cache;
 mod repository;
+mod startup_log;
 pub mod transcription;
 mod video_processing;
 
 use tauri::Manager;
 use transcription::ParakeetService;
 
+pub fn install_startup_diagnostics() {
+    startup_log::install_panic_hook();
+}
+
 /// Pokazuje główne okno. Idempotentne — wywoływane zarówno przez frontend
 /// po pierwszym renderze, jak i przez fallback timer w setup.
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
-        let already_visible = main.is_visible().unwrap_or(false);
+        let already_visible = match main.is_visible() {
+            Ok(visible) => visible,
+            Err(error) => {
+                log::error!(target: "startup", "failed to read main window visibility: {error}");
+                false
+            }
+        };
         if !already_visible {
-            let _ = main.show();
-            let _ = main.set_focus();
+            if let Err(error) = main.show() {
+                log::error!(target: "startup", "failed to show main window: {error}");
+            }
+            if let Err(error) = main.set_focus() {
+                log::error!(target: "startup", "failed to focus main window: {error}");
+            }
+            log::info!(target: "startup", "main window show requested; {}", startup_log::context());
         }
+    } else {
+        log::error!(target: "startup", "main WebView window was not found");
     }
+}
+
+fn main_window_is_visible(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window("main")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
 fn frontend_ready(
-    app: tauri::AppHandle,
     session_id: String,
     jobs: tauri::State<'_, video_processing::NativeJobRegistry>,
 ) -> Result<(), String> {
+    log::info!(target: "frontend", "frontend_ready received; session_id={session_id}");
     let retired = jobs.activate_session(&session_id)?;
     video_processing::cleanup_clipper_frame_sessions(&retired);
-    show_main_window(&app);
     Ok(())
+}
+
+#[tauri::command]
+fn frontend_startup_log(level: String, message: String, details: Option<String>) {
+    let message = match details {
+        Some(details) if !details.is_empty() => format!("{message}; details={details}"),
+        _ => message,
+    };
+    let message = format!("{message}; {}", startup_log::context());
+
+    match level.as_str() {
+        "error" => log::error!(target: "frontend", "{message}"),
+        "warn" => log::warn!(target: "frontend", "{message}"),
+        "debug" => log::debug!(target: "frontend", "{message}"),
+        _ => log::info!(target: "frontend", "{message}"),
+    }
 }
 
 #[cfg(windows)]
@@ -73,12 +112,36 @@ fn apply_webview_background(window: &tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default();
+    use tauri_plugin_log::{
+        FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy,
+    };
+
+    let log_directory = startup_log::directory();
+    startup_log::append(&format!(
+        "initializing Tauri; log_file={}",
+        startup_log::path().display()
+    ));
+
+    let production_log = tauri_plugin_log::Builder::new()
+        .level(log::LevelFilter::Info)
+        .timezone_strategy(TimezoneStrategy::UseLocal)
+        .file_open_strategy(FileOpenStrategy::Append)
+        .rotation_strategy(RotationStrategy::KeepSome(5))
+        .max_file_size(5_000_000)
+        .targets([
+            Target::new(TargetKind::Folder {
+                path: log_directory,
+                file_name: Some(startup_log::FILE_STEM.to_string()),
+            }),
+            Target::new(TargetKind::Stderr),
+        ])
+        .build();
+
+    let mut builder = tauri::Builder::default().plugin(production_log);
 
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            #[cfg(debug_assertions)]
             log::info!("[auth] secondary instance argv: {:?}", argv);
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -91,12 +154,25 @@ pub fn run() {
     builder
         .manage(video_processing::NativeJobRegistry::default())
         .on_page_load(|webview, payload| {
+            log::info!(
+                target: "startup",
+                "webview page load; label={}; event={:?}; url={}; {}",
+                webview.label(),
+                payload.event(),
+                payload.url(),
+                startup_log::context()
+            );
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Started
             {
                 let jobs = webview.state::<video_processing::NativeJobRegistry>();
                 let retired = jobs.retire_active_session();
                 video_processing::cleanup_clipper_frame_sessions(&retired);
+            }
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+            {
+                show_main_window(webview.app_handle());
             }
         })
         .register_asynchronous_uri_scheme_protocol("grepcut-media", |_ctx, request, responder| {
@@ -140,6 +216,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
+            frontend_startup_log,
             video_processing::start_clipper_media_extraction,
             video_processing::probe_clipper_winml,
             video_processing::start_clipper_winml_analysis,
@@ -180,44 +257,54 @@ pub fn run() {
             commands::transcription::start_parakeet_transcription,
         ])
         .setup(|app| {
+            log::info!(target: "startup", "Tauri setup started");
             app.manage(ParakeetService::new(app.handle().clone()));
+            log::info!(target: "startup", "Parakeet service initialized");
             let local_db =
                 tauri::async_runtime::block_on(database::initialize_database(app.handle()))
                     .map_err(std::io::Error::other)?;
             app.manage(local_db);
+            log::info!(target: "startup", "local database initialized");
 
             #[cfg(any(windows, target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 app.deep_link().register_all()?;
+                log::info!(target: "startup", "deep links registered");
             }
 
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 apply_webview_background(&window);
+                log::info!(target: "startup", "WebView background configured");
             }
 
-            // Bezpiecznik: gdyby frontend nigdy nie zasygnalizował gotowości
-            // (np. crash JS przy starcie), pokaż główne okno po 15 s.
+            // Shell HTML jest gotowy bez Reacta. Ten bezpiecznik nie pozwala,
+            // by awaria samego page-load pozostawiła niewidoczne okno.
             {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    if main_window_is_visible(&handle) {
+                        return;
+                    }
+                    log::warn!(
+                        target: "startup",
+                        "1-second window visibility fallback elapsed; {}",
+                        startup_log::context()
+                    );
                     show_main_window(&handle);
                 });
             }
 
             video_processing::cleanup_clipper_frames_cache_on_startup(app.handle());
-
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            log::info!(target: "startup", "startup setup completed");
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|error| {
+            log::error!(target: "startup", "fatal Tauri runtime error: {error:#}");
+            startup_log::append(&format!("fatal Tauri runtime error: {error:#}"));
+            panic!("error while running tauri application: {error:#}");
+        });
 }

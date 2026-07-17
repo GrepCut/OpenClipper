@@ -1,4 +1,5 @@
 pub mod m001_initial;
+pub mod m002_shared_workspace;
 
 use chrono::Utc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, Statement};
@@ -20,7 +21,10 @@ impl ManualMigrator {
     }
 
     fn migrations() -> Vec<Box<dyn Migration>> {
-        vec![Box::new(m001_initial::M001Initial)]
+        vec![
+            Box::new(m001_initial::M001Initial),
+            Box::new(m002_shared_workspace::M002SharedWorkspace),
+        ]
     }
 
     async fn current_version(db: &DatabaseConnection) -> Result<i32, DbErr> {

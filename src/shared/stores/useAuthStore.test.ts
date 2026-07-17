@@ -30,6 +30,8 @@ vi.mock("../persistence/local-database", () => ({
 
 import { useAuthStore } from "./useAuthStore";
 
+const originalLogout = useAuthStore.getState().logout;
+
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
   get length() {
@@ -58,6 +60,7 @@ describe("ensureAuthLoaded", () => {
     isTauriMock.mockReturnValue(false);
     vi.stubGlobal("localStorage", new MemoryStorage());
     localStorage.setItem("auth_session", "true");
+    useAuthStore.setState({ isLoggingOut: true });
     useAuthStore.setState({
       user: null,
       token: null,
@@ -66,6 +69,7 @@ describe("ensureAuthLoaded", () => {
       hasTriedInit: false,
       isLoggingOut: false,
       sessionMode: null,
+      logout: originalLogout,
     });
   });
 
@@ -100,6 +104,7 @@ describe("ensureAuthLoaded (desktop stale-while-revalidate)", () => {
     isTauriMock.mockReturnValue(true);
     vi.stubGlobal("localStorage", new MemoryStorage());
     localStorage.setItem("auth_session", "true");
+    useAuthStore.setState({ isLoggingOut: true });
     useAuthStore.setState({
       user: null,
       token: null,
@@ -108,6 +113,7 @@ describe("ensureAuthLoaded (desktop stale-while-revalidate)", () => {
       hasTriedInit: false,
       isLoggingOut: false,
       sessionMode: null,
+      logout: originalLogout,
     });
   });
 

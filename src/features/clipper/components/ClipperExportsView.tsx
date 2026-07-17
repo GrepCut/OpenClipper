@@ -15,6 +15,10 @@ import {
   oauthFlowForPlatform,
   type SocialPublishablePlatform,
 } from "../../../services/socialAuth.service";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import { useLocation, useNavigate } from "react-router-dom";
+import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path";
+import { appToast } from "../../../shared/utils/toast.service";
 
 interface ClipperExportsViewProps {
   exportHistory: ClipperFormatResult[];
@@ -30,6 +34,12 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
   onRefreshHistory,
 }) => {
   const { theme, outlineButton } = useClipperUi();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, token, isAuthenticated, sessionMode } = useAuth();
+  const canUseAccountFeatures = Boolean(
+    user && token && isAuthenticated && sessionMode === "online",
+  );
   const totalExports = exportHistory.length;
   const {
     isConnected: isYoutubeConnected,
@@ -45,9 +55,10 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
     useState<ClipperPublishTarget>("youtube");
 
   useEffect(() => {
+    if (!canUseAccountFeatures) return;
     void refreshYoutubeStatus();
     void refreshSocial();
-  }, [refreshYoutubeStatus, refreshSocial]);
+  }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
 
   useEffect(() => {
     onRefreshHistory();
@@ -83,6 +94,7 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
 
   const handleRequestConnect = useCallback(
     (platform: SocialPublishablePlatform) => {
+      if (!canUseAccountFeatures) return;
       const flow = oauthFlowForPlatform(platform);
       const returnPath = `/clipper/${projectId}?tab=exports`;
       if (flow === "youtube") {
@@ -91,8 +103,17 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
       }
       void socialAuthService.redirectToConnect(flow, returnPath);
     },
-    [projectId],
+    [canUseAccountFeatures, projectId],
   );
+
+  const requestAccount = useCallback(() => {
+    if (user && isAuthenticated) {
+      appToast.error("Account offline", "Connect to the internet to publish clips.");
+      return;
+    }
+    rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
+    navigate("/auth");
+  }, [isAuthenticated, location.hash, location.pathname, location.search, navigate, user]);
 
   return (
     <VStack align="stretch" gap={6}>
@@ -125,6 +146,10 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
         onOpenFolder={handleOpenFolder}
         onPublish={(result, target) => {
           if (result.isMissing) return;
+          if (!canUseAccountFeatures) {
+            requestAccount();
+            return;
+          }
           setPublishTargetPlatform(target);
           setPublishTarget(result);
         }}

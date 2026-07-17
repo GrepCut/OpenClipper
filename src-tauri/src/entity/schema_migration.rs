@@ -6,6 +6,7 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub version: i32,
+    #[sea_orm(column_type = "Text")]
     pub applied_at: String,
 }
 

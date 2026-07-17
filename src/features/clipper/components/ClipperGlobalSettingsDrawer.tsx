@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Drawer, IconButton, Portal, Text, VStack } from "@chakra-ui/react";
-import { LogOut, Settings, X } from "lucide-react";
+import { Settings, X } from "lucide-react";
 import type { ClipperSettings } from "../settings/settings";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
@@ -90,16 +90,10 @@ export const ClipperGlobalSettingsDrawer: React.FC<ClipperGlobalSettingsDrawerPr
 
 interface ClipperHomeHeaderActionsProps {
   onOpenSettings: () => void;
-  onLogout: () => void;
-  isLoggingOut?: boolean;
-  userEmail?: string | null;
 }
 
 export const ClipperHomeHeaderActions: React.FC<ClipperHomeHeaderActionsProps> = ({
   onOpenSettings,
-  onLogout,
-  isLoggingOut = false,
-  userEmail,
 }) => {
   const { theme } = useClipperUi();
 
@@ -117,30 +111,6 @@ export const ClipperHomeHeaderActions: React.FC<ClipperHomeHeaderActionsProps> =
       >
         <Settings size={18} />
       </IconButton>
-      <Box
-        as="button"
-        type="button"
-        display="flex"
-        alignItems="center"
-        gap={2}
-        px={2.5}
-        py={1.5}
-        borderRadius="lg"
-        fontSize="sm"
-        color={theme.text.muted}
-        cursor={isLoggingOut ? "wait" : "pointer"}
-        opacity={isLoggingOut ? 0.6 : 1}
-        onClick={() => {
-          if (!isLoggingOut) onLogout();
-        }}
-        _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
-        title={userEmail ? `Sign out (${userEmail})` : "Sign out"}
-      >
-        <LogOut size={16} />
-        <Text display={{ base: "none", md: "block" }} maxW="180px" truncate>
-          {isLoggingOut ? "Signing out…" : "Sign out"}
-        </Text>
-      </Box>
     </Box>
   );
 };
