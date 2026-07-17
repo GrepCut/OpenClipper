@@ -3,11 +3,12 @@ import { Flex } from "@chakra-ui/react";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
 
-export type ClipperHomeTab = "projects" | "integrations";
+export type ClipperHomeTab = "projects" | "integrations" | "tests";
 
 const OPTIONS: Array<{ value: ClipperHomeTab; label: string }> = [
   { value: "projects", label: "Projects" },
   { value: "integrations", label: "Integrations" },
+  { value: "tests", label: "Tests" },
 ];
 
 interface ClipperHomeNavToggleProps {

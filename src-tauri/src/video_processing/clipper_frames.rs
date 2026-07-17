@@ -512,6 +512,90 @@ pub(crate) fn extract_clipper_frames_blocking(
     })
 }
 
+pub(crate) struct ExtractedVideoFrame {
+    pub rgb: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub timestamp_sec: f64,
+}
+
+pub(crate) fn extract_frame_rgb_at_timestamp(
+    video_path: &Path,
+    timestamp_sec: f64,
+) -> Result<ExtractedVideoFrame, String> {
+    ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))?;
+    let mut input = ffmpeg::format::input(video_path).map_err(|e| format!("Cannot open video: {e}"))?;
+    let stream = input
+        .streams()
+        .best(Type::Video)
+        .ok_or("No video stream found")?;
+    let stream_index = stream.index();
+    let time_base_sec = stream.time_base().numerator() as f64 / stream.time_base().denominator() as f64;
+    let context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
+        .map_err(|e| format!("Decoder context error: {e}"))?;
+    let mut decoder = context
+        .decoder()
+        .video()
+        .map_err(|e| format!("Video decoder error: {e}"))?;
+    let width = decoder.width();
+    let height = decoder.height();
+    let mut scaler = Scaler::get(
+        decoder.format(),
+        width,
+        height,
+        Pixel::RGB24,
+        width,
+        height,
+        Flags::BILINEAR,
+    )
+    .map_err(|e| format!("Scaler error: {e}"))?;
+    let seek_target = (timestamp_sec * 1_000_000.0).round() as i64;
+    input
+        .seek(seek_target, ..seek_target)
+        .map_err(|e| format!("Seek error: {e}"))?;
+    decoder.flush();
+    let mut decoded = ffmpeg::frame::Video::empty();
+    let mut seen_keyframe = false;
+    let mut selected: Option<(f64, ffmpeg::frame::Video)> = None;
+    'seek_packets: for (packet_stream, packet) in input.packets() {
+        if packet_stream.index() != stream_index {
+            continue;
+        }
+        if !should_decode_video_packet(packet.is_key(), seen_keyframe) {
+            continue;
+        }
+        seen_keyframe = true;
+        if decoder.send_packet(&packet).is_err() {
+            continue;
+        }
+        while decoder.receive_frame(&mut decoded).is_ok() {
+            let pts = decoded.pts().unwrap_or(0) as f64 * time_base_sec;
+            if pts + 0.02 < timestamp_sec {
+                continue;
+            }
+            selected = Some((pts, decoded.clone()));
+            break 'seek_packets;
+        }
+    }
+    let (_, selected_frame) = selected.ok_or_else(|| format!("No frame found near {timestamp_sec:.3}s"))?;
+    let mut rgb = ffmpeg::frame::Video::empty();
+    scaler
+        .run(&selected_frame, &mut rgb)
+        .map_err(|e| format!("Scale error: {e}"))?;
+    let row_len = width as usize * 3;
+    let mut pixels = Vec::with_capacity(row_len * height as usize);
+    for row in 0..height as usize {
+        let start = row * rgb.stride(0);
+        pixels.extend_from_slice(&rgb.data(0)[start..start + row_len]);
+    }
+    Ok(ExtractedVideoFrame {
+        rgb: pixels,
+        width,
+        height,
+        timestamp_sec: selected_frame.pts().unwrap_or(0) as f64 * time_base_sec,
+    })
+}
+
 pub(crate) fn snap_to_keyframe_blocking(file_path: String, start_time: f64) -> Result<f64, String> {
     if start_time <= 0.0 {
         return Ok(0.0);

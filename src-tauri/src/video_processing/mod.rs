@@ -14,7 +14,9 @@ mod winml_pipeline;
 mod winml_vision;
 
 use clipper_extract::extract_clipper_media_blocking;
-pub(crate) use clipper_frames::extract_clipper_segment_to_path_blocking;
+pub(crate) use clipper_frames::{
+    extract_clipper_segment_to_path_blocking, extract_frame_rgb_at_timestamp,
+};
 use clipper_frames::{extract_clipper_segment_blocking, snap_to_keyframe_blocking};
 pub use native_jobs::{NativeJobEmitter, NativeJobRegistry};
 use std::collections::HashMap;

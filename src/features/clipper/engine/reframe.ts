@@ -260,6 +260,8 @@ export interface NativeMediaExtractionSummary {
   subject: { frameCount: number; encodedBytes: number; width: number; height: number } | null;
   /** Timestamps (relative to the clip range, same domain as sample.time) where a hard cut was detected. */
   sceneCutTimestamps: number[];
+  /** Presentation timestamp of every decoded video frame in clip-relative seconds. */
+  frameTimestamps: number[];
   /** Average decoded video rate used by AutoFlip's frame-counted scene limit. */
   sourceFrameRate: number;
   hasSolidColorBackground: boolean;
@@ -319,6 +321,7 @@ interface NativeVisionCommandSummary {
   faceSampleCount: number;
   subjectSampleCount: number;
   sceneCutTimestamps: number[];
+  frameTimestamps: number[];
   sourceFrameRate: number;
   hasSolidColorBackground: boolean;
   solidBackgroundColor: { r: number; g: number; b: number } | null;

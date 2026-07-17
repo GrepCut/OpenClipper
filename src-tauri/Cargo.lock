@@ -3727,6 +3727,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "url",
+ "uuid",
  "vcpkg",
  "webview2-com",
  "windows",

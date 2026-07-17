@@ -14,6 +14,7 @@ import { Toaster } from "./shared/components/ui/toaster";
 import { DesktopAuthBridge } from "./features/authentication/DesktopAuthBridge";
 import { isTauri } from "./shared/utils/platform";
 import { ensureTauriFrontendSession } from "./shared/utils/tauri-native-jobs";
+import { ClipperTauriGate } from "./features/clipper/pages/ClipperTauriGate";
 
 const AuthPage = lazy(() =>
   import("./features/authentication/AuthPage").then((m) => ({
@@ -69,6 +70,12 @@ const ClipperSessionPage = lazy(() =>
   import("./features/clipper/pages/ClipperSessionPage").then((m) => ({
     default: m.ClipperSessionPage,
   })),
+);
+const TestDatasetPage = lazy(() =>
+  import("./features/tests/pages/TestDatasetPage").then((m) => ({ default: m.TestDatasetPage })),
+);
+const TestClipEditorPage = lazy(() =>
+  import("./features/tests/pages/TestClipEditorPage").then((m) => ({ default: m.TestClipEditorPage })),
 );
 
 const system = createSystem(defaultConfig, {
@@ -161,6 +168,14 @@ function AppRoutes() {
         <Route
           path="/clipper"
           element={<InteractiveRoute name="clipper-home"><ClipperHomePage /></InteractiveRoute>}
+        />
+        <Route
+          path="/clipper/tests/:datasetId/clips/:clipId"
+          element={<InteractiveRoute name="test-clip-editor"><ClipperTauriGate><TestClipEditorPage /></ClipperTauriGate></InteractiveRoute>}
+        />
+        <Route
+          path="/clipper/tests/:datasetId"
+          element={<InteractiveRoute name="test-dataset"><ClipperTauriGate><TestDatasetPage /></ClipperTauriGate></InteractiveRoute>}
         />
         <Route
           path="/clipper/:projectId"

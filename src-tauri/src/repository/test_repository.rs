@@ -1,0 +1,368 @@
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    Set, TransactionTrait,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::entity::{
+    benchmark_result, benchmark_run, test_clip, test_dataset, test_keyframe, test_target,
+};
+use crate::error::{DbError, DbResult};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestTargetDto {
+    pub id: String,
+    pub slot: i32,
+    pub x: f64,
+    pub y: f64,
+    pub radius: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestKeyframeDto {
+    pub id: String,
+    pub timestamp_us: i64,
+    pub targets: Vec<TestTargetDto>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestDatasetSummary {
+    #[serde(flatten)]
+    pub dataset: test_dataset::Model,
+    pub clip_count: usize,
+    pub annotated_clip_count: usize,
+    pub total_duration: f64,
+    pub latest_run: Option<benchmark_run::Model>,
+}
+
+pub struct TestRepository;
+
+impl TestRepository {
+    pub async fn list_datasets(db: &DatabaseConnection) -> DbResult<Vec<TestDatasetSummary>> {
+        let datasets = test_dataset::Entity::find()
+            .order_by_desc(test_dataset::Column::UpdatedAt)
+            .all(db)
+            .await?;
+        let mut output = Vec::with_capacity(datasets.len());
+        for dataset in datasets {
+            let clips = test_clip::Entity::find()
+                .filter(test_clip::Column::DatasetId.eq(dataset.id.clone()))
+                .all(db)
+                .await?;
+            let mut annotated = 0;
+            for clip in &clips {
+                if test_keyframe::Entity::find()
+                    .filter(test_keyframe::Column::ClipId.eq(clip.id.clone()))
+                    .one(db)
+                    .await?
+                    .is_some()
+                {
+                    annotated += 1;
+                }
+            }
+            let latest_run = benchmark_run::Entity::find()
+                .filter(benchmark_run::Column::DatasetId.eq(dataset.id.clone()))
+                .order_by_desc(benchmark_run::Column::CreatedAt)
+                .one(db)
+                .await?;
+            output.push(TestDatasetSummary {
+                total_duration: clips.iter().map(|clip| clip.duration).sum(),
+                clip_count: clips.len(),
+                annotated_clip_count: annotated,
+                dataset,
+                latest_run,
+            });
+        }
+        Ok(output)
+    }
+
+    pub async fn create_dataset(
+        db: &DatabaseConnection,
+        id: String,
+        name: String,
+        description: Option<String>,
+    ) -> DbResult<test_dataset::Model> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(DbError::message("Dataset name is required."));
+        }
+        let now = Utc::now().to_rfc3339();
+        let model = test_dataset::ActiveModel {
+            id: Set(id),
+            name: Set(name.to_owned()),
+            description: Set(description.filter(|value| !value.trim().is_empty())),
+            created_at: Set(now.clone()),
+            updated_at: Set(now),
+        };
+        Ok(model.insert(db).await?)
+    }
+
+    pub async fn update_dataset(
+        db: &DatabaseConnection,
+        id: String,
+        name: String,
+        description: Option<String>,
+    ) -> DbResult<test_dataset::Model> {
+        let existing = test_dataset::Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Test dataset was not found."))?;
+        let mut active: test_dataset::ActiveModel = existing.into();
+        active.name = Set(name.trim().to_owned());
+        active.description = Set(description.filter(|value| !value.trim().is_empty()));
+        active.updated_at = Set(Utc::now().to_rfc3339());
+        Ok(active.update(db).await?)
+    }
+
+    pub async fn get_dataset(
+        db: &DatabaseConnection,
+        id: &str,
+    ) -> DbResult<Option<test_dataset::Model>> {
+        Ok(test_dataset::Entity::find_by_id(id).one(db).await?)
+    }
+
+    pub async fn list_clips(
+        db: &DatabaseConnection,
+        dataset_id: &str,
+    ) -> DbResult<Vec<test_clip::Model>> {
+        Ok(test_clip::Entity::find()
+            .filter(test_clip::Column::DatasetId.eq(dataset_id))
+            .order_by_desc(test_clip::Column::UpdatedAt)
+            .all(db)
+            .await?)
+    }
+
+    pub async fn get_clip(
+        db: &DatabaseConnection,
+        id: &str,
+    ) -> DbResult<Option<test_clip::Model>> {
+        Ok(test_clip::Entity::find_by_id(id).one(db).await?)
+    }
+
+    pub async fn insert_clip(
+        db: &DatabaseConnection,
+        model: test_clip::ActiveModel,
+    ) -> DbResult<test_clip::Model> {
+        Ok(model.insert(db).await?)
+    }
+
+    pub async fn annotations(
+        db: &DatabaseConnection,
+        clip_id: &str,
+    ) -> DbResult<Vec<TestKeyframeDto>> {
+        let frames = test_keyframe::Entity::find()
+            .filter(test_keyframe::Column::ClipId.eq(clip_id))
+            .order_by_asc(test_keyframe::Column::TimestampUs)
+            .all(db)
+            .await?;
+        let mut output = Vec::with_capacity(frames.len());
+        for frame in frames {
+            let targets = test_target::Entity::find()
+                .filter(test_target::Column::KeyframeId.eq(frame.id.clone()))
+                .order_by_asc(test_target::Column::Slot)
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|target| TestTargetDto {
+                    id: target.id,
+                    slot: target.slot,
+                    x: target.x,
+                    y: target.y,
+                    radius: target.radius,
+                })
+                .collect();
+            output.push(TestKeyframeDto {
+                id: frame.id,
+                timestamp_us: frame.timestamp_us,
+                targets,
+            });
+        }
+        Ok(output)
+    }
+
+    pub async fn replace_annotations(
+        db: &DatabaseConnection,
+        clip_id: &str,
+        keyframes: Vec<TestKeyframeDto>,
+    ) -> DbResult<(i32, Vec<TestKeyframeDto>)> {
+        validate_keyframes(&keyframes)?;
+        let transaction = db.begin().await?;
+        let existing = test_keyframe::Entity::find()
+            .filter(test_keyframe::Column::ClipId.eq(clip_id))
+            .all(&transaction)
+            .await?;
+        let ids: Vec<String> = existing.into_iter().map(|row| row.id).collect();
+        if !ids.is_empty() {
+            test_target::Entity::delete_many()
+                .filter(test_target::Column::KeyframeId.is_in(ids))
+                .exec(&transaction)
+                .await?;
+        }
+        test_keyframe::Entity::delete_many()
+            .filter(test_keyframe::Column::ClipId.eq(clip_id))
+            .exec(&transaction)
+            .await?;
+        let now = Utc::now().to_rfc3339();
+        for frame in &keyframes {
+            test_keyframe::ActiveModel {
+                id: Set(frame.id.clone()),
+                clip_id: Set(clip_id.to_owned()),
+                timestamp_us: Set(frame.timestamp_us),
+                created_at: Set(now.clone()),
+                updated_at: Set(now.clone()),
+            }
+            .insert(&transaction)
+            .await?;
+            for target in &frame.targets {
+                test_target::ActiveModel {
+                    id: Set(target.id.clone()),
+                    keyframe_id: Set(frame.id.clone()),
+                    slot: Set(target.slot),
+                    x: Set(target.x),
+                    y: Set(target.y),
+                    radius: Set(target.radius),
+                }
+                .insert(&transaction)
+                .await?;
+            }
+        }
+        let clip = test_clip::Entity::find_by_id(clip_id)
+            .one(&transaction)
+            .await?
+            .ok_or_else(|| DbError::message("Test clip was not found."))?;
+        let revision = clip.annotation_revision + 1;
+        let dataset_id = clip.dataset_id.clone();
+        let mut active: test_clip::ActiveModel = clip.into();
+        active.annotation_revision = Set(revision);
+        active.updated_at = Set(now.clone());
+        active.update(&transaction).await?;
+        if let Some(dataset) = test_dataset::Entity::find_by_id(dataset_id).one(&transaction).await? {
+            let mut active: test_dataset::ActiveModel = dataset.into();
+            active.updated_at = Set(now);
+            active.update(&transaction).await?;
+        }
+        transaction.commit().await?;
+        Ok((revision, keyframes))
+    }
+
+    pub async fn create_run(
+        db: &DatabaseConnection,
+        id: String,
+        dataset_id: String,
+        clip_ids: Value,
+        config: Value,
+    ) -> DbResult<benchmark_run::Model> {
+        let now = Utc::now().to_rfc3339();
+        Ok(benchmark_run::ActiveModel {
+            id: Set(id),
+            dataset_id: Set(dataset_id),
+            status: Set("running".into()),
+            selected_clip_ids_json: Set(clip_ids.into()),
+            config_json: Set(config.into()),
+            manifest_relative_path: Set(None),
+            error: Set(None),
+            started_at: Set(Some(now.clone())),
+            completed_at: Set(None),
+            created_at: Set(now),
+        }
+        .insert(db)
+        .await?)
+    }
+
+    pub async fn finish_run(
+        db: &DatabaseConnection,
+        id: &str,
+        status: String,
+        error: Option<String>,
+        manifest_relative_path: Option<String>,
+    ) -> DbResult<benchmark_run::Model> {
+        if !["completed", "failed", "cancelled"].contains(&status.as_str()) {
+            return Err(DbError::message("Invalid terminal benchmark status."));
+        }
+        let run = benchmark_run::Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Benchmark run was not found."))?;
+        if run.status != "running" {
+            return Err(DbError::message("Completed benchmark runs are immutable."));
+        }
+        let mut active: benchmark_run::ActiveModel = run.into();
+        active.status = Set(status);
+        active.error = Set(error);
+        active.manifest_relative_path = Set(manifest_relative_path);
+        active.completed_at = Set(Some(Utc::now().to_rfc3339()));
+        Ok(active.update(db).await?)
+    }
+
+    pub async fn list_runs(
+        db: &DatabaseConnection,
+        dataset_id: &str,
+    ) -> DbResult<Vec<benchmark_run::Model>> {
+        Ok(benchmark_run::Entity::find()
+            .filter(benchmark_run::Column::DatasetId.eq(dataset_id))
+            .order_by_desc(benchmark_run::Column::CreatedAt)
+            .all(db)
+            .await?)
+    }
+
+    pub async fn put_result(
+        db: &DatabaseConnection,
+        model: benchmark_result::ActiveModel,
+    ) -> DbResult<benchmark_result::Model> {
+        let run_id = match &model.run_id {
+            sea_orm::ActiveValue::Set(value) | sea_orm::ActiveValue::Unchanged(value) => value.clone(),
+            sea_orm::ActiveValue::NotSet => return Err(DbError::message("Run id is required.")),
+        };
+        let run = benchmark_run::Entity::find_by_id(run_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Benchmark run was not found."))?;
+        if run.status != "running" {
+            return Err(DbError::message("Completed benchmark runs are immutable."));
+        }
+        Ok(model.insert(db).await?)
+    }
+
+    pub async fn list_results(
+        db: &DatabaseConnection,
+        run_id: &str,
+    ) -> DbResult<Vec<benchmark_result::Model>> {
+        Ok(benchmark_result::Entity::find()
+            .filter(benchmark_result::Column::RunId.eq(run_id))
+            .order_by_asc(benchmark_result::Column::ClipId)
+            .order_by_asc(benchmark_result::Column::AspectId)
+            .all(db)
+            .await?)
+    }
+}
+
+fn validate_keyframes(keyframes: &[TestKeyframeDto]) -> DbResult<()> {
+    let mut last = None;
+    for frame in keyframes {
+        if frame.timestamp_us < 0 || last.is_some_and(|value| frame.timestamp_us <= value) {
+            return Err(DbError::message("Keyframes must have unique ascending timestamps."));
+        }
+        if !(1..=2).contains(&frame.targets.len()) {
+            return Err(DbError::message("Each keyframe must contain one or two targets."));
+        }
+        for (index, target) in frame.targets.iter().enumerate() {
+            if target.slot != index as i32
+                || !target.x.is_finite()
+                || !target.y.is_finite()
+                || !target.radius.is_finite()
+                || !(0.0..=1.0).contains(&target.x)
+                || !(0.0..=1.0).contains(&target.y)
+                || target.radius <= 0.0
+            {
+                return Err(DbError::message("Invalid normalized target geometry."));
+            }
+        }
+        last = Some(frame.timestamp_us);
+    }
+    Ok(())
+}

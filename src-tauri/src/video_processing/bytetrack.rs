@@ -305,6 +305,17 @@ impl ByteTracker {
                     .map_or(true, |lost| time - lost <= MAX_LOST_SECONDS)
         });
 
+        // Once a new observed track is confirmed over the same location, do
+        // not also emit a short-lived prediction from an incompatible class.
+        // The tracks remain separate (and therefore never match across
+        // classes), but downstream framing must not see a duplicate ghost.
+        let observed_boxes: Vec<NormalizedBox> = self
+            .tracks
+            .iter()
+            .filter(|track| track.state == TrackState::Tracked && track.observed)
+            .map(Track::box_)
+            .collect();
+
         self.tracks
             .iter()
             .filter_map(|track| match track.state {
@@ -319,7 +330,10 @@ impl ByteTracker {
                 TrackState::Lost
                     if track
                         .lost_since
-                        .map_or(false, |lost| time - lost <= PREDICTION_HOLD_SECONDS) =>
+                        .map_or(false, |lost| time - lost <= PREDICTION_HOLD_SECONDS)
+                        && !observed_boxes
+                            .iter()
+                            .any(|observed| box_iou(track.box_(), *observed) >= 0.5) =>
                 {
                     Some(TrackOutput {
                         box_: track.box_(),

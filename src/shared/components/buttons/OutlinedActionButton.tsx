@@ -24,15 +24,30 @@ export const getOutlinedActionSurfaceProps = (theme: Theme, isSelected = false) 
 interface OutlinedActionButtonProps extends ButtonProps {
   children: ReactNode;
   startIcon?: ReactNode;
+  tone?: "default" | "danger";
 }
 
 export const OutlinedActionButton = ({
   children,
   startIcon,
+  tone = "default",
   ...props
 }: OutlinedActionButtonProps) => {
   const { theme } = useTheme();
-  const surfaceProps = getOutlinedActionSurfaceProps(theme);
+  const baseSurfaceProps = getOutlinedActionSurfaceProps(theme);
+  const surfaceProps =
+    tone === "danger"
+      ? {
+          ...baseSurfaceProps,
+          color: theme.status.danger,
+          bg: theme.interactive.destructiveHover,
+          _hover: {
+            ...baseSurfaceProps._hover,
+            bg: theme.interactive.destructiveHover,
+            borderColor: theme.status.danger,
+          },
+        }
+      : baseSurfaceProps;
 
   return (
     <MainButton

@@ -139,6 +139,7 @@ pub struct NativeVisionSummary {
     face_sample_count: usize,
     subject_sample_count: usize,
     scene_cut_timestamps: Vec<f64>,
+    frame_timestamps: Vec<f64>,
     source_frame_rate: f64,
     has_solid_color_background: bool,
     solid_background_color: Option<RgbColor>,
@@ -1244,6 +1245,7 @@ pub fn analyze(
     let mut shot_detector = AutoFlipShotBoundaryDetector::for_sample_rate(HISTOGRAM_FPS);
     let mut pending_scene_cut = false;
     let mut scene_cut_timestamps = Vec::new();
+    let mut frame_timestamps = Vec::new();
     let mut static_feature_samples = Vec::new();
     let mut border_observations = Vec::new();
     let mut solid_background_frames = 0usize;
@@ -1279,6 +1281,7 @@ pub fn analyze(
                     return Ok(false);
                 }
                 let relative = timestamp - start_time;
+                frame_timestamps.push(relative);
 
                 if sample_due(timestamp, &mut next_histogram, HISTOGRAM_FPS) {
                     let started = Instant::now();
@@ -1635,6 +1638,7 @@ pub fn analyze(
         face_sample_count: face_samples.len(),
         subject_sample_count: subject_samples.len(),
         scene_cut_timestamps,
+        frame_timestamps,
         source_frame_rate: if source_frame_rate.is_finite() && source_frame_rate > 0.0 {
             source_frame_rate
         } else {

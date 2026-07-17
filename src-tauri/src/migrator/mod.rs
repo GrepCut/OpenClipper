@@ -1,5 +1,6 @@
 pub mod m001_initial;
 pub mod m002_shared_workspace;
+pub mod m003_test_benchmarks;
 
 use chrono::Utc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, Statement};
@@ -24,6 +25,7 @@ impl ManualMigrator {
         vec![
             Box::new(m001_initial::M001Initial),
             Box::new(m002_shared_workspace::M002SharedWorkspace),
+            Box::new(m003_test_benchmarks::M003TestBenchmarks),
         ]
     }
 

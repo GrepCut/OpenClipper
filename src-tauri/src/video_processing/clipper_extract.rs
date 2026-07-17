@@ -58,6 +58,7 @@ pub struct ClipperMediaExtractionSummary {
     /// `None` when `include_motion` was false — no dense decode/motion pass ran.
     subject: Option<ClipperMediaSubjectSummary>,
     scene_cut_timestamps: Vec<f64>,
+    frame_timestamps: Vec<f64>,
     source_frame_rate: f64,
     has_solid_color_background: bool,
     solid_background_color: Option<RgbColor>,
@@ -223,6 +224,7 @@ fn extract_face_only(
         },
         subject: None,
         scene_cut_timestamps: summary.scene_cut_timestamps,
+        frame_timestamps: Vec::new(),
         source_frame_rate: 30.0,
         has_solid_color_background: false,
         solid_background_color: None,
@@ -318,6 +320,7 @@ fn extract_face_and_subjects(
     let mut next_face = start_time;
     let mut shot_detector = AutoFlipShotBoundaryDetector::new();
     let mut scene_cut_timestamps = Vec::new();
+    let mut frame_timestamps = Vec::new();
     // Set when a cut lands between two face samples; carried onto the next
     // emitted face frame so the JS tracking session resets on the new shot.
     let mut pending_face_scene_cut = false;
@@ -362,6 +365,7 @@ fn extract_face_and_subjects(
                 continue;
             }
             let relative = (timestamp - start_time).max(0.0);
+            frame_timestamps.push(relative);
 
             // This must run at source cadence; the graph's 15-frame history is
             // measured in decoded frames, not object-detector samples.
@@ -529,6 +533,7 @@ fn extract_face_and_subjects(
             height: subject_height,
         }),
         scene_cut_timestamps,
+        frame_timestamps,
         source_frame_rate: if source_frame_rate.is_finite() && source_frame_rate > 0.0 {
             source_frame_rate
         } else {
@@ -572,6 +577,7 @@ pub(crate) fn extract_clipper_media_blocking(
                 height: 0,
             }),
             scene_cut_timestamps: Vec::new(),
+            frame_timestamps: Vec::new(),
             source_frame_rate: 30.0,
             has_solid_color_background: false,
             solid_background_color: None,

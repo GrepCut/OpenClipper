@@ -35,6 +35,7 @@ import {
   saveClipperSettings,
 } from "../settings/settings-storage";
 import type { ClipperSettings } from "../settings/settings";
+import { TestsHomeView } from "../../tests/components/TestsHomeView";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -57,8 +58,9 @@ export function ClipperHomePage() {
   } = useDisclosure();
 
   useEffect(() => {
-    if (searchParams.get("tab") !== "integrations") return;
-    setActiveTab("integrations");
+    const requested = searchParams.get("tab");
+    if (requested !== "integrations" && requested !== "tests") return;
+    setActiveTab(requested);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("tab");
     setSearchParams(nextParams, { replace: true });
@@ -132,6 +134,8 @@ export function ClipperHomePage() {
       >
         {activeTab === "integrations" ? (
           <ClipperIntegrationsView />
+        ) : activeTab === "tests" ? (
+          <TestsHomeView />
         ) : (
           <VStack align="stretch" gap={8}>
             <HStack justify="space-between" align="start" flexWrap="wrap" gap={4}>
