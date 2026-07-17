@@ -36,6 +36,31 @@ const OAuthYoutubeCallback = lazy(() =>
     default: m.OAuthYoutubeCallback,
   })),
 );
+const OAuthMetaCallback = lazy(() =>
+  import("./features/authentication/OAuthSocialCallbacks").then((m) => ({
+    default: m.OAuthMetaCallback,
+  })),
+);
+const OAuthInstagramCallback = lazy(() =>
+  import("./features/authentication/OAuthSocialCallbacks").then((m) => ({
+    default: m.OAuthInstagramCallback,
+  })),
+);
+const OAuthTikTokCallback = lazy(() =>
+  import("./features/authentication/OAuthSocialCallbacks").then((m) => ({
+    default: m.OAuthTikTokCallback,
+  })),
+);
+const OAuthLinkedInCallback = lazy(() =>
+  import("./features/authentication/OAuthSocialCallbacks").then((m) => ({
+    default: m.OAuthLinkedInCallback,
+  })),
+);
+const OAuthXCallback = lazy(() =>
+  import("./features/authentication/OAuthSocialCallbacks").then((m) => ({
+    default: m.OAuthXCallback,
+  })),
+);
 const ClipperHomePage = lazy(() =>
   import("./features/clipper/pages/ClipperHomePage").then((m) => ({
     default: m.ClipperHomePage,
@@ -122,6 +147,17 @@ function AppRoutes() {
           path="/oauth/youtube-connected"
           element={<OAuthYoutubeCallback />}
         />
+        <Route path="/oauth/meta-connected" element={<OAuthMetaCallback />} />
+        <Route path="/oauth/instagram-connected" element={<OAuthInstagramCallback />} />
+        <Route
+          path="/oauth/tiktok-connected"
+          element={<OAuthTikTokCallback />}
+        />
+        <Route
+          path="/oauth/linkedin-connected"
+          element={<OAuthLinkedInCallback />}
+        />
+        <Route path="/oauth/x-connected" element={<OAuthXCallback />} />
         <Route
           path="/clipper"
           element={

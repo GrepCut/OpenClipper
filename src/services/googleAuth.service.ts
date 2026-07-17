@@ -1,4 +1,6 @@
+import { buildOAuthLoginUrl } from "../features/authentication/build-oauth-login-url";
 import { apiClient } from "../shared/utils/apiClient";
+import { openExternalAuthUrl } from "../shared/utils/desktopAuth";
 export * from "./types/googleAuth.types";
 import type {
   GoogleDriveTokenResponse,
@@ -7,6 +9,10 @@ import type {
 } from "./types/googleAuth.types";
 
 export const googleAuthService = {
+  async redirectToDriveConnect(returnPath?: string): Promise<void> {
+    const redirectUrl = buildOAuthLoginUrl("/auth/google/drive/login", returnPath);
+    await openExternalAuthUrl(redirectUrl);
+  },
   async getAccessToken(): Promise<GetAccessTokenResponse> {
     try {
       const response = await apiClient

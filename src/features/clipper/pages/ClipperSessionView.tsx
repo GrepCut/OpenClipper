@@ -10,7 +10,8 @@ import { ClipperProcessing } from "../components/ClipperProcessing";
 import { ClipperProjectLoadingPanel } from "../components/ClipperProjectLoadingPanel";
 import { ClipperTrimSelect } from "../components/ClipperTrimSelect";
 import { ClipperUpload } from "../components/ClipperUpload";
-import { ClipperYoutubePublishDialog } from "../components/ClipperYoutubePublishDialog";
+import { ClipperSocialPublishDialog } from "../components/ClipperYoutubePublishDialog";
+import type { ClipperPublishTarget } from "../components/ClipperExportFormatRow";
 import { useClipperPipeline } from "../hooks/useClipperPipeline";
 import { CLIPPER_FORMAT_DEFS } from "../shared/formats";
 import { getSessionExportResults } from "../shared/export-results";
@@ -26,7 +27,13 @@ import {
 import { scheduleRenderQueueSave } from "../persistence/render-queue-autosave";
 import { openClipperExportsDir } from "../persistence/export-files";
 import { useYoutubeStore } from "../../../stores/useYoutubeStore";
+import { useSocialStore } from "../../../stores/useSocialStore";
 import { youtubeAuthService } from "../../../services/youtubeAuth.service";
+import {
+  socialAuthService,
+  oauthFlowForPlatform,
+  type SocialPublishablePlatform,
+} from "../../../services/socialAuth.service";
 import { logYoutubeDebug } from "../shared/youtube-debug";
 import type { ClipperLoadedProject } from "../hooks/useClipperProjectLoader";
 
@@ -43,6 +50,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
   const [view, setView] = useState<"preview" | "queue" | "exports">("preview");
   const [queuePhase, setQueuePhase] = useState<QueuePhase>("setup");
   const [queuePublishTarget, setQueuePublishTarget] = useState<ClipperFormatResult | null>(null);
+  const [queuePublishTargetPlatform, setQueuePublishTargetPlatform] = useState<ClipperPublishTarget>("youtube");
   /** Per-clip render format overrides; clips absent here fall back to the global settings selection. */
   const [clipFormatSelections, setClipFormatSelections] = useState<Record<number, string[]>>({});
   const skipRenderQueueSaveRef = useRef(true);
@@ -96,6 +104,8 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     channelTitle: youtubeChannelTitle,
     refreshStatus: refreshYoutubeStatus,
   } = useYoutubeStore();
+  const socialPlatforms = useSocialStore((s) => s.platforms);
+  const refreshSocial = useSocialStore((s) => s.refreshAll);
 
   const handleFile = useCallback(
     (file: File) => {
@@ -249,16 +259,56 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     void openClipperExportsDir(project.id).catch(() => {});
   }, [project.id]);
 
-  const handleConnectYoutube = useCallback(() => {
-    const returnPath = `${window.location.pathname}${window.location.search}`;
-    logYoutubeDebug("ClipperSessionView: initiating YouTube connect", {
-      returnPath,
-      projectId: project.id,
-    });
-    void youtubeAuthService.redirectToYoutubeConnect(returnPath).catch((error) => {
-      console.error("[Clipper/YouTube] ClipperSessionView: redirectToYoutubeConnect failed", error);
-    });
-  }, [project.id]);
+  const handleRequestConnect = useCallback(
+    (platform: SocialPublishablePlatform) => {
+      const returnPath = `${window.location.pathname}${window.location.search}`;
+      const flow = oauthFlowForPlatform(platform);
+      if (flow === "youtube") {
+        logYoutubeDebug("ClipperSessionView: initiating YouTube connect", {
+          returnPath,
+          projectId: project.id,
+        });
+        void youtubeAuthService.redirectToYoutubeConnect(returnPath).catch((error) => {
+          console.error(
+            "[Clipper/YouTube] ClipperSessionView: redirectToYoutubeConnect failed",
+            error,
+          );
+        });
+        return;
+      }
+      void socialAuthService.redirectToConnect(flow, returnPath);
+    },
+    [project.id],
+  );
+
+  const queuePublishPlatform: SocialPublishablePlatform = useMemo(() => {
+    if (!queuePublishTarget) return "youtube";
+    return queuePublishTargetPlatform;
+  }, [queuePublishTarget, queuePublishTargetPlatform]);
+
+  const queuePublishConnection = useMemo(() => {
+    if (queuePublishPlatform === "youtube") {
+      return {
+        connected: isYoutubeConnected,
+        accountLabel: youtubeChannelTitle,
+      };
+    }
+    const state = socialPlatforms[queuePublishPlatform];
+    return {
+      connected: state?.connected ?? false,
+      accountLabel: state?.displayName ?? null,
+    };
+  }, [
+    queuePublishPlatform,
+    isYoutubeConnected,
+    youtubeChannelTitle,
+    socialPlatforms,
+  ]);
+
+  useEffect(() => {
+    void refreshYoutubeStatus();
+    void refreshSocial();
+  }, [refreshYoutubeStatus, refreshSocial]);
 
   const step: ClipperLayoutStep | undefined = (() => {
     switch (state.stage) {
@@ -455,8 +505,9 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           results={sessionResults}
           isRendering={isRendering}
           onOpenFolder={handleOpenExportsFolder}
-          onPublish={(result) => {
+          onPublish={(result, target) => {
             if (result.isMissing) return;
+            setQueuePublishTargetPlatform(target);
             setQueuePublishTarget(result);
           }}
           onRerenderFormat={(formatId, clipIndex) => void rerenderFormat(formatId, clipIndex)}
@@ -472,15 +523,16 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
         />
       )}
 
-      <ClipperYoutubePublishDialog
+      <ClipperSocialPublishDialog
         isOpen={queuePublishTarget != null}
         onClose={() => setQueuePublishTarget(null)}
         projectId={project.id}
         result={queuePublishTarget}
         sourceFileName={state.sourceFileName}
-        defaultConnected={isYoutubeConnected}
-        channelTitle={youtubeChannelTitle}
-        onRequestConnect={handleConnectYoutube}
+        defaultConnected={queuePublishConnection.connected}
+        accountLabel={queuePublishConnection.accountLabel}
+        publishPlatform={queuePublishPlatform}
+        onRequestConnect={handleRequestConnect}
       />
 
       {state.stage === "error" && (

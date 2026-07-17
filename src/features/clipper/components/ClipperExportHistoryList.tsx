@@ -1,12 +1,12 @@
 import React from "react";
 import { VStack } from "@chakra-ui/react";
 import type { ClipperFormatResult } from "../shared/state";
-import { ClipperExportFormatRow } from "./ClipperExportFormatRow";
+import { ClipperExportFormatRow, type ClipperPublishTarget } from "./ClipperExportFormatRow";
 
 interface ClipperExportHistoryListProps {
   exports: ClipperFormatResult[];
   onOpenFolder: () => void;
-  onPublish: (result: ClipperFormatResult) => void;
+  onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
 }
 
 export const ClipperExportHistoryList: React.FC<ClipperExportHistoryListProps> = ({

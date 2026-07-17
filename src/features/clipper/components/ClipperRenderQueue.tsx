@@ -11,7 +11,7 @@ import {
 import { CLIPPER_FORMAT_DEFS, getClipperFormatDef } from "../shared/formats";
 import { resultsForClip, sortExportsByDate } from "../shared/export-results";
 import type { ClipperClipPreview, ClipperFormatResult, ClipperPipelineState } from "../shared/state";
-import { ClipperExportFormatRow } from "./ClipperExportFormatRow";
+import { ClipperExportFormatRow, type ClipperPublishTarget } from "./ClipperExportFormatRow";
 import { ClipperProgressBar } from "./ClipperProgressBar";
 import { ClipperRenderFormatProgressRow } from "./ClipperRenderFormatProgressRow";
 
@@ -22,7 +22,7 @@ interface ClipperRenderQueueProps {
   results: ClipperFormatResult[];
   isRendering: boolean;
   onOpenFolder: () => void;
-  onPublish: (result: ClipperFormatResult) => void;
+  onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
   onRerenderFormat: (formatId: string, clipIndex: number) => void;
 }
 

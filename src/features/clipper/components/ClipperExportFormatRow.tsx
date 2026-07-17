@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/react";
-import { AlertTriangle, FolderOpen, RotateCcw, Youtube } from "lucide-react";
+import { AlertTriangle, Facebook, FolderOpen, RotateCcw } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/OutlinedActionButton";
 import { CLIPPER_FORMAT_DEFS, getClipperCardFrameSize } from "../shared/formats";
 import { formatBytes } from "../shared/logger";
@@ -8,12 +8,14 @@ import { useClipperUi } from "../shared/use-clipper-ui";
 import type { ClipperFormatResult } from "../shared/state";
 import { ClipperPlatformIcon } from "./ClipperPlatformIcon";
 
+export type ClipperPublishTarget = "facebook" | "instagram" | "tiktok" | "youtube" | "x";
+
 const THUMB_HEIGHT = 144;
 const PLATFORM_ICON_SIZE = 28;
 const PREVIEW_COLUMN_WIDTH = Math.max(
   ...CLIPPER_FORMAT_DEFS.map((def) => getClipperCardFrameSize(def.id, THUMB_HEIGHT).width),
 );
-/** Wide enough for “Publish to YouTube” at sm + 16px icon without clipping. */
+/** Wide enough for the publishing action labels at sm + 16px icon without clipping. */
 const ACTIONS_COLUMN_WIDTH = 232;
 
 interface ClipperExportFormatRowProps {
@@ -21,7 +23,7 @@ interface ClipperExportFormatRowProps {
   isRerendering: boolean;
   showRerender?: boolean;
   onOpenFolder: () => void;
-  onPublish: (result: ClipperFormatResult) => void;
+  onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
   onRerender: (formatId: string, clipIndex: number) => void;
 }
 
@@ -155,11 +157,41 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
           width="100%"
           justifyContent="center"
           whiteSpace="nowrap"
-          startIcon={<Youtube size={16} color="#FF0000" />}
-          onClick={() => onPublish(result)}
+          startIcon={<ClipperPlatformIcon platform="tiktok" size={16} />}
+          onClick={() => onPublish(result, "tiktok")}
+          disabled={isMissing}
+        >
+          Publish to TikTok
+        </OutlinedActionButton>
+        <OutlinedActionButton
+          width="100%"
+          justifyContent="center"
+          whiteSpace="nowrap"
+          startIcon={<ClipperPlatformIcon platform="youtube" size={16} />}
+          onClick={() => onPublish(result, "youtube")}
           disabled={isMissing}
         >
           Publish to YouTube
+        </OutlinedActionButton>
+        <OutlinedActionButton
+          width="100%"
+          justifyContent="center"
+          whiteSpace="nowrap"
+          startIcon={<ClipperPlatformIcon platform="twitter" size={16} />}
+          onClick={() => onPublish(result, "x")}
+          disabled={isMissing}
+        >
+          Publish to X
+        </OutlinedActionButton>
+        <OutlinedActionButton width="100%" justifyContent="center" whiteSpace="nowrap"
+          startIcon={<ClipperPlatformIcon platform="instagram" size={16} />}
+          onClick={() => onPublish(result, "instagram")} disabled={isMissing}>
+          Publish to Instagram
+        </OutlinedActionButton>
+        <OutlinedActionButton width="100%" justifyContent="center" whiteSpace="nowrap"
+          startIcon={<Facebook size={16} />}
+          onClick={() => onPublish(result, "facebook")} disabled={isMissing}>
+          Publish to Facebook
         </OutlinedActionButton>
         {showRerender ? (
           <OutlinedActionButton

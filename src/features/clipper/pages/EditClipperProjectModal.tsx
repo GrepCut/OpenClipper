@@ -82,6 +82,7 @@ export function EditClipperProjectModal({
       title="Edit Project"
       size="lg"
       isLoading={isLoading}
+      onFormSubmit={() => void handleSubmit()}
       footer={
         <StyledModalFooter
           onCancel={handleClose}

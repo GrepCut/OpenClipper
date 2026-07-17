@@ -1,4 +1,5 @@
 import { Dialog, Box, Portal } from "@chakra-ui/react";
+import { cloneElement, isValidElement, useId } from "react";
 import type { CSSProperties, ReactNode, SyntheticEvent } from "react";
 import { useTheme } from '../../theme';
 import { SecondaryMainTitle } from "../fonts/secondary-main-title.font";
@@ -17,6 +18,7 @@ interface StyledModalProps {
   closeOnOverlayClick?: boolean;
   scrollBehavior?: "inside" | "outside";
   zIndex?: number;
+  onFormSubmit?: () => void;
 }
 
 type TauriNoDragStyle = CSSProperties & {
@@ -35,8 +37,10 @@ export function StyledModal({
   closeOnOverlayClick = true,
   scrollBehavior = "inside",
   zIndex = 9999,
+  onFormSubmit,
 }: StyledModalProps) {
   const { theme, mode } = useTheme();
+  const formId = useId();
 
   const nonDraggableArea: TauriNoDragStyle = {
     WebkitAppRegion: "no-drag",
@@ -51,6 +55,17 @@ export function StyledModal({
       onClose();
     }
   };
+
+  const handleFormSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isLoading) return;
+    onFormSubmit?.();
+  };
+
+  const footerContent =
+    footer && onFormSubmit && isValidElement(footer)
+      ? cloneElement(footer, { submitFormId: formId })
+      : footer;
 
   return (
     <Dialog.Root
@@ -109,32 +124,57 @@ export function StyledModal({
                 </Dialog.Title>
               </Dialog.Header>
 
-              <Dialog.Body
-                color={theme.text.primary}
-                overflowY={scrollBehavior === "inside" ? "auto" : undefined}
-                flex="1"
-                css={{
-                  "&::-webkit-scrollbar": {
-                    width: "4px",
-                  },
-                  "&::-webkit-scrollbar-track": {
-                    width: "6px",
-                  },
-                  "&::-webkit-scrollbar-thumb": {
-                    background: theme.dashboard.border,
-                    borderRadius: "24px",
-                  },
-                }}
-              >
-                {children}
-              </Dialog.Body>
+              {onFormSubmit ? (
+                <Dialog.Body
+                  as="form"
+                  id={formId}
+                  onSubmit={handleFormSubmit}
+                  color={theme.text.primary}
+                  overflowY={scrollBehavior === "inside" ? "auto" : undefined}
+                  flex="1"
+                  css={{
+                    "&::-webkit-scrollbar": {
+                      width: "4px",
+                    },
+                    "&::-webkit-scrollbar-track": {
+                      width: "6px",
+                    },
+                    "&::-webkit-scrollbar-thumb": {
+                      background: theme.dashboard.border,
+                      borderRadius: "24px",
+                    },
+                  }}
+                >
+                  {children}
+                </Dialog.Body>
+              ) : (
+                <Dialog.Body
+                  color={theme.text.primary}
+                  overflowY={scrollBehavior === "inside" ? "auto" : undefined}
+                  flex="1"
+                  css={{
+                    "&::-webkit-scrollbar": {
+                      width: "4px",
+                    },
+                    "&::-webkit-scrollbar-track": {
+                      width: "6px",
+                    },
+                    "&::-webkit-scrollbar-thumb": {
+                      background: theme.dashboard.border,
+                      borderRadius: "24px",
+                    },
+                  }}
+                >
+                  {children}
+                </Dialog.Body>
+              )}
 
               {!isLoading && <Dialog.CloseTrigger />}
             </Box>
 
-            {footer && (
+            {footerContent && (
               <Dialog.Footer padding="0" paddingTop={4}>
-                {footer}
+                {footerContent}
               </Dialog.Footer>
             )}
           </Dialog.Content>
@@ -152,6 +192,7 @@ interface StyledModalFooterProps {
   isLoading?: boolean;
   submitDisabled?: boolean;
   submitColorScheme?: string;
+  submitFormId?: string;
 }
 
 export function StyledModalFooter({
@@ -162,6 +203,7 @@ export function StyledModalFooter({
   isLoading = false,
   submitDisabled = false,
   submitColorScheme = "blue",
+  submitFormId,
 }: StyledModalFooterProps) {
   const { theme } = useTheme();
 
@@ -192,6 +234,7 @@ export function StyledModalFooter({
   return (
     <>
       <MainButton
+        type="button"
         onClick={onCancel}
         disabled={isLoading}
         h="33px"
@@ -212,7 +255,9 @@ export function StyledModalFooter({
         {cancelText}
       </MainButton>
       <MainButton
-        onClick={onSubmit}
+        type={submitFormId ? "submit" : "button"}
+        form={submitFormId}
+        onClick={submitFormId ? undefined : onSubmit}
         disabled={submitDisabled || isLoading}
         h="33px"
         fontSize="md"

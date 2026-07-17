@@ -85,6 +85,7 @@ export function CreateClipperProjectModal({
       size="lg"
       placement="center"
       isLoading={isLoading}
+      onFormSubmit={() => void handleSubmit()}
       footer={
         <StyledModalFooter
           onCancel={handleClose}

@@ -26,6 +26,8 @@ interface ClipperLayoutProps {
   step?: ClipperLayoutStep;
   /** Overrides the default router back link (e.g. in-session sub-views). */
   backLink?: ClipperLayoutBackLink;
+  /** Extra content rendered after the logo (e.g. home nav toggle). */
+  headerStartExtra?: React.ReactNode;
   /** Extra controls rendered before window controls (e.g. settings, logout). */
   headerActions?: React.ReactNode;
 }
@@ -34,6 +36,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
   children,
   step,
   backLink,
+  headerStartExtra,
   headerActions,
 }) => {
   const { theme } = useTheme();
@@ -111,6 +114,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
           >
             <HStack gap={4} flexShrink={0}>
               <Image src={asset("/clipper/clipper-logo.png")} alt="Open Clipper" h="28px" objectFit="contain" />
+              {headerStartExtra}
               {(backLink || isSessionPage) && backLinkElement}
             </HStack>
 
