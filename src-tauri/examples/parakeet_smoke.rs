@@ -5,8 +5,8 @@
 //!
 //! Example:
 //!   cargo run --example parakeet_smoke -- \
-//!     "public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8" \
-//!     "public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/test_wavs/de.wav"
+//!     "public/models/nemo-parakeet-tdt-0.6b-v3-int8" \
+//!     "public/models/nemo-parakeet-tdt-0.6b-v3-int8/test_wavs/de.wav"
 
 use tauri_app_lib::transcription::parakeet_probe::{default_thread_count, select_provider};
 use tauri_app_lib::transcription::parakeet_provider::ParakeetProvider;

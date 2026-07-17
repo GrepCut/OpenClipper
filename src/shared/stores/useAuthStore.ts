@@ -24,6 +24,8 @@ import {
   getCachedAuthProfile,
 } from "../persistence/local-database";
 
+let authInitializationPromise: Promise<void> | null = null;
+
 // --- Constants ---
 const clearLocalSessionData = () => {
   const allCookies = Cookies.get();
@@ -202,29 +204,73 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    ensureAuthLoaded: async () => {
+    ensureAuthLoaded: () => {
       const { hasTriedInit, user, isAuthenticated } = get();
-      if (hasTriedInit || (user && isAuthenticated)) return;
+      if (hasTriedInit || (user && isAuthenticated)) return Promise.resolve();
+      if (authInitializationPromise) return authInitializationPromise;
 
-      let hasSessionMarker = localStorage.getItem(AUTH_SESSION_KEY);
-      const hasDesktopSession = isDesktopAuthSessionAvailable();
+      const initialize = async () => {
+        let hasSessionMarker = localStorage.getItem(AUTH_SESSION_KEY);
+        const hasDesktopSession = isDesktopAuthSessionAvailable();
 
-      if (isTauri() && !hasSessionMarker && hasDesktopSession) {
-        localStorage.setItem(AUTH_SESSION_KEY, "true");
-        hasSessionMarker = "true";
-      }
+        if (isTauri() && !hasSessionMarker && hasDesktopSession) {
+          localStorage.setItem(AUTH_SESSION_KEY, "true");
+          hasSessionMarker = "true";
+        }
 
-      if (!hasSessionMarker) {
-        set({ hasTriedInit: true });
-        return;
-      }
+        if (!hasSessionMarker) {
+          set({ hasTriedInit: true });
+          return;
+        }
 
-      try {
-        await get().checkAuthStatus();
-      } catch {
-      } finally {
-        set({ hasTriedInit: true });
-      }
+        // Desktop fast-path (stale-while-revalidate): pokaż apkę od razu na
+        // cache'owanym profilu i rewaliduj sesję w tle — bez tego start blokuje
+        // się na timeoutach sieciowych, gdy backend jest nieosiągalny.
+        if (isTauri()) {
+          const cachedUser = await getCachedAuthProfile().catch(() => null);
+          if (cachedUser) {
+            // token: null + sessionMode "offline" to ten sam stan, który
+            // produkuje fallback offline w checkAuthStatus — subskrypcja
+            // niespójności go nie wyloguje.
+            set({
+              user: cachedUser,
+              token: null,
+              isAuthenticated: true,
+              sessionMode: "offline",
+              hasTriedInit: true,
+            });
+            syncSessionMarker(true);
+            void get()
+              .checkAuthStatus()
+              .catch(() => {});
+            return;
+          }
+        }
+
+        try {
+          await get().checkAuthStatus();
+        } catch {
+          // Auth failures are reflected in the store; initialization still completes.
+        } finally {
+          set({ hasTriedInit: true });
+        }
+      };
+
+      const pending = initialize();
+      authInitializationPromise = pending;
+      void pending.then(
+        () => {
+          if (authInitializationPromise === pending) {
+            authInitializationPromise = null;
+          }
+        },
+        () => {
+          if (authInitializationPromise === pending) {
+            authInitializationPromise = null;
+          }
+        },
+      );
+      return pending;
     },
 
     updateUser: (data: Partial<User>) => {

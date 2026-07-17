@@ -1,5 +1,8 @@
 import { evenInt } from "../lib/media/video-draw";
 import type { ClipperSmoothingStrength } from "../settings/settings";
+import type { ClipperAspectPresetId } from "../shared/formats";
+import type { NormalizedBox } from "../shared/smart-crop";
+import { computeTargetCropSize } from "./autoflip/frame-crop-region";
 import {
   blendCentroid,
   type CentroidSample,
@@ -9,16 +12,29 @@ import {
   type FaceBoxSample,
   type FaceCentroid,
   interpolateCentroid,
-  pickPrimaryFace,
   SMOOTHING_ALPHA,
 } from "./reframe";
 import type { ClipperHeadroom } from "../settings/settings";
 import type { FrameEffectSize } from "../lib/media/video-frame-effect";
+import type { FaceBox } from "../lib/media/face-detector";
 
 export interface CollageTracks {
   top: CentroidSample[];
   bottom: CentroidSample[];
   hasTwoSpeakers: boolean;
+}
+
+export interface CollageEligibilityWindow {
+  regionId: string;
+  start: number;
+  end: number;
+}
+
+export type CollageAspectEligibility = Record<ClipperAspectPresetId, CollageEligibilityWindow[]>;
+
+export interface FacePair {
+  left: FaceBox;
+  right: FaceBox;
 }
 
 /** A contiguous time window where two speakers were stably detected side by side. */
@@ -30,8 +46,60 @@ export interface CollageRegion {
   topIsLeft: boolean;
 }
 
-/** Consecutive qualifying/disqualifying samples required to open/close a region — ~1.5s at the 0.5s sample interval, so a single stray misdetection can't flicker a region in or out. */
-const REGION_HYSTERESIS_SAMPLES = 3;
+/** Confirm quickly, but tolerate brief detector dropouts once split-screen is active. */
+const REGION_ENTER_SAMPLES = 2;
+const REGION_EXIT_SAMPLES = 3;
+const DUPLICATE_FACE_OVERLAP = 0.5;
+const AMBIGUOUS_THIRD_FACE_AREA_RATIO = 0.5;
+const MAX_COLLAGE_CROP_OVERLAP = 0.5;
+
+const COLLAGE_ASPECT_RATIOS: Record<ClipperAspectPresetId, number> = {
+  "16-9": 16 / 9,
+  "9-16": 9 / 16,
+  "1-1": 1,
+  "4-5": 4 / 5,
+};
+
+function faceArea(face: FaceBox): number {
+  return Math.max(0, face.width) * Math.max(0, face.height);
+}
+
+function intersectionArea(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): number {
+  const width = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const height = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return width * height;
+}
+
+/**
+ * MediaPipe's TrackedDetection::IsSameAs uses overlap divided by either
+ * detection area, rather than IoU. Dividing by the smaller area is the same
+ * containment-sensitive test and catches duplicate boxes of different sizes.
+ */
+export function overlapFractionOfSmaller(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): number {
+  const smallerArea = Math.min(a.width * a.height, b.width * b.height);
+  return smallerArea > 0 ? intersectionArea(a, b) / smallerArea : 0;
+}
+
+/** Picks two unambiguous, dominant faces and removes detector duplicates. */
+export function selectDominantFacePair(faces: FaceBox[]): FacePair | null {
+  const byArea = [...faces].filter((face) => faceArea(face) > 0).sort((a, b) => faceArea(b) - faceArea(a));
+  const distinct: FaceBox[] = [];
+  for (const face of byArea) {
+    if (distinct.some((accepted) => overlapFractionOfSmaller(face, accepted) >= DUPLICATE_FACE_OVERLAP)) continue;
+    distinct.push(face);
+  }
+  if (distinct.length < 2) return null;
+  if (distinct[2] && faceArea(distinct[2]) >= faceArea(distinct[1]!) * AMBIGUOUS_THIRD_FACE_AREA_RATIO) return null;
+
+  const first = distinct[0]!;
+  const second = distinct[1]!;
+  return first.x + first.width / 2 <= second.x + second.width / 2
+    ? { left: first, right: second }
+    : { left: second, right: first };
+}
 
 /**
  * Splits whole-clip face samples into two independently-tracked speaker
@@ -43,45 +111,8 @@ export function deriveCollageTracks(
   samples: FaceBoxSample[],
   smoothing: ClipperSmoothingStrength,
 ): CollageTracks {
-  const alpha = SMOOTHING_ALPHA[smoothing];
-  const top: CentroidSample[] = [];
-  const bottom: CentroidSample[] = [];
-  let prevTop: FaceCentroid | null = null;
-  let prevBottom: FaceCentroid | null = null;
-  let leftCount = 0;
-  let rightCount = 0;
-  let samplesWithFaces = 0;
-
-  for (const sample of samples) {
-    if (sample.faces.length === 0) continue;
-    samplesWithFaces++;
-
-    const midX = sample.frameW / 2;
-    const leftFaces = sample.faces.filter((f) => f.x + f.width / 2 < midX);
-    const rightFaces = sample.faces.filter((f) => f.x + f.width / 2 >= midX);
-
-    const leftFace = pickPrimaryFace(leftFaces, sample.frameW, sample.frameH, "largest");
-    const rightFace = pickPrimaryFace(rightFaces, sample.frameW, sample.frameH, "largest");
-
-    if (leftFace) {
-      leftCount++;
-      const centroid = faceToCentroid(leftFace, sample.frameW, sample.frameH);
-      prevTop = sample.sceneCut || !prevTop ? centroid : blendCentroid(prevTop, centroid, alpha);
-    }
-    if (prevTop) top.push({ t: sample.time, ...prevTop, cut: sample.sceneCut });
-
-    if (rightFace) {
-      rightCount++;
-      const centroid = faceToCentroid(rightFace, sample.frameW, sample.frameH);
-      prevBottom = sample.sceneCut || !prevBottom ? centroid : blendCentroid(prevBottom, centroid, alpha);
-    }
-    if (prevBottom) bottom.push({ t: sample.time, ...prevBottom, cut: sample.sceneCut });
-  }
-
-  const threshold = Math.max(3, Math.round(samplesWithFaces * 0.15));
-  const hasTwoSpeakers = leftCount >= threshold && rightCount >= threshold;
-
-  return { top, bottom, hasTwoSpeakers };
+  const regions = deriveTwoSpeakerRegions(samples);
+  return buildCollageTracksForRegions(samples, smoothing, regions, []);
 }
 
 /**
@@ -112,12 +143,16 @@ export function deriveTwoSpeakerRegions(samples: FaceBoxSample[]): CollageRegion
 
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
-    const midX = sample.frameW / 2;
-    const leftFaces = sample.faces.filter((f) => f.x + f.width / 2 < midX);
-    const rightFaces = sample.faces.filter((f) => f.x + f.width / 2 >= midX);
-    const leftFace = pickPrimaryFace(leftFaces, sample.frameW, sample.frameH, "largest");
-    const rightFace = pickPrimaryFace(rightFaces, sample.frameW, sample.frameH, "largest");
-    const bothPresent = !!leftFace && !!rightFace;
+    const pair = selectDominantFacePair(sample.faces);
+    const leftFace = pair?.left;
+    const rightFace = pair?.right;
+    const bothPresent = pair != null;
+
+    if (sample.sceneCut) {
+      if (openStart != null) closeRegion(samples[Math.max(0, i - 1)]?.time ?? sample.time);
+      qualifyingRun = 0;
+      disqualifyingRun = 0;
+    }
 
     if (bothPresent) {
       qualifyingRun++;
@@ -127,8 +162,8 @@ export function deriveTwoSpeakerRegions(samples: FaceBoxSample[]): CollageRegion
       qualifyingRun = 0;
     }
 
-    if (openStart == null && qualifyingRun >= REGION_HYSTERESIS_SAMPLES) {
-      const openIndex = Math.max(0, i - REGION_HYSTERESIS_SAMPLES + 1);
+    if (openStart == null && qualifyingRun >= REGION_ENTER_SAMPLES) {
+      const openIndex = Math.max(0, i - REGION_ENTER_SAMPLES + 1);
       openStart = samples[openIndex]!.time;
     }
 
@@ -136,8 +171,8 @@ export function deriveTwoSpeakerRegions(samples: FaceBoxSample[]): CollageRegion
       if (leftFace) leftScore += faceToCentroid(leftFace, sample.frameW, sample.frameH).extent;
       if (rightFace) rightScore += faceToCentroid(rightFace, sample.frameW, sample.frameH).extent;
 
-      if (disqualifyingRun >= REGION_HYSTERESIS_SAMPLES) {
-        const closeIndex = Math.max(0, i - REGION_HYSTERESIS_SAMPLES + 1);
+      if (disqualifyingRun >= REGION_EXIT_SAMPLES) {
+        const closeIndex = Math.max(0, i - REGION_EXIT_SAMPLES + 1);
         closeRegion(samples[closeIndex]!.time);
       }
     }
@@ -187,13 +222,9 @@ export function buildCollageTracksForRegions(
     const region = enabledRegions[regionIndex];
     if (!region || sample.time < region.start || sample.faces.length === 0) continue;
 
-    const midX = sample.frameW / 2;
-    const leftFaces = sample.faces.filter((f) => f.x + f.width / 2 < midX);
-    const rightFaces = sample.faces.filter((f) => f.x + f.width / 2 >= midX);
-    const leftFace = pickPrimaryFace(leftFaces, sample.frameW, sample.frameH, "largest");
-    const rightFace = pickPrimaryFace(rightFaces, sample.frameW, sample.frameH, "largest");
-    const topFace = region.topIsLeft ? leftFace : rightFace;
-    const bottomFace = region.topIsLeft ? rightFace : leftFace;
+    const pair = selectDominantFacePair(sample.faces);
+    const topFace = region.topIsLeft ? pair?.left : pair?.right;
+    const bottomFace = region.topIsLeft ? pair?.right : pair?.left;
 
     if (topFace) {
       const centroid = faceToCentroid(topFace, sample.frameW, sample.frameH);
@@ -209,6 +240,137 @@ export function buildCollageTracksForRegions(
   }
 
   return { top, bottom, hasTwoSpeakers: enabledRegions.length > 0 };
+}
+
+function normalizeFaceBox(face: FaceBox, frameW: number, frameH: number): NormalizedBox {
+  return {
+    x: face.x / frameW,
+    y: face.y / frameH,
+    width: face.width / frameW,
+    height: face.height / frameH,
+  };
+}
+
+function unionBoxes(a: NormalizedBox, b: NormalizedBox): NormalizedBox {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+}
+
+/** AutoFlip's SetKeyFrameCropTarget + required-region-union fit test. */
+export function facesFitSingleCrop(
+  pair: FacePair,
+  frameW: number,
+  frameH: number,
+  targetAspectRatio: number,
+): boolean {
+  const target = computeTargetCropSize(frameW, frameH, targetAspectRatio);
+  const union = unionBoxes(normalizeFaceBox(pair.left, frameW, frameH), normalizeFaceBox(pair.right, frameW, frameH));
+  return union.width <= target.cropWidth / frameW + Number.EPSILON
+    && union.height <= target.cropHeight / frameH + Number.EPSILON;
+}
+
+function splitCropsAreDistinct(
+  pair: FacePair,
+  frameW: number,
+  frameH: number,
+  outputAspectRatio: number,
+  headroom: ClipperHeadroom,
+): boolean {
+  const panelAspectRatio = outputAspectRatio * 2;
+  const left = faceToCentroid(pair.left, frameW, frameH);
+  const right = faceToCentroid(pair.right, frameW, frameH);
+  const leftCrop = cropRectForCentroid(frameW, frameH, left.x, left.y, panelAspectRatio, headroom, left.extent);
+  const rightCrop = cropRectForCentroid(frameW, frameH, right.x, right.y, panelAspectRatio, headroom, right.extent);
+  return overlapFractionOfSmaller(
+    { x: leftCrop.sx, y: leftCrop.sy, width: leftCrop.sw, height: leftCrop.sh },
+    { x: rightCrop.sx, y: rightCrop.sy, width: rightCrop.sw, height: rightCrop.sh },
+  ) <= MAX_COLLAGE_CROP_OVERLAP;
+}
+
+function closeEligibilityWindow(
+  windows: CollageEligibilityWindow[],
+  regionId: string,
+  start: number | null,
+  end: number,
+): null {
+  if (start != null && end >= start) windows.push({ regionId, start, end });
+  return null;
+}
+
+/**
+ * Builds stable, format-specific split windows. A two-face region remains the
+ * persistent user-toggle unit; aspect windows only decide where that region
+ * actually needs a collage.
+ */
+export function deriveCollageAspectEligibility(
+  samples: FaceBoxSample[],
+  regions: CollageRegion[],
+  headroom: ClipperHeadroom,
+): CollageAspectEligibility {
+  const result: CollageAspectEligibility = { "16-9": [], "9-16": [], "1-1": [], "4-5": [] };
+
+  for (const region of regions) {
+    const regionSamples = samples.filter((sample) => sample.time >= region.start && sample.time <= region.end);
+    for (const aspectId of Object.keys(COLLAGE_ASPECT_RATIOS) as ClipperAspectPresetId[]) {
+      const ratio = COLLAGE_ASPECT_RATIOS[aspectId];
+      let qualifyingRun = 0;
+      let disqualifyingRun = 0;
+      let openStart: number | null = null;
+
+      for (let index = 0; index < regionSamples.length; index++) {
+        const sample = regionSamples[index]!;
+        const pair = selectDominantFacePair(sample.faces);
+        const qualifies = pair != null
+          && !facesFitSingleCrop(pair, sample.frameW, sample.frameH, ratio)
+          && splitCropsAreDistinct(pair, sample.frameW, sample.frameH, ratio, headroom);
+
+        if (qualifies) {
+          qualifyingRun++;
+          disqualifyingRun = 0;
+        } else {
+          disqualifyingRun++;
+          qualifyingRun = 0;
+        }
+
+        if (openStart == null && qualifyingRun >= REGION_ENTER_SAMPLES) {
+          openStart = regionSamples[Math.max(0, index - REGION_ENTER_SAMPLES + 1)]!.time;
+        }
+        if (openStart != null && disqualifyingRun >= REGION_EXIT_SAMPLES) {
+          const closeIndex = Math.max(0, index - REGION_EXIT_SAMPLES + 1);
+          openStart = closeEligibilityWindow(result[aspectId], region.id, openStart, regionSamples[closeIndex]!.time);
+        }
+      }
+      if (openStart != null) closeEligibilityWindow(result[aspectId], region.id, openStart, region.end);
+    }
+  }
+
+  return result;
+}
+
+export function isCollageAspectEligible(
+  eligibility: CollageAspectEligibility,
+  aspectId: ClipperAspectPresetId,
+  regionId: string,
+  time: number,
+): boolean {
+  return eligibility[aspectId].some((window) => window.regionId === regionId && time >= window.start && time <= window.end);
+}
+
+export function filterRegionsWithEligibleAspects(
+  regions: CollageRegion[],
+  eligibility: CollageAspectEligibility,
+  aspectIds: ClipperAspectPresetId[],
+): CollageRegion[] {
+  const eligibleIds = new Set(
+    aspectIds.flatMap((aspectId) => eligibility[aspectId].map((window) => window.regionId)),
+  );
+  return regions.filter((region) => eligibleIds.has(region.id));
 }
 
 const COLLAGE_DIVIDER_PX = 3;

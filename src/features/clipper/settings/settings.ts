@@ -191,8 +191,10 @@ export function mergeClipperSettings(
   partial: Partial<ClipperSettings> | null | undefined,
 ): ClipperSettings {
   if (!partial) return base;
+  const reframe = { ...base.reframe, ...partial.reframe };
+  if (reframe.cropMode === "podcast-collage") reframe.cropMode = "smart-follow";
   return {
-    reframe: { ...base.reframe, ...partial.reframe },
+    reframe,
     captions: { ...base.captions, ...partial.captions },
     formats: { ...base.formats, ...partial.formats },
     audio: { ...base.audio, ...partial.audio },

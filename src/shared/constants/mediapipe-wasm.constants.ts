@@ -1,6 +1,6 @@
 /**
  * Self-hosted MediaPipe vision WASM runtime.
- * Loader binaries live in `client/public/models/mediapipe/magic_touch/`.
+ * Loader binaries live in `public/models/magic_touch/`.
  * `.tflite` model files use separate `asset()` paths — this is only the WASM runtime.
  */
 
@@ -8,7 +8,7 @@ import { modelAssetUrl } from "../models/model-url";
 
 /** Public path segment for vision_wasm_internal.* — not for bare dynamic `import()`. */
 const MEDIAPIPE_VISION_WASM_PUBLIC_SEGMENT =
-  "/models/mediapipe/magic_touch";
+  "/models/magic_touch";
 
 /**
  * Absolute base URL for `FilesetResolver.forVisionTasks(...)`.

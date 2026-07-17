@@ -75,8 +75,8 @@ export const ReframeSection: React.FC<ReframeSectionProps> = ({
 
       {reframe.cropMode !== "manual" && hasTwoSpeakers === true && (
         <Text fontSize="xs" color={theme.text.muted}>
-          Two speakers detected — split-screen applies automatically wherever they're both on screen. Toggle it
-          per clip from the transcript icons on each clip card.
+          Two speakers detected — split-screen applies automatically in formats where they do not fit together.
+          Toggle it per clip from the transcript icons on each clip card.
         </Text>
       )}
 

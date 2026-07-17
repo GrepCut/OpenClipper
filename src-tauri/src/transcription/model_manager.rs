@@ -10,9 +10,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const MODEL_DIR_NAME: &str = "nemo-parakeet-tdt-0.6b-v3-int8";
 pub const LEGACY_MODEL_DIR_NAME: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
-pub const MODEL_CDN_PREFIX: &str = "/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8";
-pub const DEV_MODEL_REL_PATH: &str = "public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8";
+pub const MODEL_CDN_PREFIX: &str = "/models/nemo-parakeet-tdt-0.6b-v3-int8";
+pub const DEV_MODEL_REL_PATH: &str = "public/models/nemo-parakeet-tdt-0.6b-v3-int8";
 pub const MODEL_ARCHIVE_NAME: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2";
+const MODEL_MANIFEST_FILE: &str = "manifest.json";
 pub const MODEL_DOWNLOAD_URL: &str =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2";
 
@@ -268,16 +269,24 @@ pub fn ensure_model_files(app: &AppHandle) -> Result<PathBuf, TranscriptionError
         TranscriptionError::ModelLoad(format!("Nie udało się utworzyć katalogu modelu: {error}"))
     })?;
 
-    let mut cdn_failed = false;
-    for file in REQUIRED_FILES {
-        let local = cache_dir.join(file);
-        if local.is_file() && verify_file_hash(&local, file).unwrap_or(false) {
-            continue;
-        }
-        let remote = format!("{MODEL_CDN_PREFIX}/{file}");
-        if download_model_file_to_cache(app, &local, &remote).is_err() {
-            cdn_failed = true;
-            break;
+    // The per-model manifest is required to validate the four model files.
+    // Download it first; previously the CDN path could never complete because
+    // only REQUIRED_FILES were fetched and verify_manifest then lacked it.
+    let manifest_local = cache_dir.join(MODEL_MANIFEST_FILE);
+    let manifest_remote = format!("{MODEL_CDN_PREFIX}/{MODEL_MANIFEST_FILE}");
+    let mut cdn_failed =
+        download_model_file_to_cache(app, &manifest_local, &manifest_remote).is_err();
+    if !cdn_failed {
+        for file in REQUIRED_FILES {
+            let local = cache_dir.join(file);
+            if local.is_file() && verify_file_hash(&local, file).unwrap_or(false) {
+                continue;
+            }
+            let remote = format!("{MODEL_CDN_PREFIX}/{file}");
+            if download_model_file_to_cache(app, &local, &remote).is_err() {
+                cdn_failed = true;
+                break;
+            }
         }
     }
 
@@ -308,7 +317,7 @@ fn rename_extracted_dir(models_root: &Path) -> Result<(), TranscriptionError> {
 }
 
 fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
-    let manifest_path = model_dir.join("manifest.json");
+    let manifest_path = model_dir.join(MODEL_MANIFEST_FILE);
     let manifest_bytes = fs::read(&manifest_path).map_err(|error| {
         TranscriptionError::ModelLoad(format!(
             "Brak manifestu modelu ({}): {error}",
@@ -348,7 +357,7 @@ fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
 }
 
 fn verify_file_hash(path: &Path, file_name: &str) -> Result<bool, TranscriptionError> {
-    let manifest_path = path.parent().unwrap_or(path).join("manifest.json");
+    let manifest_path = path.parent().unwrap_or(path).join(MODEL_MANIFEST_FILE);
     let manifest_bytes = fs::read(&manifest_path)
         .map_err(|error| TranscriptionError::ModelLoad(format!("Brak manifestu: {error}")))?;
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)

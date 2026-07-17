@@ -62,7 +62,7 @@ function logParakeetDiagnostics(
   if (!status.installed) {
     clipperWarn("settings/transcription: parakeet model not found", {
       source: status.source ?? "missing",
-      hint: "Dev: public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8 | Cache: %LOCALAPPDATA%/Open Clipper/models/",
+      hint: "Dev: public/models/nemo-parakeet-tdt-0.6b-v3-int8 | Cache: %LOCALAPPDATA%/Open Clipper/models/",
     });
   }
 }

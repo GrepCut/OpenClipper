@@ -3,6 +3,7 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 
 use crate::video_processing::extract_clipper_segment_to_path_blocking;
+use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
@@ -121,6 +122,34 @@ pub fn write_clipper_project_data_bytes(
     let dir = clipper_project_data_dir(&app, &project_id)?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     fs::write(dir.join(file_name), contents).map_err(|e| e.to_string())
+}
+
+/// Writes a project data file from Tauri's raw IPC body, avoiding JSON expansion
+/// of large byte arrays in the webview. Project and file names are supplied as
+/// small request headers; the request body contains only the file bytes.
+#[tauri::command]
+pub fn write_clipper_project_data_raw(app: AppHandle, request: Request<'_>) -> Result<(), String> {
+    let project_id = request
+        .headers()
+        .get("x-clipper-project-id")
+        .ok_or_else(|| "Missing x-clipper-project-id header.".to_string())?
+        .to_str()
+        .map_err(|error| format!("Invalid project id header: {error}"))?;
+    let file_name = request
+        .headers()
+        .get("x-clipper-file-name")
+        .ok_or_else(|| "Missing x-clipper-file-name header.".to_string())?
+        .to_str()
+        .map_err(|error| format!("Invalid file name header: {error}"))?;
+    validate_export_file_name(file_name)?;
+
+    let InvokeBody::Raw(contents) = request.body() else {
+        return Err("Expected a raw binary request body.".to_string());
+    };
+
+    let dir = clipper_project_data_dir(&app, project_id)?;
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    fs::write(dir.join(file_name), contents).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

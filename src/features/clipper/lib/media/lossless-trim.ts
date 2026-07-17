@@ -15,7 +15,7 @@ import {
   StreamTarget,
   WebMOutputFormat,
 } from "mediabunny";
-import { convertWithMediabunny } from '../convert/engines';
+import { convertWithMediabunny } from '../convert/mediabunny-convert';
 import { createFileSystemWriteProxy } from '../convert/file-system-write-proxy';
 import type { ConvertOptions, ConversionOutput } from '../types/converter.types';
 

@@ -1,6 +1,7 @@
 import {
   apiClient,
   API_BASE_URL,
+  AUTH_REQUEST_TIMEOUT_MS,
   type ApiRequestConfig,
 } from "../shared/utils/apiClient";
 import type { User } from "../shared/types/auth.types";
@@ -16,17 +17,25 @@ export const authService = {
       .then((res) => res.data),
   refresh: () =>
     apiClient
-      .post<RefreshResponse>("/auth/refresh")
+      .post<RefreshResponse>("/auth/refresh", {}, {
+        timeout: AUTH_REQUEST_TIMEOUT_MS,
+      })
       .then((res) => res.data as RefreshResponse),
   refreshDesktop: (refreshToken: string) =>
     apiClient
       .post<RefreshResponse>(
         "/auth/desktop/refresh",
         { refreshToken },
-        { _skipAuthRefresh: true } as ApiRequestConfig,
+        {
+          _skipAuthRefresh: true,
+          timeout: AUTH_REQUEST_TIMEOUT_MS,
+        } as ApiRequestConfig,
       )
       .then((res) => res.data as RefreshResponse),
-  status: () => apiClient.get<User>("/auth/status").then((res) => res.data),
+  status: () =>
+    apiClient
+      .get<User>("/auth/status", { timeout: AUTH_REQUEST_TIMEOUT_MS })
+      .then((res) => res.data),
   exchangeDesktopTicket: (ticket: string) =>
     apiClient
       .post<LoginResponse>(

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "totalSize": 711802798,
+  "files": [
+    {
+      "path": "models/autoflip_ssdlite/ssdlite_object_detection.tflite",
+      "size": 6254668,
+      "sha256": "8e10a2e2f5db85d8f90628f00752a89ff241c5b2ca82f3b92fc496c7bda122ef"
+    },
+    {
+      "path": "models/autoflip_ssdlite/ssdlite_object_detection_labelmap.txt",
+      "size": 665,
+      "sha256": "c7e79c855f73cbba9f33d649d60e1676eb0a974021a41696d1ac0d4b7f7e0211"
+    },
+    {
+      "path": "models/blaze_face_full_range/blaze_face_full_range.tflite",
+      "size": 1083786,
+      "sha256": "3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b"
+    },
+    {
+      "path": "models/blaze_face_short_range/blaze_face_short_range.tflite",
+      "size": 229746,
+      "sha256": "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f"
+    },
+    {
+      "path": "models/magic_touch/vision_wasm_internal.js",
+      "size": 322044,
+      "sha256": "e7fd9858e8e8f221d9b96eddc11f8e077f263e0b7bbd79d3cbe882b134274f8c"
+    },
+    {
+      "path": "models/magic_touch/vision_wasm_internal.wasm",
+      "size": 11153617,
+      "sha256": "6a5c64584c2ab61c763b6e204afbdbc7ce1caf7f5216187322bca8df94f646bc"
+    },
+    {
+      "path": "models/magic_touch/vision_wasm_module_internal.js",
+      "size": 322082,
+      "sha256": "1f1d6215324a1fe62f6742d49a3db911170987ca18ad8c1b75f1a1c82acf2b44"
+    },
+    {
+      "path": "models/magic_touch/vision_wasm_module_internal.wasm",
+      "size": 11153641,
+      "sha256": "617b8e0248dbd27e9d7ece4218004eae4cefb499196d1bb4fa0e3fef21708756"
+    },
+    {
+      "path": "models/magic_touch/vision_wasm_nosimd_internal.js",
+      "size": 321847,
+      "sha256": "438d1fe8ff7f4d946025bc211c291543c037d8a3785ed4eee60f1f521b236296"
+    },
+    {
+      "path": "models/magic_touch/vision_wasm_nosimd_internal.wasm",
+      "size": 10481398,
+      "sha256": "8a3092d34c79d3f57e6ba8592105e8a90f6b07c27891ffecd14cca428bfd3e31"
+    },
+    {
+      "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/decoder.int8.onnx",
+      "size": 11845275,
+      "sha256": "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e"
+    },
+    {
+      "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/encoder.int8.onnx",
+      "size": 652184281,
+      "sha256": "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"
+    },
+    {
+      "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/joiner.int8.onnx",
+      "size": 6355277,
+      "sha256": "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3"
+    },
+    {
+      "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/manifest.json",
+      "size": 532,
+      "sha256": "2175e69e1ed1dbe88935e15c7490972e60846a4feabc550ce5686965de136017"
+    },
+    {
+      "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/tokens.txt",
+      "size": 93939,
+      "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+    }
+  ]
+}

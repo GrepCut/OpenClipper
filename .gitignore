@@ -27,6 +27,12 @@ dist-ssr
 third_party/sherpa-onnx-directml/
 
 # Parakeet ASR model (~640 MB total; exceeds GitHub 100 MB file limit)
-public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/*
-!public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/.gitkeep
-!public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/README.md
+public/models/nemo-parakeet-tdt-0.6b-v3-int8/*
+!public/models/nemo-parakeet-tdt-0.6b-v3-int8/.gitkeep
+!public/models/nemo-parakeet-tdt-0.6b-v3-int8/README.md
+
+# Generated Open Clipper model publication state. The manifest is committed;
+# prepared state, local R2 mirror and Python bytecode are reproducible.
+models_automation/r2_mirror/
+models_automation/prepared_models.json
+models_automation/__pycache__/

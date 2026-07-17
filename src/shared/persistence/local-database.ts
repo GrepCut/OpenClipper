@@ -3,9 +3,38 @@ import type { User } from "../types/auth.types";
 import { isTauri } from "../utils/platform";
 
 const WEB_PREFIX = "openclipper_local_db:";
+const inFlightReads = new Map<string, Promise<unknown>>();
 
 function webKey(namespace: string, key: string): string {
   return `${WEB_PREFIX}${namespace}:${key}`;
+}
+
+/**
+ * Coalesces only concurrent, identical native reads. Results are never cached:
+ * once a read settles, the next caller starts a new IPC request.
+ */
+function singleFlightRead<T>(
+  requestKey: string,
+  read: () => Promise<T>,
+): Promise<T> {
+  const existing = inFlightReads.get(requestKey) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const pending = read();
+  inFlightReads.set(requestKey, pending);
+  void pending.then(
+    () => {
+      if (inFlightReads.get(requestKey) === pending) {
+        inFlightReads.delete(requestKey);
+      }
+    },
+    () => {
+      if (inFlightReads.get(requestKey) === pending) {
+        inFlightReads.delete(requestKey);
+      }
+    },
+  );
+  return pending;
 }
 
 export interface LocalProjectListQuery {
@@ -25,7 +54,10 @@ export async function localRecordGet<T>(
     const raw = localStorage.getItem(webKey(namespace, key));
     return raw ? (JSON.parse(raw) as T) : null;
   }
-  return invoke<T | null>("local_record_get", { namespace, key });
+  return singleFlightRead(
+    JSON.stringify(["local_record_get", namespace, key]),
+    () => invoke<T | null>("local_record_get", { namespace, key }),
+  );
 }
 
 export async function localRecordPut<T>(
@@ -77,7 +109,10 @@ export async function localProjectGet<T>(
     const raw = localStorage.getItem(webKey("project", id));
     return raw ? (JSON.parse(raw) as T) : null;
   }
-  return invoke<T | null>("local_project_get", { id, ownerId });
+  return singleFlightRead(
+    JSON.stringify(["local_project_get", id, ownerId]),
+    () => invoke<T | null>("local_project_get", { id, ownerId }),
+  );
 }
 
 export async function localProjectList<T>(
@@ -115,7 +150,18 @@ export async function localProjectList<T>(
       total: values.length,
     };
   }
-  return invoke<{ data: T[]; total: number }>("local_project_list", { query });
+  const requestKey = JSON.stringify([
+    "local_project_list",
+    query.ownerId,
+    query.page,
+    query.limit,
+    query.search ?? "",
+    query.projectType ?? "",
+    query.sortBy ?? "updatedAt",
+  ]);
+  return singleFlightRead(requestKey, () =>
+    invoke<{ data: T[]; total: number }>("local_project_list", { query }),
+  );
 }
 
 export async function localProjectDelete(

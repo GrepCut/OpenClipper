@@ -18,10 +18,13 @@ import type { ClipperClipSegmentWindow } from "./clip-segmentation";
 import { sourceTimeToLocalTime } from "./clip-segment-time";
 import {
   buildCollageTracksForRegions,
+  type CollageAspectEligibility,
   type CollageRegion,
+  deriveCollageAspectEligibility,
   deriveTwoSpeakerRegions,
   drawPodcastCollageFrame,
   findActiveRegion,
+  isCollageAspectEligible,
   type CollageTracks,
 } from "./collage";
 import {
@@ -221,6 +224,7 @@ export interface ClipperFrameContext {
     focusTrack: CentroidSample[];
     collageTracks: CollageTracks;
     collageRegions: CollageRegion[];
+    collageEligibility: CollageAspectEligibility;
   };
   /** Precomputed object/motion target timeline used only by Smart Follow. */
   smartFocusTrack?: CentroidSample[];
@@ -323,13 +327,18 @@ export function drawClipperFrame(
         render.disabledCollageRegionIds,
       ))
     : null;
+  const collageEligibility = needsTracking
+    ? (render.faceRender?.collageEligibility
+      ?? deriveCollageAspectEligibility(samples, collageRegions, render.settings.reframe.headroom))
+    : null;
 
   const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;
   const useCollage =
-    render.settings.reframe.cropMode === "podcast-collage" &&
+    render.settings.reframe.cropMode !== "manual" &&
     formatDef.mode === "crop" &&
     activeRegion != null &&
-    !render.disabledCollageRegionIds.includes(activeRegion.id);
+    !render.disabledCollageRegionIds.includes(activeRegion.id) &&
+    isCollageAspectEligible(collageEligibility!, formatDef.aspectId, activeRegion.id, t);
 
   const showDebug = isPreview && render.settings.reframe.showDebugFaceBoxes && formatDef.mode === "crop";
 

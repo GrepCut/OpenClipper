@@ -24,8 +24,8 @@ export interface FaceDetectorInitOptions {
 }
 
 const MODEL_URLS: Record<FaceDetectorModel, string> = {
-  short: modelAssetUrl("/models/mediapipe/blaze_face_short_range/blaze_face_short_range.tflite"),
-  full: modelAssetUrl("/models/mediapipe/blaze_face_full_range/blaze_face_full_range.tflite"),
+  short: modelAssetUrl("/models/blaze_face_short_range/blaze_face_short_range.tflite"),
+  full: modelAssetUrl("/models/blaze_face_full_range/blaze_face_full_range.tflite"),
 };
 
 const BOX_PAD = 0.08;

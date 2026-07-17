@@ -41,6 +41,12 @@ crossbeam-channel = "0.5"
 tar = "0.4"
 bzip2 = "0.5"
 
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = "thin"
+strip = "symbols"
+
 [[example]]
 name = "parakeet_smoke"
 path = "examples/parakeet_smoke.rs"

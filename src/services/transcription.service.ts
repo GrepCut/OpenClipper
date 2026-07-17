@@ -15,7 +15,6 @@ import type {
 import { debugLogger } from "../shared/utils/noop-logger";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../shared/utils/platform";
-import { decodeToMono16k } from "../features/clipper/lib/media/decode-mono-16k";
 import { encodeMono16kWav } from "../features/clipper/lib/media/write-mono16k-wav";
 import { ensureClipperProjectDataDir } from "../features/clipper/persistence/project-data-files";
 import {
@@ -70,16 +69,16 @@ function mapParakeetResultToTranscription(
 }
 
 async function prepareWavPathForParakeet(
-  audioFile: File,
+  pcm16k: Float32Array,
   projectId: string,
 ): Promise<string> {
-  const pcm = await decodeToMono16k(await audioFile.arrayBuffer());
-  const wavBytes = encodeMono16kWav(pcm);
+  const wavBytes = encodeMono16kWav(pcm16k);
   await ensureClipperProjectDataDir(projectId);
-  await invoke("write_clipper_project_data_bytes", {
-    projectId,
-    fileName: TRANSCRIBE_AUDIO_WAV,
-    contents: wavBytes,
+  await invoke("write_clipper_project_data_raw", wavBytes, {
+    headers: {
+      "x-clipper-project-id": projectId,
+      "x-clipper-file-name": TRANSCRIBE_AUDIO_WAV,
+    },
   });
   return invoke<string>("get_clipper_project_data_file_path", {
     projectId,
@@ -100,6 +99,8 @@ export const transcriptionService = {
       clipEndSec?: number;
       sourceFingerprint?: string;
       engine?: TranscriptionEngine;
+      /** Mono 16 kHz PCM used by local Parakeet without a browser decode round trip. */
+      pcm16k?: Float32Array;
       onParakeetProgress?: (progress: ParakeetTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
@@ -129,7 +130,15 @@ export const transcriptionService = {
         if (!isTauri()) {
           throw new Error("Lokalna transkrypcja wymaga aplikacji desktopowej.");
         }
-        const audioPath = await prepareWavPathForParakeet(file, projectId);
+        if (!options?.pcm16k?.length) {
+          throw new Error(
+            "Local transcription audio is unavailable. Try selecting the clip range again.",
+          );
+        }
+        const audioPath = await prepareWavPathForParakeet(
+          options.pcm16k,
+          projectId,
+        );
         if (options?.signal?.aborted) {
           throw new DOMException("Conversion aborted", "AbortError");
         }
@@ -145,7 +154,10 @@ export const transcriptionService = {
           signal: options?.signal,
           onProgress: (progress) => options?.onParakeetProgress?.(progress),
         });
-        const transcription = mapParakeetResultToTranscription(result, mediaFileId);
+        const transcription = mapParakeetResultToTranscription(
+          result,
+          mediaFileId,
+        );
         debugLogger.log("transcription", "parakeet transcription success", {
           mediaFileId,
           durationMs: Date.now() - startTime,
@@ -241,7 +253,14 @@ export const transcriptionService = {
 
   getParakeetModelStatus: async (): Promise<ParakeetModelStatus> => {
     if (!isTauri()) {
-      return { installed: false, loaded: false, path: null, provider: null, source: null, manifestValid: null };
+      return {
+        installed: false,
+        loaded: false,
+        path: null,
+        provider: null,
+        source: null,
+        manifestValid: null,
+      };
     }
     return invoke<ParakeetModelStatus>("get_parakeet_model_status");
   },

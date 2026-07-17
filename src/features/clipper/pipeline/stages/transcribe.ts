@@ -1,10 +1,12 @@
 import { transcriptionService } from "../../../../services/transcription.service";
 import type { TranscriptionEngine } from "../../../../services/types/transcription.types";
-import { extractClipAudioForTranscription } from "../../engine/audio-extract";
+import {
+  extractClipAudioForTranscription,
+  type PreparedTranscriptionAudio,
+} from "../../engine/audio-extract";
 import { buildWordCuesForTranscription } from "../../engine/transcript";
 import { clipperLog } from "../../shared/logger";
 import { computeRmsEnvelope } from "../../engine/audio-envelope";
-import { decodeToMono16k } from "../../lib/media/decode-mono-16k";
 import type { WordCue } from "../../lib/media/transcription-export";
 import type { PipelineReporter } from "../reporter";
 import type { ClipperSession } from "../session";
@@ -25,11 +27,11 @@ async function prepareAudioEnvelope(
   end: number,
   clipDuration: number,
   signal: AbortSignal,
-): Promise<File | null> {
+): Promise<PreparedTranscriptionAudio | null> {
   if (session.audioEnvelope) return null;
   try {
     const rangeFile = session.rangeTrimmedFile ?? session.trimmedFile;
-    const audioFile = await extractClipAudioForTranscription(
+    const preparedAudio = await extractClipAudioForTranscription(
       rangeFile ?? session.sourceFile,
       rangeFile ? 0 : snappedStart,
       rangeFile ? clipDuration : end,
@@ -37,14 +39,11 @@ async function prepareAudioEnvelope(
     );
     if (signal.aborted)
       throw new DOMException("Conversion aborted", "AbortError");
-    const pcm = await decodeToMono16k(await audioFile.arrayBuffer());
-    if (signal.aborted)
-      throw new DOMException("Conversion aborted", "AbortError");
-    session.audioEnvelope = computeRmsEnvelope(pcm, 16_000);
+    session.audioEnvelope = computeRmsEnvelope(preparedAudio.pcm16k, 16_000);
     clipperLog("transcribe: RMS envelope ready", {
       hops: session.audioEnvelope.values.length,
     });
-    return audioFile;
+    return preparedAudio;
   } catch (error) {
     if (signal.aborted) throw error;
     session.audioEnvelope = null;
@@ -63,10 +62,16 @@ export async function runTranscribeStage(
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
 ): Promise<WordCue[]> {
-  const { snappedStart, end, clipDuration, trimUnchanged, existingWords, engine } =
-    input;
+  const {
+    snappedStart,
+    end,
+    clipDuration,
+    trimUnchanged,
+    existingWords,
+    engine,
+  } = input;
 
-  const preparedAudioFile = await prepareAudioEnvelope(
+  const preparedAudio = await prepareAudioEnvelope(
     session,
     snappedStart,
     end,
@@ -97,13 +102,15 @@ export async function runTranscribeStage(
     const isLocal = engine === "parakeet_local";
     reporter.stage(
       "transcribing",
-      isLocal ? "Transcribing speech (Parakeet local)…" : "Transcribing speech (API)…",
+      isLocal
+        ? "Transcribing speech (Parakeet local)…"
+        : "Transcribing speech (API)…",
     );
     reporter.stageProgress(0);
 
     const rangeFile = session.rangeTrimmedFile ?? session.trimmedFile;
-    const audioFile =
-      preparedAudioFile ??
+    const transcriptionAudio =
+      preparedAudio ??
       (await extractClipAudioForTranscription(
         rangeFile ?? session.sourceFile,
         rangeFile ? 0 : snappedStart,
@@ -119,11 +126,13 @@ export async function runTranscribeStage(
     reporter.stageProgress(0.6);
     reporter.stage(
       "transcribing",
-      isLocal ? "Transcribing speech (Parakeet local)…" : "Transcribing speech (API)…",
+      isLocal
+        ? "Transcribing speech (Parakeet local)…"
+        : "Transcribing speech (API)…",
     );
 
     const transcription = await transcriptionService.transcribe(
-      audioFile,
+      transcriptionAudio.file,
       session.mediaFileId,
       input.projectId,
       {
@@ -133,6 +142,7 @@ export async function runTranscribeStage(
         clipStartSec: snappedStart,
         clipEndSec: end,
         engine,
+        pcm16k: isLocal ? transcriptionAudio.pcm16k : undefined,
         onParakeetProgress: isLocal
           ? (progress) => {
               reporter.stageProgress(0.6 + progress.ratio * 0.4);

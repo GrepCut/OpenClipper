@@ -34,6 +34,9 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 const AUTH_REFRESH_URL = "/auth/refresh";
 const DESKTOP_REFRESH_URL = "/auth/desktop/refresh";
+// Krótkie requesty JSON sesji dostają własny limit — globalny timeout: 0 musi
+// zostać (uploady), ale odświeżanie sesji nie może wisieć do timeoutu TCP (~21s).
+export const AUTH_REQUEST_TIMEOUT_MS = 10_000;
 const LOGIN_ROUTE = appRoute("/auth");
 const HTTP_STATUS_UNAUTHORIZED = 401;
 const HTTP_STATUS_FORBIDDEN = 403;
@@ -244,7 +247,10 @@ export const refreshAuthToken = async (): Promise<string> => {
     const response = await apiClient.post<{
       token: string;
       refreshToken?: string;
-    }>(refreshUrl, refreshBody, { _skipAuthRefresh: true } as ApiRequestConfig);
+    }>(refreshUrl, refreshBody, {
+      _skipAuthRefresh: true,
+      timeout: AUTH_REQUEST_TIMEOUT_MS,
+    } as ApiRequestConfig);
     const responseData = response.data as {
       token: string;
       refreshToken?: string;

@@ -13,8 +13,8 @@ mod video_processing;
 use tauri::Manager;
 use transcription::ParakeetService;
 
-/// Pokazuje główne okno i zamyka splash. Idempotentne — wywoływane zarówno
-/// przez frontend po pierwszym renderze, jak i przez fallback timer w setup.
+/// Pokazuje główne okno. Idempotentne — wywoływane zarówno przez frontend
+/// po pierwszym renderze, jak i przez fallback timer w setup.
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
         let already_visible = main.is_visible().unwrap_or(false);
@@ -22,9 +22,6 @@ fn show_main_window(app: &tauri::AppHandle) {
             let _ = main.show();
             let _ = main.set_focus();
         }
-    }
-    if let Some(splash) = app.get_webview_window("splash") {
-        let _ = splash.close();
     }
 }
 
@@ -157,6 +154,7 @@ pub fn run() {
             clipper_data::read_clipper_project_data_file,
             clipper_data::write_clipper_project_data_file,
             clipper_data::write_clipper_project_data_bytes,
+            clipper_data::write_clipper_project_data_raw,
             clipper_data::get_clipper_project_data_file_path,
             clipper_data::extract_clipper_segment_to_project_data,
             clipper_data::ensure_clipper_project_exports_dir,

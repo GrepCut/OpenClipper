@@ -119,7 +119,7 @@
           255.0
         ]
       },
-      "sourcePath": "public/models/mediapipe/autoflip_ssdlite/ssdlite_object_detection.tflite",
+      "sourcePath": "public/models/autoflip_ssdlite/ssdlite_object_detection.tflite",
       "sourceSha256": "8e10a2e2f5db85d8f90628f00752a89ff241c5b2ca82f3b92fc496c7bda122ef"
     },
     "autoflip_ssdlite_fp16": {
@@ -241,7 +241,7 @@
           1.0
         ]
       },
-      "sourcePath": "public/models/mediapipe/blaze_face_full_range/blaze_face_full_range.tflite",
+      "sourcePath": "public/models/blaze_face_full_range/blaze_face_full_range.tflite",
       "sourceSha256": "3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b"
     },
     "blaze_face_full_range_fp16": {

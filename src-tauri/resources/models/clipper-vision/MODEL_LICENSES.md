@@ -2,7 +2,7 @@
 
 The bundled `blaze_face_full_range.onnx` and `ssdlite_object_detection.onnx`
 files are reproducible conversions of the MediaPipe model assets already
-shipped under `public/models/mediapipe/`. They are used locally by Windows
+shipped under `public/models/`. They are used locally by Windows
 Machine Learning and are not downloaded at runtime.
 
 MediaPipe is licensed under the Apache License 2.0. The converted files retain

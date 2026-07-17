@@ -5,6 +5,17 @@
     <link rel="icon" type="image/png" href="/clipper/clipper-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open Clipper</title>
+    <!-- Tło zgodne z backgroundColor okna Tauri — zapobiega jasnemu flashowi
+         zanim załaduje się CSS aplikacji. -->
+    <style>
+      html,
+      body,
+      #root {
+        background: #010409;
+        margin: 0;
+        height: 100%;
+      }
+    </style>
   </head>
 
   <body>

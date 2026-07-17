@@ -2,8 +2,10 @@ import type { WordCue } from "../lib/media/transcription-export";
 import type { ClipperSettings, ClipperSmoothingStrength } from "../settings/settings";
 import {
   buildCollageTracksForRegions,
+  deriveCollageAspectEligibility,
   deriveCollageTracks,
   deriveTwoSpeakerRegions,
+  type CollageAspectEligibility,
   type CollageRegion,
   type CollageTracks,
 } from "../engine/collage";
@@ -100,6 +102,7 @@ export interface ClipperSession {
     focusTrack: CentroidSample[];
     collageTracks: CollageTracks;
     collageRegions: CollageRegion[];
+    collageEligibility: CollageAspectEligibility;
   } | null;
 }
 
@@ -118,8 +121,8 @@ export function normalizeClipperSession(session: ClipperSession): ClipperSession
 
 /** Cache key for derived face-render tracks from reframe settings + the session's region overrides. */
 export function reframeCacheKey(settings: ClipperSettings, disabledCollageRegionIds: string[]): string {
-  const { cropMode, facePickStrategy, smoothing } = settings.reframe;
-  return `${cropMode}|${facePickStrategy}|${smoothing}|${[...disabledCollageRegionIds].sort().join(",")}`;
+  const { cropMode, facePickStrategy, smoothing, headroom } = settings.reframe;
+  return `${cropMode}|${facePickStrategy}|${smoothing}|${headroom}|${[...disabledCollageRegionIds].sort().join(",")}`;
 }
 
 /** Creates a face sample cache that reports detection summary via the reporter. */
@@ -162,6 +165,7 @@ export function resolveFaceRender(
         disabledCollageRegionIds,
       ),
       collageRegions,
+      collageEligibility: deriveCollageAspectEligibility(samples, collageRegions, settings.reframe.headroom),
     };
     session.faceRenderCache = cached;
   }
@@ -170,6 +174,7 @@ export function resolveFaceRender(
     focusTrack: cached.focusTrack,
     collageTracks: cached.collageTracks,
     collageRegions: cached.collageRegions,
+    collageEligibility: cached.collageEligibility,
   };
 }
 

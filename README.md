@@ -12,13 +12,45 @@ Desktop app scaffold: **Tauri 2** + **React 19** + **TypeScript** + **Vite 7**.
 
 ```bash
 npm install
-npm run tauri dev
+npm run tauri:dev
 ```
 
 ## Build
 
+Najkrótsza pętla dla lokalnego testu desktopowego (bez budowania instalatora):
+
 ```bash
-npm run tauri build
+npm run tauri:build:preview:fast
+```
+
+Pełny build wraz z bundlami instalacyjnymi:
+
+```bash
+npm run tauri:build
+```
+
+`npm run tauri:preview` i `npm run tauri:preview:fast` uruchamiają wcześniej
+zbudowane EXE z katalogu `release`; wariant szybki używa lżejszych flag Cargo
+i pomija instalator. Produkcyjny build Tauri nie kopiuje modeli z
+`public/models` do `dist`: aplikacja pobiera je na żądanie do własnego cache
+modeli.
+
+## Szybsze buildy na Windows
+
+Opcjonalnie można wykluczyć wyłącznie cache Cargo Open Clipper z Windows
+Defendera. Uruchom **PowerShell jako administrator** z katalogu projektu:
+
+```powershell
+$target = (Resolve-Path .\src-tauri\target).Path
+Add-MpPreference -ExclusionPath $target
+(Get-MpPreference).ExclusionPath -contains $target
+```
+
+Aby cofnąć zmianę:
+
+```powershell
+$target = (Resolve-Path .\src-tauri\target).Path
+Remove-MpPreference -ExclusionPath $target
 ```
 
 ## Stack
@@ -34,7 +66,7 @@ Bundle identifier: `com.openclipper.app`
 
 ## Parakeet DirectML (Windows)
 
-Local Parakeet transcription can use GPU via DirectML. The ONNX model files live under `public/models/mediapipe/nemo-parakeet-tdt-0.6b-v3-int8/` (used automatically in debug builds when present).
+Local Parakeet transcription can use GPU via DirectML. The ONNX model files live under `public/models/nemo-parakeet-tdt-0.6b-v3-int8/` (used automatically in debug builds when present).
 
 The default `sherpa-onnx` prebuilt libraries are CPU-only. To enable DirectML:
 

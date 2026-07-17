@@ -1,3 +1,8 @@
+[target.x86_64-pc-windows-msvc]
+# aws-lc-sys imports the UCRT DLL. Use the MSVC linker so those imports are
+# resolved against the matching Windows SDK import libraries.
+linker = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.42.34433\\bin\\Hostx64\\x64\\link.exe"
+
 [env]
 VCPKG_ROOT = "C:\\ffmpeg\\vcpkg"
 VCPKG_DEFAULT_TRIPLET = "x64-windows-static"

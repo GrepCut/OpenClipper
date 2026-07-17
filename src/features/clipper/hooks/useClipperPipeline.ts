@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Project } from "../../../services/projects.service";
-import { isMediabunnyConvertSupported } from '../lib/convert/engines';
+import { isMediabunnyConvertSupported } from '../lib/convert/mediabunny-convert';
 import { CLIPPER_FORMAT_DEFS } from "../shared/formats";
 import type { ClipperClipPreview, ClipperFormatResult, ClipperPipelineState, ClipSourceMode } from "../shared/state";
 import type { ClipperStage } from "../shared/stages";

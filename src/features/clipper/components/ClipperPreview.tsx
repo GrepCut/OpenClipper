@@ -3,7 +3,11 @@ import { Box, Button, HStack, Slider, Text, VStack, useDisclosure } from "@chakr
 import { ListOrdered, Pause, Play } from "lucide-react";
 import { OutlinedActionButton, getOutlinedActionSurfaceProps, OUTLINED_ACTION_BUTTON_SIZE_PROPS } from "../../../shared/components/buttons/OutlinedActionButton";
 import { drawClipperPreviewFrame, formatNeedsFaceTracking, type ClipperFrameContext } from "../engine/frame-draw";
-import { deriveTwoSpeakerRegions } from "../engine/collage";
+import {
+  deriveCollageAspectEligibility,
+  deriveTwoSpeakerRegions,
+  filterRegionsWithEligibleAspects,
+} from "../engine/collage";
 import type { FaceDetectFrameSource } from "../engine/reframe";
 import type { ClipperClipSegmentWindow } from "../engine/clip-segmentation";
 import {
@@ -381,9 +385,19 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = ({
   );
 
   const collageRegions = useMemo(
-    () => deriveTwoSpeakerRegions(getFrameContext()?.faceCache?.sortedSamples() ?? []),
+    () => {
+      const context = getFrameContext();
+      const samples = context?.faceCache?.sortedSamples() ?? [];
+      const regions = context?.faceRender?.collageRegions ?? deriveTwoSpeakerRegions(samples);
+      const eligibility = context?.faceRender?.collageEligibility
+        ?? deriveCollageAspectEligibility(samples, regions, settings.reframe.headroom);
+      const enabledAspectIds = CLIPPER_FORMAT_DEFS
+        .filter((format) => format.mode === "crop" && settings.formats.enabledFormatIds.includes(format.id))
+        .map((format) => format.aspectId);
+      return filterRegionsWithEligibleAspects(regions, eligibility, enabledAspectIds);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- faceSampleRevision is the actual change signal; getFrameContext is a stable closure over the session.
-    [state.faceSampleRevision],
+    [state.faceSampleRevision, settings.reframe.headroom, settings.formats.enabledFormatIds],
   );
 
   const redrawCanvases = useCallback(() => {

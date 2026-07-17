@@ -206,7 +206,7 @@ export function ClipperSessionPage() {
 
     };
 
-  }, [navigate, projectId, token]);
+  }, [navigate, projectId]);
 
 
 

@@ -34,10 +34,10 @@ type Response =
   | { id: number; type: "result"; timestamp: number; width: number; height: number; detections: PixelDetection[]; autoflipFaces?: PixelFaceDetection[]; modelId?: string; degradedReason?: string; metrics?: { ssdInferenceMs: number; faceInferenceMs: number } }
   | { id: number; type: "error"; message: string };
 
-const AUTOFLIP_MODEL_URL = modelAssetUrl("/models/mediapipe/autoflip_ssdlite/ssdlite_object_detection.tflite");
-const AUTOFLIP_LABELS_URL = modelAssetUrl("/models/mediapipe/autoflip_ssdlite/ssdlite_object_detection_labelmap.txt");
+const AUTOFLIP_MODEL_URL = modelAssetUrl("/models/autoflip_ssdlite/ssdlite_object_detection.tflite");
+const AUTOFLIP_LABELS_URL = modelAssetUrl("/models/autoflip_ssdlite/ssdlite_object_detection_labelmap.txt");
 const AUTOFLIP_MODEL_ID = "mediapipe-ssdlite-object-detection-320";
-const FACE_MODEL_URL = modelAssetUrl("/models/mediapipe/blaze_face_full_range/blaze_face_full_range.tflite");
+const FACE_MODEL_URL = modelAssetUrl("/models/blaze_face_full_range/blaze_face_full_range.tflite");
 const AUTOFLIP_INPUT_SIZE = 320;
 const AUTOFLIP_SCORE_THRESHOLD = 0.6;
 const AUTOFLIP_NMS_IOU_THRESHOLD = 0.4;

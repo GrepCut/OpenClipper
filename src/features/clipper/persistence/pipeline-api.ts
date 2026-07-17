@@ -128,8 +128,13 @@ export const clipperPipelineService = {
             : update.metadata,
       });
     }
-    await localRecordPut(STEPS, projectId, projectId, [...byKey.values()]);
-    return getState(projectId);
+    const steps = [...byKey.values()];
+    await localRecordPut(STEPS, projectId, projectId, steps);
+    const faceAnalysis = await localRecordGet<ClipperFaceAnalysisRecord>(
+      FACE,
+      projectId,
+    );
+    return { steps, resumePlan: computeResumePlan(steps), faceAnalysis };
   },
 
   resetPipeline: async (projectId: string): Promise<void> => {
