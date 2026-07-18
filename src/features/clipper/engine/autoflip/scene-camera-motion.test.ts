@@ -127,3 +127,51 @@ describe("analyzeSceneMotion with cropScale", () => {
     }
   });
 });
+
+describe("analyzeSceneMotion bounded sweeping", () => {
+  it("sweeps only between observed salient centers", () => {
+    const keyframes = Array.from({ length: 10 }, (_, index): KeyFrameSalientInput => {
+      const offset = index < 5 ? 0 : 0.1;
+      return {
+        time: index * 0.2,
+        regions: [0.05, 0.45, 0.85].map((x) => faceRegion(x + offset, 0.4)),
+        isShotChange: false,
+      };
+    });
+    const motion = analyzeSceneMotion({
+      keyframes,
+      frameWidth: FRAME_W,
+      frameHeight: FRAME_H,
+      targetAspectRatio: PORTRAIT,
+    });
+
+    expect(motion.summary.motionType).toBe("sweeping");
+    const centers = motion.focusPointFrames.map((frame) => frame.points[0]!.x);
+    expect(Math.min(...centers)).toBeGreaterThan(0.35);
+    expect(Math.max(...centers)).toBeLessThan(0.7);
+  });
+
+  it("falls back to a steady crop when salient centers have no travel", () => {
+    const motion = analyzeSceneMotion({
+      keyframes: keyframesWith([faceRegion(0.05, 0.4), faceRegion(0.45, 0.4), faceRegion(0.85, 0.4)]),
+      frameWidth: FRAME_W,
+      frameHeight: FRAME_H,
+      targetAspectRatio: PORTRAIT,
+    });
+
+    expect(motion.summary.motionType).toBe("steady");
+    expect(new Set(motion.focusPointFrames.map((frame) => frame.points[0]!.x)).size).toBe(1);
+  });
+
+  it("keeps no-salience scenes centered", () => {
+    const motion = analyzeSceneMotion({
+      keyframes: keyframesWith([]),
+      frameWidth: FRAME_W,
+      frameHeight: FRAME_H,
+      targetAspectRatio: PORTRAIT,
+    });
+
+    expect(motion.summary.motionType).toBe("steady");
+    expect(motion.focusPointFrames.every((frame) => frame.points.every((point) => point.x === 0.5))).toBe(true);
+  });
+});

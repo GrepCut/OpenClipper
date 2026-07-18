@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<instruction id="open-clipper-benchmark-improvement" version="2">
+<instruction id="open-clipper-benchmark-improvement" version="3">
 
   <title>Improve Open Clipper tracking/crop quality from benchmark miss frames</title>
 
   <objective>
     Review an existing, frozen benchmark dataset and its completed test run.
     Inspect quantitative results and exported miss-frame JPEGs.
+    Consult reference-algorithms for applicable detection, tracking, and crop strategies.
     Propose and implement code changes in the Open Clipper repository that improve
     focusHit metrics — without changing the dataset or any ground-truth annotations.
   </objective>
@@ -68,7 +69,31 @@
       Read miss-frames/manifest.json at the path from ARG1: per-frame score, focusHit,
       focusErrorRadius, normalized viewports, and target details.
     </input>
+    <input name="referenceAlgorithms" required="true">
+      Read and actively use material under:
+      C:\Users\Adam\Desktop\01project_starling\open-clipper\reference-algorithms
+      Treat this folder as the primary reference library for algorithm ideas, prior art,
+      pseudocode, papers, ONNX/model notes, and integration sketches relevant to tracking,
+      cropping, detection, salience, and subject selection. Search it early in the workflow
+      and cite specific files when proposing fixes.
+    </input>
   </inputs>
+
+  <referenceAlgorithms priority="high">
+    <path>C:\Users\Adam\Desktop\01project_starling\open-clipper\reference-algorithms</path>
+    <usage>
+      The agent SHOULD consult this folder while working on benchmark improvements — not only
+      may it draw inspiration, but it is expected to search it, read relevant entries, and
+      weave applicable ideas into analysis and implementation plans (including the chat prompt
+      and proposed code changes). Prefer algorithms and patterns documented there when they
+      match a observed miss-frame failure mode.
+    </usage>
+    <rules>
+      <rule>Read-only: do not modify files in reference-algorithms unless the user explicitly asks.</rule>
+      <rule>Port ideas into production code under src/ and src-tauri/; do not depend on runtime reads from this folder.</rule>
+      <rule>When a reference entry suggests a model or detector, respect stack constraints (WinML ONNX vs WASM/MediaPipe) already noted in docs/next-iteration-algorithms.md.</rule>
+    </rules>
+  </referenceAlgorithms>
 
   <missFrameVisualLegend>
     <item color="red">Crop viewport rectangle produced by the tracker</item>
@@ -93,6 +118,12 @@
       For each failure cluster, identify the likely pipeline stage:
       detection, tracking, smoothing, aspect crop, focus point selection.
     </step>
+    <step order="3b">
+      For each failure cluster, search reference-algorithms
+      (C:\Users\Adam\Desktop\01project_starling\open-clipper\reference-algorithms)
+      for matching algorithms, heuristics, or integration notes. Use them in the prompt and
+      in the proposed fix — name the reference file(s) and how they map to the pipeline stage.
+    </step>
     <step order="4">
       Trace relevant code under C:\Users\Adam\Desktop\01project_starling\open-clipper.
       Key areas to search:
@@ -101,7 +132,8 @@
       - src-tauri/src/ (Rust video/decode/export if applicable)
     </step>
     <step order="5">
-      Propose concrete code changes with rationale tied to specific miss-frame evidence.
+      Propose concrete code changes with rationale tied to specific miss-frame evidence
+      and, where applicable, reference-algorithms entries consulted in step 3b.
       Prefer minimal, general fixes over per-clip hacks.
     </step>
     <step order="6">
@@ -121,7 +153,7 @@
   </workflow>
 
   <deliverables>
-    <deliverable>Written analysis linking miss-frame visuals to root causes</deliverable>
+    <deliverable>Written analysis linking miss-frame visuals to root causes and any reference-algorithms sources used</deliverable>
     <deliverable>Code diff limited to C:\Users\Adam\Desktop\01project_starling\open-clipper</deliverable>
     <deliverable>Before/after benchmark metric table (same dataset, new run)</deliverable>
     <deliverable>List of remaining failure modes if metrics did not fully recover</deliverable>

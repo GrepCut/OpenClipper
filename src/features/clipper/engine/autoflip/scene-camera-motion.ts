@@ -32,6 +32,10 @@ function rectCenter(rect: NormalizedRect): { x: number; y: number } {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
+function clampCenter(center: number, cropSize: number): number {
+  return Math.max(cropSize / 2, Math.min(1 - cropSize / 2, center));
+}
+
 function motionSpanPercent(
   crops: NormalizedRect[],
   frameWidth: number,
@@ -159,23 +163,8 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
     : 0;
   const sceneTimes = input.sceneTimestampsUs?.map((time) => time / 1_000_000) ?? input.keyframes.map((keyframe) => keyframe.time);
   const sceneSpanSec = Math.max(0, (sceneTimes.at(-1) ?? 0) - (sceneTimes[0] ?? 0));
-  const motionType = decideMotionType(motionAmount, successRate, sceneSpanSec, input.allowSweeping ?? true, Boolean(input.hasSolidColorBackground), hasSalientRegion);
-
-  let lookAtCenterX = 0.5;
-  let lookAtCenterY = 0.5;
-  if (motionType === "steady" && hasSalientRegion && keyframeCrops.length > 0) {
-    const centers = keyframeCrops.map((item) => rectCenter(item.rect));
-    lookAtCenterX = (Math.min(...centers.map((center) => center.x)) + Math.max(...centers.map((center) => center.x))) / 2;
-    lookAtCenterY = (Math.min(...centers.map((center) => center.y)) + Math.max(...centers.map((center) => center.y))) / 2;
-    // A shrunk window makes a snap-to-centre worth more pixels, so the
-    // deadband tightens with the zoom scale.
-    if (Math.abs(lookAtCenterX - 0.5) < STEADY_CENTER_DEADBAND * cropScale) lookAtCenterX = 0.5;
-    if (Math.abs(lookAtCenterY - 0.5) < STEADY_CENTER_DEADBAND * cropScale) lookAtCenterY = 0.5;
-  } else if (keyframeCrops.length > 0) {
-    const last = rectCenter(keyframeCrops.at(-1)!.rect);
-    lookAtCenterX = last.x;
-    lookAtCenterY = last.y;
-  }
+  const requestedMotionType = decideMotionType(motionAmount, successRate, sceneSpanSec, input.allowSweeping ?? true, Boolean(input.hasSolidColorBackground), hasSalientRegion);
+  const keyframeCenters = keyframeCrops.map((item) => rectCenter(item.rect));
 
   // The scene window is the maximum of the (possibly zoomed) target and the
   // focus-band unions; the reference performs this aggregation before motion.
@@ -192,8 +181,50 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
   const unscaledAggWidthNorm = Math.max(targetWidthNorm, ...nonEmptyResults.map(({ result }) => result.region.width));
   const sweepHorizontally =
     unscaledAggWidthNorm > targetWidthNorm + 1e-6 || targetHeightNorm >= 1 - 1e-6;
+  // The reference supports sweep_entire_frame=false: travel only between the
+  // observed keyframe-center bounds. This prevents a valid face cluster on
+  // one side of the frame from triggering an unrelated edge-to-edge scan.
+  const sweepAxisCenters = keyframeCenters.map((center) => sweepHorizontally ? center.x : center.y);
+  const sweepCropSize = sweepHorizontally ? targetWidthNorm : targetHeightNorm;
+  const sweepStartCenter = sweepAxisCenters.length
+    ? clampCenter(Math.min(...sweepAxisCenters), sweepCropSize)
+    : 0.5;
+  const sweepEndCenter = sweepAxisCenters.length
+    ? clampCenter(Math.max(...sweepAxisCenters), sweepCropSize)
+    : 0.5;
+  const motionType: SceneCameraMotionType = requestedMotionType === "sweeping"
+    && sweepEndCenter - sweepStartCenter <= 1e-6
+    ? "steady"
+    : requestedMotionType;
   const sceneCropWidthNorm = motionType === "sweeping" ? targetWidthNorm : aggregatedCropWidthNorm;
   const sceneCropHeightNorm = motionType === "sweeping" ? targetHeightNorm : aggregatedCropHeightNorm;
+
+  const centerMinX = keyframeCenters.length ? Math.min(...keyframeCenters.map((center) => center.x)) : 0.5;
+  const centerMaxX = keyframeCenters.length ? Math.max(...keyframeCenters.map((center) => center.x)) : 0.5;
+  const centerMinY = keyframeCenters.length ? Math.min(...keyframeCenters.map((center) => center.y)) : 0.5;
+  const centerMaxY = keyframeCenters.length ? Math.max(...keyframeCenters.map((center) => center.y)) : 0.5;
+  let lookAtCenterX = 0.5;
+  let lookAtCenterY = 0.5;
+  if (motionType === "steady" && hasSalientRegion && keyframeCenters.length > 0) {
+    lookAtCenterX = (centerMinX + centerMaxX) / 2;
+    lookAtCenterY = (centerMinY + centerMaxY) / 2;
+    // A shrunk window makes a snap-to-centre worth more pixels, so the
+    // deadband tightens with the zoom scale.
+    if (Math.abs(lookAtCenterX - 0.5) < STEADY_CENTER_DEADBAND * cropScale) lookAtCenterX = 0.5;
+    if (Math.abs(lookAtCenterY - 0.5) < STEADY_CENTER_DEADBAND * cropScale) lookAtCenterY = 0.5;
+  } else if (motionType === "sweeping") {
+    if (sweepHorizontally) {
+      lookAtCenterX = (sweepStartCenter + sweepEndCenter) / 2;
+      lookAtCenterY = (centerMinY + centerMaxY) / 2;
+    } else {
+      lookAtCenterX = (centerMinX + centerMaxX) / 2;
+      lookAtCenterY = (sweepStartCenter + sweepEndCenter) / 2;
+    }
+  } else if (keyframeCenters.length > 0) {
+    const last = keyframeCenters.at(-1)!;
+    lookAtCenterX = last.x;
+    lookAtCenterY = last.y;
+  }
   const steadyRect: NormalizedRect = {
     x: Math.max(0, Math.min(1 - sceneCropWidthNorm, lookAtCenterX - sceneCropWidthNorm / 2)),
     y: Math.max(0, Math.min(1 - sceneCropHeightNorm, lookAtCenterY - sceneCropHeightNorm / 2)),
@@ -212,8 +243,12 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
         ? steadyRect
         : motionType === "sweeping"
           ? {
-            x: sweepHorizontally ? sweepFraction - sceneCropWidthNorm / 2 : 0.5 - sceneCropWidthNorm / 2,
-            y: sweepHorizontally ? 0.5 - sceneCropHeightNorm / 2 : sweepFraction - sceneCropHeightNorm / 2,
+            x: sweepHorizontally
+              ? sweepStartCenter + (sweepEndCenter - sweepStartCenter) * sweepFraction - sceneCropWidthNorm / 2
+              : clampCenter(lookAtCenterX, sceneCropWidthNorm) - sceneCropWidthNorm / 2,
+            y: sweepHorizontally
+              ? clampCenter(lookAtCenterY, sceneCropHeightNorm) - sceneCropHeightNorm / 2
+              : sweepStartCenter + (sweepEndCenter - sweepStartCenter) * sweepFraction - sceneCropHeightNorm / 2,
             width: sceneCropWidthNorm,
             height: sceneCropHeightNorm,
           }

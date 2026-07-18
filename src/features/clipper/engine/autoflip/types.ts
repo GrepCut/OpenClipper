@@ -2,7 +2,7 @@ import type { NormalizedBox } from "../../shared/smart-crop";
 
 // v8 makes solid-background/padding decisions per scene, matching the graph.
 // Persisted v7 tracks cannot recover per-shot background evidence.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v10";
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v11";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "mediapipe-ssdlite-object-detection-320";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;

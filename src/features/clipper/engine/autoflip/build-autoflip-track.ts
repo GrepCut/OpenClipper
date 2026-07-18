@@ -8,7 +8,7 @@ import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
-import type { FocusPointFrame } from "./types";
+import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
 
 export interface BuildAutoFlipTrackInput {
   clipStart: number;
@@ -42,6 +42,11 @@ export interface BuildAutoFlipTrackInput {
 }
 
 const FULL_FRAME: NormalizedBox = { x: 0, y: 0, width: 1, height: 1 };
+const FOREGROUND_SIGNALS = new Set<SalientSignalType>(["face_core", "face_all", "face_full", "human", "pet", "car"]);
+
+function hasForegroundSalience(keyframes: KeyFrameSalientInput[]): boolean {
+  return keyframes.some((keyframe) => keyframe.regions.some((region) => FOREGROUND_SIGNALS.has(region.signalType)));
+}
 
 function validContentRect(rect: NormalizedBox | undefined): NormalizedBox {
   if (!rect || rect.width <= 0 || rect.height <= 0) return FULL_FRAME;
@@ -213,6 +218,9 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     // uses the graph-compatible solid-colour padding path.
     let continuationFocus: FocusPointFrame[] = [];
     for (const [sceneIndex, scene] of scenes.entries()) {
+      const sceneKeyframes = keyframes.filter(
+        (keyframe) => keyframe.time >= scene.start - 1e-9 && (keyframe.time < scene.end - 1e-9 || scene.end >= input.clipEnd - 1e-9),
+      );
       const sceneBackground = solidBackgroundForScene(
         scene,
         input.staticFeatureSamples,
@@ -220,7 +228,8 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         input.solidBackgroundColor,
       );
       const preserveContentWithPadding = sceneBackground.hasSolid
-        && Math.abs(frameWidth / frameHeight - targetAspectRatio) > 0.001;
+        && Math.abs(frameWidth / frameHeight - targetAspectRatio) > 0.001
+        && !hasForegroundSalience(sceneKeyframes);
       if (preserveContentWithPadding) {
         const timeline = buildSceneTimeline(scene.start, scene.end, sourceFrameRate, scene.end >= input.clipEnd - 1e-9);
         timeline.timestampsUs.forEach((timestampUs, index) => {
@@ -231,11 +240,23 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
             solidBackgroundColor: sceneBackground.color,
           });
         });
+        debugScenes?.push({
+          formatId,
+          start: scene.start,
+          end: scene.end,
+          motionType: "padding",
+          lookAtCenterX: 0.5,
+          lookAtCenterY: 0.5,
+          cropWindowWidthNorm: 1,
+          cropWindowHeightNorm: 1,
+          keyframes: sceneKeyframes.map((keyframe) => ({
+            time: keyframe.time,
+            regions: keyframe.regions.map((region) => ({ box: region.box, score: region.score, signalType: region.signalType })),
+            chosenRect: FULL_FRAME,
+          })),
+        });
         continue;
       }
-      const sceneKeyframes = keyframes.filter(
-        (keyframe) => keyframe.time >= scene.start - 1e-9 && (keyframe.time < scene.end - 1e-9 || scene.end >= input.clipEnd - 1e-9),
-      );
       if (sceneKeyframes.length === 0) continue;
       const timeline = buildSceneTimeline(scene.start, scene.end, sourceFrameRate, scene.end >= input.clipEnd - 1e-9);
       const motion = analyzeSceneMotion({
