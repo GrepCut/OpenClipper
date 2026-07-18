@@ -12,6 +12,9 @@ export interface BenchmarkCliAspectSummary {
   aspectId: string;
   status: string;
   focusHitRate: number | null;
+  targetVisibilityRate: number | null;
+  dualTargetAllVisibleRate: number | null;
+  layoutModeRates: Record<"single-crop" | "split" | "contain", number> | null;
   meanFocusErrorRadius: number | null;
   error: string | null;
 }
@@ -89,6 +92,9 @@ function summarizeResults(
       aspectId: result.aspectId,
       status: result.status,
       focusHitRate: result.metricsJson.focusHitRate ?? null,
+      targetVisibilityRate: result.metricsJson.targetVisibilityRate ?? null,
+      dualTargetAllVisibleRate: result.metricsJson.dualTargetAllVisibleRate ?? null,
+      layoutModeRates: result.metricsJson.layoutModeRates ?? null,
       meanFocusErrorRadius: result.metricsJson.meanFocusErrorRadius ?? null,
       error: result.error,
     }));

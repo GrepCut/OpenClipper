@@ -38,6 +38,8 @@ export interface SubjectDetectionSample {
   detections: SubjectDetection[];
   autoflipFaces?: AutoFlipFaceDetection[];
   poseSubjects?: PoseSubject[];
+  /** Sparse semantic/action proposals aligned to this detector sample. */
+  importanceSignals?: ImportanceSignalRegion[];
   /** Detector that produced this sample; persisted only as analysis provenance. */
   modelId?: string;
   /** Present when the exact AutoFlip model could not be initialized. */
@@ -52,6 +54,100 @@ export interface MotionRegion extends NormalizedBox {
 export interface MotionSample {
   time: number;
   regions: MotionRegion[];
+}
+
+/** Optional semantic signals produced by specialised local analyzers. */
+export type ImportanceSignalKind =
+  | "video-saliency"
+  | "active-speaker"
+  | "head"
+  | "screen"
+  | "motion";
+
+export interface ImportanceSignalRegion {
+  box: NormalizedBox;
+  kind: ImportanceSignalKind;
+  confidence: number;
+  trackId?: number;
+  predicted?: boolean;
+}
+
+export interface ImportanceSignalSample {
+  time: number;
+  regions: ImportanceSignalRegion[];
+}
+
+export type ImportanceRegionKind =
+  | "face"
+  | "head"
+  | "speaker"
+  | "person"
+  | "action"
+  | "screen"
+  | "object";
+
+export type ImportanceRegionSource =
+  | "face"
+  | "head"
+  | "pose"
+  | "person"
+  | "object"
+  | "motion"
+  | "video-saliency"
+  | "active-speaker";
+
+/** A temporally ranked editing target, distinct from a raw detector box. */
+export interface ImportanceRegion {
+  id: string;
+  box: NormalizedBox;
+  /** Broader region that should remain visible while `box` drives composition. */
+  contentBox: NormalizedBox;
+  kind: ImportanceRegionKind;
+  importanceScore: number;
+  confidence: number;
+  required: boolean;
+  role: "primary" | "secondary" | "candidate";
+  sources: ImportanceRegionSource[];
+  trackId?: number;
+  predicted?: boolean;
+}
+
+export interface ImportanceRegionSample {
+  time: number;
+  regions: ImportanceRegion[];
+  cut?: boolean;
+}
+
+export type ClipperLayoutMode = "single-crop" | "split" | "contain";
+export type ClipperLayoutStrategy =
+  | "legacy-baseline"
+  | "semantic-single"
+  | "semantic-split"
+  | "semantic-contain";
+
+/** Source-space render instruction for one instant of one output format. */
+export interface ClipperLayoutSample {
+  t: number;
+  mode: ClipperLayoutMode;
+  /** The renderer falls through to the proven v2/Run4 path for legacy-baseline. */
+  strategy?: ClipperLayoutStrategy;
+  viewports: NormalizedBox[];
+  /** Shadow proposal retained even when the baseline wins arbitration. */
+  candidateMode?: ClipperLayoutMode;
+  candidateViewports?: NormalizedBox[];
+  primaryRegionId?: string;
+  requiredRegionIds: string[];
+  baselineScore?: number;
+  semanticScore?: number;
+  decisionConfidence?: number;
+  reasonCodes?: string[];
+  cut?: boolean;
+  solidBackgroundColor?: { r: number; g: number; b: number };
+}
+
+export interface ClipperLayoutTrack {
+  targetAspectRatio: number;
+  samples: ClipperLayoutSample[];
 }
 
 /** Static-background observation captured alongside an AutoFlip keyframe. */
@@ -130,6 +226,10 @@ export interface ClipperSmartCropBlob {
   samples: SmartCropSample[];
   /** v2: independent, lossless AutoFlip paths for every enabled crop format. */
   aspectTracks?: Record<string, AutoFlipAspectTrack>;
+  /** v3: human-importance targets retained for diagnostics and future reranking. */
+  importanceSamples?: ImportanceRegionSample[];
+  /** v3: format-aware crop/split/contain decisions used before legacy collage logic. */
+  layoutTracks?: Record<string, ClipperLayoutTrack>;
   /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
   debug?: AutoFlipSceneDebug[];
 }

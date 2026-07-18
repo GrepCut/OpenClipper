@@ -1,8 +1,8 @@
 import type { NormalizedBox } from "../../shared/smart-crop";
 
-// v8 makes solid-background/padding decisions per scene, matching the graph.
-// Persisted v7 tracks cannot recover per-shot background evidence.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v12";
+// v14 keeps the proven v2/Run4 camera path as a lossless baseline and lets
+// semantic layout override it only after a conservative, persisted decision.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v14-hybrid-arbiter";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v2";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;
@@ -34,7 +34,12 @@ export type SalientSignalType =
   | "human"
   | "pet"
   | "car"
-  | "object";
+  | "object"
+  | "head"
+  | "screen"
+  | "motion"
+  | "video_saliency"
+  | "active_speaker";
 
 export interface SalientRegion {
   box: NormalizedBox;

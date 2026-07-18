@@ -20,12 +20,14 @@ import {
   isCollageAspectEligible,
   resolvePodcastCollageLayout,
 } from "../../clipper/engine/collage";
-import { resolveAutoFlipCropRect } from "../../clipper/engine/frame-draw";
+import { resolveAutoFlipCropRect, resolveClipperLayoutRender } from "../../clipper/engine/frame-draw";
 import { canonicalFormatDims, getClipperFormatDef } from "../../clipper/shared/formats";
 import { DEFAULT_CLIPPER_SETTINGS } from "../../clipper/settings/settings";
 import type { TestClip, TestKeyframe } from "../types";
 import { TEST_ASPECTS } from "../types";
 import { calculateBenchmarkMetrics, type NormalizedViewport } from "./metrics";
+import { calculateLayoutOracle } from "./oracle";
+import { interpolateLayoutSample, resolveLayoutTrack } from "../../clipper/engine/autoflip/layout-planner";
 
 export interface TestBenchmarkProgress {
   phase: string;
@@ -36,6 +38,11 @@ export interface TestBenchmarkAspectOutput {
   aspectId: string;
   metrics: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
   details: ReturnType<typeof calculateBenchmarkMetrics>["details"];
+  baselineMetrics: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
+  baselineDetails: ReturnType<typeof calculateBenchmarkMetrics>["details"];
+  semanticCandidateMetrics: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
+  semanticCandidateDetails: ReturnType<typeof calculateBenchmarkMetrics>["details"];
+  oracle: ReturnType<typeof calculateLayoutOracle>;
 }
 
 export interface TestBenchmarkAnalysisOutput {
@@ -172,7 +179,7 @@ export async function runTestBenchmarkAnalysis(input: {
   const aspects = TEST_ASPECTS.map<TestBenchmarkAspectOutput>((aspect, aspectIndex) => {
     const format = getClipperFormatDef(aspect.formatId)!;
     const output = canonicalFormatDims(format);
-    const frames = timestamps.map((timestamp) => {
+    const baselineFrame = (timestamp: number) => {
       const activeRegion = findActiveRegion(regions, timestamp);
       const useCollage = activeRegion != null
         && isCollageAspectEligible(eligibility, format.aspectId, activeRegion.id, timestamp);
@@ -194,7 +201,30 @@ export async function runTestBenchmarkAnalysis(input: {
           ?? cropRectForCentroid(source.width, source.height, 0.5, 0.5, aspect.ratio, "normal");
         viewports = [normalizedViewport(crop, source.width, source.height)];
       }
-      return { timestampUs: Math.round(timestamp * 1_000_000), viewports };
+      return {
+        timestampUs: Math.round(timestamp * 1_000_000),
+        layoutMode: useCollage ? "split" as const : "single-crop" as const,
+        viewports,
+      };
+    };
+    const baselineFrames = timestamps.map(baselineFrame);
+    const frames = timestamps.map((timestamp, index) => {
+      const plannedLayout = resolveClipperLayoutRender(blob, aspect.formatId, source, timestamp);
+      return plannedLayout ? {
+        timestampUs: Math.round(timestamp * 1_000_000),
+        layoutMode: plannedLayout.mode,
+        viewports: plannedLayout.viewports.map((viewport) => normalizedViewport(viewport, source.width, source.height)),
+      } : baselineFrames[index]!;
+    });
+    const layoutTrack = resolveLayoutTrack(blob.layoutTracks, aspect.formatId);
+    const semanticFrames = timestamps.map((timestamp, index) => {
+      const sample = interpolateLayoutSample(layoutTrack, timestamp);
+      if (!sample?.candidateViewports?.length) return baselineFrames[index]!;
+      return {
+        timestampUs: Math.round(timestamp * 1_000_000),
+        layoutMode: sample.candidateMode ?? sample.mode,
+        viewports: sample.candidateViewports,
+      };
     });
     const evaluated = calculateBenchmarkMetrics({
       keyframes: input.keyframes,
@@ -202,16 +232,45 @@ export async function runTestBenchmarkAnalysis(input: {
       sourceWidth: source.width,
       sourceHeight: source.height,
     });
+    const baselineEvaluated = calculateBenchmarkMetrics({
+      keyframes: input.keyframes,
+      frames: baselineFrames,
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+    });
+    const semanticEvaluated = calculateBenchmarkMetrics({
+      keyframes: input.keyframes,
+      frames: semanticFrames,
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+    });
+    const oracle = calculateLayoutOracle({
+      timestampsSec: timestamps,
+      keyframes: input.keyframes,
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+      targetAspectRatio: aspect.ratio,
+    });
     input.onProgress?.({
       phase: `Evaluating ${aspect.label}`,
       ratio: 0.94 + ((aspectIndex + 1) / TEST_ASPECTS.length) * 0.06,
     });
-    return { aspectId: aspect.id, ...evaluated };
+    return {
+      aspectId: aspect.id,
+      ...evaluated,
+      baselineMetrics: baselineEvaluated.metrics,
+      baselineDetails: baselineEvaluated.details,
+      semanticCandidateMetrics: semanticEvaluated.metrics,
+      semanticCandidateDetails: semanticEvaluated.details,
+      oracle,
+    };
   });
   const processingMs = performance.now() - started;
   for (const aspect of aspects) {
     aspect.metrics.processingMs = processingMs;
     aspect.metrics.realtimeFactor = input.clip.duration / Math.max(0.001, processingMs / 1000);
+    aspect.baselineMetrics.processingMs = processingMs;
+    aspect.semanticCandidateMetrics.processingMs = processingMs;
   }
   return {
     aspects,
@@ -221,6 +280,10 @@ export async function runTestBenchmarkAnalysis(input: {
     sourceFrameRate: summary.sourceFrameRate,
     processingMs,
     degradedReason,
-    autoflipDebug: blob.debug ?? null,
+    autoflipDebug: {
+      scenes: blob.debug ?? [],
+      importanceSamples: blob.importanceSamples ?? [],
+      layoutTracks: blob.layoutTracks ?? {},
+    },
   };
 }

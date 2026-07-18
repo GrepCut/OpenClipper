@@ -19,9 +19,10 @@ use super::clipper_border::detect_border_features;
 use super::clipper_frames::{should_decode_video_packet, AutoFlipShotBoundaryDetector};
 use super::histogram::compute_autoflip_histogram_raw;
 use super::vision_logic::{
-    box_iou, decode_blaze, decode_movenet, decode_ssd, weighted_face_nms, AutoFlipFaceDetection,
-    Letterbox, PoseSubject, RecoveryPolicy, Rotation, SubjectDetection, BLAZE_INPUT_SIZE,
-    MOVENET_INPUT_SIZE, SSD_INPUT_SIZE,
+    box_iou, decode_blaze, decode_movenet, decode_ssd, detect_motion_saliency,
+    weighted_face_nms, AutoFlipFaceDetection, Letterbox, NormalizedBox, PoseSubject,
+    RecoveryPolicy, Rotation, SubjectDetection, BLAZE_INPUT_SIZE, MOVENET_INPUT_SIZE,
+    SSD_INPUT_SIZE,
 };
 use super::winml_vision::{
     fp16_variant_path, resource_paths, NativeVisionDevice, NativeVisionError, VisionModel,
@@ -42,6 +43,10 @@ const MAX_BATCH: usize = BATCH_BOUND;
 /// against each other on the GPU.
 const FACE_WORKERS: usize = 1;
 const OBJECT_WORKERS: usize = 1;
+/** Pose is a contextual fallback, not an unconditional second full detector. */
+const POSE_PERSON_SAMPLE_STRIDE: usize = 2;
+const POSE_RECOVERY_SAMPLE_STRIDE: usize = 1;
+const POSE_PERSON_CONFIDENCE: f32 = 0.25;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,7 +75,17 @@ pub struct NativeSubjectSample {
     detections: Vec<SubjectDetection>,
     autoflip_faces: Vec<AutoFlipFaceDetection>,
     pose_subjects: Vec<PoseSubject>,
+    importance_signals: Vec<NativeImportanceSignalRegion>,
     model_id: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeImportanceSignalRegion {
+    #[serde(rename = "box")]
+    box_: NormalizedBox,
+    kind: &'static str,
+    confidence: f32,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -201,6 +216,7 @@ struct ObjectResult {
     time: f64,
     detections: Vec<SubjectDetection>,
     poses: Vec<PoseSubject>,
+    motion_signal: Option<(NormalizedBox, f32)>,
     device: NativeVisionDevice,
     pose_device: NativeVisionDevice,
     duration_ms: u64,
@@ -854,6 +870,8 @@ fn spawn_object_worker(
         // policy while using FIR's SIMD implementation and reusable buffers.
         let resize_options =
             ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FastFilterType::Bilinear));
+        let mut pose_sample_index = 0usize;
+        let mut previous_motion_frame: Option<Arc<AnalysisFrame>> = None;
         while let Ok(first) = jobs.recv() {
             if cancelled.load(Ordering::Relaxed) {
                 break;
@@ -930,6 +948,51 @@ fn spawn_object_worker(
                 Ok((outcomes, device)) => {
                     let duration_ms = started.elapsed().as_millis() as u64 / count as u64;
                     for (frame, detections) in batch.into_iter().zip(outcomes) {
+                        let motion_signal = if frame.scene_cut {
+                            None
+                        } else {
+                            previous_motion_frame.as_ref().and_then(|previous| {
+                                (previous.width == frame.width && previous.height == frame.height).then(|| {
+                                    detect_motion_saliency(
+                                        &previous.rgb,
+                                        &frame.rgb,
+                                        frame.width as usize,
+                                        frame.height as usize,
+                                    )
+                                }).flatten()
+                            })
+                        };
+                        previous_motion_frame = Some(frame.clone());
+                        let has_person = detections.iter().any(|detection| {
+                            detection.label.eq_ignore_ascii_case("person")
+                                && detection.score >= POSE_PERSON_CONFIDENCE
+                        });
+                        let should_run_pose = if frame.scene_cut {
+                            true
+                        } else if has_person {
+                            pose_sample_index % POSE_PERSON_SAMPLE_STRIDE == 0
+                        } else {
+                            pose_sample_index % POSE_RECOVERY_SAMPLE_STRIDE == 0
+                        };
+                        pose_sample_index = pose_sample_index.wrapping_add(1);
+                        if !should_run_pose {
+                            let pose_device = pose_model
+                                .as_ref()
+                                .map(WinMlModel::device)
+                                .unwrap_or(NativeVisionDevice::Cpu);
+                            let _ = results.send(WorkerResult::Object(ObjectResult {
+                                index: frame.index,
+                                time: frame.time,
+                                detections,
+                                poses: Vec::new(),
+                                motion_signal,
+                                device,
+                                pose_device,
+                                duration_ms,
+                                pose_duration_ms: 0,
+                            }));
+                            continue;
+                        }
                         let pose_preprocess_started = Instant::now();
                         let mut pose_input =
                             vec![0.0f32; MOVENET_INPUT_SIZE * MOVENET_INPUT_SIZE * 3];
@@ -992,6 +1055,7 @@ fn spawn_object_worker(
                             time: frame.time,
                             detections,
                             poses,
+                            motion_signal,
                             device,
                             pose_device,
                             duration_ms,
@@ -1703,15 +1767,16 @@ pub fn analyze(
     }
     // Raw MoveNet observations are valuable for small/blurred action subjects,
     // but isolated low-confidence poses can also fire on human-shaped scenery.
-    // Only bypass ByteTrack's 0.7 new-track gate when pose evidence persists
-    // through most of the clip.
+    // Only bypass ByteTrack's 0.7 new-track gate when pose evidence persists.
+    // Pose v3 runs every second person sample, so 30% of all detector samples
+    // represents strong clip-level evidence rather than the former 70%.
     let preserve_raw_pose_observations = sample_count > 0
         && object_results
             .values()
             .filter(|result| !result.poses.is_empty())
             .count()
             * 10
-            >= sample_count * 7
+            >= sample_count * 3
         && face_results
             .values()
             .filter(|result| !result.faces.is_empty())
@@ -1819,6 +1884,9 @@ pub fn analyze(
             detections,
             autoflip_faces,
             pose_subjects,
+            importance_signals: object.motion_signal.into_iter().map(|(box_, confidence)| {
+                NativeImportanceSignalRegion { box_, kind: "motion", confidence }
+            }).collect(),
             model_id: "clipper-vision-v2",
         };
         let face_sample = face.face_bucket.then(|| NativeFaceSample {

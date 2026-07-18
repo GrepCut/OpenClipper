@@ -11,7 +11,7 @@ import {
   type FrameEffectSize,
 } from "../lib/media/video-frame-effect";
 import type { ClipperFormatDef } from "../shared/formats";
-import type { AutoFlipAspectTrack, ClipperSmartCropBlob, NormalizedBox } from "../shared/smart-crop";
+import type { AutoFlipAspectTrack, ClipperLayoutMode, ClipperSmartCropBlob, NormalizedBox } from "../shared/smart-crop";
 import { canonicalFormatDims } from "../shared/formats";
 import type { ClipperResolutionCap, ClipperSettings } from "../settings/settings";
 import type { ClipperClipSegmentWindow } from "./clip-segmentation";
@@ -36,6 +36,7 @@ import {
   interpolateCentroid,
 } from "./reframe";
 import { resolveAutoFlipCropTrack } from "./autoflip/build-autoflip-track";
+import { interpolateLayoutSample, resolveLayoutTrack } from "./autoflip/layout-planner";
 
 function applyResolutionCap(
   dims: FrameEffectSize,
@@ -137,6 +138,66 @@ export function resolveAutoFlipCropRender(
     cropRect: { sx: resolved.crop.x * source.width, sy: resolved.crop.y * source.height, sw: resolved.crop.width * source.width, sh: resolved.crop.height * source.height },
     solidBackgroundColor: resolved.solidBackgroundColor ?? blob.solidBackgroundColor,
   };
+}
+
+export interface ResolvedClipperLayout {
+  mode: ClipperLayoutMode;
+  viewports: ClipperCropRect[];
+  solidBackgroundColor?: { r: number; g: number; b: number };
+}
+
+/** Resolves a v3 editing decision; absent on persisted legacy analyses. */
+export function resolveClipperLayoutRender(
+  blob: ClipperSmartCropBlob | null | undefined,
+  formatId: string,
+  source: FrameEffectSize,
+  time: number,
+): ResolvedClipperLayout | undefined {
+  if (!blob) return undefined;
+  const sample = interpolateLayoutSample(resolveLayoutTrack(blob.layoutTracks, formatId), time);
+  if (!sample?.viewports.length || sample.strategy === "legacy-baseline") return undefined;
+  return {
+    mode: sample.mode,
+    viewports: sample.viewports.map((viewport) => ({
+      sx: viewport.x * source.width,
+      sy: viewport.y * source.height,
+      sw: viewport.width * source.width,
+      sh: viewport.height * source.height,
+    })),
+    solidBackgroundColor: sample.solidBackgroundColor ?? blob.solidBackgroundColor,
+  };
+}
+
+/** Draws an explicit v3 crop/split/contain decision. */
+export function drawClipperLayoutFrame(
+  formatDef: ClipperFormatDef,
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  frame: CanvasImageSource,
+  source: FrameEffectSize,
+  output: FrameEffectSize,
+  layout: ResolvedClipperLayout,
+): void {
+  if (layout.mode !== "split" || layout.viewports.length < 2) {
+    drawClipperPlatformFrame(
+      formatDef,
+      ctx,
+      frame,
+      source,
+      output,
+      layout.viewports[0],
+      layout.solidBackgroundColor,
+    );
+    return;
+  }
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, output.width, output.height);
+  const topHeight = evenInt(output.height / 2);
+  const bottomHeight = output.height - topHeight;
+  const [top, bottom] = layout.viewports;
+  ctx.drawImage(frame, top!.sx, top!.sy, top!.sw, top!.sh, 0, 0, output.width, topHeight);
+  ctx.drawImage(frame, bottom!.sx, bottom!.sy, bottom!.sw, bottom!.sh, 0, topHeight, output.width, bottomHeight);
+  ctx.fillStyle = "rgba(0,0,0,0.85)";
+  ctx.fillRect(0, topHeight - 1.5, output.width, 3);
 }
 
 /** Draws one crop/pad-framed frame — no captions/branding. */
@@ -314,6 +375,9 @@ export function drawClipperFrame(
   isPreview = false,
 ): void {
   const needsTracking = formatNeedsFaceTracking(formatDef, render.settings);
+  const resolvedPlannedLayout = render.settings.reframe.cropMode === "smart-follow" && formatDef.mode === "crop"
+    ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t)
+    : undefined;
   const samples = needsTracking && !render.faceRender ? render.faceCache?.sortedSamples() ?? [] : [];
   const collageRegions = needsTracking
     ? (render.faceRender?.collageRegions ?? deriveTwoSpeakerRegions(samples))
@@ -333,7 +397,13 @@ export function drawClipperFrame(
     : null;
 
   const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;
+  const plannedLayout = resolvedPlannedLayout?.mode === "split"
+    && activeRegion != null
+    && render.disabledCollageRegionIds.includes(activeRegion.id)
+    ? undefined
+    : resolvedPlannedLayout;
   const useCollage =
+    plannedLayout == null &&
     render.settings.reframe.cropMode !== "manual" &&
     formatDef.mode === "crop" &&
     activeRegion != null &&
@@ -342,7 +412,9 @@ export function drawClipperFrame(
 
   const showDebug = isPreview && render.settings.reframe.showDebugFaceBoxes && formatDef.mode === "crop";
 
-  if (useCollage) {
+  if (plannedLayout) {
+    drawClipperLayoutFrame(formatDef, ctx, frame, source, output, plannedLayout);
+  } else if (useCollage) {
     drawPodcastCollageFrame(
       ctx,
       frame,

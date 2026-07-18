@@ -78,6 +78,15 @@ export interface BenchmarkMetrics {
   meanFocusErrorRadius: number | null;
   medianFocusErrorRadius: number | null;
   p95FocusErrorRadius: number | null;
+  singleTargetFrameCount?: number;
+  singleTargetVisibilityRate?: number | null;
+  singleTargetFocusHitRate?: number | null;
+  dualTargetFocusHitRate?: number | null;
+  layoutModeFrameCounts?: Record<"single-crop" | "split" | "contain", number>;
+  layoutModeRates?: Record<"single-crop" | "split" | "contain", number>;
+  meanViewportCenterVelocity?: number | null;
+  p95ViewportCenterAcceleration?: number | null;
+  meanFocusReacquisitionMs?: number | null;
   processingMs?: number;
   realtimeFactor?: number;
 }

@@ -12,6 +12,13 @@ export interface BenchmarkColumnStats {
   focusHit: ColumnStatSummary;
   p95Error: ColumnStatSummary;
   sampleCount: number;
+  /** Primary product target; the all-aspect aggregate is retained for compatibility. */
+  portrait9x16: {
+    visible: ColumnStatSummary;
+    focusHit: ColumnStatSummary;
+    dualAllVisible: ColumnStatSummary;
+    sampleCount: number;
+  };
 }
 
 function quantile(sorted: number[], p: number): number | null {
@@ -40,6 +47,7 @@ function summarizeValues(values: number[]): ColumnStatSummary {
 
 export function computeBenchmarkColumnStats(results: BenchmarkResult[]): BenchmarkColumnStats {
   const completed = results.filter((result) => result.status === "completed");
+  const portrait = completed.filter((result) => result.aspectId === "9-16");
   return {
     visible: summarizeValues(
       completed.map((result) => result.metricsJson.targetVisibilityRate).filter((value) => value != null),
@@ -53,5 +61,15 @@ export function computeBenchmarkColumnStats(results: BenchmarkResult[]): Benchma
         .filter((value): value is number => value != null),
     ),
     sampleCount: completed.length,
+    portrait9x16: {
+      visible: summarizeValues(portrait.map((result) => result.metricsJson.targetVisibilityRate)),
+      focusHit: summarizeValues(portrait.map((result) => result.metricsJson.focusHitRate)),
+      dualAllVisible: summarizeValues(
+        portrait
+          .map((result) => result.metricsJson.dualTargetAllVisibleRate)
+          .filter((value): value is number => value != null),
+      ),
+      sampleCount: portrait.length,
+    },
   };
 }

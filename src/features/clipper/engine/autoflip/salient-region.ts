@@ -19,6 +19,11 @@ const SIGNAL_WEIGHTS: Record<SalientSignalType, { minScore: number; maxScore: nu
   pet: { minScore: 0.7, maxScore: 0.75, required: false },
   car: { minScore: 0.7, maxScore: 0.75, required: false },
   object: { minScore: 0.1, maxScore: 0.2, required: false },
+  head: { minScore: 0.78, maxScore: 0.88, required: false },
+  screen: { minScore: 0.72, maxScore: 0.88, required: false },
+  motion: { minScore: 0.45, maxScore: 0.7, required: false },
+  video_saliency: { minScore: 0.55, maxScore: 0.9, required: false },
+  active_speaker: { minScore: 0.82, maxScore: 0.98, required: false },
 };
 
 const PET_LABELS = new Set(["cat", "dog", "bird", "horse"]);

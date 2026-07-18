@@ -99,7 +99,7 @@ describe("analyzeSceneMotion with cropScale", () => {
     expect(focusPoints.every((point) => point.y > 0 && point.y < 1)).toBe(true);
   });
 
-  it("never shrinks the window below the focus band", () => {
+  it("preserves Run4's wider contain window for an impossible multi-subject crop", () => {
     const bigFacePair = [faceRegion(0.2, 0.5, 0.1), faceRegion(0.8, 0.5, 0.1)];
     const motion = analyzeSceneMotion({
       keyframes: keyframesWith(bigFacePair),
@@ -108,8 +108,10 @@ describe("analyzeSceneMotion with cropScale", () => {
       targetAspectRatio: PORTRAIT,
       cropScale: AUTOFLIP_MIN_ZOOM_SCALE,
     });
-    // The two faces span ~0.7 of the width; the window must still cover them.
-    expect(motion.summary.cropWindowWidth / FRAME_W).toBeGreaterThanOrEqual(0.69);
+    const width = motion.summary.cropWindowWidth / FRAME_W;
+    const height = motion.summary.cropWindowHeight / FRAME_H;
+    expect((width * FRAME_W) / (height * FRAME_H)).toBeGreaterThan(9 / 16);
+    expect(width).toBeGreaterThan(0.4);
   });
 
   it("recenters keyframe crops on the focus band instead of the union", () => {

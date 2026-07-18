@@ -19,7 +19,7 @@ import {
   type CentroidSample,
 } from "../engine/reframe";
 import type { ClipperFrameContext } from "../engine/frame-draw";
-import type { AutoFlipStaticFeatureSample, ClipperSmartCropBlob, SubjectDetectionSample } from "../shared/smart-crop";
+import type { AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, SubjectDetectionSample } from "../shared/smart-crop";
 import type { FaceBoxSample } from "../shared/face-samples";
 import { groupCaptionWords } from "../engine/transcript";
 import type { ClipSourceMode } from "../persistence/project-metadata";
@@ -50,6 +50,8 @@ export interface PendingSubjectExtraction {
   hasSolidColorBackground?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number } | null;
   staticFeatureSamples?: AutoFlipStaticFeatureSample[];
+  /** Optional sparse outputs from head/saliency/active-speaker analyzers. */
+  importanceSignals?: ImportanceSignalSample[];
   contentRect?: { x: number; y: number; width: number; height: number };
   degradedReason?: string;
 }

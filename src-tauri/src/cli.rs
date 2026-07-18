@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
@@ -6,6 +9,33 @@ use tauri::{AppHandle, Manager};
 use crate::commands::test_benchmark::benchmark_miss_export::{
     export_benchmark_run_miss_frames_inner, ExportBenchmarkRunMissFramesResult,
 };
+
+// A detached Windows GUI process can outlive the shell that launched it.  The
+// standard println!/eprintln! macros panic when that shell closes its pipe,
+// which used to abort an otherwise healthy headless benchmark.  CLI output is
+// best-effort, so deliberately ignore a broken stdout/stderr here.
+fn write_stdout_line(args: fmt::Arguments<'_>) {
+    let _ = writeln!(io::stdout().lock(), "{args}");
+}
+
+fn write_stderr_line(args: fmt::Arguments<'_>) {
+    let _ = writeln!(io::stderr().lock(), "{args}");
+}
+
+macro_rules! println {
+    () => {
+        write_stdout_line(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        write_stdout_line(format_args!($($arg)*))
+    };
+}
+
+macro_rules! eprintln {
+    ($($arg:tt)*) => {
+        write_stderr_line(format_args!($($arg)*))
+    };
+}
 
 static BENCHMARK_CLI_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -68,6 +98,9 @@ pub struct BenchmarkCliAspectSummary {
     pub aspect_id: String,
     pub status: String,
     pub focus_hit_rate: Option<f64>,
+    pub target_visibility_rate: Option<f64>,
+    pub dual_target_all_visible_rate: Option<f64>,
+    pub layout_mode_rates: Option<HashMap<String, f64>>,
     pub mean_focus_error_radius: Option<f64>,
     pub error: Option<String>,
 }
@@ -429,8 +462,16 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
                 .mean_focus_error_radius
                 .map(|value| format!("{value:.3}"))
                 .unwrap_or_else(|| "—".to_string());
+            let visibility = aspect
+                .target_visibility_rate
+                .map(|value| format!("{:.1}%", value * 100.0))
+                .unwrap_or_else(|| "—".to_string());
+            let dual_visibility = aspect
+                .dual_target_all_visible_rate
+                .map(|value| format!("{:.1}%", value * 100.0))
+                .unwrap_or_else(|| "—".to_string());
             println!(
-                "- {} {} focusHit={focus} meanErr={mean_err} [{}]",
+                "- {} {} focusHit={focus} visible={visibility} dualVisible={dual_visibility} meanErr={mean_err} [{}]",
                 clip.clip_name, aspect.aspect_id, aspect.status
             );
             if let Some(error) = &aspect.error {

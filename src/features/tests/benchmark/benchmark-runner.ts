@@ -13,6 +13,20 @@ export interface BenchmarkRunnerProgress {
   ratio: number;
 }
 
+const PORTRAIT_ACCEPTANCE_GATES = {
+  minFocusHitRate: 0.705,
+  minTargetVisibilityRate: 0.92,
+  minDualTargetAllVisibleRate: 0.75,
+  /** Three times the run3 mean on the reference machine. */
+  maxMeanProcessingMs: 12_350,
+};
+
+const RUN4_PORTRAIT_FLOOR = {
+  minFocusHitRate: 0.654671121995118,
+  minTargetVisibilityRate: 0.895474843578556,
+  minDualTargetAllVisibleRate: 0.350063482044689,
+};
+
 export async function executeBenchmarkRun(input: {
   datasetId: string;
   clips: TestClip[];
@@ -21,8 +35,11 @@ export async function executeBenchmarkRun(input: {
   onProgress?: (progress: BenchmarkRunnerProgress) => void;
 }): Promise<BenchmarkRun> {
   const config = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     analyzer: "production-smart-follow",
+    primaryAspectId: "9-16",
+    acceptanceGates: PORTRAIT_ACCEPTANCE_GATES,
+    run4RegressionFloor: RUN4_PORTRAIT_FLOOR,
     settings: DEFAULT_CLIPPER_SETTINGS.reframe,
     aspects: TEST_ASPECTS.map(({ id, formatId, ratio }) => ({ id, formatId, ratio })),
     sampling: "decoded-frame-presentation-timestamps",
@@ -46,6 +63,7 @@ export async function executeBenchmarkRun(input: {
   };
   let completedClips = 0;
   let failedClips = 0;
+  const catastrophicRegressions: Array<{ clipId: string; focusDelta: number; visibilityDelta: number }> = [];
   try {
     for (const [clipIndex, clip] of input.clips.entries()) {
       if (input.signal.aborted) throw new DOMException("Benchmark cancelled", "AbortError");
@@ -85,6 +103,14 @@ export async function executeBenchmarkRun(input: {
             JSON.stringify(output.autoflipDebug),
           );
         }
+        const portraitComparison = output.aspects.find((aspect) => aspect.aspectId === "9-16");
+        if (portraitComparison) {
+          const focusDelta = portraitComparison.metrics.focusHitRate - portraitComparison.baselineMetrics.focusHitRate;
+          const visibilityDelta = portraitComparison.metrics.targetVisibilityRate - portraitComparison.baselineMetrics.targetVisibilityRate;
+          if (focusDelta < -0.1 && visibilityDelta < -0.1) {
+            catastrophicRegressions.push({ clipId: clip.id, focusDelta, visibilityDelta });
+          }
+        }
         for (const aspect of output.aspects) {
           const relativePath = `clips/${clip.id}/${aspect.aspectId}.jsonl`;
           const detailsPath = await benchmarkPersistenceService.writeArtifact(
@@ -92,6 +118,34 @@ export async function executeBenchmarkRun(input: {
             run.id,
             relativePath,
             aspect.details.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
+          );
+          await benchmarkPersistenceService.writeArtifact(
+            input.datasetId,
+            run.id,
+            `clips/${clip.id}/${aspect.aspectId}-oracle.json`,
+            JSON.stringify(aspect.oracle, null, 2),
+          );
+          await benchmarkPersistenceService.writeArtifact(
+            input.datasetId,
+            run.id,
+            `clips/${clip.id}/${aspect.aspectId}-strategy-comparison.json`,
+            JSON.stringify({
+              selected: aspect.metrics,
+              baseline: aspect.baselineMetrics,
+              semanticCandidate: aspect.semanticCandidateMetrics,
+            }, null, 2),
+          );
+          await benchmarkPersistenceService.writeArtifact(
+            input.datasetId,
+            run.id,
+            `clips/${clip.id}/${aspect.aspectId}-baseline.jsonl`,
+            aspect.baselineDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
+          );
+          await benchmarkPersistenceService.writeArtifact(
+            input.datasetId,
+            run.id,
+            `clips/${clip.id}/${aspect.aspectId}-semantic-candidate.jsonl`,
+            aspect.semanticCandidateDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
           );
           await benchmarkPersistenceService.putResult({
             runId: run.id,
@@ -120,14 +174,41 @@ export async function executeBenchmarkRun(input: {
         }
       }
     }
-    const columnStats = computeBenchmarkColumnStats(
-      await benchmarkPersistenceService.listResults(run.id),
-    );
+    const columnStats = computeBenchmarkColumnStats(await benchmarkPersistenceService.listResults(run.id));
+    const processedClips = (manifest.clips as Array<{ processingMs?: number }>).filter((clip) => clip.processingMs != null);
+    const meanProcessingMs = processedClips.length
+      ? processedClips.reduce((sum, clip) => sum + clip.processingMs!, 0) / processedClips.length
+      : null;
+    const portrait = columnStats.portrait9x16;
+    const gateEvaluation = {
+      focusHit: portrait.focusHit.avg == null ? null : portrait.focusHit.avg >= PORTRAIT_ACCEPTANCE_GATES.minFocusHitRate,
+      visibility: portrait.visible.avg == null ? null : portrait.visible.avg >= PORTRAIT_ACCEPTANCE_GATES.minTargetVisibilityRate,
+      dualAllVisible: portrait.dualAllVisible.avg == null ? null : portrait.dualAllVisible.avg >= PORTRAIT_ACCEPTANCE_GATES.minDualTargetAllVisibleRate,
+      processingTime: meanProcessingMs == null ? null : meanProcessingMs <= PORTRAIT_ACCEPTANCE_GATES.maxMeanProcessingMs,
+      meanProcessingMs,
+      passed: false,
+      run4Floor: {
+        focusHit: portrait.focusHit.avg == null ? null : portrait.focusHit.avg >= RUN4_PORTRAIT_FLOOR.minFocusHitRate,
+        visibility: portrait.visible.avg == null ? null : portrait.visible.avg >= RUN4_PORTRAIT_FLOOR.minTargetVisibilityRate,
+        dualAllVisible: portrait.dualAllVisible.avg == null ? null : portrait.dualAllVisible.avg >= RUN4_PORTRAIT_FLOOR.minDualTargetAllVisibleRate,
+        noCatastrophicRegression: catastrophicRegressions.length === 0,
+        passed: false,
+      },
+    };
+    gateEvaluation.passed = [gateEvaluation.focusHit, gateEvaluation.visibility, gateEvaluation.dualAllVisible, gateEvaluation.processingTime]
+      .every((value) => value === true);
+    gateEvaluation.run4Floor.passed = [
+      gateEvaluation.run4Floor.focusHit,
+      gateEvaluation.run4Floor.visibility,
+      gateEvaluation.run4Floor.dualAllVisible,
+      gateEvaluation.run4Floor.noCatastrophicRegression,
+      gateEvaluation.processingTime,
+    ].every((value) => value === true);
     const manifestPath = await benchmarkPersistenceService.writeArtifact(
       input.datasetId,
       run.id,
       "manifest.json",
-      JSON.stringify({ ...manifest, completedClips, failedClips, columnStats }, null, 2),
+      JSON.stringify({ ...manifest, completedClips, failedClips, catastrophicRegressions, columnStats, gateEvaluation }, null, 2),
     );
     return benchmarkPersistenceService.finishRun(
       run.id,

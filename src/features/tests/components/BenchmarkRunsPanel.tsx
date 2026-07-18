@@ -225,6 +225,19 @@ export function BenchmarkRunsPanel({
         </Box>
         {results.length > 0 ? (
           <Box mt={4}>
+            <Text fontSize="md" fontWeight="semibold" mb={2}>Primary 9:16 result</Text>
+            <SimpleGrid columns={{ base: 1, sm: 3 }} gap={2} mb={4}>
+              {[
+                ["Visible", percentage(columnStats.portrait9x16.visible.avg ?? undefined)],
+                ["Focus hit", percentage(columnStats.portrait9x16.focusHit.avg ?? undefined)],
+                ["Both targets visible", percentage(columnStats.portrait9x16.dualAllVisible.avg ?? undefined)],
+              ].map(([label, value]) => (
+                <Box key={label} border="1px solid" borderColor={theme.dashboard.border} borderRadius="xl" p={3} bg={theme.background.card}>
+                  <Text color={theme.text.muted} fontSize="xs">{label}</Text>
+                  <Text color={theme.text.primary} fontSize="lg" fontWeight="semibold">{value}</Text>
+                </Box>
+              ))}
+            </SimpleGrid>
             <Text fontSize="md" fontWeight="semibold" mb={2}>Column summary</Text>
             <Box
               border="1px solid"

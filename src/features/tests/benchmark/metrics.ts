@@ -1,5 +1,6 @@
 import { evaluateGroundTruth } from "./ground-truth";
 import type { BenchmarkMetrics, TestKeyframe, TestTarget } from "../types";
+import type { ClipperLayoutMode } from "../../clipper/shared/smart-crop";
 
 export interface NormalizedViewport {
   x: number;
@@ -11,6 +12,7 @@ export interface NormalizedViewport {
 export interface BenchmarkFrameInput {
   timestampUs: number;
   viewports: NormalizedViewport[];
+  layoutMode?: ClipperLayoutMode;
 }
 
 export interface BenchmarkTargetDetail {
@@ -25,6 +27,7 @@ export interface BenchmarkFrameDetail {
   targetCount: number;
   allTargetsVisible: boolean;
   viewports: NormalizedViewport[];
+  layoutMode: ClipperLayoutMode;
   targets: BenchmarkTargetDetail[];
 }
 
@@ -68,10 +71,29 @@ export function calculateBenchmarkMetrics(input: {
   let focusHitCount = 0;
   let dualTargetFrameCount = 0;
   let dualTargetAllVisibleFrameCount = 0;
+  let singleTargetFrameCount = 0;
+  let singleTargetVisibleCount = 0;
+  let singleTargetFocusHitCount = 0;
+  let dualTargetObservationCount = 0;
+  let dualTargetFocusHitCount = 0;
   const errors: number[] = [];
   const details: BenchmarkFrameDetail[] = [];
+  const layoutModeFrameCounts: Record<ClipperLayoutMode, number> = {
+    "single-crop": 0,
+    split: 0,
+    contain: 0,
+  };
+  const centerVelocities: number[] = [];
+  const centerAccelerations: number[] = [];
+  const reacquisitionDurationsMs: number[] = [];
+  const missStartedAt = new Map<0 | 1, number>();
+  const previouslyHit = new Map<0 | 1, boolean>();
+  let previousCenter: { x: number; y: number; timestampUs: number } | null = null;
+  let previousVelocity: { x: number; y: number; timestampUs: number } | null = null;
 
   for (const frame of input.frames) {
+    const layoutMode = frame.layoutMode ?? (frame.viewports.length > 1 ? "split" : "single-crop");
+    layoutModeFrameCounts[layoutMode] += 1;
     const targets = evaluateGroundTruth(input.keyframes, frame.timestampUs);
     const targetDetails = targets.map<BenchmarkTargetDetail>((target) => {
       const visible = frame.viewports.some((viewport) => contains(viewport, target));
@@ -84,6 +106,20 @@ export function calculateBenchmarkMetrics(input: {
       targetObservationCount += 1;
       if (visible) visibleTargetCount += 1;
       if (focusHit) focusHitCount += 1;
+      if (targets.length === 1) {
+        if (visible) singleTargetVisibleCount += 1;
+        if (focusHit) singleTargetFocusHitCount += 1;
+      } else if (targets.length === 2) {
+        dualTargetObservationCount += 1;
+        if (focusHit) dualTargetFocusHitCount += 1;
+      }
+      const wasHit = previouslyHit.get(target.slot) ?? false;
+      if (!focusHit && wasHit && !missStartedAt.has(target.slot)) missStartedAt.set(target.slot, frame.timestampUs);
+      if (focusHit && missStartedAt.has(target.slot)) {
+        reacquisitionDurationsMs.push((frame.timestampUs - missStartedAt.get(target.slot)!) / 1000);
+        missStartedAt.delete(target.slot);
+      }
+      previouslyHit.set(target.slot, focusHit);
       if (Number.isFinite(focusErrorRadius)) errors.push(focusErrorRadius);
       return { slot: target.slot, visible, focusHit, focusErrorRadius };
     });
@@ -93,11 +129,33 @@ export function calculateBenchmarkMetrics(input: {
       dualTargetFrameCount += 1;
       if (allTargetsVisible) dualTargetAllVisibleFrameCount += 1;
     }
+    if (targetDetails.length === 1) singleTargetFrameCount += 1;
+    const primaryViewport = frame.viewports[0];
+    if (primaryViewport) {
+      const center = {
+        x: primaryViewport.x + primaryViewport.width / 2,
+        y: primaryViewport.y + primaryViewport.height / 2,
+        timestampUs: frame.timestampUs,
+      };
+      if (previousCenter && center.timestampUs > previousCenter.timestampUs) {
+        const dt = (center.timestampUs - previousCenter.timestampUs) / 1_000_000;
+        const vx = ((center.x - previousCenter.x) * input.sourceWidth) / Math.max(1, Math.min(input.sourceWidth, input.sourceHeight)) / dt;
+        const vy = ((center.y - previousCenter.y) * input.sourceHeight) / Math.max(1, Math.min(input.sourceWidth, input.sourceHeight)) / dt;
+        centerVelocities.push(Math.hypot(vx, vy));
+        if (previousVelocity) {
+          const velocityDt = (center.timestampUs - previousVelocity.timestampUs) / 1_000_000;
+          if (velocityDt > 0) centerAccelerations.push(Math.hypot(vx - previousVelocity.x, vy - previousVelocity.y) / velocityDt);
+        }
+        previousVelocity = { x: vx, y: vy, timestampUs: center.timestampUs };
+      }
+      previousCenter = center;
+    }
     details.push({
       timestampUs: frame.timestampUs,
       targetCount: targetDetails.length,
       allTargetsVisible,
       viewports: frame.viewports,
+      layoutMode,
       targets: targetDetails,
     });
   }
@@ -105,6 +163,13 @@ export function calculateBenchmarkMetrics(input: {
   errors.sort((a, b) => a - b);
   const frameCount = input.frames.length;
   const mean = errors.length ? errors.reduce((sum, value) => sum + value, 0) / errors.length : null;
+  const sortedAccelerations = [...centerAccelerations].sort((a, b) => a - b);
+  const meanVelocity = centerVelocities.length
+    ? centerVelocities.reduce((sum, value) => sum + value, 0) / centerVelocities.length
+    : null;
+  const meanReacquisitionMs = reacquisitionDurationsMs.length
+    ? reacquisitionDurationsMs.reduce((sum, value) => sum + value, 0) / reacquisitionDurationsMs.length
+    : null;
   return {
     metrics: {
       frameCount,
@@ -123,6 +188,19 @@ export function calculateBenchmarkMetrics(input: {
       meanFocusErrorRadius: mean,
       medianFocusErrorRadius: quantile(errors, 0.5),
       p95FocusErrorRadius: quantile(errors, 0.95),
+      singleTargetFrameCount,
+      singleTargetVisibilityRate: singleTargetFrameCount ? singleTargetVisibleCount / singleTargetFrameCount : null,
+      singleTargetFocusHitRate: singleTargetFrameCount ? singleTargetFocusHitCount / singleTargetFrameCount : null,
+      dualTargetFocusHitRate: dualTargetObservationCount ? dualTargetFocusHitCount / dualTargetObservationCount : null,
+      layoutModeFrameCounts,
+      layoutModeRates: {
+        "single-crop": frameCount ? layoutModeFrameCounts["single-crop"] / frameCount : 0,
+        split: frameCount ? layoutModeFrameCounts.split / frameCount : 0,
+        contain: frameCount ? layoutModeFrameCounts.contain / frameCount : 0,
+      },
+      meanViewportCenterVelocity: meanVelocity,
+      p95ViewportCenterAcceleration: quantile(sortedAccelerations, 0.95),
+      meanFocusReacquisitionMs: meanReacquisitionMs,
     },
     details,
   };

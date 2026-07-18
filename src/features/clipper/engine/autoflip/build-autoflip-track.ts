@@ -1,11 +1,13 @@
 import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings";
 import type { FaceBoxSample } from "../../shared/face-samples";
-import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
+import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
 import type { CentroidSample } from "../reframe";
 import { cropRectToCentroid } from "./frame-crop-region";
 import { analyzeSceneMotion, computeSalienceZoomScale } from "./scene-camera-motion";
 import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
+import { attachImportanceSignals, buildImportanceTimeline } from "./importance-ranker";
+import { buildLayoutTracks } from "./layout-planner";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
@@ -37,6 +39,8 @@ export interface BuildAutoFlipTrackInput {
   /** Native decoded frame rate; used for graph-equivalent scene boundaries and paths. */
   sourceFrameRate?: number;
   trackerVersion?: "bytetrack-v1";
+  /** Sparse outputs from optional head, saliency, motion or active-speaker analyzers. */
+  importanceSignals?: ImportanceSignalSample[];
   /** Attach per-scene diagnostics to the returned blob (benchmark tooling only). */
   collectDebug?: boolean;
 }
@@ -111,6 +115,24 @@ function detectionsInContent(detections: SubjectDetectionSample[], content: Norm
         torsoBox: pose.torsoBox ? intoContentRect(pose.torsoBox, content) ?? undefined : undefined,
       }];
     }),
+    importanceSignals: sample.importanceSignals?.flatMap((region) => {
+      const box = intoContentRect(region.box, content);
+      return box ? [{ ...region, box }] : [];
+    }),
+  }));
+}
+
+function importanceSignalsInContent(
+  samples: ImportanceSignalSample[] | undefined,
+  content: NormalizedBox,
+): ImportanceSignalSample[] | undefined {
+  if (!samples || content === FULL_FRAME) return samples;
+  return samples.map((sample) => ({
+    ...sample,
+    regions: sample.regions.flatMap((region) => {
+      const box = intoContentRect(region.box, content);
+      return box ? [{ ...region, box }] : [];
+    }),
   }));
 }
 
@@ -176,12 +198,29 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
   const sourceFrameRate = Number.isFinite(input.sourceFrameRate) && input.sourceFrameRate! > 0 ? input.sourceFrameRate! : 30;
   const kinematicOptions = kinematicOptionsForSmoothing(input.smoothing ?? "balanced");
   const scenes = splitScenes(input.clipStart, input.clipEnd, input.sceneCuts, sourceFrameRate);
-  const keyframes = buildSalientKeyframes({
+  const contentDetections = detectionsInContent(input.detections, contentRect);
+  const rawKeyframes = buildSalientKeyframes({
     clipStart: input.clipStart,
     clipEnd: input.clipEnd,
-    detections: detectionsInContent(input.detections, contentRect),
+    detections: contentDetections,
     sceneCuts: input.sceneCuts,
   });
+  const semanticKeyframes = attachImportanceSignals(
+    rawKeyframes,
+    input.importanceSignals
+      ? importanceSignalsInContent(input.importanceSignals, contentRect)
+      : contentDetections.flatMap((sample) => sample.importanceSignals?.length
+        ? [{ time: sample.time, regions: sample.importanceSignals }]
+        : []),
+  );
+  const importanceSamples = buildImportanceTimeline(semanticKeyframes).map((sample) => ({
+    ...sample,
+    regions: sample.regions.map((region) => ({
+      ...region,
+      box: intoSourceRect(region.box, contentRect),
+      contentBox: intoSourceRect(region.contentBox, contentRect),
+    })),
+  }));
 
   const targets = Object.keys(input.targetAspectRatios ?? {}).length
     ? input.targetAspectRatios!
@@ -206,7 +245,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         const groupDuration = scenes[groupEnd - 1]!.end - scenes[index]!.start;
         const minZoomDuration = aspectMatchesSource ? AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC : AUTOFLIP_MIN_ZOOM_SCENE_SEC;
         if (groupDuration >= minZoomDuration) {
-          const groupKeyframes = keyframes.filter(
+          const groupKeyframes = rawKeyframes.filter(
             (keyframe) => keyframe.time >= scenes[index]!.start - 1e-9 && keyframe.time <= scenes[groupEnd - 1]!.end + 1e-9,
           );
           const scale = hasForegroundSalience(groupKeyframes) ? computeSalienceZoomScale({
@@ -229,7 +268,9 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     // uses the graph-compatible solid-colour padding path.
     let continuationFocus: FocusPointFrame[] = [];
     for (const [sceneIndex, scene] of scenes.entries()) {
-      const sceneKeyframes = keyframes.filter(
+      // The production baseline intentionally uses only Run4 inputs. Motion
+      // and other experimental importance proposals must never move it.
+      const sceneKeyframes = rawKeyframes.filter(
         (keyframe) => keyframe.time >= scene.start - 1e-9 && (keyframe.time < scene.end - 1e-9 || scene.end >= input.clipEnd - 1e-9),
       );
       const sceneBackground = solidBackgroundForScene(
@@ -323,6 +364,12 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
 
   const primaryTrack = aspectTracks[Object.keys(aspectTracks)[0]!]!;
   const samples: SmartCropSample[] = primaryTrack.samples.map((sample) => rectToSample(sample.t, sample.crop, Boolean(sample.cut)));
+  const layoutTracks = buildLayoutTracks({
+    aspectTracks,
+    importanceSamples,
+    frameWidth: sourceFrameWidth,
+    frameHeight: sourceFrameHeight,
+  });
 
   return {
     analyzerVersion: AUTOFLIP_ANALYZER_VERSION,
@@ -336,6 +383,8 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     degradedReason: input.degradedReason,
     samples,
     aspectTracks,
+    importanceSamples,
+    layoutTracks,
     debug: debugScenes,
   };
 }

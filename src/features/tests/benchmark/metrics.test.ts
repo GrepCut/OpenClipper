@@ -62,5 +62,23 @@ describe("benchmark metrics", () => {
     });
     expect(result.metrics.targetVisibilityRate).toBe(1);
     expect(result.metrics.focusHitRate).toBe(1);
+    expect(result.metrics.layoutModeFrameCounts?.split).toBe(1);
+    expect(result.details[0]!.layoutMode).toBe("split");
+  });
+
+  it("reports single/dual strata and camera motion independently", () => {
+    const result = calculateBenchmarkMetrics({
+      keyframes: frames,
+      frames: [
+        { timestampUs: 1_000_000, layoutMode: "single-crop", viewports: [{ x: 0, y: 0, width: 0.4, height: 1 }] },
+        { timestampUs: 2_000_000, layoutMode: "contain", viewports: [{ x: 0.5, y: 0, width: 0.5, height: 1 }] },
+      ],
+      sourceWidth: 1920,
+      sourceHeight: 1080,
+    });
+    expect(result.metrics.singleTargetFrameCount).toBe(1);
+    expect(result.metrics.layoutModeRates?.["single-crop"]).toBe(0.5);
+    expect(result.metrics.layoutModeRates?.contain).toBe(0.5);
+    expect(result.metrics.meanViewportCenterVelocity).not.toBeNull();
   });
 });

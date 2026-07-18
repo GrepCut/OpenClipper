@@ -173,11 +173,8 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
   const requestedMotionType = decideMotionType(motionAmount, successRate, sceneSpanSec, input.allowSweeping ?? true, Boolean(input.hasSolidColorBackground), hasSalientRegion, hasPersistentTrack);
   const keyframeCenters = keyframeCrops.map((item) => rectCenter(item.rect));
 
-  // The scene window is the maximum of the (possibly zoomed) target and the
-  // focus-band unions; the reference performs this aggregation before motion.
-  // Bounding by the focus band rather than the full union keeps every face
-  // covered while still letting the window shrink past a body box that spans
-  // most of the frame.
+  // Preserve Run4's independent scene window aggregation. A wider window is
+  // an intentional contain/padding decision on the 9:16 output canvas.
   const aggregatedCropWidthNorm = Math.max(scaledTargetWidthNorm, ...nonEmptyResults.map(({ result }) => (result.focusBox ?? result.region).width));
   const aggregatedCropHeightNorm = Math.max(scaledTargetHeightNorm, ...nonEmptyResults.map(({ result }) => (result.focusBox ?? result.region).height));
   // MediaPipe decides the sweep direction from the aggregated scene window,

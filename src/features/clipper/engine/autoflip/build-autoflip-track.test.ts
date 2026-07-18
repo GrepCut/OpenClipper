@@ -63,6 +63,8 @@ describe("buildAutoFlipTrack solid-background policy", () => {
     ).toBe(true);
     expect(track.debug).toHaveLength(1);
     expect(track.debug![0]!.motionType).toBe("padding");
+    expect(track.layoutTracks!.portrait!.samples.every((sample) => sample.mode === "contain")).toBe(true);
+    expect(track.layoutTracks!.portrait!.samples.every((sample) => sample.viewports[0]!.width === 1)).toBe(true);
     expect(
       track.debug![0]!.keyframes.every(
         (keyframe) => keyframe.chosenRect?.width === 1,

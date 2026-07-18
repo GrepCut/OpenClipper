@@ -139,6 +139,7 @@ export async function runAnalyzeSubjectsStage(
     hasSolidColorBackground: pending?.hasSolidColorBackground,
     solidBackgroundColor: pending?.solidBackgroundColor ?? undefined,
     staticFeatureSamples: pending?.staticFeatureSamples,
+    importanceSignals: pending?.importanceSignals,
     contentRect: pending?.contentRect,
     targetAspectRatios: cropAspectRatios(),
     sourceFrameRate: pending?.sourceFrameRate,
