@@ -19,8 +19,9 @@ use super::clipper_border::detect_border_features;
 use super::clipper_frames::{should_decode_video_packet, AutoFlipShotBoundaryDetector};
 use super::histogram::compute_autoflip_histogram_raw;
 use super::vision_logic::{
-    decode_blaze, decode_ssd, weighted_face_nms, AutoFlipFaceDetection, Letterbox, RecoveryPolicy,
-    Rotation, SubjectDetection, BLAZE_INPUT_SIZE, SSD_INPUT_SIZE,
+    box_iou, decode_blaze, decode_movenet, decode_ssd, weighted_face_nms, AutoFlipFaceDetection,
+    Letterbox, PoseSubject, RecoveryPolicy, Rotation, SubjectDetection, BLAZE_INPUT_SIZE,
+    MOVENET_INPUT_SIZE, SSD_INPUT_SIZE,
 };
 use super::winml_vision::{
     fp16_variant_path, resource_paths, NativeVisionDevice, NativeVisionError, VisionModel,
@@ -68,6 +69,7 @@ pub struct NativeSubjectSample {
     time: f64,
     detections: Vec<SubjectDetection>,
     autoflip_faces: Vec<AutoFlipFaceDetection>,
+    pose_subjects: Vec<PoseSubject>,
     model_id: &'static str,
 }
 
@@ -105,6 +107,7 @@ pub struct NativeVisionMetrics {
     drain_duration_ms: u64,
     face_inference_ms: u64,
     object_inference_ms: u64,
+    pose_inference_ms: u64,
     base_face_passes: usize,
     recovery_face_passes: usize,
     orientation_probe_passes: usize,
@@ -122,6 +125,7 @@ pub struct NativeVisionMetrics {
     queue_wait_ms: u64,
     face_preprocess_ms: u64,
     object_preprocess_ms: u64,
+    pose_preprocess_ms: u64,
     decoded_frame_count: usize,
     histogram_sample_count: usize,
     decode_thread_count: usize,
@@ -134,6 +138,7 @@ pub struct NativeVisionSummary {
     engine: &'static str,
     face_device: NativeVisionDevice,
     object_device: NativeVisionDevice,
+    pose_device: NativeVisionDevice,
     frame_width: u32,
     frame_height: u32,
     face_sample_count: usize,
@@ -195,8 +200,11 @@ struct ObjectResult {
     index: usize,
     time: f64,
     detections: Vec<SubjectDetection>,
+    poses: Vec<PoseSubject>,
     device: NativeVisionDevice,
+    pose_device: NativeVisionDevice,
     duration_ms: u64,
+    pose_duration_ms: u64,
 }
 
 enum WorkerResult {
@@ -372,6 +380,37 @@ fn prepare_blaze_into(frame: &AnalysisFrame, input: &mut [f32]) -> Letterbox {
             .zip(source_row)
         {
             *target = value as f32 / 127.5 - 1.0;
+        }
+    }
+    Letterbox {
+        scale,
+        pad_x: pad_x as f32,
+        pad_y: pad_y as f32,
+        source_width: frame.width,
+        source_height: frame.height,
+    }
+}
+
+fn prepare_movenet_into(frame: &AnalysisFrame, input: &mut [f32]) -> Letterbox {
+    let size = MOVENET_INPUT_SIZE as u32;
+    let scale = (size as f32 / frame.width as f32).min(size as f32 / frame.height as f32);
+    let width = (frame.width as f32 * scale).round().clamp(1.0, size as f32) as u32;
+    let height = (frame.height as f32 * scale)
+        .round()
+        .clamp(1.0, size as f32) as u32;
+    let pad_x = (size - width) / 2;
+    let pad_y = (size - height) / 2;
+    let resized = image::imageops::resize(&rgb_view(frame), width, height, FilterType::Triangle);
+    input.fill(0.0);
+    let row_len = width as usize * 3;
+    for y in 0..height as usize {
+        let source_row = &resized.as_raw()[y * row_len..(y + 1) * row_len];
+        let destination = ((y + pad_y as usize) * size as usize + pad_x as usize) * 3;
+        for (target, &value) in input[destination..destination + row_len]
+            .iter_mut()
+            .zip(source_row)
+        {
+            *target = value as f32;
         }
     }
     Letterbox {
@@ -793,12 +832,15 @@ fn spawn_object_worker(
     cancelled: Arc<AtomicBool>,
     model_path: std::path::PathBuf,
     fp16_model_path: std::path::PathBuf,
+    pose_model_path: std::path::PathBuf,
     labels: Arc<Vec<String>>,
     tracking_enabled: bool,
     preprocess_time_us: Arc<AtomicU64>,
+    pose_preprocess_time_us: Arc<AtomicU64>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut model: Option<WinMlModel> = None;
+        let mut pose_model: Option<WinMlModel> = None;
         let frame_elems = SSD_INPUT_SIZE * SSD_INPUT_SIZE * 3;
         let mut input = vec![0.0f32; MAX_BATCH * frame_elems];
         let mut resizer = Resizer::new();
@@ -888,12 +930,72 @@ fn spawn_object_worker(
                 Ok((outcomes, device)) => {
                     let duration_ms = started.elapsed().as_millis() as u64 / count as u64;
                     for (frame, detections) in batch.into_iter().zip(outcomes) {
+                        let pose_preprocess_started = Instant::now();
+                        let mut pose_input =
+                            vec![0.0f32; MOVENET_INPUT_SIZE * MOVENET_INPUT_SIZE * 3];
+                        let letterbox = prepare_movenet_into(&frame, &mut pose_input);
+                        pose_preprocess_time_us.fetch_add(
+                            pose_preprocess_started.elapsed().as_micros() as u64,
+                            Ordering::Relaxed,
+                        );
+                        let pose_shape =
+                            [1, MOVENET_INPUT_SIZE as i64, MOVENET_INPUT_SIZE as i64, 3];
+                        let pose_started = Instant::now();
+                        let evaluated_pose = if let Some(current) = pose_model.as_mut() {
+                            current
+                                .evaluate(&pose_shape, &pose_input)
+                                .map(|output| (output, current.device()))
+                        } else {
+                            WinMlModel::create(
+                                VisionModel::Pose,
+                                &pose_model_path,
+                                None,
+                                "input",
+                                &["output_0"],
+                                &pose_shape,
+                                &pose_input,
+                            )
+                            .map(|(created, output)| {
+                                let pose_device = created.device();
+                                pose_model = Some(created);
+                                (output, pose_device)
+                            })
+                        };
+                        let (poses, pose_device) =
+                            match evaluated_pose.and_then(|(output, pose_device)| {
+                                if output.len() != 1 {
+                                    return Err(NativeVisionError::new(
+                                        "tensor_contract_mismatch",
+                                        "MoveNet output count changed",
+                                        true,
+                                    ));
+                                }
+                                decode_movenet(&output[0], letterbox)
+                                    .map(|poses| (poses, pose_device))
+                                    .map_err(|message| {
+                                        NativeVisionError::new(
+                                            "tensor_contract_mismatch",
+                                            message,
+                                            true,
+                                        )
+                                    })
+                            }) {
+                                Ok(value) => value,
+                                Err(error) => {
+                                    cancelled.store(true, Ordering::Relaxed);
+                                    let _ = results.send(WorkerResult::Error(error));
+                                    return;
+                                }
+                            };
                         let _ = results.send(WorkerResult::Object(ObjectResult {
                             index: frame.index,
                             time: frame.time,
                             detections,
+                            poses,
                             device,
+                            pose_device,
                             duration_ms,
+                            pose_duration_ms: pose_started.elapsed().as_millis() as u64,
                         }));
                     }
                 }
@@ -982,6 +1084,20 @@ fn face_track_inputs(faces: &[AutoFlipFaceDetection]) -> Vec<TrackDetection> {
         .collect()
 }
 
+fn pose_track_inputs(poses: &[PoseSubject]) -> Vec<TrackDetection> {
+    poses
+        .iter()
+        .enumerate()
+        .filter(|(_, pose)| pose.trackable)
+        .map(|(source_index, pose)| TrackDetection {
+            box_: pose.box_,
+            label: "pose-person".into(),
+            score: pose.score,
+            source_index,
+        })
+        .collect()
+}
+
 fn tracked_subjects(outputs: Vec<TrackOutput>) -> Vec<SubjectDetection> {
     outputs
         .into_iter()
@@ -1047,6 +1163,58 @@ fn tracked_faces(
         .collect()
 }
 
+fn remap_child_box(
+    child: Option<super::vision_logic::NormalizedBox>,
+    source: super::vision_logic::NormalizedBox,
+    target: super::vision_logic::NormalizedBox,
+) -> Option<super::vision_logic::NormalizedBox> {
+    let child = child?;
+    if source.width <= 1e-6 || source.height <= 1e-6 {
+        return None;
+    }
+    Some(super::vision_logic::NormalizedBox {
+        x: (target.x + (child.x - source.x) / source.width * target.width).clamp(0.0, 1.0),
+        y: (target.y + (child.y - source.y) / source.height * target.height).clamp(0.0, 1.0),
+        width: (child.width / source.width * target.width).clamp(0.0, 1.0),
+        height: (child.height / source.height * target.height).clamp(0.0, 1.0),
+    })
+}
+
+fn tracked_poses(outputs: Vec<TrackOutput>, poses: &[PoseSubject]) -> Vec<PoseSubject> {
+    const POSE_TRACK_ID_OFFSET: u64 = 1_000_000;
+    outputs
+        .into_iter()
+        .map(|output| {
+            if let Some(source) = output.source_index.and_then(|index| poses.get(index)) {
+                PoseSubject {
+                    box_: output.box_,
+                    score: output.score,
+                    track_id: Some(POSE_TRACK_ID_OFFSET + output.track_id),
+                    predicted: output.predicted.then_some(true),
+                    head_box: remap_child_box(source.head_box, source.box_, output.box_),
+                    torso_box: remap_child_box(source.torso_box, source.box_, output.box_),
+                    trackable: true,
+                }
+            } else {
+                PoseSubject {
+                    box_: output.box_,
+                    score: output.score,
+                    track_id: Some(POSE_TRACK_ID_OFFSET + output.track_id),
+                    predicted: Some(true),
+                    head_box: None,
+                    torso_box: Some(super::vision_logic::NormalizedBox {
+                        x: output.box_.x + output.box_.width * 0.2,
+                        y: output.box_.y + output.box_.height * 0.2,
+                        width: output.box_.width * 0.6,
+                        height: output.box_.height * 0.45,
+                    }),
+                    trackable: true,
+                }
+            }
+        })
+        .collect()
+}
+
 pub fn analyze(
     file_path: String,
     start_time: f64,
@@ -1063,8 +1231,14 @@ pub fn analyze(
             true,
         ));
     }
-    let (face_model_path, object_model_path, labels_path) = resource_paths(resource_dir);
-    for path in [&face_model_path, &object_model_path, &labels_path] {
+    let (face_model_path, object_model_path, pose_model_path, labels_path) =
+        resource_paths(resource_dir);
+    for path in [
+        &face_model_path,
+        &object_model_path,
+        &pose_model_path,
+        &labels_path,
+    ] {
         if !path.is_file() {
             return Err(NativeVisionError::new(
                 "model_missing",
@@ -1100,6 +1274,7 @@ pub fn analyze(
     let (face_worker_count, object_worker_count) = (FACE_WORKERS, OBJECT_WORKERS);
     let face_preprocess_time_us = Arc::new(AtomicU64::new(0));
     let object_preprocess_time_us = Arc::new(AtomicU64::new(0));
+    let pose_preprocess_time_us = Arc::new(AtomicU64::new(0));
     let labels: Arc<Vec<String>> = Arc::new(labels);
     let (face_job_sender, face_job_receiver) =
         crossbeam_channel::bounded::<FaceJob>(QUEUE_CAPACITY);
@@ -1127,9 +1302,11 @@ pub fn analyze(
                 cancelled.clone(),
                 object_model_path.clone(),
                 object_fp16_path.clone(),
+                pose_model_path.clone(),
                 labels.clone(),
                 tracking_enabled,
                 object_preprocess_time_us.clone(),
+                pose_preprocess_time_us.clone(),
             )
         })
         .collect();
@@ -1483,6 +1660,7 @@ pub fn analyze(
     let drain_duration_ms = drain_started.elapsed().as_millis() as u64;
     let face_preprocess_ms = face_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
     let object_preprocess_ms = object_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
+    let pose_preprocess_ms = pose_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
 
     let mut face_results = BTreeMap::new();
     let mut object_results = BTreeMap::new();
@@ -1523,17 +1701,37 @@ pub fn analyze(
             true,
         ));
     }
+    // Raw MoveNet observations are valuable for small/blurred action subjects,
+    // but isolated low-confidence poses can also fire on human-shaped scenery.
+    // Only bypass ByteTrack's 0.7 new-track gate when pose evidence persists
+    // through most of the clip.
+    let preserve_raw_pose_observations = sample_count > 0
+        && object_results
+            .values()
+            .filter(|result| !result.poses.is_empty())
+            .count()
+            * 10
+            >= sample_count * 7
+        && face_results
+            .values()
+            .filter(|result| !result.faces.is_empty())
+            .count()
+            * 10
+            < sample_count * 3;
 
     let mut face_samples = Vec::new();
     let mut subject_samples = Vec::with_capacity(sample_count);
     let mut face_device = NativeVisionDevice::Cpu;
     let mut object_device = NativeVisionDevice::Cpu;
+    let mut pose_device = NativeVisionDevice::Cpu;
     let mut face_inference_ms = 0;
     let mut object_inference_ms = 0;
+    let mut pose_inference_ms = 0;
     let mut recovery_face_passes = 0;
     let tracker_started = Instant::now();
     let mut object_tracker = ByteTracker::new();
     let mut face_tracker = ByteTracker::new();
+    let mut pose_tracker = ByteTracker::new();
     let mut tracked_subject_count = 0usize;
     let mut predicted_subject_count = 0usize;
     for index in 0..sample_count {
@@ -1545,14 +1743,17 @@ pub fn analyze(
             .expect("validated ordered object result");
         face_device = face.device;
         object_device = object.device;
+        pose_device = object.pose_device;
         face_inference_ms += face.duration_ms;
         recovery_face_passes += face.recovery_passes;
         object_inference_ms += object.duration_ms;
+        pose_inference_ms += object.pose_duration_ms;
         if tracking_enabled && face.scene_cut {
             object_tracker.reset();
             face_tracker.reset();
+            pose_tracker.reset();
         }
-        let detections = if tracking_enabled {
+        let mut detections = if tracking_enabled {
             let tracked = tracked_subjects(
                 object_tracker.update(object.time, &subject_track_inputs(&object.detections)),
             );
@@ -1565,6 +1766,42 @@ pub fn analyze(
         } else {
             object.detections
         };
+        let pose_subjects = if tracking_enabled {
+            if preserve_raw_pose_observations {
+                // Action footage is deliberately framed from raw torso joints;
+                // allowing a rare 0.7 observation to switch this stream to a
+                // head-centred track causes a visible mid-clip focus jump.
+                object.poses
+            } else {
+                tracked_poses(
+                    pose_tracker.update(object.time, &pose_track_inputs(&object.poses)),
+                    &object.poses,
+                )
+            }
+        } else {
+            object.poses
+        };
+        for pose in pose_subjects
+            .iter()
+            // Raw persistent-action poses already emit a dedicated torso
+            // signal. Mirroring them into SSD detections would synthesize a
+            // face_full head band and defeat that action framing policy.
+            .filter(|pose| pose.predicted != Some(true) && pose.track_id.is_some())
+        {
+            let overlaps_person = detections.iter().any(|detection| {
+                detection.label.eq_ignore_ascii_case("person")
+                    && box_iou(detection.box_, pose.box_) >= 0.5
+            });
+            if !overlaps_person {
+                detections.push(SubjectDetection {
+                    box_: pose.box_,
+                    label: "person".into(),
+                    score: pose.score,
+                    track_id: pose.track_id,
+                    predicted: pose.predicted,
+                });
+            }
+        }
         let autoflip_faces = if tracking_enabled {
             tracked_faces(
                 face_tracker.update(face.time, &face_track_inputs(&face.faces)),
@@ -1581,7 +1818,8 @@ pub fn analyze(
             time: object.time,
             detections,
             autoflip_faces,
-            model_id: "mediapipe-ssdlite-object-detection-320",
+            pose_subjects,
+            model_id: "clipper-vision-v2",
         };
         let face_sample = face.face_bucket.then(|| NativeFaceSample {
             time: face.time,
@@ -1612,7 +1850,7 @@ pub fn analyze(
     let tracker_duration_ms = tracking_enabled
         .then(|| tracker_started.elapsed().as_millis() as u64)
         .unwrap_or(0);
-    let inference_duration_ms = face_inference_ms.max(object_inference_ms);
+    let inference_duration_ms = face_inference_ms.max(object_inference_ms + pose_inference_ms);
     let has_solid_color_background =
         sample_count > 0 && solid_background_frames as f64 / sample_count as f64 >= 0.6;
     let solid_background_color = has_solid_color_background.then(|| RgbColor {
@@ -1633,6 +1871,7 @@ pub fn analyze(
         engine: "winml",
         face_device,
         object_device,
+        pose_device,
         frame_width: display_width,
         frame_height: display_height,
         face_sample_count: face_samples.len(),
@@ -1655,7 +1894,7 @@ pub fn analyze(
                 sample_raw_height
             },
         ),
-        model_version: "clipper-vision-v1",
+        model_version: "clipper-vision-v2",
         tracker_version: tracking_enabled.then_some("bytetrack-v1"),
         metrics: NativeVisionMetrics {
             decode_duration_ms,
@@ -1663,6 +1902,7 @@ pub fn analyze(
             drain_duration_ms,
             face_inference_ms,
             object_inference_ms,
+            pose_inference_ms,
             base_face_passes: sample_count,
             recovery_face_passes,
             orientation_probe_passes: 0,
@@ -1680,6 +1920,7 @@ pub fn analyze(
             queue_wait_ms: (t_send / 1_000) as u64,
             face_preprocess_ms,
             object_preprocess_ms,
+            pose_preprocess_ms,
             decoded_frame_count,
             histogram_sample_count,
             decode_thread_count: decode_threads,
@@ -1723,6 +1964,25 @@ mod tests {
             .collect();
         assert_eq!(due, vec![0.0, 0.099, 0.205, 0.39, 0.401]);
         assert!((next - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn low_confidence_pose_is_not_trackable() {
+        let pose = PoseSubject {
+            box_: super::super::vision_logic::NormalizedBox {
+                x: 0.1,
+                y: 0.2,
+                width: 0.08,
+                height: 0.2,
+            },
+            score: 0.12,
+            track_id: None,
+            predicted: None,
+            head_box: None,
+            torso_box: None,
+            trackable: false,
+        };
+        assert!(pose_track_inputs(&[pose]).is_empty());
     }
 
     /// Debug-only smoke/benchmark hook. It never persists application data;

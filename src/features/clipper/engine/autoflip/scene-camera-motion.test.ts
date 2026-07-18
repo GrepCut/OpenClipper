@@ -163,6 +163,17 @@ describe("analyzeSceneMotion bounded sweeping", () => {
     expect(new Set(motion.focusPointFrames.map((frame) => frame.points[0]!.x)).size).toBe(1);
   });
 
+  it("does not sweep a persistent tracked subject set", () => {
+    const regions = [0.05, 0.45, 0.85].map((x, index) => ({ ...faceRegion(x, 0.4), trackId: index + 1 }));
+    const motion = analyzeSceneMotion({
+      keyframes: keyframesWith(regions),
+      frameWidth: FRAME_W,
+      frameHeight: FRAME_H,
+      targetAspectRatio: PORTRAIT,
+    });
+    expect(motion.summary.motionType).toBe("steady");
+  });
+
   it("keeps no-salience scenes centered", () => {
     const motion = analyzeSceneMotion({
       keyframes: keyframesWith([]),

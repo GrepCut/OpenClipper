@@ -101,7 +101,7 @@ pub async fn probe_clipper_winml(app_handle: AppHandle) -> ClipperWinMlCapabilit
                 }
             }
         };
-        let (face, object, labels) = winml_vision::resource_paths(&resource_dir);
+        let (face, object, pose, labels) = winml_vision::resource_paths(&resource_dir);
         let root = face.parent().unwrap_or(&resource_dir);
         let manifest_path = root.join("manifest.json");
         let manifest = std::fs::read(&manifest_path)
@@ -118,6 +118,7 @@ pub async fn probe_clipper_winml(app_handle: AppHandle) -> ClipperWinMlCapabilit
         for (name, path) in [
             ("blaze_face_full_range", face),
             ("autoflip_ssdlite", object),
+            ("movenet_multipose_lightning", pose),
         ] {
             let expected = manifest["models"][name]["onnxSha256"].as_str();
             let actual = std::fs::read(&path)
@@ -146,7 +147,7 @@ pub async fn probe_clipper_winml(app_handle: AppHandle) -> ClipperWinMlCapabilit
         }
         ClipperWinMlCapability {
             available: true,
-            model_version: Some("clipper-vision-v1"),
+            model_version: Some("clipper-vision-v2"),
             reason_code: None,
             reason: None,
         }

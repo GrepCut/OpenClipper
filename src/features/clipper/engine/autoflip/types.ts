@@ -2,9 +2,9 @@ import type { NormalizedBox } from "../../shared/smart-crop";
 
 // v8 makes solid-background/padding decisions per scene, matching the graph.
 // Persisted v7 tracks cannot recover per-shot background evidence.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v11";
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v12";
 /** The graph-compatible object model identity. */
-export const AUTOFLIP_MODEL_ID = "mediapipe-ssdlite-object-detection-320";
+export const AUTOFLIP_MODEL_ID = "clipper-vision-v2";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;
 export const AUTOFLIP_MAX_SCENE_FRAMES = 600;
 export const AUTOFLIP_KEYFRAME_INTERVAL_SEC = 0.2;
@@ -16,6 +16,8 @@ export const AUTOFLIP_MIN_ZOOM_SCALE = 0.65;
  * reads as jitter.  Original scenes shorter than this keep the cover crop.
  */
 export const AUTOFLIP_MIN_ZOOM_SCENE_SEC = 8;
+/** Matched-aspect footage needs only a short, stable observation to reframe. */
+export const AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC = 1;
 /** Focus-band diagonal → desired window diagonal multiplier, per headroom setting. */
 export const AUTOFLIP_ZOOM_MARGIN: Record<"tight" | "normal" | "wide", number> = {
   tight: 2.8,
@@ -27,6 +29,8 @@ export type SalientSignalType =
   | "face_core"
   | "face_all"
   | "face_full"
+  | "pose_head"
+  | "pose_torso"
   | "human"
   | "pet"
   | "car"
@@ -37,6 +41,8 @@ export interface SalientRegion {
   score: number;
   signalType: SalientSignalType;
   isRequired: boolean;
+  trackId?: number;
+  predicted?: boolean;
 }
 
 export interface KeyFrameSalientInput {

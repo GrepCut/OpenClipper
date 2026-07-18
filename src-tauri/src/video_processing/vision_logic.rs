@@ -8,6 +8,10 @@ pub const SSD_INPUT_SIZE: usize = 320;
 pub const SSD_ANCHOR_COUNT: usize = 2034;
 pub const BLAZE_INPUT_SIZE: usize = 192;
 pub const BLAZE_ANCHOR_COUNT: usize = 2304;
+pub const MOVENET_INPUT_SIZE: usize = 512;
+pub const MOVENET_POSE_COUNT: usize = 6;
+pub const MOVENET_KEYPOINT_COUNT: usize = 17;
+pub const MOVENET_INSTANCE_SIZE: usize = 56;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +59,25 @@ pub struct AutoFlipFaceDetection {
     pub score: f32,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoseSubject {
+    #[serde(rename = "box")]
+    pub box_: NormalizedBox,
+    pub score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predicted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head_box: Option<NormalizedBox>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub torso_box: Option<NormalizedBox>,
+    /** Uses the original conservative decoder thresholds for ByteTrack. */
+    #[serde(skip)]
+    pub trackable: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Letterbox {
     pub scale: f32,
@@ -62,6 +85,113 @@ pub struct Letterbox {
     pub pad_y: f32,
     pub source_width: u32,
     pub source_height: u32,
+}
+
+fn inverse_movenet_point(x: f32, y: f32, letterbox: Letterbox) -> Keypoint {
+    let size = MOVENET_INPUT_SIZE as f32;
+    Keypoint {
+        x: ((x * size - letterbox.pad_x) / letterbox.scale / letterbox.source_width as f32)
+            .clamp(0.0, 1.0),
+        y: ((y * size - letterbox.pad_y) / letterbox.scale / letterbox.source_height as f32)
+            .clamp(0.0, 1.0),
+    }
+}
+
+fn box_around_points(points: &[Keypoint], margin_x: f32, margin_y: f32) -> Option<NormalizedBox> {
+    if points.is_empty() {
+        return None;
+    }
+    let left = points.iter().map(|point| point.x).fold(1.0f32, f32::min);
+    let top = points.iter().map(|point| point.y).fold(1.0f32, f32::min);
+    let right = points.iter().map(|point| point.x).fold(0.0f32, f32::max);
+    let bottom = points.iter().map(|point| point.y).fold(0.0f32, f32::max);
+    let x = (left - margin_x).clamp(0.0, 1.0);
+    let y = (top - margin_y).clamp(0.0, 1.0);
+    let right = (right + margin_x).clamp(0.0, 1.0);
+    let bottom = (bottom + margin_y).clamp(0.0, 1.0);
+    (right > x && bottom > y).then_some(NormalizedBox {
+        x,
+        y,
+        width: right - x,
+        height: bottom - y,
+    })
+}
+
+pub fn decode_movenet(output: &[f32], letterbox: Letterbox) -> Result<Vec<PoseSubject>, String> {
+    if output.len() != MOVENET_POSE_COUNT * MOVENET_INSTANCE_SIZE {
+        return Err("tensor_contract_mismatch: invalid MoveNet output length".into());
+    }
+    let mut poses = Vec::new();
+    for instance in output.chunks_exact(MOVENET_INSTANCE_SIZE) {
+        let score = instance[55];
+        // MultiPose's instance score drops sharply for small, motion-blurred,
+        // or partially off-screen people. Keep those candidates when several
+        // keypoints still agree; downstream temporal tracking and salience
+        // selection provide the second stage of validation.
+        if score < 0.15 {
+            continue;
+        }
+        let strong_keypoint_count = (0..MOVENET_KEYPOINT_COUNT)
+            .filter(|index| instance[index * 3 + 2] >= 0.3)
+            .count();
+        let trackable = score >= 0.25 && strong_keypoint_count >= 4;
+        let keypoint_threshold = if trackable { 0.3 } else { 0.2 };
+        let mut keypoints: Vec<Option<Keypoint>> = Vec::with_capacity(MOVENET_KEYPOINT_COUNT);
+        for index in 0..MOVENET_KEYPOINT_COUNT {
+            let base = index * 3;
+            keypoints.push(
+                (instance[base + 2] >= keypoint_threshold)
+                    .then(|| inverse_movenet_point(instance[base + 1], instance[base], letterbox)),
+            );
+        }
+        if keypoints.iter().filter(|point| point.is_some()).count() < 4 {
+            continue;
+        }
+        let top_left = inverse_movenet_point(instance[52], instance[51], letterbox);
+        let bottom_right = inverse_movenet_point(instance[54], instance[53], letterbox);
+        let box_ = NormalizedBox {
+            x: top_left.x,
+            y: top_left.y,
+            width: (bottom_right.x - top_left.x).max(0.0),
+            height: (bottom_right.y - top_left.y).max(0.0),
+        };
+        if box_.width <= 0.0 || box_.height <= 0.0 {
+            continue;
+        }
+        let head_points: Vec<Keypoint> = keypoints[..5].iter().flatten().copied().collect();
+        let torso_points: Vec<Keypoint> = [5usize, 6, 11, 12]
+            .into_iter()
+            .filter_map(|index| keypoints[index])
+            .collect();
+        let head_box = box_around_points(
+            &head_points,
+            (box_.width * 0.08).max(0.008),
+            (box_.height * 0.04).max(0.008),
+        );
+        let torso_box = box_around_points(
+            &torso_points,
+            (box_.width * 0.08).max(0.008),
+            (box_.height * 0.04).max(0.008),
+        )
+        .or_else(|| {
+            Some(NormalizedBox {
+                x: box_.x + box_.width * 0.2,
+                y: box_.y + box_.height * 0.2,
+                width: box_.width * 0.6,
+                height: box_.height * 0.45,
+            })
+        });
+        poses.push(PoseSubject {
+            box_,
+            score,
+            track_id: None,
+            predicted: None,
+            head_box,
+            torso_box,
+            trackable,
+        });
+    }
+    Ok(poses)
 }
 
 pub fn stable_sigmoid(value: f32) -> f32 {
@@ -575,6 +705,36 @@ mod tests {
         );
         assert!((point.x - 1.0).abs() < 1e-6);
         assert!((point.y - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn movenet_decoder_filters_and_unpads_poses() {
+        let mut output = vec![0.0f32; MOVENET_POSE_COUNT * MOVENET_INSTANCE_SIZE];
+        for index in 0..4 {
+            output[index * 3] = 0.4 + index as f32 * 0.01;
+            output[index * 3 + 1] = 0.3 + index as f32 * 0.01;
+            output[index * 3 + 2] = 0.9;
+        }
+        output[51] = 0.3;
+        output[52] = 0.2;
+        output[53] = 0.8;
+        output[54] = 0.6;
+        output[55] = 0.8;
+        let poses = decode_movenet(
+            &output,
+            Letterbox {
+                scale: 512.0 / 1920.0,
+                pad_x: 0.0,
+                pad_y: 112.0,
+                source_width: 1920,
+                source_height: 1080,
+            },
+        )
+        .expect("MoveNet contract");
+        assert_eq!(poses.len(), 1);
+        assert!(poses[0].box_.width > 0.39 && poses[0].box_.width < 0.41);
+        assert!(poses[0].head_box.is_some());
+        assert!(poses[0].torso_box.is_some());
     }
 
     #[test]

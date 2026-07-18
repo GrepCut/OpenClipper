@@ -10,7 +10,7 @@
     "file": "ssdlite_object_detection_labelmap.txt",
     "sha256": "c7e79c855f73cbba9f33d649d60e1676eb0a974021a41696d1ac0d4b7f7e0211"
   },
-  "modelVersion": "clipper-vision-v1",
+  "modelVersion": "clipper-vision-v2",
   "models": {
     "autoflip_ssdlite": {
       "batchParity": {
@@ -19,13 +19,7 @@
       },
       "decoder": {
         "anchorCount": 2034,
-        "aspectRatios": [
-          1.0,
-          2.0,
-          0.5,
-          3.0,
-          0.3333
-        ],
+        "aspectRatios": [1.0, 2.0, 0.5, 3.0, 0.3333],
         "boxCenterScale": 10.0,
         "boxSizeScale": 5.0,
         "classCount": 91,
@@ -35,14 +29,7 @@
         "minScale": 0.2,
         "nmsIouThreshold": 0.4,
         "scoreThreshold": 0.6,
-        "strides": [
-          16,
-          32,
-          64,
-          128,
-          256,
-          512
-        ]
+        "strides": [16, 32, 64, 128, 256, 512]
       },
       "dynamicBatch": true,
       "input": {
@@ -53,12 +40,7 @@
           "scales": [],
           "zeroPoints": []
         },
-        "shape": [
-          1,
-          320,
-          320,
-          3
-        ]
+        "shape": [1, 320, 320, 3]
       },
       "onnxFile": "ssdlite_object_detection.onnx",
       "onnxSha256": "61f7f3f925ad38093215d63d52a2e2c7238f15a5b6f466de688bfff89ac09d3b",
@@ -71,11 +53,7 @@
             "scales": [],
             "zeroPoints": []
           },
-          "shape": [
-            1,
-            2034,
-            4
-          ]
+          "shape": [1, 2034, 4]
         },
         {
           "dtype": "float32",
@@ -85,23 +63,19 @@
             "scales": [],
             "zeroPoints": []
           },
-          "shape": [
-            1,
-            2034,
-            91
-          ]
+          "shape": [1, 2034, 91]
         }
       ],
       "parity": {
         "raw_outputs/box_encodings": {
-          "maxAbsError": 1.7642974853515625e-05,
-          "meanAbsError": 1.0262494924972998e-06,
+          "maxAbsError": 1.7642974853515625e-5,
+          "meanAbsError": 1.0262494924972998e-6,
           "onnxOutputSha256": "ca8cc7f21f6525dd08c8ada0635f4acb58bc220ea8cccafb85bce8b554ee045c",
           "tfliteOutputSha256": "2664a5e8f2eea6ae28c515721fe43011f7ea90a6baba569f4c0844b745aad14b"
         },
         "raw_outputs/class_predictions": {
-          "maxAbsError": 8.58306884765625e-06,
-          "meanAbsError": 1.052803554557613e-06,
+          "maxAbsError": 8.58306884765625e-6,
+          "meanAbsError": 1.052803554557613e-6,
           "onnxOutputSha256": "174d0e6788915e0ec0882e899fd5959af68039406a86d3d66a886b80220b686a",
           "tfliteOutputSha256": "f779f1c14dc5b12099c0735756033f19e45d39678e12374eb29c22ad6e9206b0"
         }
@@ -114,10 +88,7 @@
         "colorOrder": "rgb",
         "layout": "nhwc",
         "resize": "bilinear-stretch",
-        "valueRange": [
-          0.0,
-          255.0
-        ]
+        "valueRange": [0.0, 255.0]
       },
       "sourcePath": "public/models/autoflip_ssdlite/ssdlite_object_detection.tflite",
       "sourceSha256": "8e10a2e2f5db85d8f90628f00752a89ff241c5b2ca82f3b92fc496c7bda122ef"
@@ -159,9 +130,7 @@
         "numLayers": 1,
         "reverseOutputOrder": true,
         "scoreClippingThreshold": 100.0,
-        "strides": [
-          4
-        ],
+        "strides": [4],
         "wScale": 192.0,
         "xScale": 192.0,
         "yScale": 192.0
@@ -175,12 +144,7 @@
           "scales": [],
           "zeroPoints": []
         },
-        "shape": [
-          1,
-          192,
-          192,
-          3
-        ]
+        "shape": [1, 192, 192, 3]
       },
       "onnxFile": "blaze_face_full_range.onnx",
       "onnxSha256": "dd18fc4d02580982594b621c706f6b00ada6dc5348a9f7023332bcb1f3c8ca85",
@@ -193,11 +157,7 @@
             "scales": [],
             "zeroPoints": []
           },
-          "shape": [
-            1,
-            2304,
-            16
-          ]
+          "shape": [1, 2304, 16]
         },
         {
           "dtype": "float32",
@@ -207,23 +167,19 @@
             "scales": [],
             "zeroPoints": []
           },
-          "shape": [
-            1,
-            2304,
-            1
-          ]
+          "shape": [1, 2304, 1]
         }
       ],
       "parity": {
         "reshaped_classifier_face_4": {
-          "maxAbsError": 5.7220458984375e-06,
-          "meanAbsError": 1.141180632657779e-06,
+          "maxAbsError": 5.7220458984375e-6,
+          "meanAbsError": 1.141180632657779e-6,
           "onnxOutputSha256": "e17190da7c2891b3468851a595069ddc4b11532f33a90171ca70d17299e74cb5",
           "tfliteOutputSha256": "2d576dbeaec74094a5e2736fea460b51ddb593c7841d6bf64f4805a55c04f8e1"
         },
         "reshaped_regressor_face_4": {
-          "maxAbsError": 5.7220458984375e-05,
-          "meanAbsError": 2.4194023353629746e-06,
+          "maxAbsError": 5.7220458984375e-5,
+          "meanAbsError": 2.4194023353629746e-6,
           "onnxOutputSha256": "032c9f97dde4e2b574ed22670f961948340c9d4a34db6e1a89154c4fc1318213",
           "tfliteOutputSha256": "71fd1fed38e0e8dfb91bf5b8286b34339966c4de00236fff984da7689e2cf0db"
         }
@@ -236,10 +192,7 @@
         "colorOrder": "rgb",
         "layout": "nhwc",
         "resize": "bilinear-letterbox-square",
-        "valueRange": [
-          -1.0,
-          1.0
-        ]
+        "valueRange": [-1.0, 1.0]
       },
       "sourcePath": "public/models/blaze_face_full_range/blaze_face_full_range.tflite",
       "sourceSha256": "3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b"
@@ -265,8 +218,48 @@
         "reshaped_regressor_face_4": 1.0
       },
       "precision": "float16"
+    },
+    "movenet_multipose_lightning": {
+      "decoder": {
+        "instanceSize": 56,
+        "keypointCount": 17,
+        "keypointScoreThreshold": 0.2,
+        "minimumKeypoints": 4,
+        "poseCount": 6,
+        "poseScoreThreshold": 0.15
+      },
+      "dynamicBatch": false,
+      "input": {
+        "dtype": "float32",
+        "name": "input",
+        "shape": [1, 512, 512, 3]
+      },
+      "onnxFile": "movenet_multipose_lightning.onnx",
+      "onnxSha256": "85f82747638a7d9e8f6a1694ecc0fefebdb8a6103c153f3cbff051c0720c9b2c",
+      "outputs": [
+        {
+          "dtype": "float32",
+          "name": "output_0",
+          "shape": [1, 6, 56]
+        }
+      ],
+      "parity": {
+        "maxAbsError": 1.3262033462524414e-6,
+        "meanAbsError": 7.922616873656807e-8
+      },
+      "parityTolerance": {
+        "absolute": 0.002
+      },
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nhwc",
+        "resize": "bilinear-letterbox-square",
+        "valueRange": [0.0, 255.0]
+      },
+      "sourceArchiveSha256": "f01b9e5e8c3bc31f82e9ca7fa4a2876f25d7a54b65c83da5df2eca3e1632cec8",
+      "sourceUrl": "https://www.kaggle.com/models/google/movenet/tensorFlow2/multipose-lightning/1"
     }
   },
-  "onnxOpset": 9,
+  "onnxOpset": 15,
   "schemaVersion": 1
 }

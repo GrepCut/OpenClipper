@@ -91,6 +91,8 @@ function unionRect(a: NormalizedRect, b: NormalizedRect): NormalizedRect {
 }
 
 const FACE_SIGNALS = new Set<SalientRegion["signalType"]>(["face_core", "face_all", "face_full"]);
+const POSE_HEAD_SIGNALS = new Set<SalientRegion["signalType"]>(["pose_head"]);
+const POSE_TORSO_SIGNALS = new Set<SalientRegion["signalType"]>(["pose_torso"]);
 const SUBJECT_SIGNALS = new Set<SalientRegion["signalType"]>(["human", "pet", "car"]);
 
 /**
@@ -102,6 +104,10 @@ const SUBJECT_SIGNALS = new Set<SalientRegion["signalType"]>(["human", "pet", "c
 export function focusBandRegions(regions: SalientRegion[]): SalientRegion[] {
   const faces = regions.filter((region) => FACE_SIGNALS.has(region.signalType));
   if (faces.length) return faces;
+  const poseHeads = regions.filter((region) => POSE_HEAD_SIGNALS.has(region.signalType));
+  if (poseHeads.length) return poseHeads;
+  const poseTorsos = regions.filter((region) => POSE_TORSO_SIGNALS.has(region.signalType));
+  if (poseTorsos.length) return poseTorsos;
   const subjects = regions.filter((region) => SUBJECT_SIGNALS.has(region.signalType));
   if (subjects.length) return subjects;
   return regions;

@@ -24,6 +24,7 @@ pub const BATCH_BOUND: usize = 8;
 pub enum VisionModel {
     Face,
     Object,
+    Pose,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -509,11 +510,12 @@ impl Drop for WinMlModel {
     }
 }
 
-pub fn resource_paths(resource_dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
+pub fn resource_paths(resource_dir: &Path) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
     let root = resource_dir.join("resources/models/clipper-vision");
     (
         root.join("blaze_face_full_range.onnx"),
         root.join("ssdlite_object_detection.onnx"),
+        root.join("movenet_multipose_lightning.onnx"),
         root.join("ssdlite_object_detection_labelmap.txt"),
     )
 }
@@ -578,6 +580,21 @@ mod tests {
         .expect("SSD Lite must evaluate with WinML");
         assert_eq!(object_outputs[0].len(), BATCH_BOUND * 2034 * 4);
         assert_eq!(object_outputs[1].len(), BATCH_BOUND * 2034 * 91);
+
+        let pose_input = vec![0.0f32; 512 * 512 * 3];
+        eprintln!("loading pose");
+        let pose_model =
+            load_model(&root.join("movenet_multipose_lightning.onnx")).expect("load pose");
+        let pose = WinMlModel::make_session(&pose_model, CPU_FP32).expect("pose CPU session");
+        let pose_outputs = WinMlModel::evaluate_session(
+            &pose.value,
+            &HSTRING::from("input"),
+            &[HSTRING::from("output_0")],
+            &[1, 512, 512, 3],
+            &pose_input,
+        )
+        .expect("MoveNet must evaluate with WinML");
+        assert_eq!(pose_outputs[0].len(), 6 * 56);
     }
 
     #[test]

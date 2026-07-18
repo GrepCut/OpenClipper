@@ -144,6 +144,7 @@ export async function runAnalyzeFacesStage(
       benchmark.setMeta("engine", "winml");
       benchmark.setMeta("faceDevice", summary.faceDevice);
       benchmark.setMeta("objectDevice", summary.objectDevice);
+      benchmark.setMeta("poseDevice", summary.poseDevice);
       benchmark.setMeta("faceSampleCount", summary.faceSampleCount);
       benchmark.setMeta("subjectSampleCount", summary.subjectSampleCount);
       benchmark.setNativeMetrics(summary.metrics as unknown as Record<string, unknown>);

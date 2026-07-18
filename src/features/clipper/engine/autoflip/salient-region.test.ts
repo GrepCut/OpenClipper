@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { syntheticHeadRegions } from "./salient-region";
+import { buildSalientKeyframes, syntheticHeadRegions } from "./salient-region";
 import type { AutoFlipFaceDetection, SubjectDetection } from "../../shared/smart-crop";
 
 const person: SubjectDetection = {
@@ -36,4 +36,48 @@ describe("syntheticHeadRegions", () => {
     expect(syntheticHeadRegions([{ ...person, score: 0.3 }], [])).toHaveLength(0);
     expect(syntheticHeadRegions([{ ...person, label: "car" }], [])).toHaveLength(0);
   });
+});
+
+describe("pose salience", () => {
+  const pose = {
+    box: { x: 0.2, y: 0.1, width: 0.25, height: 0.8 },
+    headBox: { x: 0.27, y: 0.12, width: 0.1, height: 0.12 },
+    torsoBox: { x: 0.24, y: 0.25, width: 0.18, height: 0.3 },
+    score: 0.8,
+    trackId: 12,
+  };
+
+  it("keeps an observed pose head when no face is available", () => {
+    const [frame] = buildSalientKeyframes({
+      detections: [{ time: 0, detections: [], poseSubjects: [pose] }],
+      sceneCuts: [], clipStart: 0, clipEnd: 0,
+    });
+    expect(frame!.regions.some((region) => region.signalType === "pose_head")).toBe(true);
+  });
+
+  it("uses the more stable torso for a persistent raw action pose", () => {
+    const [frame] = buildSalientKeyframes({
+      detections: [{ time: 0, detections: [], poseSubjects: [{ ...pose, score: 0.4, trackId: undefined }] }],
+      sceneCuts: [], clipStart: 0, clipEnd: 0,
+    });
+    expect(frame!.regions.some((region) => region.signalType === "pose_torso")).toBe(true);
+    expect(frame!.regions.some((region) => region.signalType === "pose_head")).toBe(false);
+  });
+
+  it("does not let predicted or face-covered poses steer framing", () => {
+    const face: AutoFlipFaceDetection = { box: pose.headBox, keypoints: [] };
+    for (const poseSubjects of [[{ ...pose, predicted: true }], [pose]]) {
+      const [frame] = buildSalientKeyframes({
+        detections: [{
+          time: 0,
+          detections: [],
+          poseSubjects,
+          autoflipFaces: poseSubjects[0]!.predicted ? [] : [face],
+        }],
+        sceneCuts: [], clipStart: 0, clipEnd: 0,
+      });
+      expect(frame!.regions.some((region) => region.signalType === "pose_head" || region.signalType === "pose_torso")).toBe(false);
+    }
+  });
+
 });

@@ -7,7 +7,7 @@ import { analyzeSceneMotion, computeSalienceZoomScale } from "./scene-camera-mot
 import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
-import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
+import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
 
 export interface BuildAutoFlipTrackInput {
@@ -25,7 +25,7 @@ export interface BuildAutoFlipTrackInput {
   smoothing?: ClipperSmoothingStrength;
   /** Sizes the salience-driven zoom margin; defaults to "normal". */
   headroom?: ClipperHeadroom;
-  /** Allow zooming even when the source already matches the target aspect (off by default). */
+  /** Allow zooming when source and target aspects match (on by default). */
   matchedAspectZoom?: boolean;
   degradedReason?: string;
   hasSolidColorBackground?: boolean;
@@ -42,7 +42,7 @@ export interface BuildAutoFlipTrackInput {
 }
 
 const FULL_FRAME: NormalizedBox = { x: 0, y: 0, width: 1, height: 1 };
-const FOREGROUND_SIGNALS = new Set<SalientSignalType>(["face_core", "face_all", "face_full", "human", "pet", "car"]);
+const FOREGROUND_SIGNALS = new Set<SalientSignalType>(["face_core", "face_all", "face_full", "pose_head", "pose_torso", "human", "pet", "car"]);
 
 function hasForegroundSalience(keyframes: KeyFrameSalientInput[]): boolean {
   return keyframes.some((keyframe) => keyframe.regions.some((region) => FOREGROUND_SIGNALS.has(region.signalType)));
@@ -99,6 +99,16 @@ function detectionsInContent(detections: SubjectDetectionSample[], content: Norm
             ? [{ x: (point.x - content.x) / content.width, y: (point.y - content.y) / content.height }]
             : [],
         ),
+      }];
+    }),
+    poseSubjects: sample.poseSubjects?.flatMap((pose) => {
+      const box = intoContentRect(pose.box, content);
+      if (!box) return [];
+      return [{
+        ...pose,
+        box,
+        headBox: pose.headBox ? intoContentRect(pose.headBox, content) ?? undefined : undefined,
+        torsoBox: pose.torsoBox ? intoContentRect(pose.torsoBox, content) ?? undefined : undefined,
       }];
     }),
   }));
@@ -187,25 +197,26 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     // unless the caller opted in.
     const aspectMatchesSource = Math.abs(frameWidth / frameHeight - targetAspectRatio) < 0.001;
     const sceneZoom = new Array<number>(scenes.length).fill(1);
-    if (!aspectMatchesSource || input.matchedAspectZoom) {
+    if (!aspectMatchesSource || input.matchedAspectZoom !== false) {
       const margin = AUTOFLIP_ZOOM_MARGIN[input.headroom ?? "normal"];
       let index = 0;
       while (index < scenes.length) {
         let groupEnd = index + 1;
         while (groupEnd < scenes.length && scenes[groupEnd]!.continueLastScene) groupEnd++;
         const groupDuration = scenes[groupEnd - 1]!.end - scenes[index]!.start;
-        if (groupDuration >= AUTOFLIP_MIN_ZOOM_SCENE_SEC) {
+        const minZoomDuration = aspectMatchesSource ? AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC : AUTOFLIP_MIN_ZOOM_SCENE_SEC;
+        if (groupDuration >= minZoomDuration) {
           const groupKeyframes = keyframes.filter(
             (keyframe) => keyframe.time >= scenes[index]!.start - 1e-9 && keyframe.time <= scenes[groupEnd - 1]!.end + 1e-9,
           );
-          const scale = computeSalienceZoomScale({
+          const scale = hasForegroundSalience(groupKeyframes) ? computeSalienceZoomScale({
             keyframes: groupKeyframes,
             frameWidth,
             frameHeight,
             targetAspectRatio,
             margin,
             minScale: AUTOFLIP_MIN_ZOOM_SCALE,
-          });
+          }) : 1;
           for (let sceneIndex = index; sceneIndex < groupEnd; sceneIndex++) sceneZoom[sceneIndex] = scale;
         }
         index = groupEnd;
@@ -276,6 +287,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         isKeyFrames: timeline.isKeyFrames,
         kinematicOptions,
         continueLastScene: scene.continueLastScene,
+        pathSolver: motion.summary.motionType === "tracking" ? "kinematic" : "polynomial",
       });
       cropRects.forEach((crop, index) => {
         samples.push({ t: timeline.timestampsUs[index]! / 1_000_000, crop: intoSourceRect(crop, contentRect), cut: index === 0 && scene.cut });

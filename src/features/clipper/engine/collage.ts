@@ -137,22 +137,37 @@ export function augmentFaceSamplesWithDetectedHeads(
     const current = sorted[index]!;
     const previous = sorted[index - 1];
     const synthetic: FaceBox[] = [];
-    for (const detection of current.detections) {
-      if (detection.label.toLowerCase() !== "person") continue;
+    const poseHeads = (current.poseSubjects ?? []).flatMap((pose) => pose.headBox ? [{
+      box: pose.headBox,
+      score: pose.score,
+      trackId: pose.trackId,
+      predicted: pose.predicted,
+    }] : []);
+    const detectedHeads = current.detections.flatMap((detection) => detection.label.toLowerCase() === "person" ? [{
+      box: {
+        x: detection.box.x + (detection.box.width * (1 - HEAD_BAND_WIDTH_FRACTION)) / 2,
+        y: detection.box.y,
+        width: detection.box.width * HEAD_BAND_WIDTH_FRACTION,
+        height: detection.box.height * HEAD_BAND_HEIGHT_FRACTION,
+      },
+      score: detection.score,
+      trackId: detection.trackId,
+      predicted: detection.predicted,
+    }] : []);
+    for (const detection of [...poseHeads, ...detectedHeads]) {
       if (detection.predicted || detection.score < HEAD_MIN_DETECTION_SCORE) continue;
       const persistent = detection.trackId != null
-        ? (previous?.detections.some((d) => d.trackId === detection.trackId) ?? false)
-        : (previous?.detections.some((d) =>
-          d.label.toLowerCase() === "person"
-          && Math.abs((d.box.x + d.box.width / 2) - (detection.box.x + detection.box.width / 2)) <= HEAD_POSITION_TOLERANCE
-          && Math.abs((d.box.y + d.box.height / 2) - (detection.box.y + detection.box.height / 2)) <= HEAD_POSITION_TOLERANCE,
-        ) ?? false);
+        ? ((previous?.poseSubjects?.some((d) => d.trackId === detection.trackId) ?? false)
+          || (previous?.detections.some((d) => d.trackId === detection.trackId) ?? false))
+        : ([...(previous?.poseSubjects?.map((pose) => pose.headBox).filter(Boolean) ?? []), ...(previous?.detections.map((d) => d.box) ?? [])]
+          .some((box) => Math.abs((box!.x + box!.width / 2) - (detection.box.x + detection.box.width / 2)) <= HEAD_POSITION_TOLERANCE
+            && Math.abs((box!.y + box!.height / 2) - (detection.box.y + detection.box.height / 2)) <= HEAD_POSITION_TOLERANCE));
       if (!persistent) continue;
       const head: FaceBox = {
-        x: (detection.box.x + (detection.box.width * (1 - HEAD_BAND_WIDTH_FRACTION)) / 2) * sample.frameW,
+        x: detection.box.x * sample.frameW,
         y: detection.box.y * sample.frameH,
-        width: detection.box.width * HEAD_BAND_WIDTH_FRACTION * sample.frameW,
-        height: detection.box.height * HEAD_BAND_HEIGHT_FRACTION * sample.frameH,
+        width: detection.box.width * sample.frameW,
+        height: detection.box.height * sample.frameH,
       };
       if (head.width <= 0 || head.height <= 0) continue;
       const overlapsExisting = sample.faces.some((face) => overlapFractionOfSmaller(face, head) > 0)
@@ -389,7 +404,6 @@ export function deriveCollageAspectEligibility(
         const sample = regionSamples[index]!;
         const pair = selectDominantFacePair(sample.faces);
         const qualifies = pair != null
-          && !facesFitSingleCrop(pair, sample.frameW, sample.frameH, ratio)
           && splitCropsAreDistinct(pair, sample.frameW, sample.frameH, ratio, headroom);
 
         if (qualifies) {

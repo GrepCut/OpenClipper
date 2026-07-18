@@ -279,6 +279,7 @@ export interface NativeVisionMetrics {
   drainDurationMs: number;
   faceInferenceMs: number;
   objectInferenceMs: number;
+  poseInferenceMs: number;
   baseFacePasses: number;
   recoveryFacePasses: number;
   orientationProbePasses: number;
@@ -296,6 +297,7 @@ export interface NativeVisionMetrics {
   queueWaitMs: number;
   facePreprocessMs: number;
   objectPreprocessMs: number;
+  posePreprocessMs: number;
   decodedFrameCount: number;
   histogramSampleCount: number;
   decodeThreadCount: number;
@@ -316,6 +318,7 @@ interface NativeVisionCommandSummary {
   engine: "winml";
   faceDevice: NativeVisionDevice;
   objectDevice: NativeVisionDevice;
+  poseDevice: NativeVisionDevice;
   frameWidth: number;
   frameHeight: number;
   faceSampleCount: number;
@@ -425,6 +428,7 @@ async function detectWinMlMedia(
     durationSec: Math.round((performance.now() - started) / 100) / 10,
     faceDevice: summary.faceDevice,
     objectDevice: summary.objectDevice,
+    poseDevice: summary.poseDevice,
     faceSampleCount: faceSamples.length,
     subjectSampleCount: subjectSamples.length,
     metrics: summary.metrics,

@@ -9,6 +9,16 @@ MediaPipe is licensed under the Apache License 2.0. The converted files retain
 the same model provenance and are generated without changing learned weights.
 See <https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE>.
 
+## MoveNet MultiPose Lightning
+
+The bundled `movenet_multipose_lightning.onnx` file is derived from the Google
+MoveNet MultiPose Lightning model. It runs locally through WinML and is not
+downloaded at runtime.
+
+MoveNet and the TensorFlow.js pose-detection implementation are distributed
+under the Apache License 2.0. See
+<https://www.kaggle.com/models/google/movenet/tensorFlow2/multipose-lightning/1>.
+
 ## ByteTrack
 
 The native AutoFlip tracker includes an adapted implementation of the

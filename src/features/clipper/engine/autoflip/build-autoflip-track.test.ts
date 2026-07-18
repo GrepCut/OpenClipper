@@ -70,3 +70,33 @@ describe("buildAutoFlipTrack solid-background policy", () => {
     ).toBe(true);
   });
 });
+
+describe("buildAutoFlipTrack matched-aspect reframing", () => {
+  it("zooms and recenters reliable pose salience by default", () => {
+    const detections: SubjectDetectionSample[] = Array.from({ length: 11 }, (_, index) => ({
+      time: index * 0.2,
+      detections: [],
+      poseSubjects: [{
+        box: { x: 0.68, y: 0.15, width: 0.18, height: 0.72 },
+        headBox: { x: 0.72, y: 0.16, width: 0.08, height: 0.12 },
+        torsoBox: { x: 0.7, y: 0.3, width: 0.14, height: 0.3 },
+        score: 0.9,
+        trackId: 7,
+      }],
+    }));
+    const track = buildAutoFlipTrack({
+      clipStart: 0,
+      clipEnd: 2,
+      detections,
+      faces: [],
+      sceneCuts: [],
+      targetAspectRatios: { landscape: 16 / 9 },
+      frameWidth: 1920,
+      frameHeight: 1080,
+      sourceFrameRate: 5,
+    });
+    const samples = track.aspectTracks!.landscape!.samples;
+    expect(samples.some((sample) => sample.crop.width < 0.99)).toBe(true);
+    expect(samples.at(-1)!.crop.x + samples.at(-1)!.crop.width / 2).toBeGreaterThan(0.6);
+  });
+});

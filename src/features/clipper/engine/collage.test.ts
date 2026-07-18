@@ -73,7 +73,7 @@ describe("two-speaker collage detection", () => {
 });
 
 describe("format-aware collage eligibility", () => {
-  it("splits 9:16 while keeping 1:1 single-frame when both faces fit", () => {
+  it("uses distinct two-person panel crops even when both faces fit the nominal frame", () => {
     const samples = [sample(0), sample(0.5), sample(1)];
     const pair = selectDominantFacePair(samples[0]!.faces)!;
     expect(facesFitSingleCrop(pair, FRAME_W, FRAME_H, 1)).toBe(true);
@@ -82,10 +82,10 @@ describe("format-aware collage eligibility", () => {
     const regions = deriveTwoSpeakerRegions(samples);
     const eligibility = deriveCollageAspectEligibility(samples, regions, "normal");
     expect(eligibility["9-16"]).toHaveLength(1);
-    expect(eligibility["1-1"]).toHaveLength(0);
-    expect(eligibility["16-9"]).toHaveLength(0);
+    expect(eligibility["1-1"]).toHaveLength(1);
+    expect(eligibility["16-9"]).toHaveLength(1);
     expect(filterRegionsWithEligibleAspects(regions, eligibility, ["9-16"])).toEqual(regions);
-    expect(filterRegionsWithEligibleAspects(regions, eligibility, ["1-1"])).toEqual([]);
+    expect(filterRegionsWithEligibleAspects(regions, eligibility, ["1-1"])).toEqual(regions);
   });
 
   it("rejects split when the two panel crops would mostly show the same area", () => {

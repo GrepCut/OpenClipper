@@ -69,9 +69,10 @@ function decideMotionType(
   allowSweeping: boolean,
   hasSolidColorBackground: boolean,
   hasSalientRegion: boolean,
+  hasPersistentTrack: boolean,
 ): SceneCameraMotionType {
   if (!hasSalientRegion) return "steady";
-  if (allowSweeping && !hasSolidColorBackground && successRate < 0.4 && sceneSpanSec >= 1) return "sweeping";
+  if (allowSweeping && !hasSolidColorBackground && !hasPersistentTrack && successRate < 0.4 && sceneSpanSec >= 1) return "sweeping";
   return motion.horizontal < STEADY_MOTION_THRESHOLD && motion.vertical < STEADY_MOTION_THRESHOLD
     ? "steady"
     : "tracking";
@@ -163,7 +164,13 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
     : 0;
   const sceneTimes = input.sceneTimestampsUs?.map((time) => time / 1_000_000) ?? input.keyframes.map((keyframe) => keyframe.time);
   const sceneSpanSec = Math.max(0, (sceneTimes.at(-1) ?? 0) - (sceneTimes[0] ?? 0));
-  const requestedMotionType = decideMotionType(motionAmount, successRate, sceneSpanSec, input.allowSweeping ?? true, Boolean(input.hasSolidColorBackground), hasSalientRegion);
+  const trackedFrameCounts = new Map<number, number>();
+  for (const keyframe of input.keyframes) {
+    const ids = new Set(focusBandRegions(keyframe.regions).filter((region) => !region.predicted && region.trackId != null).map((region) => region.trackId!));
+    for (const id of ids) trackedFrameCounts.set(id, (trackedFrameCounts.get(id) ?? 0) + 1);
+  }
+  const hasPersistentTrack = [...trackedFrameCounts.values()].some((count) => count >= 2);
+  const requestedMotionType = decideMotionType(motionAmount, successRate, sceneSpanSec, input.allowSweeping ?? true, Boolean(input.hasSolidColorBackground), hasSalientRegion, hasPersistentTrack);
   const keyframeCenters = keyframeCrops.map((item) => rectCenter(item.rect));
 
   // The scene window is the maximum of the (possibly zoomed) target and the

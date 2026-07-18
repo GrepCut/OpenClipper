@@ -23,11 +23,20 @@ const backgroundObject: SalientRegion = {
   isRequired: false,
 };
 
+const poseHead: SalientRegion = {
+  box: { x: 0.7, y: 0.2, width: 0.08, height: 0.1 },
+  score: 0.8,
+  signalType: "pose_head",
+  isRequired: false,
+};
+
 describe("focusBandRegions", () => {
   it("prefers faces over bodies over objects", () => {
     expect(focusBandRegions([face, human, backgroundObject]).map((r) => r.signalType)).toEqual(["face_core"]);
     expect(focusBandRegions([human, backgroundObject]).map((r) => r.signalType)).toEqual(["human"]);
     expect(focusBandRegions([backgroundObject]).map((r) => r.signalType)).toEqual(["object"]);
+    expect(focusBandRegions([face, poseHead]).map((r) => r.signalType)).toEqual(["face_core"]);
+    expect(focusBandRegions([poseHead, human]).map((r) => r.signalType)).toEqual(["pose_head"]);
   });
 });
 

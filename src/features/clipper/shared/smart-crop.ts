@@ -23,10 +23,21 @@ export interface AutoFlipFaceDetection {
   keypoints: Array<{ x: number; y: number }>;
 }
 
+/** Compact pose output retained by the cropper; raw model keypoints stay transient. */
+export interface PoseSubject {
+  box: NormalizedBox;
+  score: number;
+  trackId?: number;
+  predicted?: boolean;
+  headBox?: NormalizedBox;
+  torsoBox?: NormalizedBox;
+}
+
 export interface SubjectDetectionSample {
   time: number;
   detections: SubjectDetection[];
   autoflipFaces?: AutoFlipFaceDetection[];
+  poseSubjects?: PoseSubject[];
   /** Detector that produced this sample; persisted only as analysis provenance. */
   modelId?: string;
   /** Present when the exact AutoFlip model could not be initialized. */

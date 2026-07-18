@@ -1,5 +1,6 @@
-import type { AutoFlipFaceDetection, SubjectDetection, SubjectDetectionSample } from "../../shared/smart-crop";
+import type { AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection, SubjectDetectionSample } from "../../shared/smart-crop";
 import type { KeyFrameSalientInput, SalientRegion, SalientSignalType } from "./types";
+import { OneEuroFilter } from "./one-euro-filter";
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
@@ -12,6 +13,8 @@ const SIGNAL_WEIGHTS: Record<SalientSignalType, { minScore: number; maxScore: nu
   face_core: { minScore: 0.85, maxScore: 0.9, required: false },
   face_all: { minScore: 0.8, maxScore: 0.85, required: false },
   face_full: { minScore: 0.8, maxScore: 0.85, required: false },
+  pose_head: { minScore: 0.78, maxScore: 0.82, required: false },
+  pose_torso: { minScore: 0.76, maxScore: 0.81, required: false },
   human: { minScore: 0.75, maxScore: 0.8, required: false },
   pet: { minScore: 0.7, maxScore: 0.75, required: false },
   car: { minScore: 0.7, maxScore: 0.75, required: false },
@@ -68,6 +71,8 @@ function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] 
       signalType,
       // The reference AutoFlip graph marks every configured signal optional.
       isRequired: false,
+      trackId: detection.trackId,
+      predicted: detection.predicted,
     };
     // LocalizationToRegionCalculator(output_all_signals: true) emits both the
     // class-specific signal and the low-priority generic object signal.
@@ -75,6 +80,93 @@ function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] 
       ? [specific]
       : [specific, { ...specific, score: weightedScore(1, "object"), signalType: "object" }];
   });
+}
+
+const POSE_HEAD_COVERAGE_THRESHOLD = 0.4;
+const POSE_FILTER_RESET_GAP_SEC = 1;
+
+function clampBox(box: NormalizedBox): NormalizedBox {
+  const x = clamp01(box.x);
+  const y = clamp01(box.y);
+  return { x, y, width: Math.max(0, Math.min(1 - x, box.width)), height: Math.max(0, Math.min(1 - y, box.height)) };
+}
+
+class BoxOneEuroFilter {
+  private readonly filters = Array.from({ length: 4 }, () => new OneEuroFilter());
+  filter(box: NormalizedBox, time: number): NormalizedBox {
+    return clampBox({
+      x: this.filters[0]!.filter(box.x, time),
+      y: this.filters[1]!.filter(box.y, time),
+      width: this.filters[2]!.filter(box.width, time),
+      height: this.filters[3]!.filter(box.height, time),
+    });
+  }
+}
+
+interface PoseFilterState {
+  lastTime: number;
+  box: BoxOneEuroFilter;
+  head: BoxOneEuroFilter;
+  torso: BoxOneEuroFilter;
+}
+
+/** Smooth pose geometry consistently after either the WinML or TFJS detector. */
+export function smoothPoseSamples(samples: SubjectDetectionSample[], sceneCuts: number[]): SubjectDetectionSample[] {
+  const states = new Map<string, PoseFilterState>();
+  let lastTime = -Infinity;
+  return [...samples].sort((a, b) => a.time - b.time).map((sample) => {
+    if (sceneCuts.some((cut) => cut > lastTime + 1e-9 && cut <= sample.time + 1e-9)) states.clear();
+    lastTime = sample.time;
+    return {
+      ...sample,
+      poseSubjects: sample.poseSubjects?.map((pose, index) => {
+        const key = pose.trackId != null ? `t${pose.trackId}` : `i${index}`;
+        let state = states.get(key);
+        if (!state || sample.time - state.lastTime > POSE_FILTER_RESET_GAP_SEC) {
+          state = { lastTime: sample.time, box: new BoxOneEuroFilter(), head: new BoxOneEuroFilter(), torso: new BoxOneEuroFilter() };
+          states.set(key, state);
+        }
+        state.lastTime = sample.time;
+        return {
+          ...pose,
+          box: state.box.filter(pose.box, sample.time),
+          headBox: pose.headBox ? state.head.filter(pose.headBox, sample.time) : undefined,
+          torsoBox: pose.torsoBox ? state.torso.filter(pose.torsoBox, sample.time) : undefined,
+        };
+      }),
+    };
+  });
+}
+
+function poseRegions(poses: PoseSubject[], faces: AutoFlipFaceDetection[], preferTorso: boolean): SalientRegion[] {
+  const regions: SalientRegion[] = [];
+  for (const pose of poses) {
+    // A predicted pose is useful for track continuity, but its extrapolated
+    // torso must not steer the camera after a cut or detector dropout.
+    if (pose.predicted) continue;
+    // BlazeFace is more precise for talking-head material. When it already
+    // covers this pose's head, do not emit a second torso signal for the same
+    // person—the duplicate shifts the aggregate focus down and sideways.
+    if (pose.headBox && faces.some((face) => boxesIntersect(pose.headBox!, face.box))) continue;
+    const head = pose.headBox;
+    // A pose without an id was deliberately retained below ByteTrack's
+    // confidence gate after clip-level persistence validation. Its torso
+    // joints are more stable than its face landmarks on action footage.
+    const chosen = preferTorso || pose.trackId == null
+      ? pose.torsoBox ?? head
+      : head ?? pose.torsoBox;
+    if (!chosen || chosen.width <= 0 || chosen.height <= 0) continue;
+    const signalType: SalientSignalType = chosen === head ? "pose_head" : "pose_torso";
+    regions.push({
+      box: chosen,
+      score: weightedScore(pose.score, signalType),
+      signalType,
+      isRequired: false,
+      trackId: pose.trackId,
+      predicted: pose.predicted,
+    });
+  }
+  return regions;
 }
 
 /** Where a head sits inside a person detection box, when no face detector confirmed one. */
@@ -139,13 +231,28 @@ export interface BuildSalientKeyframesInput {
 
 export function buildSalientKeyframes(input: BuildSalientKeyframesInput): KeyFrameSalientInput[] {
   const interval = input.keyframeIntervalSec ?? AUTOFLIP_KEYFRAME_INTERVAL_SEC;
+  const smoothedDetections = smoothPoseSamples(input.detections, input.sceneCuts);
+  const boundaries = [input.clipStart, ...input.sceneCuts.filter((cut) => cut > input.clipStart && cut < input.clipEnd), input.clipEnd].sort((a, b) => a - b);
+  const preferTorsoByScene = boundaries.slice(0, -1).map((start, index) => {
+    const end = boundaries[index + 1]!;
+    const poseFrames = smoothedDetections.filter((sample) => sample.time >= start - 1e-9 && sample.time <= end + 1e-9 && (sample.poseSubjects?.length ?? 0) > 0);
+    if (!poseFrames.length) return false;
+    const headFrames = poseFrames.filter((sample) => sample.poseSubjects!.some((pose) => pose.headBox != null));
+    return headFrames.length / poseFrames.length < POSE_HEAD_COVERAGE_THRESHOLD;
+  });
   const keyframes: KeyFrameSalientInput[] = [];
   for (let time = input.clipStart; time <= input.clipEnd + 1e-9; time += interval) {
-    const detectionSample = nearest(input.detections, time, Math.min(interval / 2, MAX_KEYFRAME_SAMPLE_DELTA_SEC));
+    const detectionSample = nearest(smoothedDetections, time, Math.min(interval / 2, MAX_KEYFRAME_SAMPLE_DELTA_SEC));
+    const nextBoundaryIndex = boundaries.findIndex((boundary) => boundary > time + 1e-9);
+    const sceneIndex = nextBoundaryIndex < 0
+      ? preferTorsoByScene.length - 1
+      : Math.max(0, Math.min(preferTorsoByScene.length - 1, nextBoundaryIndex - 1));
+    const faces = detectionSample?.autoflipFaces ?? [];
     const regions = [
       ...regionsFromDetections(detectionSample?.detections ?? []),
-      ...(detectionSample?.autoflipFaces ?? []).flatMap(faceRegionsFromDetection),
-      ...syntheticHeadRegions(detectionSample?.detections ?? [], detectionSample?.autoflipFaces ?? []),
+      ...faces.flatMap(faceRegionsFromDetection),
+      ...poseRegions(detectionSample?.poseSubjects ?? [], faces, preferTorsoByScene[sceneIndex] ?? false),
+      ...syntheticHeadRegions(detectionSample?.detections ?? [], faces),
     ];
     const isShotChange = input.sceneCuts.some((cut) => Math.abs(cut - time) <= interval * 0.6);
     keyframes.push({ time, regions, isShotChange });
