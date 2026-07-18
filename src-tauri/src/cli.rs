@@ -3,28 +3,52 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 
+use crate::commands::test_benchmark::benchmark_miss_export::{
+    export_benchmark_run_miss_frames_inner, ExportBenchmarkRunMissFramesResult,
+};
+
 static BENCHMARK_CLI_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 const HELP: &str = "\
 Open Clipper benchmark CLI
 
 Usage:
-  open-clipper --benchmark-run <dataset-id-or-path> [--json]
+  open-clipper --benchmark-run <dataset-id-or-path> [--json] [--extract-miss-frames]
+  open-clipper --extract-miss-frames <run-id> [--output <dir>] [--json]
 
 Options:
   --benchmark-run <id-or-path>  Run annotated clips in a test dataset headlessly
-  --json                        Print machine-readable JSON summary to stdout
-  --help, -h                    Show this help
+  --extract-miss-frames <run-id>  Export worst keyframe JPEGs for a completed run
+  --extract-miss-frames           With --benchmark-run: export after the run finishes
+  --output <dir>                  Custom flat export directory (extract mode only)
+  --json                          Print machine-readable JSON summary to stdout
+  --help, -h                      Show this help
 
 Examples:
   open-clipper --benchmark-run cd986c2a-d998-4a96-afec-218d052d8c78
-  open-clipper --benchmark-run \"%APPDATA%\\com.openclipper.app\\test-datasets\\cd986c2a-...\"
+  open-clipper --benchmark-run cd986c2a-... --extract-miss-frames
+  open-clipper --extract-miss-frames a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  open-clipper --extract-miss-frames a1b2c3d4-... --output C:\\temp\\miss-frames
 ";
+
+#[derive(Clone, Debug)]
+pub enum CliRequest {
+    BenchmarkRun(BenchmarkCliRequest),
+    ExtractMissFrames(ExtractMissFramesCliRequest),
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BenchmarkCliRequest {
     pub dataset_id: String,
+    pub json_output: bool,
+    pub extract_miss_frames: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExtractMissFramesCliRequest {
+    pub run_id: String,
+    pub output_dir: Option<PathBuf>,
     pub json_output: bool,
 }
 
@@ -58,11 +82,23 @@ pub struct BenchmarkCliSummary {
     pub completed_clips: usize,
     pub failed_clips: usize,
     pub manifest_path: Option<String>,
+    pub miss_frames_export_dir: Option<String>,
+    pub miss_frames_count: Option<usize>,
     pub error: Option<String>,
     pub clips: Vec<BenchmarkCliClipSummary>,
 }
 
-pub fn parse_args() -> Option<BenchmarkCliRequest> {
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractMissFramesCliSummary {
+    pub run_id: String,
+    pub export_dir: String,
+    pub frame_count: usize,
+    pub result_count: usize,
+    pub manifest_path: String,
+}
+
+pub fn parse_args() -> Option<CliRequest> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
         return None;
@@ -73,6 +109,9 @@ pub fn parse_args() -> Option<BenchmarkCliRequest> {
     }
 
     let mut dataset_id: Option<String> = None;
+    let mut extract_run_id: Option<String> = None;
+    let mut extract_after_benchmark = false;
+    let mut output_dir: Option<PathBuf> = None;
     let mut json_output = false;
     let mut index = 0;
     while index < args.len() {
@@ -84,23 +123,56 @@ pub fn parse_args() -> Option<BenchmarkCliRequest> {
                 };
                 dataset_id = Some(normalize_dataset_arg(value));
             }
+            "--extract-miss-frames" => {
+                if let Some(next) = args.get(index + 1).filter(|value| !value.starts_with('-')) {
+                    extract_run_id = Some(next.clone());
+                    index += 1;
+                } else {
+                    extract_after_benchmark = true;
+                }
+            }
+            "--output" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    exit_with_error(2, "--output requires a directory path");
+                };
+                output_dir = Some(PathBuf::from(value));
+            }
             "--json" => json_output = true,
             unknown => exit_with_error(2, &format!("Unknown argument: {unknown}")),
         }
         index += 1;
     }
 
-    dataset_id.map(|dataset_id| {
-        BENCHMARK_CLI_ACTIVE.store(true, Ordering::SeqCst);
-        BenchmarkCliRequest {
-            dataset_id,
-            json_output,
+    if let Some(run_id) = extract_run_id {
+        if dataset_id.is_some() {
+            exit_with_error(
+                2,
+                "Use either --benchmark-run or --extract-miss-frames <run-id>, not both.",
+            );
         }
-    })
+        BENCHMARK_CLI_ACTIVE.store(true, Ordering::SeqCst);
+        return Some(CliRequest::ExtractMissFrames(ExtractMissFramesCliRequest {
+            run_id,
+            output_dir,
+            json_output,
+        }));
+    }
+
+    let Some(dataset_id) = dataset_id else {
+        return None;
+    };
+
+    BENCHMARK_CLI_ACTIVE.store(true, Ordering::SeqCst);
+    Some(CliRequest::BenchmarkRun(BenchmarkCliRequest {
+        dataset_id,
+        json_output,
+        extract_miss_frames: extract_after_benchmark,
+    }))
 }
 
 pub fn is_benchmark_cli_argv(argv: &[String]) -> bool {
-    argv.iter().any(|arg| arg == "--benchmark-run")
+    argv.iter().any(|arg| arg == "--benchmark-run" || arg == "--extract-miss-frames")
 }
 
 fn normalize_dataset_arg(raw: &str) -> String {
@@ -153,6 +225,20 @@ pub async fn ensure_dataset_exists(
         .ok_or_else(|| format!("Test dataset {dataset_id} was not found in the local database."))
 }
 
+pub async fn run_extract_miss_frames_cli(
+    app: &AppHandle,
+    request: &ExtractMissFramesCliRequest,
+) -> Result<ExportBenchmarkRunMissFramesResult, String> {
+    let db = app.state::<crate::database::LocalDb>();
+    export_benchmark_run_miss_frames_inner(
+        app,
+        &db.database,
+        &request.run_id,
+        request.output_dir.clone(),
+    )
+    .await
+}
+
 pub fn print_help() {
     println!("{HELP}");
 }
@@ -180,15 +266,109 @@ pub fn print_cli_start(request: &BenchmarkCliRequest, dataset_name: &str) {
         "Starting benchmark for dataset \"{dataset_name}\" ({})",
         request.dataset_id
     );
+    if request.extract_miss_frames {
+        println!("Miss-frame export will run after the benchmark completes.");
+    }
+}
+
+pub fn print_extract_start(request: &ExtractMissFramesCliRequest) {
+    println!("Exporting miss frames for run {}", request.run_id);
+    if let Some(path) = &request.output_dir {
+        println!("Output directory: {}", path.display());
+    }
 }
 
 pub fn log_benchmark_progress(message: &str) {
     println!("{message}");
 }
 
-pub fn finish_benchmark_cli(app: &AppHandle, mut summary: BenchmarkCliSummary, json_output: bool) {
+pub fn finish_extract_miss_frames_cli(
+    app: &AppHandle,
+    request: &ExtractMissFramesCliRequest,
+    result: Result<ExportBenchmarkRunMissFramesResult, String>,
+) {
+    match result {
+        Ok(export) => {
+            let manifest_path = Path::new(&export.export_dir).join("manifest.json");
+            let summary = ExtractMissFramesCliSummary {
+                run_id: request.run_id.clone(),
+                export_dir: export.export_dir.clone(),
+                frame_count: export.frame_count,
+                result_count: export.result_count,
+                manifest_path: manifest_path.display().to_string(),
+            };
+            if request.json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&summary).unwrap_or_else(|error| {
+                        format!("{{\"error\":\"Failed to serialize summary: {error}\"}}")
+                    })
+                );
+            } else {
+                print_extract_human_summary(&summary);
+            }
+            app.exit(0);
+        }
+        Err(error) => {
+            if request.json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "runId": request.run_id,
+                        "error": error,
+                    }))
+                    .unwrap_or_else(|_| format!("{{\"error\":\"{error}\"}}"))
+                );
+            } else {
+                eprintln!("Error: {error}");
+            }
+            app.exit(1);
+        }
+    }
+}
+
+fn print_extract_human_summary(summary: &ExtractMissFramesCliSummary) {
+    println!();
+    println!("Miss frames exported for run {}", summary.run_id);
+    println!("Directory: {}", summary.export_dir);
+    println!(
+        "Frames: {} from {} clip/aspect result(s)",
+        summary.frame_count, summary.result_count
+    );
+    println!("Manifest: {}", summary.manifest_path);
+}
+
+pub fn finish_benchmark_cli(
+    app: &AppHandle,
+    request: Option<&BenchmarkCliRequest>,
+    mut summary: BenchmarkCliSummary,
+    json_output: bool,
+) {
     resolve_manifest_path(app, &mut summary);
-    let success = summary.status == "completed";
+    if summary.status == "completed"
+        && request.is_some_and(|value| value.extract_miss_frames)
+        && !summary.run_id.is_empty()
+    {
+        match tauri::async_runtime::block_on(run_extract_miss_frames_for_run(
+            app,
+            &summary.run_id,
+            None,
+        )) {
+            Ok(export) => {
+                summary.miss_frames_export_dir = Some(export.export_dir);
+                summary.miss_frames_count = Some(export.frame_count);
+            }
+            Err(error) => {
+                summary.error = Some(format!(
+                    "{}{}",
+                    summary.error.map(|value| format!("{value}; ")).unwrap_or_default(),
+                    format!("miss-frame export failed: {error}")
+                ));
+            }
+        }
+    }
+
+    let success = summary.status == "completed" && summary.error.is_none();
     if json_output {
         println!(
             "{}",
@@ -201,6 +381,15 @@ pub fn finish_benchmark_cli(app: &AppHandle, mut summary: BenchmarkCliSummary, j
     }
     let code = if success { 0 } else { 1 };
     app.exit(code);
+}
+
+async fn run_extract_miss_frames_for_run(
+    app: &AppHandle,
+    run_id: &str,
+    output_dir: Option<PathBuf>,
+) -> Result<ExportBenchmarkRunMissFramesResult, String> {
+    let db = app.state::<crate::database::LocalDb>();
+    export_benchmark_run_miss_frames_inner(app, &db.database, run_id, output_dir).await
 }
 
 fn print_human_summary(summary: &BenchmarkCliSummary) {
@@ -216,6 +405,10 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
     }
     if let Some(path) = &summary.manifest_path {
         println!("Manifest: {path}");
+    }
+    if let Some(path) = &summary.miss_frames_export_dir {
+        let count = summary.miss_frames_count.unwrap_or(0);
+        println!("Miss frames: {count} JPEG(s) in {path}");
     }
     for clip in &summary.clips {
         if clip.aspects.is_empty() {
@@ -271,9 +464,12 @@ pub fn is_benchmark_cli_active() -> bool {
 
 #[tauri::command]
 pub fn get_benchmark_cli_request(
-    request: tauri::State<'_, Option<BenchmarkCliRequest>>,
+    request: tauri::State<'_, Option<CliRequest>>,
 ) -> Option<BenchmarkCliRequest> {
-    request.inner().clone()
+    match request.inner() {
+        Some(CliRequest::BenchmarkRun(value)) => Some(value.clone()),
+        _ => None,
+    }
 }
 
 #[tauri::command]
@@ -284,13 +480,12 @@ pub fn log_benchmark_cli_progress(message: String) {
 #[tauri::command]
 pub fn finish_benchmark_cli_command(
     app: AppHandle,
-    request: tauri::State<'_, Option<BenchmarkCliRequest>>,
+    request: tauri::State<'_, Option<CliRequest>>,
     summary: BenchmarkCliSummary,
 ) {
-    let json_output = request
-        .inner()
-        .as_ref()
-        .map(|value| value.json_output)
-        .unwrap_or(false);
-    finish_benchmark_cli(&app, summary, json_output);
+    let (benchmark_request, json_output) = match request.inner() {
+        Some(CliRequest::BenchmarkRun(value)) => (Some(value.clone()), value.json_output),
+        _ => (None, false),
+    };
+    finish_benchmark_cli(&app, benchmark_request.as_ref(), summary, json_output);
 }

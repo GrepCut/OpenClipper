@@ -671,22 +671,22 @@ pub async fn export_benchmark_miss_frames(
     })
 }
 
-#[tauri::command]
-pub async fn export_benchmark_run_miss_frames(
-    app: AppHandle,
-    db: State<'_, LocalDb>,
-    run_id: String,
+pub async fn export_benchmark_run_miss_frames_inner(
+    app: &AppHandle,
+    db: &sea_orm::DatabaseConnection,
+    run_id: &str,
+    output_dir: Option<PathBuf>,
 ) -> Result<ExportBenchmarkRunMissFramesResult, String> {
-    validate_id(&run_id)?;
-    let run = benchmark_run::Entity::find_by_id(run_id.clone())
-        .one(&db.database)
+    validate_id(run_id)?;
+    let run = benchmark_run::Entity::find_by_id(run_id.to_string())
+        .one(db)
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "Benchmark run was not found.".to_string())?;
     if run.status != "completed" {
         return Err("Only completed benchmark runs can export frames.".into());
     }
-    let results = TestRepository::list_results(&db.database, &run_id)
+    let results = TestRepository::list_results(db, run_id)
         .await
         .map_err(String::from)?;
     let exportable: Vec<_> = results
@@ -698,7 +698,10 @@ pub async fn export_benchmark_run_miss_frames(
     if exportable.is_empty() {
         return Err("This run has no completed results with per-frame details.".into());
     }
-    let export_dir = run_export_dir(&app, &run.dataset_id, &run_id)?;
+    let export_dir = match output_dir {
+        Some(path) => path,
+        None => run_export_dir(app, &run.dataset_id, run_id)?,
+    };
     if export_dir.exists() {
         fs::remove_dir_all(&export_dir).map_err(|error| error.to_string())?;
     }
@@ -711,11 +714,11 @@ pub async fn export_benchmark_run_miss_frames(
             .clone()
             .expect("filtered");
         let clip = test_clip::Entity::find_by_id(result.clip_id.clone())
-            .one(&db.database)
+            .one(db)
             .await
             .map_err(|error| error.to_string())?
             .ok_or_else(|| "Test clip was not found.".to_string())?;
-        let keyframes = TestRepository::annotations(&db.database, &clip.id)
+        let keyframes = TestRepository::annotations(db, &clip.id)
             .await
             .map_err(String::from)?;
         let input = ExportInput {
@@ -738,7 +741,7 @@ pub async fn export_benchmark_run_miss_frames(
         all_frames.extend(export.manifest.frames);
     }
     let run_manifest = RunExportManifest {
-        run_id: run_id.clone(),
+        run_id: run_id.to_string(),
         exported_at: Utc::now().to_rfc3339(),
         selection: "worst-50-percent-then-random-25-percent",
         result_count: exportable.len(),
@@ -751,6 +754,15 @@ pub async fn export_benchmark_run_miss_frames(
         frame_count,
         result_count: exportable.len(),
     })
+}
+
+#[tauri::command]
+pub async fn export_benchmark_run_miss_frames(
+    app: AppHandle,
+    db: State<'_, LocalDb>,
+    run_id: String,
+) -> Result<ExportBenchmarkRunMissFramesResult, String> {
+    export_benchmark_run_miss_frames_inner(&app, &db.database, &run_id, None).await
 }
 
 #[cfg(test)]

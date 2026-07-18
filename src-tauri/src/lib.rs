@@ -174,7 +174,7 @@ pub fn run() {
     }
 
     builder
-        .manage(cli_request)
+        .manage(cli_request.clone())
         .manage(video_processing::NativeJobRegistry::default())
         .on_page_load(|webview, payload| {
             log::info!(
@@ -315,13 +315,30 @@ pub fn run() {
             app.manage(local_db);
             log::info!(target: "startup", "local database initialized");
 
-            if let Some(request) = app.state::<Option<cli::BenchmarkCliRequest>>().inner().clone() {
-                match tauri::async_runtime::block_on(cli::ensure_dataset_exists(
-                    app.handle(),
-                    &request.dataset_id,
-                )) {
-                    Ok(dataset) => cli::print_cli_start(&request, &dataset.name),
-                    Err(error) => cli::exit_with_error(2, &error),
+            if let Some(request) = app.state::<Option<cli::CliRequest>>().inner().clone() {
+                match request {
+                    cli::CliRequest::BenchmarkRun(benchmark_request) => {
+                        match tauri::async_runtime::block_on(cli::ensure_dataset_exists(
+                            app.handle(),
+                            &benchmark_request.dataset_id,
+                        )) {
+                            Ok(dataset) => {
+                                cli::print_cli_start(&benchmark_request, &dataset.name)
+                            }
+                            Err(error) => cli::exit_with_error(2, &error),
+                        }
+                    }
+                    cli::CliRequest::ExtractMissFrames(extract_request) => {
+                        cli::print_extract_start(&extract_request);
+                        let result = tauri::async_runtime::block_on(
+                            cli::run_extract_miss_frames_cli(app.handle(), &extract_request),
+                        );
+                        cli::finish_extract_miss_frames_cli(
+                            app.handle(),
+                            &extract_request,
+                            result,
+                        );
+                    }
                 }
             }
 

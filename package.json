@@ -12,6 +12,7 @@
     "test": "vitest run",
     "benchmark:run": "src-tauri\\target\\release\\open-clipper.exe --benchmark-run",
     "benchmark:run:dev": "tauri dev -- -- --benchmark-run",
+    "benchmark:extract-miss-frames": "src-tauri\\target\\release\\open-clipper.exe --extract-miss-frames",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

@@ -32,6 +32,8 @@ export interface BenchmarkCliSummary {
   completedClips: number;
   failedClips: number;
   manifestPath: string | null;
+  missFramesExportDir?: string | null;
+  missFramesCount?: number | null;
   error: string | null;
   clips: BenchmarkCliClipSummary[];
 }
