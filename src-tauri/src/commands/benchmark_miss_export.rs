@@ -1,5 +1,7 @@
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
-use std::path::Path;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use image::{codecs::jpeg::JpegEncoder, ExtendedColorType};
@@ -13,7 +15,7 @@ use crate::repository::test_repository::{TestKeyframeDto, TestTargetDto};
 use crate::repository::TestRepository;
 use crate::video_processing::extract_frame_rgb_at_timestamp;
 
-use super::{test_clip_dir, test_dataset_root, validate_id};
+use super::{test_dataset_root, validate_id};
 
 const VISIBILITY_MISS_BASE: f64 = 10_000.0;
 const CROP_VIEWPORT_RGB: [u8; 3] = [255, 68, 68];
@@ -47,7 +49,7 @@ struct BenchmarkFrameDetail {
     targets: Vec<BenchmarkTargetDetail>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ManifestTarget {
     slot: i32,
@@ -56,9 +58,11 @@ struct ManifestTarget {
     focus_error_radius: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestFrame {
+    clip_id: String,
+    aspect_id: String,
     rank: usize,
     file: String,
     keyframe_timestamp_us: i64,
@@ -85,12 +89,32 @@ struct ExportManifest {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RunExportManifest {
+    run_id: String,
+    exported_at: String,
+    selection: &'static str,
+    result_count: usize,
+    frame_count: usize,
+    frames: Vec<ManifestFrame>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportBenchmarkMissFramesResult {
     pub export_dir: String,
     pub frame_count: usize,
     pub manifest_relative_path: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportBenchmarkRunMissFramesResult {
+    pub export_dir: String,
+    pub frame_count: usize,
+    pub result_count: usize,
+}
+
+#[derive(Clone)]
 struct RankedFrame {
     detail: BenchmarkFrameDetail,
     score: f64,
@@ -110,6 +134,42 @@ struct ExportInput {
     details_relative_path: String,
     media_relative_path: String,
     keyframes: Vec<TestKeyframeDto>,
+    export_dir: PathBuf,
+}
+
+struct ExportSyncResult {
+    frame_count: usize,
+    manifest: ExportManifest,
+}
+
+fn run_export_dir(app: &AppHandle, dataset_id: &str, run_id: &str) -> Result<PathBuf, String> {
+    Ok(test_dataset_root(app, dataset_id)?
+        .join("miss-frames")
+        .join(run_id))
+}
+
+fn export_file_prefix(clip_id: &str, aspect_id: &str) -> String {
+    format!("{clip_id}_{aspect_id}_")
+}
+
+fn remove_prefixed_exports(export_dir: &Path, clip_id: &str, aspect_id: &str) -> Result<(), String> {
+    if !export_dir.is_dir() {
+        return Ok(());
+    }
+    let prefix = export_file_prefix(clip_id, aspect_id);
+    for entry in fs::read_dir(export_dir).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name.starts_with(&prefix) {
+            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+        }
+    }
+    let sidecar = export_dir.join(format!("{prefix}manifest.json"));
+    if sidecar.is_file() {
+        fs::remove_file(sidecar).map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn target_score(target: &BenchmarkTargetDetail) -> f64 {
@@ -152,6 +212,51 @@ fn select_worst_half(sampled: Vec<SampledKeyframeFrame>) -> Vec<RankedFrame> {
     let take = ((ranked.len() as f64) * 0.5).ceil() as usize;
     ranked.truncate(take.max(1));
     ranked
+}
+
+fn stable_sample_key(seed: &str, keyframe_timestamp_us: i64) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    seed.hash(&mut hasher);
+    keyframe_timestamp_us.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn subsample_random_half_of_worst(
+    ranked: Vec<RankedFrame>,
+    original_count: usize,
+    seed: &str,
+) -> Vec<RankedFrame> {
+    if ranked.is_empty() {
+        return ranked;
+    }
+    let target = ((original_count as f64) * 0.25).ceil() as usize;
+    let target = target.max(1);
+    if ranked.len() <= target {
+        return ranked;
+    }
+    let mut keyed: Vec<_> = ranked
+        .into_iter()
+        .map(|frame| (stable_sample_key(seed, frame.keyframe_timestamp_us), frame))
+        .collect();
+    keyed.sort_by_key(|(key, _)| *key);
+    let mut selected: Vec<RankedFrame> = keyed
+        .into_iter()
+        .take(target)
+        .map(|(_, frame)| frame)
+        .collect();
+    selected.sort_by(|left, right| {
+        right
+            .score
+            .partial_cmp(&left.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    selected
+}
+
+fn select_frames_for_export(sampled: Vec<SampledKeyframeFrame>, seed: &str) -> Vec<RankedFrame> {
+    let original_count = sampled.len();
+    let worst_half = select_worst_half(sampled);
+    subsample_random_half_of_worst(worst_half, original_count, seed)
 }
 
 fn sample_frames_at_keyframes(
@@ -382,7 +487,7 @@ fn read_frame_details(path: &Path) -> Result<Vec<BenchmarkFrameDetail>, String> 
         .collect()
 }
 
-fn export_filename(rank: usize, detail: &BenchmarkFrameDetail) -> String {
+fn export_filename(clip_id: &str, aspect_id: &str, rank: usize, detail: &BenchmarkFrameDetail) -> String {
     let max_error = detail
         .targets
         .iter()
@@ -390,7 +495,9 @@ fn export_filename(rank: usize, detail: &BenchmarkFrameDetail) -> String {
         .fold(0.0, f64::max);
     let vis = if detail.all_targets_visible { 1 } else { 0 };
     format!(
-        "rank{:03}_t{}ms_err{:.2}_vis{}.jpg",
+        "{}_{}_rank{:03}_t{}ms_err{:.2}_vis{}.jpg",
+        clip_id,
+        aspect_id,
         rank,
         detail.timestamp_us / 1_000,
         max_error,
@@ -401,7 +508,8 @@ fn export_filename(rank: usize, detail: &BenchmarkFrameDetail) -> String {
 fn export_benchmark_miss_frames_sync(
     app: &AppHandle,
     input: ExportInput,
-) -> Result<ExportBenchmarkMissFramesResult, String> {
+    replace_existing: bool,
+) -> Result<ExportSyncResult, String> {
     let dataset_root = test_dataset_root(app, &input.dataset_id)?;
     let details_path = dataset_root.join(&input.details_relative_path);
     if !details_path.is_file() {
@@ -413,13 +521,10 @@ fn export_benchmark_miss_frames_sync(
     }
     let all_frames = read_frame_details(&details_path)?;
     let sampled = sample_frames_at_keyframes(&all_frames, &input.keyframes)?;
-    let ranked = select_worst_half(sampled);
-    let export_dir = test_clip_dir(app, &input.dataset_id, &input.clip_id)?
-        .join("miss-frames")
-        .join(&input.run_id)
-        .join(&input.aspect_id);
-    if export_dir.exists() {
-        fs::remove_dir_all(&export_dir).map_err(|error| error.to_string())?;
+    let ranked = select_frames_for_export(sampled, &input.run_id);
+    let export_dir = input.export_dir.clone();
+    if replace_existing {
+        remove_prefixed_exports(&export_dir, &input.clip_id, &input.aspect_id)?;
     }
     fs::create_dir_all(&export_dir).map_err(|error| error.to_string())?;
     let mut manifest_frames = Vec::with_capacity(ranked.len());
@@ -435,13 +540,15 @@ fn export_benchmark_miss_frames_sync(
             &ranked_frame.detail,
             &ground_truth,
         );
-        let file_name = export_filename(rank, &ranked_frame.detail);
+        let file_name = export_filename(&input.clip_id, &input.aspect_id, rank, &ranked_frame.detail);
         fs::write(
             export_dir.join(&file_name),
             encode_rgb_jpeg(&annotated, extracted.width, extracted.height)?,
         )
         .map_err(|error| error.to_string())?;
         manifest_frames.push(ManifestFrame {
+            clip_id: input.clip_id.clone(),
+            aspect_id: input.aspect_id.clone(),
             rank,
             file: file_name,
             keyframe_timestamp_us: ranked_frame.keyframe_timestamp_us,
@@ -468,27 +575,37 @@ fn export_benchmark_miss_frames_sync(
         clip_id: input.clip_id.clone(),
         aspect_id: input.aspect_id.clone(),
         exported_at: Utc::now().to_rfc3339(),
-        selection: "worst-50-percent-keyframes",
+        selection: "worst-50-percent-then-random-25-percent",
         keyframe_count: input.keyframes.len(),
         frame_count: manifest_frames.len(),
-        frames: manifest_frames,
+        frames: manifest_frames.clone(),
     };
-    let manifest_path = export_dir.join("manifest.json");
+    Ok(ExportSyncResult {
+        frame_count: manifest.frame_count,
+        manifest,
+    })
+}
+
+fn write_manifest_file(
+    export_dir: &Path,
+    file_name: &str,
+    manifest: &impl Serialize,
+) -> Result<String, String> {
+    let manifest_path = export_dir.join(file_name);
     fs::write(
         &manifest_path,
-        serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?,
+        serde_json::to_string_pretty(manifest).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    let manifest_relative_path = manifest_path
-        .strip_prefix(&dataset_root)
+    Ok(manifest_path.to_string_lossy().into_owned())
+}
+
+fn manifest_relative_path(dataset_root: &Path, manifest_path: &Path) -> Result<String, String> {
+    Ok(manifest_path
+        .strip_prefix(dataset_root)
         .map_err(|error| error.to_string())?
         .to_string_lossy()
-        .replace('\\', "/");
-    Ok(ExportBenchmarkMissFramesResult {
-        export_dir: export_dir.to_string_lossy().into_owned(),
-        frame_count: manifest.frame_count,
-        manifest_relative_path,
-    })
+        .replace('\\', "/"))
 }
 
 #[tauri::command]
@@ -523,18 +640,117 @@ pub async fn export_benchmark_miss_frames(
     let keyframes = TestRepository::annotations(&db.database, &clip.id)
         .await
         .map_err(String::from)?;
+    let dataset_id = run.dataset_id.clone();
+    let export_dir = run_export_dir(&app, &dataset_id, &run.id)?;
     let input = ExportInput {
-        dataset_id: run.dataset_id,
+        dataset_id: dataset_id.clone(),
         run_id: run.id,
         clip_id: clip.id,
         aspect_id: result.aspect_id,
         details_relative_path,
         media_relative_path: clip.media_relative_path,
         keyframes,
+        export_dir: export_dir.clone(),
     };
-    tokio::task::spawn_blocking(move || export_benchmark_miss_frames_sync(&app, input))
+    let export = tokio::task::spawn_blocking({
+        let app = app.clone();
+        move || export_benchmark_miss_frames_sync(&app, input, true)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    let sidecar_name = format!(
+        "{}manifest.json",
+        export_file_prefix(&export.manifest.clip_id, &export.manifest.aspect_id)
+    );
+    let manifest_path = write_manifest_file(&export_dir, &sidecar_name, &export.manifest)?;
+    let dataset_root = test_dataset_root(&app, &dataset_id)?;
+    Ok(ExportBenchmarkMissFramesResult {
+        export_dir: export_dir.to_string_lossy().into_owned(),
+        frame_count: export.frame_count,
+        manifest_relative_path: manifest_relative_path(&dataset_root, Path::new(&manifest_path))?,
+    })
+}
+
+#[tauri::command]
+pub async fn export_benchmark_run_miss_frames(
+    app: AppHandle,
+    db: State<'_, LocalDb>,
+    run_id: String,
+) -> Result<ExportBenchmarkRunMissFramesResult, String> {
+    validate_id(&run_id)?;
+    let run = benchmark_run::Entity::find_by_id(run_id.clone())
+        .one(&db.database)
         .await
         .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Benchmark run was not found.".to_string())?;
+    if run.status != "completed" {
+        return Err("Only completed benchmark runs can export frames.".into());
+    }
+    let results = TestRepository::list_results(&db.database, &run_id)
+        .await
+        .map_err(String::from)?;
+    let exportable: Vec<_> = results
+        .into_iter()
+        .filter(|result| {
+            result.status == "completed" && result.details_relative_path.is_some()
+        })
+        .collect();
+    if exportable.is_empty() {
+        return Err("This run has no completed results with per-frame details.".into());
+    }
+    let export_dir = run_export_dir(&app, &run.dataset_id, &run_id)?;
+    if export_dir.exists() {
+        fs::remove_dir_all(&export_dir).map_err(|error| error.to_string())?;
+    }
+    fs::create_dir_all(&export_dir).map_err(|error| error.to_string())?;
+    let mut frame_count = 0usize;
+    let mut all_frames = Vec::new();
+    for result in &exportable {
+        let details_relative_path = result
+            .details_relative_path
+            .clone()
+            .expect("filtered");
+        let clip = test_clip::Entity::find_by_id(result.clip_id.clone())
+            .one(&db.database)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "Test clip was not found.".to_string())?;
+        let keyframes = TestRepository::annotations(&db.database, &clip.id)
+            .await
+            .map_err(String::from)?;
+        let input = ExportInput {
+            dataset_id: run.dataset_id.clone(),
+            run_id: run.id.clone(),
+            clip_id: clip.id,
+            aspect_id: result.aspect_id.clone(),
+            details_relative_path,
+            media_relative_path: clip.media_relative_path,
+            keyframes,
+            export_dir: export_dir.clone(),
+        };
+        let export = tokio::task::spawn_blocking({
+            let app = app.clone();
+            move || export_benchmark_miss_frames_sync(&app, input, false)
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+        frame_count += export.frame_count;
+        all_frames.extend(export.manifest.frames);
+    }
+    let run_manifest = RunExportManifest {
+        run_id: run_id.clone(),
+        exported_at: Utc::now().to_rfc3339(),
+        selection: "worst-50-percent-then-random-25-percent",
+        result_count: exportable.len(),
+        frame_count,
+        frames: all_frames,
+    };
+    write_manifest_file(&export_dir, "manifest.json", &run_manifest)?;
+    Ok(ExportBenchmarkRunMissFramesResult {
+        export_dir: export_dir.to_string_lossy().into_owned(),
+        frame_count,
+        result_count: exportable.len(),
+    })
 }
 
 #[cfg(test)]
@@ -601,5 +817,53 @@ mod tests {
         assert_eq!(ranked.len(), 2);
         assert_eq!(ranked[0].detail.timestamp_us, 2_000_000);
         assert_eq!(ranked[1].detail.timestamp_us, 4_000_000);
+    }
+
+    #[test]
+    fn subsamples_worst_half_down_to_quarter_of_original() {
+        let worst_half: Vec<RankedFrame> = (1..=8)
+            .map(|index| RankedFrame {
+                keyframe_timestamp_us: index * 1_000_000,
+                score: index as f64,
+                detail: frame_at(index * 1_000_000, true, index as f64),
+            })
+            .collect();
+        let subsampled = subsample_random_half_of_worst(worst_half, 8, "run-seed");
+        assert_eq!(subsampled.len(), 2);
+        assert_eq!(subsampled[0].keyframe_timestamp_us, 8_000_000);
+        assert_eq!(subsampled[1].keyframe_timestamp_us, 3_000_000);
+    }
+
+    #[test]
+    fn subsample_is_deterministic_for_same_seed() {
+        let worst_half: Vec<RankedFrame> = (1..=8)
+            .map(|index| RankedFrame {
+                keyframe_timestamp_us: index * 1_000_000,
+                score: index as f64,
+                detail: frame_at(index * 1_000_000, true, index as f64),
+            })
+            .collect();
+        let first = subsample_random_half_of_worst(worst_half.clone(), 8, "run-seed");
+        let second = subsample_random_half_of_worst(worst_half, 8, "run-seed");
+        assert_eq!(
+            first
+                .iter()
+                .map(|frame| frame.keyframe_timestamp_us)
+                .collect::<Vec<_>>(),
+            second
+                .iter()
+                .map(|frame| frame.keyframe_timestamp_us)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn single_keyframe_exports_one_frame() {
+        let sampled = vec![SampledKeyframeFrame {
+            keyframe_timestamp_us: 1_000_000,
+            detail: frame_at(1_000_000, false, 5.0),
+        }];
+        let ranked = select_frames_for_export(sampled, "run-seed");
+        assert_eq!(ranked.len(), 1);
     }
 }

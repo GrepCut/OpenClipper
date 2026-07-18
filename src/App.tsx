@@ -15,6 +15,7 @@ import { DesktopAuthBridge } from "./features/authentication/DesktopAuthBridge";
 import { isTauri } from "./shared/utils/platform";
 import { ensureTauriFrontendSession } from "./shared/utils/tauri-native-jobs";
 import { ClipperTauriGate } from "./features/clipper/pages/ClipperTauriGate";
+import { BenchmarkCliShell, useBenchmarkCliRequest } from "./features/tests/benchmark/benchmark-cli-bootstrap";
 
 const AuthPage = lazy(() =>
   import("./features/authentication/AuthPage").then((m) => ({
@@ -230,6 +231,22 @@ function AppContent() {
 }
 
 function App() {
+  const cliRequest = useBenchmarkCliRequest();
+
+  if (cliRequest === "loading") {
+    return null;
+  }
+
+  if (cliRequest) {
+    return (
+      <ThemeProvider defaultMode="dark">
+        <ChakraProvider value={system}>
+          <BenchmarkCliShell />
+        </ChakraProvider>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider defaultMode="dark">
       <ChakraProvider value={system}>

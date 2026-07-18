@@ -1,3 +1,4 @@
+mod cli;
 mod clipper_data;
 mod commands;
 mod database;
@@ -21,6 +22,12 @@ pub fn install_startup_diagnostics() {
 /// Pokazuje główne okno. Idempotentne — wywoływane zarówno przez frontend
 /// po pierwszym renderze, jak i przez fallback timer w setup.
 fn show_main_window(app: &tauri::AppHandle) {
+    if cli::is_benchmark_cli_active() {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.hide();
+        }
+        return;
+    }
     if let Some(main) = app.get_webview_window("main") {
         let already_visible = match main.is_visible() {
             Ok(visible) => visible,
@@ -116,6 +123,12 @@ pub fn run() {
         FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy,
     };
 
+    let cli_request = cli::parse_args();
+    let cli_mode = cli_request.is_some();
+    if cli_mode {
+        cli::attach_parent_console();
+    }
+
     let log_directory = startup_log::directory();
     startup_log::append(&format!(
         "initializing Tauri; log_file={}",
@@ -141,17 +154,27 @@ pub fn run() {
 
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            log::info!("[auth] secondary instance argv: {:?}", argv);
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }));
+        if !cli_mode {
+            builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+                log::info!("[auth] secondary instance argv: {:?}", argv);
+                if cli::is_benchmark_cli_argv(&argv) {
+                    log::warn!(
+                        target: "cli",
+                        "benchmark CLI requested while another instance is running; close Open Clipper and retry"
+                    );
+                    return;
+                }
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }));
+        }
         builder = builder.plugin(tauri_plugin_deep_link::init());
     }
 
     builder
+        .manage(cli_request)
         .manage(video_processing::NativeJobRegistry::default())
         .on_page_load(|webview, payload| {
             log::info!(
@@ -217,6 +240,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
             frontend_startup_log,
+            cli::get_benchmark_cli_request,
+            cli::log_benchmark_cli_progress,
+            cli::finish_benchmark_cli_command,
             video_processing::start_clipper_media_extraction,
             video_processing::probe_clipper_winml,
             video_processing::start_clipper_winml_analysis,
@@ -270,6 +296,7 @@ pub fn run() {
             commands::test_benchmark::test_dataset_export,
             commands::test_benchmark::test_dataset_import,
             commands::test_benchmark::benchmark_miss_export::export_benchmark_miss_frames,
+            commands::test_benchmark::benchmark_miss_export::export_benchmark_run_miss_frames,
             commands::transcription::get_parakeet_model_status,
             commands::transcription::probe_parakeet_transcription,
             commands::transcription::download_parakeet_model,
@@ -278,7 +305,7 @@ pub fn run() {
             commands::transcription::transcribe_parakeet_local,
             commands::transcription::start_parakeet_transcription,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             log::info!(target: "startup", "Tauri setup started");
             app.manage(ParakeetService::new(app.handle().clone()));
             log::info!(target: "startup", "Parakeet service initialized");
@@ -287,6 +314,16 @@ pub fn run() {
                     .map_err(std::io::Error::other)?;
             app.manage(local_db);
             log::info!(target: "startup", "local database initialized");
+
+            if let Some(request) = app.state::<Option<cli::BenchmarkCliRequest>>().inner().clone() {
+                match tauri::async_runtime::block_on(cli::ensure_dataset_exists(
+                    app.handle(),
+                    &request.dataset_id,
+                )) {
+                    Ok(dataset) => cli::print_cli_start(&request, &dataset.name),
+                    Err(error) => cli::exit_with_error(2, &error),
+                }
+            }
 
             #[cfg(any(windows, target_os = "linux"))]
             {
@@ -301,9 +338,16 @@ pub fn run() {
                 log::info!(target: "startup", "WebView background configured");
             }
 
+            if cli_mode {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                    log::info!(target: "cli", "benchmark CLI mode: main window kept hidden");
+                }
+            }
+
             // Shell HTML jest gotowy bez Reacta. Ten bezpiecznik nie pozwala,
             // by awaria samego page-load pozostawiła niewidoczne okno.
-            {
+            if !cli_mode {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(1));

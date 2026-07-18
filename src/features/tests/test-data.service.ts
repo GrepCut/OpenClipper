@@ -102,9 +102,9 @@ export const benchmarkPersistenceService = {
     relativePath,
     contents,
   }),
-  exportMissFrames: (resultId: string) =>
-    invoke<{ exportDir: string; frameCount: number; manifestRelativePath: string }>(
-      "export_benchmark_miss_frames",
-      { resultId },
+  exportRunMissFrames: (runId: string) =>
+    invoke<{ exportDir: string; frameCount: number; resultCount: number }>(
+      "export_benchmark_run_miss_frames",
+      { runId },
     ),
 };

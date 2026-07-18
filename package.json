@@ -10,6 +10,8 @@
     "build:web": "vite build && node scripts/prune-web-models.mjs",
     "build:tauri": "cross-env VITE_APP_PLATFORM=tauri vite build && node scripts/prune-tauri-dist.mjs",
     "test": "vitest run",
+    "benchmark:run": "src-tauri\\target\\release\\open-clipper.exe --benchmark-run",
+    "benchmark:run:dev": "tauri dev -- -- --benchmark-run",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

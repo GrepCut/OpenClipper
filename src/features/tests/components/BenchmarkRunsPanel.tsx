@@ -39,9 +39,7 @@ interface BenchmarkRunsPanelProps {
   clips: TestClip[];
 }
 
-const RESULT_COLUMNS = isTauri()
-  ? "minmax(110px, 1.6fr) repeat(4, minmax(64px, 0.9fr)) minmax(148px, 1.2fr)"
-  : "minmax(120px, 2fr) repeat(4, minmax(72px, 1fr))";
+const RESULT_COLUMNS = "minmax(120px, 2fr) repeat(4, minmax(72px, 1fr))";
 
 export function BenchmarkRunsPanel({
   runs,
@@ -51,17 +49,25 @@ export function BenchmarkRunsPanel({
   clips,
 }: BenchmarkRunsPanelProps) {
   const { theme, mode } = useTheme();
-  const [exportingResultId, setExportingResultId] = useState<string | null>(null);
+  const [exportingRun, setExportingRun] = useState(false);
   const tauri = isTauri();
 
-  const exportMissFrames = async (result: BenchmarkResult) => {
-    if (!result.detailsRelativePath || result.status !== "completed") return;
-    setExportingResultId(result.id);
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
+  const exportableResultCount = results.filter(
+    (result) => result.status === "completed" && Boolean(result.detailsRelativePath),
+  ).length;
+  const canExport = tauri
+    && selectedRun?.status === "completed"
+    && exportableResultCount > 0;
+
+  const exportRunMissFrames = async () => {
+    if (!selectedRunId || !canExport) return;
+    setExportingRun(true);
     try {
-      const output = await benchmarkPersistenceService.exportMissFrames(result.id);
+      const output = await benchmarkPersistenceService.exportRunMissFrames(selectedRunId);
       appToast.success(
         "Worst keyframes exported",
-        `${output.frameCount} frame(s) at annotated keyframe times.`,
+        `Exported ${output.frameCount} frame(s) from ${output.resultCount} clip/aspect result(s).`,
       );
       if (tauri) {
         const { openPath } = await import("@tauri-apps/plugin-opener");
@@ -70,7 +76,7 @@ export function BenchmarkRunsPanel({
     } catch (error) {
       appToast.error("Could not export frames", String(error));
     } finally {
-      setExportingResultId(null);
+      setExportingRun(false);
     }
   };
 
@@ -123,7 +129,19 @@ export function BenchmarkRunsPanel({
       </Box>
 
       <Box>
-        <Text fontSize="xl" fontWeight="bold" mb={3}>Selected run results</Text>
+        <HStack justify="space-between" align="center" gap={3} mb={3}>
+          <Text fontSize="xl" fontWeight="bold">Selected run results</Text>
+          {tauri ? (
+            <OutlinedActionButton
+              flexShrink={0}
+              startIcon={<ImageDown size={16} />}
+              disabled={!canExport || exportingRun}
+              onClick={() => void exportRunMissFrames()}
+            >
+              {exportingRun ? "Exporting…" : "Export worst keyframes"}
+            </OutlinedActionButton>
+          ) : null}
+        </HStack>
         <Box
           border="1px solid"
           borderColor={theme.dashboard.border}
@@ -136,7 +154,7 @@ export function BenchmarkRunsPanel({
               {selectedRunId ? "No results for this run." : "Select a run to view results."}
             </Text>
           ) : (
-            <Box minW={tauri ? "760px" : undefined}>
+            <Box minW="640px">
               <Grid
                 templateColumns={RESULT_COLUMNS}
                 gap={3}
@@ -145,7 +163,7 @@ export function BenchmarkRunsPanel({
                 bg={theme.background.tertiary}
                 borderTopRadius="2xl"
               >
-                {["Clip", "Aspect", "Visible", "Focus hit", "P95 error", ...(tauri ? ["Actions"] : [])].map((label) => (
+                {["Clip", "Aspect", "Visible", "Focus hit", "P95 error"].map((label) => (
                   <Text key={label} color={theme.text.muted} fontSize="xs" fontWeight="semibold">
                     {label}
                   </Text>
@@ -154,7 +172,6 @@ export function BenchmarkRunsPanel({
               {results.map((result, index) => {
                 const clip = clips.find((candidate) => candidate.id === result.clipId);
                 const isLast = index === results.length - 1;
-                const canExport = tauri && result.status === "completed" && Boolean(result.detailsRelativePath);
                 return (
                   <Grid
                     key={result.id}
@@ -174,17 +191,6 @@ export function BenchmarkRunsPanel({
                     <Text fontSize="sm" color={theme.text.primary}>{percentage(result.metricsJson.targetVisibilityRate)}</Text>
                     <Text fontSize="sm" color={theme.text.primary}>{percentage(result.metricsJson.focusHitRate)}</Text>
                     <Text fontSize="sm" color={theme.text.primary}>{result.metricsJson.p95FocusErrorRadius?.toFixed(2) ?? "—"}</Text>
-                    {tauri ? (
-                      <OutlinedActionButton
-                        width="100%"
-                        justifyContent="flex-start"
-                        startIcon={<ImageDown size={16} />}
-                        disabled={!canExport || exportingResultId === result.id}
-                        onClick={() => void exportMissFrames(result)}
-                      >
-                        {exportingResultId === result.id ? "Exporting…" : "Export worst keyframes"}
-                      </OutlinedActionButton>
-                    ) : null}
                   </Grid>
                 );
               })}
