@@ -135,6 +135,8 @@ export interface ClipperLayoutSample {
   /** Shadow proposal retained even when the baseline wins arbitration. */
   candidateMode?: ClipperLayoutMode;
   candidateViewports?: NormalizedBox[];
+  /** Run4 camera-path crop, retained even when the semantic proposal wins. */
+  baselineViewports?: NormalizedBox[];
   primaryRegionId?: string;
   requiredRegionIds: string[];
   baselineScore?: number;

@@ -2,13 +2,23 @@ import type {
   AutoFlipAspectTrack,
   ClipperLayoutMode,
   ClipperLayoutSample,
-  ClipperLayoutStrategy,
   ClipperLayoutTrack,
-  ImportanceRegion,
   ImportanceRegionSample,
   NormalizedBox,
 } from "../../shared/smart-crop";
 import { importanceGeometry } from "./importance-ranker";
+import {
+  DEFAULT_ARBITER_PARAMS,
+  decideLayoutStrategy,
+  importanceAtTime,
+  interpolateBox,
+  motionTypeAt,
+  precedingIndex,
+  proposalScore,
+  requiredRegions,
+  type ArbiterParams,
+  type ArbiterSceneMotion,
+} from "./layout-arbiter";
 
 const EPSILON = 1e-9;
 
@@ -100,63 +110,6 @@ function centerViewportOnBox(viewport: NormalizedBox, box: NormalizedBox): Norma
   };
 }
 
-function requiredRegions(sample: ImportanceRegionSample): ImportanceRegion[] {
-  return sample.regions.filter((region) => region.required).slice(0, 2);
-}
-
-function coveredFraction(viewport: NormalizedBox, box: NormalizedBox): number {
-  const area = Math.max(EPSILON, box.width * box.height);
-  return clamp(importanceGeometry.intersectionArea(viewport, box) / area, 0, 1);
-}
-
-function proposalScore(viewports: NormalizedBox[], required: ImportanceRegion[]): number {
-  if (!required.length || !viewports.length) return 0;
-  const totalWeight = required.reduce((sum, region) => sum + Math.max(0.01, region.importanceScore), 0);
-  const coverage = required.reduce((sum, region) =>
-    sum + Math.max(...viewports.map((viewport) => coveredFraction(viewport, region.contentBox))) * region.importanceScore, 0) / totalWeight;
-  const primary = required.find((region) => region.role === "primary") ?? required[0]!;
-  const primaryX = primary.box.x + primary.box.width / 2;
-  const primaryY = primary.box.y + primary.box.height / 2;
-  const distance = Math.min(...viewports.map((viewport) => {
-    const dx = primaryX - (viewport.x + viewport.width / 2);
-    const dy = primaryY - (viewport.y + viewport.height / 2);
-    return Math.hypot(dx, dy);
-  }));
-  const composition = 1 - clamp(distance / 0.25, 0, 1);
-  return coverage * 0.7 + composition * 0.3;
-}
-
-function semanticSources(region: ImportanceRegion): string[] {
-  return region.sources.filter((source) => source !== "motion");
-}
-
-function isReliablePrimary(region: ImportanceRegion): boolean {
-  const sources = semanticSources(region);
-  const faceConfirmed = sources.some((source) => source === "face" || source === "head" || source === "active-speaker");
-  return !region.predicted
-    && region.importanceScore >= 0.9
-    && ((faceConfirmed && region.confidence >= 0.82)
-      || (new Set(sources).size >= 2 && region.confidence >= 0.75));
-}
-
-function stableRequiredIds(samples: ImportanceRegionSample[], index: number): boolean {
-  const current = requiredRegions(samples[index]!);
-  if (!current.length) return false;
-  const ids = current.map((region) => region.id).sort().join("|");
-  let matching = 1;
-  const currentTime = samples[index]!.time;
-  for (let cursor = index - 1; cursor >= 0 && matching < 4; cursor--) {
-    const sample = samples[cursor]!;
-    if (samples[cursor + 1]!.cut || sample.cut) break;
-    const prior = requiredRegions(sample);
-    if (!prior.length && currentTime - sample.time <= 0.6 + EPSILON) continue;
-    const priorIds = prior.map((region) => region.id).sort().join("|");
-    if (priorIds !== ids) break;
-    matching++;
-  }
-  return matching >= 4;
-}
-
 function rawMode(
   sample: ImportanceRegionSample,
   sourceAspect: number,
@@ -213,53 +166,6 @@ function stabilizeModes(
   });
 }
 
-function precedingIndex<T extends { time: number }>(items: T[], time: number): number {
-  if (!items.length || time <= items[0]!.time) return 0;
-  if (items.length === 1 || time >= items.at(-1)!.time) return items.length - 1;
-  let low = 1;
-  let high = items.length - 1;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    if (items[middle]!.time <= time) low = middle + 1;
-    else high = middle;
-  }
-  return items[low]!.time <= time ? low : low - 1;
-}
-
-function interpolateBox(a: NormalizedBox, b: NormalizedBox, factor: number): NormalizedBox {
-  return {
-    x: a.x + (b.x - a.x) * factor,
-    y: a.y + (b.y - a.y) * factor,
-    width: a.width + (b.width - a.width) * factor,
-    height: a.height + (b.height - a.height) * factor,
-  };
-}
-
-function importanceAtTime(samples: ImportanceRegionSample[], time: number): ImportanceRegionSample {
-  if (!samples.length) return { time, regions: [] };
-  const index = precedingIndex(samples, time);
-  const previous = samples[index]!;
-  const next = samples[index + 1];
-  // Offline analysis may safely backfill a short detector dropout, but never
-  // across a shot boundary. This fixes empty first samples without inventing
-  // long look-ahead behavior.
-  if (!previous.regions.length && next?.regions.length && !next.cut && next.time - time <= 0.4 + EPSILON) {
-    return { ...next, time, cut: previous.cut };
-  }
-  if (!next || next.cut || next.time <= previous.time + EPSILON) return { ...previous, time };
-  const factor = clamp((time - previous.time) / (next.time - previous.time), 0, 1);
-  const regions = previous.regions.map((region) => {
-    const nextRegion = next.regions.find((candidate) => candidate.id === region.id);
-    return nextRegion ? {
-      ...region,
-      box: interpolateBox(region.box, nextRegion.box, factor),
-      contentBox: interpolateBox(region.contentBox, nextRegion.contentBox, factor),
-      importanceScore: region.importanceScore + (nextRegion.importanceScore - region.importanceScore) * factor,
-    } : region;
-  });
-  return { time, regions, cut: previous.cut };
-}
-
 function modeAtTime(decisions: ModeDecision[], time: number): ClipperLayoutMode {
   if (!decisions.length) return "single-crop";
   return decisions[precedingIndex(decisions, time)]!.mode;
@@ -295,11 +201,16 @@ export interface BuildLayoutTracksInput {
   importanceSamples: ImportanceRegionSample[];
   frameWidth: number;
   frameHeight: number;
+  /** Arbiter thresholds; omit for the calibrated production defaults. */
+  arbiterParams?: ArbiterParams;
+  /** Per-scene camera-motion classification, for motion-aware arbitration. */
+  sceneMotion?: ArbiterSceneMotion[];
 }
 
 /** Builds stable format-aware render decisions over the smooth legacy camera path. */
 export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string, ClipperLayoutTrack> {
   const sourceAspect = input.frameWidth / Math.max(1, input.frameHeight);
+  const arbiterParams = input.arbiterParams ?? DEFAULT_ARBITER_PARAMS;
   return Object.fromEntries(Object.entries(input.aspectTracks).map(([formatId, aspectTrack]) => {
     const samples: ClipperLayoutSample[] = aspectTrack.samples.map((cropSample) => {
       const importance = importanceAtTime(input.importanceSamples, cropSample.t);
@@ -313,8 +224,6 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         : "single-crop";
       const baselineViewports = [cropSample.crop];
       const importanceIndex = precedingIndex(input.importanceSamples, cropSample.t);
-      const stable = input.importanceSamples.length > 0 && stableRequiredIds(input.importanceSamples, importanceIndex);
-      const primary = required.find((region) => region.role === "primary") ?? required[0];
       const desiredMode = rawMode(importance, sourceAspect, aspectTrack.targetAspectRatio);
       const semanticViewports = buildViewports(
         desiredMode,
@@ -325,49 +234,33 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
       );
       const baselineScore = proposalScore(baselineViewports, required);
       const semanticScore = proposalScore(semanticViewports, required);
-      const dualReliable = desiredMode === "split"
-        && required.length === 2
-        && required.every((region) => !region.predicted && region.confidence >= 0.75 && region.importanceScore >= 0.75);
-      const reliable = Boolean(primary && isReliablePrimary(primary) && (desiredMode !== "split" || dualReliable));
-      const improvement = semanticScore - baselineScore;
-      const selectSemantic = !cropSample.cut
-        && !explicitPadding
-        && stable
-        && reliable
-        // Split/contain remain available as shadow candidates, but Run4's
-        // collage/contain path stays authoritative until those candidates
-        // beat its dual-visibility result in a full benchmark.
-        && desiredMode === "single-crop"
-        && improvement >= 0.15;
-      const strategy: ClipperLayoutStrategy = selectSemantic
-        ? desiredMode === "split"
-          ? "semantic-split"
-          : desiredMode === "contain"
-            ? "semantic-contain"
-            : "semantic-single"
-        : "legacy-baseline";
-      const reasonCodes = selectSemantic
-        ? ["stable-semantic-target", "proposal-margin"]
-        : [
-            ...(cropSample.cut ? ["shot-boundary"] : []),
-            ...(explicitPadding ? ["baseline-padding"] : []),
-            ...(!stable ? ["unstable-target"] : []),
-            ...(!reliable ? ["insufficient-semantic-evidence"] : []),
-            ...(improvement < 0.15 ? ["insufficient-proposal-margin"] : []),
-          ];
+      const decision = decideLayoutStrategy({
+        t: cropSample.t,
+        cut: Boolean(cropSample.cut),
+        explicitPadding,
+        desiredMode,
+        required,
+        baselineScore,
+        semanticScore,
+        semanticViewports,
+        importanceSamples: input.importanceSamples,
+        importanceIndex,
+        motionType: motionTypeAt(input.sceneMotion, formatId, cropSample.t),
+      }, arbiterParams);
       return {
         t: cropSample.t,
-        mode: selectSemantic ? desiredMode : baselineMode,
-        strategy,
-        viewports: selectSemantic ? semanticViewports : baselineViewports,
+        mode: decision.selectSemantic ? desiredMode : baselineMode,
+        strategy: decision.strategy,
+        viewports: decision.selectSemantic ? semanticViewports : baselineViewports,
         candidateMode: desiredMode,
         candidateViewports: semanticViewports,
+        baselineViewports,
         primaryRegionId: required.find((region) => region.role === "primary")?.id,
         requiredRegionIds: required.map((region) => region.id),
         baselineScore,
         semanticScore,
-        decisionConfidence: clamp(Math.max(0, improvement) / 0.3, 0, 1),
-        reasonCodes,
+        decisionConfidence: decision.decisionConfidence,
+        reasonCodes: decision.reasonCodes,
         cut: cropSample.cut,
         solidBackgroundColor: cropSample.solidBackgroundColor,
       };

@@ -1,0 +1,5 @@
+{
+  "proposalMargin": [0.06, 0.075, 0.09, 0.1, 0.125, 0.15],
+  "stabilityKeyframes": [4, 5, 6],
+  "dropoutToleranceSec": [0.6, 0.8]
+}

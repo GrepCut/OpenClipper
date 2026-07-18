@@ -35,7 +35,7 @@ function aspectTrack(): AutoFlipAspectTrack {
 
 function build(samples: ImportanceRegionSample[]) {
   const stableSamples = samples.length === 1
-    ? Array.from({ length: 4 }, (_, index) => ({ ...samples[0]!, time: index * 0.2 }))
+    ? Array.from({ length: 6 }, (_, index) => ({ ...samples[0]!, time: index * 0.12 }))
     : samples;
   return buildLayoutTracks({
     aspectTracks: { tiktok: aspectTrack() },

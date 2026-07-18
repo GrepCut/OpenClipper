@@ -8,6 +8,7 @@ import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { attachImportanceSignals, buildImportanceTimeline } from "./importance-ranker";
 import { buildLayoutTracks } from "./layout-planner";
+import type { ArbiterSceneMotion } from "./layout-arbiter";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
@@ -227,6 +228,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     : { default: input.targetAspectRatio ?? 9 / 16 };
   const aspectTracks: Record<string, AutoFlipAspectTrack> = {};
   const debugScenes: AutoFlipSceneDebug[] | undefined = input.collectDebug ? [] : undefined;
+  const sceneMotion: ArbiterSceneMotion[] = [];
 
   for (const [formatId, targetAspectRatio] of Object.entries(targets)) {
     const samples: AutoFlipCropSample[] = [];
@@ -292,6 +294,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
             solidBackgroundColor: sceneBackground.color,
           });
         });
+        sceneMotion.push({ formatId, start: scene.start, end: scene.end, motionType: "padding" });
         debugScenes?.push({
           formatId,
           start: scene.start,
@@ -334,6 +337,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         samples.push({ t: timeline.timestampsUs[index]! / 1_000_000, crop: intoSourceRect(crop, contentRect), cut: index === 0 && scene.cut });
       });
       continuationFocus = motion.focusPointFrames.slice(-30);
+      sceneMotion.push({ formatId, start: scene.start, end: scene.end, motionType: motion.summary.motionType });
       debugScenes?.push({
         formatId,
         start: scene.start,
@@ -369,6 +373,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     importanceSamples,
     frameWidth: sourceFrameWidth,
     frameHeight: sourceFrameHeight,
+    sceneMotion,
   });
 
   return {
