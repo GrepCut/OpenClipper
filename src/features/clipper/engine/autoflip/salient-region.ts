@@ -77,6 +77,45 @@ function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] 
   });
 }
 
+/** Where a head sits inside a person detection box, when no face detector confirmed one. */
+const HEAD_BAND_WIDTH_FRACTION = 0.6;
+const HEAD_BAND_HEIGHT_FRACTION = 0.22;
+const HEAD_MIN_DETECTION_SCORE = 0.5;
+
+function boxesIntersect(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean {
+  return Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
+    && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+}
+
+/**
+ * Face detectors miss profile and partially occluded faces that the person
+ * detector still tracks.  Estimate a head band from each confident person box
+ * that no detected face overlaps, and emit it on the otherwise unused
+ * `face_full` signal — inside the face priority band, but always below a real
+ * face detection.
+ */
+export function syntheticHeadRegions(
+  detections: SubjectDetection[],
+  faces: AutoFlipFaceDetection[],
+): SalientRegion[] {
+  const regions: SalientRegion[] = [];
+  for (const detection of detections) {
+    if (mapDetectionLabel(detection.label) !== "human") continue;
+    if (detection.predicted || detection.score < HEAD_MIN_DETECTION_SCORE) continue;
+    const box = detection.box;
+    const head = {
+      x: box.x + (box.width * (1 - HEAD_BAND_WIDTH_FRACTION)) / 2,
+      y: box.y,
+      width: box.width * HEAD_BAND_WIDTH_FRACTION,
+      height: box.height * HEAD_BAND_HEIGHT_FRACTION,
+    };
+    if (head.width <= 0 || head.height <= 0) continue;
+    if (faces.some((face) => boxesIntersect(head, face.box))) continue;
+    regions.push({ box: head, score: weightedScore(0.5, "face_full"), signalType: "face_full", isRequired: false });
+  }
+  return regions;
+}
+
 function nearest<T extends { time: number }>(items: T[], time: number, maxDelta: number): T | null {
   let best: T | null = null;
   let delta = maxDelta;
@@ -106,6 +145,7 @@ export function buildSalientKeyframes(input: BuildSalientKeyframesInput): KeyFra
     const regions = [
       ...regionsFromDetections(detectionSample?.detections ?? []),
       ...(detectionSample?.autoflipFaces ?? []).flatMap(faceRegionsFromDetection),
+      ...syntheticHeadRegions(detectionSample?.detections ?? [], detectionSample?.autoflipFaces ?? []),
     ];
     const isShotChange = input.sceneCuts.some((cut) => Math.abs(cut - time) <= interval * 0.6);
     keyframes.push({ time, regions, isShotChange });

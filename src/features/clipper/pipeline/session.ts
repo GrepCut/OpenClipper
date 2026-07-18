@@ -20,6 +20,7 @@ import {
 } from "../engine/reframe";
 import type { ClipperFrameContext } from "../engine/frame-draw";
 import type { AutoFlipStaticFeatureSample, ClipperSmartCropBlob, SubjectDetectionSample } from "../shared/smart-crop";
+import type { FaceBoxSample } from "../shared/face-samples";
 import { groupCaptionWords } from "../engine/transcript";
 import type { ClipSourceMode } from "../persistence/project-metadata";
 import type { PipelineReporter } from "./reporter";
@@ -82,6 +83,8 @@ export interface ClipperSession {
   clips: ClipperGeneratedClip[];
   activeClipIndex: number;
   faceCache: FaceSampleCache | null;
+  /** Face samples augmented with person-detector head estimates; consumed only by the collage derivations. */
+  collageFaceSamples?: FaceBoxSample[] | null;
   smartCropAnalysis?: ClipperSmartCropBlob | null;
   smartFollowTrackCache?: {
     smoothing: ClipperSmoothingStrength;
@@ -153,19 +156,22 @@ export function resolveFaceRender(
   let cached = session.faceRenderCache;
   if (!cached || cached.reframeKey !== reframeKey || cached.sampleRevision !== sampleRevision) {
     const samples = cache.sortedSamples();
-    const collageRegions = deriveTwoSpeakerRegions(samples);
+    // Collage sees the head-augmented samples so profile faces still open a
+    // split; the single-focus track keeps real face detections only.
+    const collageSamples = session.collageFaceSamples ?? samples;
+    const collageRegions = deriveTwoSpeakerRegions(collageSamples);
     cached = {
       reframeKey,
       sampleRevision,
       focusTrack: deriveSingleFocusTrack(samples, settings.reframe.facePickStrategy, settings.reframe.smoothing),
       collageTracks: buildCollageTracksForRegions(
-        samples,
+        collageSamples,
         settings.reframe.smoothing,
         collageRegions,
         disabledCollageRegionIds,
       ),
       collageRegions,
-      collageEligibility: deriveCollageAspectEligibility(samples, collageRegions, settings.reframe.headroom),
+      collageEligibility: deriveCollageAspectEligibility(collageSamples, collageRegions, settings.reframe.headroom),
     };
     session.faceRenderCache = cached;
   }

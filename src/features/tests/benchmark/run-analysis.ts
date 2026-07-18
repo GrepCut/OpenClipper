@@ -12,6 +12,7 @@ import { SubjectDetectorWorkerClient } from "../../clipper/workers/subject-detec
 import type { SubjectDetectionSample } from "../../clipper/shared/smart-crop";
 import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-autoflip-track";
 import {
+  augmentFaceSamplesWithDetectedHeads,
   buildCollageTracksForRegions,
   deriveCollageAspectEligibility,
   deriveTwoSpeakerRegions,
@@ -45,6 +46,7 @@ export interface TestBenchmarkAnalysisOutput {
   sourceFrameRate: number;
   processingMs: number;
   degradedReason: string | null;
+  autoflipDebug: unknown;
 }
 
 function normalizedViewport(
@@ -144,19 +146,22 @@ export async function runTestBenchmarkAnalysis(input: {
     frameWidth: input.clip.width,
     frameHeight: input.clip.height,
     smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
+    headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
+    collectDebug: true,
   });
   blob.engine = engine;
 
-  const regions = deriveTwoSpeakerRegions(faceSamples);
+  const collageFaceSamples = augmentFaceSamplesWithDetectedHeads(faceSamples, detections);
+  const regions = deriveTwoSpeakerRegions(collageFaceSamples);
   const tracks = buildCollageTracksForRegions(
-    faceSamples,
+    collageFaceSamples,
     DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
     regions,
     [],
   );
   const eligibility = deriveCollageAspectEligibility(
-    faceSamples,
+    collageFaceSamples,
     regions,
     DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
   );
@@ -216,5 +221,6 @@ export async function runTestBenchmarkAnalysis(input: {
     sourceFrameRate: summary.sourceFrameRate,
     processingMs,
     degradedReason,
+    autoflipDebug: blob.debug ?? null,
   };
 }

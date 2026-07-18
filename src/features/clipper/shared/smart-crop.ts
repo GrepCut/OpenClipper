@@ -82,6 +82,24 @@ export interface AutoFlipAspectTrack {
   samples: AutoFlipCropSample[];
 }
 
+/** Diagnostic snapshot of one analyzed scene for one output aspect. */
+export interface AutoFlipSceneDebug {
+  formatId: string;
+  start: number;
+  end: number;
+  motionType: string;
+  lookAtCenterX: number;
+  lookAtCenterY: number;
+  cropWindowWidthNorm: number;
+  cropWindowHeightNorm: number;
+  successRate?: number;
+  keyframes: Array<{
+    time: number;
+    regions: Array<{ box: NormalizedBox; score: number; signalType: string }>;
+    chosenRect?: NormalizedBox;
+  }>;
+}
+
 export interface ClipperSmartCropBlob {
   analyzerVersion: string;
   modelId: string;
@@ -101,4 +119,6 @@ export interface ClipperSmartCropBlob {
   samples: SmartCropSample[];
   /** v2: independent, lossless AutoFlip paths for every enabled crop format. */
   aspectTracks?: Record<string, AutoFlipAspectTrack>;
+  /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
+  debug?: AutoFlipSceneDebug[];
 }

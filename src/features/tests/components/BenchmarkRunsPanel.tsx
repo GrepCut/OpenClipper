@@ -1,16 +1,37 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Box, Grid, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import { ImageDown } from "lucide-react";
 import { OutlinedActionButton, getOutlinedActionSurfaceProps } from "../../../shared/components/buttons/OutlinedActionButton";
 import { appToast } from "../../../shared/utils/toast.service";
 import { isTauri } from "../../../shared/utils/platform";
 import { colors, useTheme, type Theme } from "../../../theme";
+import { computeBenchmarkColumnStats } from "../benchmark/column-stats";
+import type { ColumnStatSummary } from "../benchmark/column-stats";
 import { benchmarkPersistenceService } from "../test-data.service";
 import type { BenchmarkResult, BenchmarkRun, BenchmarkRunStatus, TestClip } from "../types";
 
 function percentage(value: number | undefined): string {
   return value == null ? "—" : `${Math.round(value * 1000) / 10}%`;
 }
+
+function formatP95(value: number | null | undefined): string {
+  return value == null ? "—" : value.toFixed(2);
+}
+
+function formatStatRow(
+  label: keyof ColumnStatSummary,
+  stats: ReturnType<typeof computeBenchmarkColumnStats>,
+  asPercent: (value: number | null) => string,
+): [string, string, string, string] {
+  return [
+    label === "avg" ? "Average" : label === "median" ? "Median" : label === "max" ? "Max" : "Min",
+    asPercent(stats.visible[label]),
+    asPercent(stats.focusHit[label]),
+    formatP95(stats.p95Error[label]),
+  ];
+}
+
+const SUMMARY_COLUMNS = "minmax(100px, 1.2fr) repeat(3, minmax(72px, 1fr))";
 
 function runStatusPill(status: BenchmarkRunStatus, theme: Theme, mode: "dark" | "light") {
   if (status === "completed") {
@@ -53,6 +74,11 @@ export function BenchmarkRunsPanel({
   const tauri = isTauri();
 
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
+  const columnStats = useMemo(() => computeBenchmarkColumnStats(results), [results]);
+  const summaryRows = useMemo(
+    () => (["avg", "median", "max", "min"] as const).map((key) => formatStatRow(key, columnStats, (value) => percentage(value ?? undefined))),
+    [columnStats],
+  );
   const exportableResultCount = results.filter(
     (result) => result.status === "completed" && Boolean(result.detailsRelativePath),
   ).length;
@@ -197,6 +223,57 @@ export function BenchmarkRunsPanel({
             </Box>
           )}
         </Box>
+        {results.length > 0 ? (
+          <Box mt={4}>
+            <Text fontSize="md" fontWeight="semibold" mb={2}>Column summary</Text>
+            <Box
+              border="1px solid"
+              borderColor={theme.dashboard.border}
+              borderRadius="2xl"
+              bg={theme.background.card}
+              overflowX="auto"
+            >
+              <Box minW="480px">
+                <Grid
+                  templateColumns={SUMMARY_COLUMNS}
+                  gap={3}
+                  px={4}
+                  py={3}
+                  bg={theme.background.tertiary}
+                  borderTopRadius="2xl"
+                >
+                  {["", "Visible", "Focus hit", "P95 error"].map((label) => (
+                    <Text key={label || "stat"} color={theme.text.muted} fontSize="xs" fontWeight="semibold">
+                      {label}
+                    </Text>
+                  ))}
+                </Grid>
+                {summaryRows.map(([label, visible, focusHit, p95], index) => {
+                  const isLast = index === summaryRows.length - 1;
+                  return (
+                    <Grid
+                      key={label}
+                      templateColumns={SUMMARY_COLUMNS}
+                      gap={3}
+                      px={4}
+                      py={3}
+                      alignItems="center"
+                      bg={theme.background.card}
+                      borderBottom={isLast ? "none" : "1px solid"}
+                      borderColor={theme.dashboard.border}
+                      borderBottomRadius={isLast ? "2xl" : undefined}
+                    >
+                      <Text fontSize="sm" color={theme.text.muted} fontWeight="medium">{label}</Text>
+                      <Text fontSize="sm" color={theme.text.primary}>{visible}</Text>
+                      <Text fontSize="sm" color={theme.text.primary}>{focusHit}</Text>
+                      <Text fontSize="sm" color={theme.text.primary}>{p95}</Text>
+                    </Grid>
+                  );
+                })}
+              </Box>
+            </Box>
+          </Box>
+        ) : null}
       </Box>
     </SimpleGrid>
   );

@@ -1,13 +1,13 @@
-import type { ClipperSmoothingStrength } from "../../settings/settings";
+import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings";
 import type { FaceBoxSample } from "../../shared/face-samples";
-import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
+import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
 import type { CentroidSample } from "../reframe";
 import { cropRectToCentroid } from "./frame-crop-region";
-import { analyzeSceneMotion } from "./scene-camera-motion";
+import { analyzeSceneMotion, computeSalienceZoomScale } from "./scene-camera-motion";
 import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
-import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID } from "./types";
+import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
 import type { FocusPointFrame } from "./types";
 
 export interface BuildAutoFlipTrackInput {
@@ -23,6 +23,10 @@ export interface BuildAutoFlipTrackInput {
   frameWidth?: number;
   frameHeight?: number;
   smoothing?: ClipperSmoothingStrength;
+  /** Sizes the salience-driven zoom margin; defaults to "normal". */
+  headroom?: ClipperHeadroom;
+  /** Allow zooming even when the source already matches the target aspect (off by default). */
+  matchedAspectZoom?: boolean;
   degradedReason?: string;
   hasSolidColorBackground?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
@@ -33,6 +37,8 @@ export interface BuildAutoFlipTrackInput {
   /** Native decoded frame rate; used for graph-equivalent scene boundaries and paths. */
   sourceFrameRate?: number;
   trackerVersion?: "bytetrack-v1";
+  /** Attach per-scene diagnostics to the returned blob (benchmark tooling only). */
+  collectDebug?: boolean;
 }
 
 const FULL_FRAME: NormalizedBox = { x: 0, y: 0, width: 1, height: 1 };
@@ -166,16 +172,47 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     ? input.targetAspectRatios!
     : { default: input.targetAspectRatio ?? 9 / 16 };
   const aspectTracks: Record<string, AutoFlipAspectTrack> = {};
+  const debugScenes: AutoFlipSceneDebug[] | undefined = input.collectDebug ? [] : undefined;
 
   for (const [formatId, targetAspectRatio] of Object.entries(targets)) {
     const samples: AutoFlipCropSample[] = [];
+    // One zoom scale per original scene (chunks of a forced split share it),
+    // so a long take cannot pump between zoom levels.  When the source already
+    // matches the target aspect, the classic full-frame passthrough wins
+    // unless the caller opted in.
+    const aspectMatchesSource = Math.abs(frameWidth / frameHeight - targetAspectRatio) < 0.001;
+    const sceneZoom = new Array<number>(scenes.length).fill(1);
+    if (!aspectMatchesSource || input.matchedAspectZoom) {
+      const margin = AUTOFLIP_ZOOM_MARGIN[input.headroom ?? "normal"];
+      let index = 0;
+      while (index < scenes.length) {
+        let groupEnd = index + 1;
+        while (groupEnd < scenes.length && scenes[groupEnd]!.continueLastScene) groupEnd++;
+        const groupDuration = scenes[groupEnd - 1]!.end - scenes[index]!.start;
+        if (groupDuration >= AUTOFLIP_MIN_ZOOM_SCENE_SEC) {
+          const groupKeyframes = keyframes.filter(
+            (keyframe) => keyframe.time >= scenes[index]!.start - 1e-9 && keyframe.time <= scenes[groupEnd - 1]!.end + 1e-9,
+          );
+          const scale = computeSalienceZoomScale({
+            keyframes: groupKeyframes,
+            frameWidth,
+            frameHeight,
+            targetAspectRatio,
+            margin,
+            minScale: AUTOFLIP_MIN_ZOOM_SCALE,
+          });
+          for (let sceneIndex = index; sceneIndex < groupEnd; sceneIndex++) sceneZoom[sceneIndex] = scale;
+        }
+        index = groupEnd;
+      }
+    }
     // Product policy layered on top of AutoFlip: when BorderDetection found a
     // stable solid background, retaining the active image and padding it is
     // preferable to throwing away slide/gameplay content merely to fill a
     // vertical target. The renderer recognizes this non-matching aspect and
     // uses the graph-compatible solid-colour padding path.
     let continuationFocus: FocusPointFrame[] = [];
-    for (const scene of scenes) {
+    for (const [sceneIndex, scene] of scenes.entries()) {
       const sceneBackground = solidBackgroundForScene(
         scene,
         input.staticFeatureSamples,
@@ -208,6 +245,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         targetAspectRatio,
         hasSolidColorBackground: sceneBackground.hasSolid,
         sceneTimestampsUs: timeline.timestampsUs,
+        cropScale: sceneZoom[sceneIndex],
       });
       const cropRects = cropScenePath({
         summary: motion.summary,
@@ -222,6 +260,22 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         samples.push({ t: timeline.timestampsUs[index]! / 1_000_000, crop: intoSourceRect(crop, contentRect), cut: index === 0 && scene.cut });
       });
       continuationFocus = motion.focusPointFrames.slice(-30);
+      debugScenes?.push({
+        formatId,
+        start: scene.start,
+        end: scene.end,
+        motionType: motion.summary.motionType,
+        lookAtCenterX: motion.summary.lookAtCenterX,
+        lookAtCenterY: motion.summary.lookAtCenterY,
+        cropWindowWidthNorm: motion.summary.cropWindowWidth / frameWidth,
+        cropWindowHeightNorm: motion.summary.cropWindowHeight / frameHeight,
+        successRate: motion.summary.frameSuccessRate,
+        keyframes: sceneKeyframes.map((keyframe) => ({
+          time: keyframe.time,
+          regions: keyframe.regions.map((region) => ({ box: region.box, score: region.score, signalType: region.signalType })),
+          chosenRect: motion.keyframeCrops.find((crop) => Math.abs(crop.time - keyframe.time) < 1e-9)?.rect,
+        })),
+      });
     }
     if (samples.length === 0) {
       const sourceAspect = frameWidth / frameHeight;
@@ -249,6 +303,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     degradedReason: input.degradedReason,
     samples,
     aspectTracks,
+    debug: debugScenes,
   };
 }
 

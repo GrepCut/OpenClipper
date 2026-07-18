@@ -2,6 +2,7 @@ import { DEFAULT_CLIPPER_SETTINGS } from "../../clipper/settings/settings";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
 import type { BenchmarkRun, TestClip, TestKeyframe } from "../types";
 import { TEST_ASPECTS } from "../types";
+import { computeBenchmarkColumnStats } from "./column-stats";
 import { runTestBenchmarkAnalysis } from "./run-analysis";
 
 export interface BenchmarkRunnerProgress {
@@ -76,6 +77,14 @@ export async function executeBenchmarkRun(input: {
           degradedReason: output.degradedReason,
         };
         (manifest.clips as unknown[]).push(clipManifest);
+        if (output.autoflipDebug != null) {
+          await benchmarkPersistenceService.writeArtifact(
+            input.datasetId,
+            run.id,
+            `clips/${clip.id}/autoflip-debug.json`,
+            JSON.stringify(output.autoflipDebug),
+          );
+        }
         for (const aspect of output.aspects) {
           const relativePath = `clips/${clip.id}/${aspect.aspectId}.jsonl`;
           const detailsPath = await benchmarkPersistenceService.writeArtifact(
@@ -111,11 +120,14 @@ export async function executeBenchmarkRun(input: {
         }
       }
     }
+    const columnStats = computeBenchmarkColumnStats(
+      await benchmarkPersistenceService.listResults(run.id),
+    );
     const manifestPath = await benchmarkPersistenceService.writeArtifact(
       input.datasetId,
       run.id,
       "manifest.json",
-      JSON.stringify({ ...manifest, completedClips, failedClips }, null, 2),
+      JSON.stringify({ ...manifest, completedClips, failedClips, columnStats }, null, 2),
     );
     return benchmarkPersistenceService.finishRun(
       run.id,

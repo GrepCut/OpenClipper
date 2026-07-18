@@ -1,7 +1,8 @@
 import type { FocusPointFrame, KeyFrameSalientInput, NormalizedRect, SceneCameraMotionType, SceneKeyFrameCropSummary } from "./types";
-import { computeFrameCropRegionResult, computeTargetCropSize, cropRectToCentroid } from "./frame-crop-region";
+import { computeFrameCropRegionResult, computeTargetCropSize, cropRectToCentroid, focusBandRegions } from "./frame-crop-region";
 
 const STEADY_MOTION_THRESHOLD = 0.5;
+const STEADY_CENTER_DEADBAND = 0.08;
 
 export interface SceneMotionInput {
   keyframes: KeyFrameSalientInput[];
@@ -13,6 +14,12 @@ export interface SceneMotionInput {
   hasSolidColorBackground?: boolean;
   /** Every decoded scene-frame timestamp, matching AutoFlip's focus stream. */
   sceneTimestampsUs?: number[];
+  /**
+   * Window scale (≤1) shared by every chunk of one original scene, letting the
+   * crop window shrink toward the focus band so its centre can track subjects
+   * vertically as well as horizontally.  1 keeps the classic cover crop.
+   */
+  cropScale?: number;
 }
 
 export interface SceneMotionResult {
@@ -103,6 +110,9 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
   const { cropWidth, cropHeight } = computeTargetCropSize(frameWidth, frameHeight, targetAspectRatio);
   const targetWidthNorm = cropWidth / frameWidth;
   const targetHeightNorm = cropHeight / frameHeight;
+  const cropScale = Math.min(1, Math.max(0.05, input.cropScale ?? 1));
+  const scaledTargetWidthNorm = targetWidthNorm * cropScale;
+  const scaledTargetHeightNorm = targetHeightNorm * cropScale;
 
   const keyframeResults = input.keyframes.map((keyframe) => ({
     time: keyframe.time,
@@ -116,11 +126,17 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
 
   const nonEmptyResults = keyframeResults.filter((item) => !item.result.regionIsEmpty);
   // AggregateKeyFrameResults clamps each compact keyframe center to the
-  // nominal target before computing motion and tracking interpolation.
-  const keyframeCrops = nonEmptyResults.map(({ time, result }) => ({
-    time,
-    rect: clampKeyframeCenter(result.region, targetWidthNorm, targetHeightNorm),
-  }));
+  // (possibly zoomed) target before computing motion and tracking
+  // interpolation.  Each rect keeps the accumulated union's size but is
+  // recentred on the focus band, so faces steer position while the union
+  // still informs coverage.
+  const keyframeCrops = nonEmptyResults.map(({ time, result }) => {
+    const focus = result.focusCenter;
+    const rect = focus
+      ? { ...result.region, x: focus.x - result.region.width / 2, y: focus.y - result.region.height / 2 }
+      : result.region;
+    return { time, rect: clampKeyframeCenter(rect, scaledTargetWidthNorm, scaledTargetHeightNorm) };
+  });
   const motionAmount = motionSpanPercent(
     keyframeCrops.map((item) => item.rect),
     frameWidth,
@@ -151,24 +167,31 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
     const centers = keyframeCrops.map((item) => rectCenter(item.rect));
     lookAtCenterX = (Math.min(...centers.map((center) => center.x)) + Math.max(...centers.map((center) => center.x))) / 2;
     lookAtCenterY = (Math.min(...centers.map((center) => center.y)) + Math.max(...centers.map((center) => center.y))) / 2;
-    if (Math.abs(lookAtCenterX - 0.5) < 0.08) lookAtCenterX = 0.5;
-    if (Math.abs(lookAtCenterY - 0.5) < 0.08) lookAtCenterY = 0.5;
+    // A shrunk window makes a snap-to-centre worth more pixels, so the
+    // deadband tightens with the zoom scale.
+    if (Math.abs(lookAtCenterX - 0.5) < STEADY_CENTER_DEADBAND * cropScale) lookAtCenterX = 0.5;
+    if (Math.abs(lookAtCenterY - 0.5) < STEADY_CENTER_DEADBAND * cropScale) lookAtCenterY = 0.5;
   } else if (keyframeCrops.length > 0) {
     const last = rectCenter(keyframeCrops.at(-1)!.rect);
     lookAtCenterX = last.x;
     lookAtCenterY = last.y;
   }
 
-  // The scene window is the maximum of the nominal target and all populated
-  // keyframe regions; the reference performs this aggregation before motion.
-  const aggregatedCropWidthNorm = Math.max(targetWidthNorm, ...nonEmptyResults.map(({ result }) => result.region.width));
-  const aggregatedCropHeightNorm = Math.max(targetHeightNorm, ...nonEmptyResults.map(({ result }) => result.region.height));
+  // The scene window is the maximum of the (possibly zoomed) target and the
+  // focus-band unions; the reference performs this aggregation before motion.
+  // Bounding by the focus band rather than the full union keeps every face
+  // covered while still letting the window shrink past a body box that spans
+  // most of the frame.
+  const aggregatedCropWidthNorm = Math.max(scaledTargetWidthNorm, ...nonEmptyResults.map(({ result }) => (result.focusBox ?? result.region).width));
+  const aggregatedCropHeightNorm = Math.max(scaledTargetHeightNorm, ...nonEmptyResults.map(({ result }) => (result.focusBox ?? result.region).height));
   // MediaPipe decides the sweep direction from the aggregated scene window,
   // then resets the actual crop window to the nominal target dimensions.
   // A portrait crop already spans the source height, so a vertical sweep has
   // no visible camera travel; sweep across the only remaining axis instead.
+  // The sweep decision keeps reasoning about the unscaled window.
+  const unscaledAggWidthNorm = Math.max(targetWidthNorm, ...nonEmptyResults.map(({ result }) => result.region.width));
   const sweepHorizontally =
-    aggregatedCropWidthNorm > targetWidthNorm + 1e-6 || targetHeightNorm >= 1 - 1e-6;
+    unscaledAggWidthNorm > targetWidthNorm + 1e-6 || targetHeightNorm >= 1 - 1e-6;
   const sceneCropWidthNorm = motionType === "sweeping" ? targetWidthNorm : aggregatedCropWidthNorm;
   const sceneCropHeightNorm = motionType === "sweeping" ? targetHeightNorm : aggregatedCropHeightNorm;
   const steadyRect: NormalizedRect = {
@@ -221,6 +244,49 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
     keyframeCrops,
     focusPointFrames,
   };
+}
+
+export interface SceneZoomInput {
+  keyframes: KeyFrameSalientInput[];
+  frameWidth: number;
+  frameHeight: number;
+  targetAspectRatio: number;
+  /** Focus-band diagonal → desired window diagonal multiplier. */
+  margin: number;
+  minScale: number;
+}
+
+/**
+ * How far the crop window may shrink toward the focus band for one original
+ * scene.  A robust upper percentile across keyframes keeps the scale constant
+ * for the scene's whole span, so the camera cannot pump when a subject leans
+ * in or a detection flickers.
+ */
+export function computeSalienceZoomScale(input: SceneZoomInput): number {
+  const { cropWidth, cropHeight } = computeTargetCropSize(input.frameWidth, input.frameHeight, input.targetAspectRatio);
+  const nominalDiag = Math.hypot(cropWidth, cropHeight);
+  if (nominalDiag <= 0) return 1;
+  const scales: number[] = [];
+  for (const keyframe of input.keyframes) {
+    const band = focusBandRegions(keyframe.regions);
+    if (!band.length) continue;
+    let left = 1;
+    let top = 1;
+    let right = 0;
+    let bottom = 0;
+    for (const region of band) {
+      left = Math.min(left, region.box.x);
+      top = Math.min(top, region.box.y);
+      right = Math.max(right, region.box.x + region.box.width);
+      bottom = Math.max(bottom, region.box.y + region.box.height);
+    }
+    const diag = Math.hypot(Math.max(0, right - left) * input.frameWidth, Math.max(0, bottom - top) * input.frameHeight);
+    scales.push((diag * input.margin) / nominalDiag);
+  }
+  if (!scales.length) return 1;
+  scales.sort((a, b) => a - b);
+  const p80 = scales[Math.min(scales.length - 1, Math.floor(scales.length * 0.8))]!;
+  return Math.max(input.minScale, Math.min(1, p80));
 }
 
 export { cropRectToCentroid, interpolateAtTime };

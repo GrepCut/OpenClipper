@@ -1,7 +1,7 @@
 import { evenInt } from "../lib/media/video-draw";
 import type { ClipperSmoothingStrength } from "../settings/settings";
 import type { ClipperAspectPresetId } from "../shared/formats";
-import type { NormalizedBox } from "../shared/smart-crop";
+import type { NormalizedBox, SubjectDetectionSample } from "../shared/smart-crop";
 import { computeTargetCropSize } from "./autoflip/frame-crop-region";
 import {
   blendCentroid,
@@ -99,6 +99,68 @@ export function selectDominantFacePair(faces: FaceBox[]): FacePair | null {
   return first.x + first.width / 2 <= second.x + second.width / 2
     ? { left: first, right: second }
     : { left: second, right: first };
+}
+
+/** Where a head sits inside a person detection box, when no face detector confirmed one. */
+const HEAD_BAND_WIDTH_FRACTION = 0.6;
+const HEAD_BAND_HEIGHT_FRACTION = 0.22;
+const HEAD_MIN_DETECTION_SCORE = 0.5;
+const HEAD_MAX_SAMPLE_DELTA_SEC = 0.25;
+/** WASM detections carry no track id; require positional stability across consecutive samples instead. */
+const HEAD_POSITION_TOLERANCE = 0.05;
+
+/**
+ * Face detectors miss profile and partially occluded faces that the person
+ * detector still tracks, which silently disables split-screen for real
+ * two-speaker shots.  Append an estimated head box for each persistent,
+ * confident person detection that no detected face overlaps.  Only the
+ * collage derivations should consume the result — the single-focus "largest"
+ * strategy must keep seeing real faces only.
+ */
+export function augmentFaceSamplesWithDetectedHeads(
+  faceSamples: FaceBoxSample[],
+  detectionSamples: SubjectDetectionSample[],
+): FaceBoxSample[] {
+  if (!faceSamples.length || !detectionSamples.length) return faceSamples;
+  const sorted = [...detectionSamples].sort((a, b) => a.time - b.time);
+  return faceSamples.map((sample) => {
+    let index = -1;
+    let bestDelta = HEAD_MAX_SAMPLE_DELTA_SEC;
+    for (let i = 0; i < sorted.length; i++) {
+      const delta = Math.abs(sorted[i]!.time - sample.time);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        index = i;
+      }
+    }
+    if (index < 0) return sample;
+    const current = sorted[index]!;
+    const previous = sorted[index - 1];
+    const synthetic: FaceBox[] = [];
+    for (const detection of current.detections) {
+      if (detection.label.toLowerCase() !== "person") continue;
+      if (detection.predicted || detection.score < HEAD_MIN_DETECTION_SCORE) continue;
+      const persistent = detection.trackId != null
+        ? (previous?.detections.some((d) => d.trackId === detection.trackId) ?? false)
+        : (previous?.detections.some((d) =>
+          d.label.toLowerCase() === "person"
+          && Math.abs((d.box.x + d.box.width / 2) - (detection.box.x + detection.box.width / 2)) <= HEAD_POSITION_TOLERANCE
+          && Math.abs((d.box.y + d.box.height / 2) - (detection.box.y + detection.box.height / 2)) <= HEAD_POSITION_TOLERANCE,
+        ) ?? false);
+      if (!persistent) continue;
+      const head: FaceBox = {
+        x: (detection.box.x + (detection.box.width * (1 - HEAD_BAND_WIDTH_FRACTION)) / 2) * sample.frameW,
+        y: detection.box.y * sample.frameH,
+        width: detection.box.width * HEAD_BAND_WIDTH_FRACTION * sample.frameW,
+        height: detection.box.height * HEAD_BAND_HEIGHT_FRACTION * sample.frameH,
+      };
+      if (head.width <= 0 || head.height <= 0) continue;
+      const overlapsExisting = sample.faces.some((face) => overlapFractionOfSmaller(face, head) > 0)
+        || synthetic.some((face) => overlapFractionOfSmaller(face, head) > 0);
+      if (!overlapsExisting) synthetic.push(head);
+    }
+    return synthetic.length ? { ...sample, faces: [...sample.faces, ...synthetic] } : sample;
+  });
 }
 
 /**

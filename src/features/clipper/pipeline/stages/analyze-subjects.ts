@@ -3,9 +3,10 @@ import {
   AUTOFLIP_ANALYZER_VERSION,
   buildAutoFlipTrack,
 } from "../../engine/autoflip/build-autoflip-track";
+import { augmentFaceSamplesWithDetectedHeads } from "../../engine/collage";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats";
 import { aspectRatioFromId } from "../../lib/media/video-draw";
-import type { ClipperSmoothingStrength } from "../../settings/settings";
+import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings";
 import {
   clipperSmartCropDataRelativePath,
   readClipperSmartCropAnalysis,
@@ -24,6 +25,7 @@ export interface AnalyzeSubjectsInput {
   skipSubjectAnalysis: boolean;
   enabledFormatIds?: string[];
   smoothing?: ClipperSmoothingStrength;
+  headroom?: ClipperHeadroom;
 }
 
 function isValidRestoredBlob(
@@ -144,11 +146,17 @@ export async function runAnalyzeSubjectsStage(
     frameWidth,
     frameHeight,
     smoothing: input.smoothing ?? "balanced",
+    headroom: input.headroom,
     degradedReason,
   });
   blob.engine = pending?.engine ?? "wasm";
   session.smartCropAnalysis = blob;
   session.smartFollowTrackCache = null;
+  session.collageFaceSamples = augmentFaceSamplesWithDetectedHeads(
+    session.faceCache?.sortedSamples() ?? [],
+    detections,
+  );
+  session.faceRenderCache = null;
   benchmark?.enterPhase("smart-crop-persist");
   await writeClipperSmartCropAnalysis(input.projectId, blob);
   await markClipperStepCompleted(input.projectId, "analyze_subjects", {

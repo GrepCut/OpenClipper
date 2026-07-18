@@ -78,12 +78,52 @@ export interface FrameCropRegionResult {
   areRequiredRegionsCoveredInTargetSize: boolean;
   fractionNonRequiredCovered: number;
   regionScore: number;
+  /** Weighted centre of the highest-priority signal band (faces before bodies before objects). */
+  focusCenter?: { x: number; y: number };
+  /** Union of the highest-priority signal band; the crop window must keep covering it when zooming. */
+  focusBox?: NormalizedRect;
 }
 
 function unionRect(a: NormalizedRect, b: NormalizedRect): NormalizedRect {
   const x = Math.min(a.x, b.x);
   const y = Math.min(a.y, b.y);
   return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y };
+}
+
+const FACE_SIGNALS = new Set<SalientRegion["signalType"]>(["face_core", "face_all", "face_full"]);
+const SUBJECT_SIGNALS = new Set<SalientRegion["signalType"]>(["human", "pet", "car"]);
+
+/**
+ * The subset of regions that should drive framing: faces when any face signal
+ * is present, otherwise class-specific subjects, otherwise everything.  A
+ * seated person's box spans most of the frame, so letting it participate in
+ * focus placement pulls the camera to the torso instead of the face.
+ */
+export function focusBandRegions(regions: SalientRegion[]): SalientRegion[] {
+  const faces = regions.filter((region) => FACE_SIGNALS.has(region.signalType));
+  if (faces.length) return faces;
+  const subjects = regions.filter((region) => SUBJECT_SIGNALS.has(region.signalType));
+  if (subjects.length) return subjects;
+  return regions;
+}
+
+function focusAggregate(regions: SalientRegion[]): { center: { x: number; y: number }; box: NormalizedRect } | null {
+  const band = focusBandRegions(regions);
+  if (!band.length) return null;
+  let weightSum = 0;
+  let x = 0;
+  let y = 0;
+  let box: NormalizedRect | null = null;
+  for (const region of band) {
+    // Score encodes the signal priority band; sqrt(area) favours larger
+    // subjects without letting one huge box swamp every smaller one.
+    const weight = region.score * Math.sqrt(Math.max(0, region.box.width * region.box.height)) + 1e-6;
+    weightSum += weight;
+    x += (region.box.x + region.box.width / 2) * weight;
+    y += (region.box.y + region.box.height / 2) * weight;
+    box = box ? unionRect(box, region.box) : { ...region.box };
+  }
+  return { center: { x: x / weightSum, y: y / weightSum }, box: box! };
 }
 
 export function computeFrameCropRegionResult(input: FrameCropRegionInput): FrameCropRegionResult {
@@ -140,6 +180,7 @@ export function computeFrameCropRegionResult(input: FrameCropRegionInput): Frame
     }
   }
 
+  const focus = focusAggregate(regions);
   return {
     region: { ...crop },
     regionIsEmpty: false,
@@ -148,6 +189,8 @@ export function computeFrameCropRegionResult(input: FrameCropRegionInput): Frame
     areRequiredRegionsCoveredInTargetSize: !requiredBox || (requiredBox.width <= cropWidthNorm && requiredBox.height <= cropHeightNorm),
     fractionNonRequiredCovered: optional.length ? fullyCovered / optional.length : 0,
     regionScore: aggregateScore,
+    focusCenter: focus?.center,
+    focusBox: focus?.box,
   };
 }
 
