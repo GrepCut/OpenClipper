@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ImportanceRegion, ImportanceRegionSample } from "../../shared/smart-crop";
 import {
   DEFAULT_ARBITER_PARAMS,
+  RUN10_ARBITER_PARAMS,
   decideLayoutStrategy,
   motionTypeAt,
   subjectLifetimeSec,
@@ -156,6 +157,23 @@ describe("layout arbiter", () => {
     const guarded = decide(ctx, { visibilityFirst: true });
     expect(guarded.selectSemantic).toBe(false);
     expect(guarded.reasonCodes).toContain("coverage-regression-vs-run8");
+  });
+
+  it("uses the stateful Iteration 10 visibility-controller decision", () => {
+    const primary = region({ importanceScore: 0.5, confidence: 0.5 });
+    const ctx = context(stableSamples(primary, 1), {
+      baselineScore: 0.8,
+      semanticScore: 0.5,
+      controllerReasonCodes: ["visibility-widen"],
+      visibilityRisk: true,
+    });
+    const decision = decide(ctx, {
+      ...RUN10_ARBITER_PARAMS,
+    });
+    expect(decision.selectSemantic).toBe(true);
+    expect(decision.reasonCodes).toEqual(["visibility-controller", "visibility-widen"]);
+    expect(decide({ ...ctx, cut: true }, { ...RUN10_ARBITER_PARAMS }).selectSemantic).toBe(true);
+    expect(decide({ ...ctx, explicitPadding: true }, { ...RUN10_ARBITER_PARAMS }).selectSemantic).toBe(true);
   });
 
   it("enforces the subject-lifetime guard when enabled", () => {

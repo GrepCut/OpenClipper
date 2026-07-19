@@ -556,6 +556,7 @@ pub(crate) fn extract_frame_rgb_at_timestamp(
     let mut decoded = ffmpeg::frame::Video::empty();
     let mut seen_keyframe = false;
     let mut selected: Option<(f64, ffmpeg::frame::Video)> = None;
+    let mut last_below: Option<(f64, ffmpeg::frame::Video)> = None;
     'seek_packets: for (packet_stream, packet) in input.packets() {
         if packet_stream.index() != stream_index {
             continue;
@@ -570,13 +571,31 @@ pub(crate) fn extract_frame_rgb_at_timestamp(
         while decoder.receive_frame(&mut decoded).is_ok() {
             let pts = decoded.pts().unwrap_or(0) as f64 * time_base_sec;
             if pts + 0.02 < timestamp_sec {
+                last_below = Some((pts, decoded.clone()));
                 continue;
             }
             selected = Some((pts, decoded.clone()));
             break 'seek_packets;
         }
     }
-    let (_, selected_frame) = selected.ok_or_else(|| format!("No frame found near {timestamp_sec:.3}s"))?;
+    if selected.is_none() {
+        // The final frames of a stream can still sit in the decoder's reorder
+        // buffer when the packet loop hits EOF; drain them so a timestamp near
+        // the clip end resolves instead of erroring.
+        let _ = decoder.send_eof();
+        while decoder.receive_frame(&mut decoded).is_ok() {
+            let pts = decoded.pts().unwrap_or(0) as f64 * time_base_sec;
+            if pts + 0.02 < timestamp_sec {
+                last_below = Some((pts, decoded.clone()));
+                continue;
+            }
+            selected = Some((pts, decoded.clone()));
+            break;
+        }
+    }
+    let (_, selected_frame) = selected
+        .or(last_below)
+        .ok_or_else(|| format!("No frame found near {timestamp_sec:.3}s"))?;
     let mut rgb = ffmpeg::frame::Video::empty();
     scaler
         .run(&selected_frame, &mut rgb)

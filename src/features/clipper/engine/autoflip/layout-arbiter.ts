@@ -352,22 +352,26 @@ export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterP
       && subjectLifetimeSec(ctx.importanceSamples, ctx.importanceIndex, primary.id, params) >= lifetimeThreshold - EPSILON);
   const competitorOk = params.maxCompetitorImportanceRatio == null
     || (primary != null && competitorRatio(ctx, primary) <= params.maxCompetitorImportanceRatio + EPSILON);
+  // Iteration 10's visibility controller already validates identity, applies
+  // hysteresis, and enforces a per-scene switch budget before choosing the
+  // least-invasive safe variant. Reapplying the older semantic-evidence gates
+  // here can discard that stateful decision in favour of a less-visible
+  // baseline crop.
+  const controllerApproved = params.iteration10 === true && ctx.controllerReasonCodes != null;
 
   const objectiveOk = params.visibilityFirst
     ? coverageOrder.noRegression && (coverageOrder.visibilityGain || ctx.visibilityRisk === true || improvement >= margin)
     : improvement >= margin;
-  const selectSemantic = !ctx.cut
-    && !ctx.explicitPadding
-    && stable
-    && reliable
-    // Split/contain remain available as shadow candidates, but Run4's
-    // collage/contain path stays authoritative until those candidates
-    // beat its dual-visibility result in a full benchmark.
-    && modeAllowed
-    && objectiveOk
-    && coverageOk
-    && lifetimeOk
-    && competitorOk;
+  const selectSemantic =
+    modeAllowed &&
+    (controllerApproved || (!ctx.cut
+      && !ctx.explicitPadding
+      && stable
+      && reliable
+      && objectiveOk
+      && coverageOk
+      && lifetimeOk
+      && competitorOk));
 
   const strategy: ClipperLayoutStrategy = selectSemantic
     ? ctx.desiredMode === "split"
@@ -378,13 +382,19 @@ export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterP
     : "legacy-baseline";
 
   const reasonCodes = selectSemantic
-    ? [
-        "stable-semantic-target",
-        ...(params.visibilityFirst && (coverageOrder.visibilityGain || ctx.visibilityRisk)
-          ? [ctx.visibilityRisk && !coverageOrder.visibilityGain ? "predicted-visibility-risk" : "visibility-coverage-gain"]
-          : ["proposal-margin"]),
-        ...(ctx.controllerReasonCodes ?? []),
-      ]
+    ? controllerApproved
+      ? ["visibility-controller", ...(ctx.controllerReasonCodes ?? [])]
+      : [
+          "stable-semantic-target",
+          ...(params.visibilityFirst && (coverageOrder.visibilityGain || ctx.visibilityRisk)
+            ? [
+                ctx.visibilityRisk && !coverageOrder.visibilityGain
+                  ? "predicted-visibility-risk"
+                  : "visibility-coverage-gain",
+              ]
+            : ["proposal-margin"]),
+          ...(ctx.controllerReasonCodes ?? []),
+        ]
     : [
         ...(ctx.cut ? ["shot-boundary"] : []),
         ...(ctx.explicitPadding ? ["baseline-padding"] : []),
