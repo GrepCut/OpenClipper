@@ -110,6 +110,56 @@ export interface CanonicalIdentityTelemetry {
   rejectedRecoveries: Record<string, number>;
 }
 
+export type DetectorHypothesisSource = "ssd" | "yolox" | "pose" | "face";
+
+/** One detector observation retained without collapsing competing sources. */
+export interface DetectorHypothesisObservation {
+  source: DetectorHypothesisSource;
+  box: NormalizedBox;
+  confidence: number;
+  trackId?: number;
+  predicted: boolean;
+}
+
+/** Runtime-legal signals available to a future shadow/segment router. */
+export interface DetectorRouterFeatures {
+  detectorAgreementIou: number;
+  detectorCenterDistance: number;
+  detectorAreaRatio: number;
+  trackAgeSec: number;
+  trackPersistenceSamples: number;
+  timeSinceObservedSec: number;
+  faceSupport: number;
+  poseSupport: number;
+  activeSpeakerSupport: number;
+  associationConfidence: number;
+  identityAmbiguous: boolean;
+  velocityX: number;
+  velocityY: number;
+  speed: number;
+  acceleration: number;
+  scaleChangeRate: number;
+  saliencyOverlap: number;
+  personCount: number;
+  groupSpread: number;
+  secondsSinceCut: number;
+}
+
+/** A source-preserving hypothesis. Diagnostic only until a router passes LOCO. */
+export interface DetectorHypothesis {
+  id: string;
+  source: DetectorHypothesisSource;
+  canonicalId?: number;
+  observations: DetectorHypothesisObservation[];
+  features: DetectorRouterFeatures;
+}
+
+export interface DetectorHypothesisSample {
+  time: number;
+  sceneCut: boolean;
+  hypotheses: DetectorHypothesis[];
+}
+
 export interface MotionRegion extends NormalizedBox {
   energy: number;
   expansion: number;

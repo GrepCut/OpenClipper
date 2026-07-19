@@ -12,6 +12,9 @@ import { SubjectDetectorWorkerClient } from "../../clipper/workers/subject-detec
 import type { SubjectDetectionSample } from "../../clipper/shared/smart-crop";
 import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-autoflip-track";
 import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/canonical-person";
+import { buildDetectorHypothesisBank } from "../../clipper/engine/autoflip/detector-hypotheses";
+import { RUN10_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout-arbiter";
+import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "../../clipper/engine/autoflip/visibility-controller";
 import {
   augmentFaceSamplesWithDetectedHeads,
   buildCollageTracksForRegions,
@@ -368,6 +371,7 @@ export async function runTestBenchmarkAnalysis(input: {
     if (aspect.detectorCandidateMetrics) aspect.detectorCandidateMetrics.processingMs = processingMs;
     if (aspect.iteration10CandidateMetrics) aspect.iteration10CandidateMetrics.processingMs = processingMs;
   }
+  const canonicalSamples = buildCanonicalPersonTracks(detections).samples;
   return {
     aspects,
     engine,
@@ -377,12 +381,18 @@ export async function runTestBenchmarkAnalysis(input: {
     processingMs,
     degradedReason,
     autoflipDebug: {
-      schemaVersion: 3,
+      schemaVersion: 4,
+      replayConfig: {
+        productionPolicy: "iteration10",
+        arbiterParams: { ...RUN10_ARBITER_PARAMS },
+        visibilityControllerParams: { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS },
+      },
       semanticFramingParams: null,
       scenes: blob.debug ?? [],
       importanceSamples: blob.importanceSamples ?? [],
       layoutTracks: blob.layoutTracks ?? {},
-      subjectSamples: buildCanonicalPersonTracks(detections).samples,
+      subjectSamples: canonicalSamples,
+      detectorHypothesisSamples: buildDetectorHypothesisBank(canonicalSamples),
       canonicalIdentityTelemetry: blob.canonicalIdentityTelemetry,
       activeSpeakerTelemetry: blob.activeSpeakerTelemetry,
       candidates: {

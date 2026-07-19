@@ -8,6 +8,7 @@
  * modified. Reports go to stdout and (with --out) a JSON file.
  *
  *   npm run replay:arbiter -- --mode self-check
+ *   npm run replay:arbiter -- --mode hypothesis-audit --run <run-id>
  *   npm run replay:arbiter -- --mode run9 --run <run-8-id>
  *   npm run replay:arbiter -- --mode single --params "{\"proposalMargin\":0.1}"
  *   npm run replay:arbiter -- --mode sweep --grid grids/run6-coarse.json --top 25
@@ -16,8 +17,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DEFAULT_ARBITER_PARAMS, RUN9_ARBITER_PARAMS, RUN10_ARBITER_PARAMS, type ArbiterParams } from "../src/features/clipper/engine/autoflip/layout-arbiter";
-import { aggregate, replayClip, selfCheck } from "../src/features/tests/benchmark/replay/replay-engine";
-import { loadRun } from "../src/features/tests/benchmark/replay/replay-io";
+import { aggregate, replayClip, selfCheck, SELF_CHECK_METRIC_TOLERANCE } from "../src/features/tests/benchmark/replay/replay-engine";
+import { detectorHypothesisSamplesForDebug, loadRun, recordedArbiterParams } from "../src/features/tests/benchmark/replay/replay-io";
 import {
   RUN5_PORTRAIT_FLOOR,
   RUN8_PORTRAIT_FLOOR,
@@ -89,12 +90,46 @@ function main(): void {
 
   const output: Record<string, unknown> = { datasetId, runId, aspectId, mode };
 
-  if (mode === "self-check") {
-    const result = selfCheck(clips, { ...DEFAULT_ARBITER_PARAMS }, aspectId === "9-16"
+  if (mode === "hypothesis-audit") {
+    console.log("| Clip | Samples | SSD | YOLOX | Conflicts | Ambiguous | Mean agreement | Face support | Pose support |");
+    console.log("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
+    const audit = clips.map((clip) => {
+      const samples = detectorHypothesisSamplesForDebug(clip.debug);
+      const hypotheses = samples.flatMap((sample) => sample.hypotheses);
+      const ssd = hypotheses.filter((hypothesis) => hypothesis.source === "ssd");
+      const yolox = hypotheses.filter((hypothesis) => hypothesis.source === "yolox");
+      const conflicts = samples.filter((sample) =>
+        sample.hypotheses.some((hypothesis) => hypothesis.source === "ssd")
+        && sample.hypotheses.some((hypothesis) => hypothesis.source === "yolox")).length;
+      const mean = (values: number[]) => values.length
+        ? values.reduce((sum, value) => sum + value, 0) / values.length
+        : 0;
+      const row = {
+        clipId: clip.clipId,
+        clipName: clip.dims.name,
+        samples: samples.length,
+        ssd: ssd.length,
+        yolox: yolox.length,
+        conflicts,
+        ambiguous: hypotheses.filter((hypothesis) => hypothesis.features.identityAmbiguous).length,
+        meanAgreement: mean([...ssd, ...yolox].map((hypothesis) => hypothesis.features.detectorAgreementIou)),
+        faceSupport: hypotheses.filter((hypothesis) => hypothesis.features.faceSupport > 0).length,
+        poseSupport: hypotheses.filter((hypothesis) => hypothesis.features.poseSupport > 0).length,
+      };
+      console.log(`| ${row.clipName} | ${row.samples} | ${row.ssd} | ${row.yolox} | ${row.conflicts} | ${row.ambiguous} | ${pct(row.meanAgreement)} | ${row.faceSupport} | ${row.poseSupport} |`);
+      return row;
+    });
+    output.hypothesisAudit = audit;
+  } else if (mode === "self-check") {
+    const recordedParams = recordedArbiterParams(clips[0]!.debug);
+    const inconsistentPolicy = clips.some((clip) =>
+      JSON.stringify(recordedArbiterParams(clip.debug)) !== JSON.stringify(recordedParams));
+    if (inconsistentPolicy) throw new Error("Run contains inconsistent recorded arbiter policies across clips.");
+    const result = selfCheck(clips, recordedParams, aspectId === "9-16"
       ? recordedAggregate
       : { coverageHit: null, coverage: null, dualAllCovered: null });
     if (result.passed) {
-      console.log("SELF-CHECK PASSED: replay reproduces the recorded run exactly.");
+      console.log(`SELF-CHECK PASSED: strategies are exact and metrics are within ${(SELF_CHECK_METRIC_TOLERANCE * 100).toFixed(2)} pp interpolation tolerance.`);
     } else {
       console.log(`SELF-CHECK FAILED (${result.failures.length} issue(s)):`);
       for (const failure of result.failures.slice(0, 30)) console.log(`  - ${failure}`);
