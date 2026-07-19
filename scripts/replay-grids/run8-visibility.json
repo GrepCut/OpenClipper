@@ -1,0 +1,13 @@
+{
+  "targetBoxSource": ["box"],
+  "centerYFraction": [0.4, 0.44, 0.48],
+  "padding": [0.08],
+  "minimumScale": [0.8],
+  "visibilityConstrained": [true],
+  "visibilityGuardMargin": [0.08],
+  "stablePrimaryKeyframes": [5, 6],
+  "allowedScales": [[1, 0.95, 0.9, 0.8]],
+  "scaleHysteresis": [0.025, 0.05],
+  "maxCenterStep": [0.06, 0.08],
+  "maxScaleStep": [0.05]
+}

@@ -50,6 +50,9 @@ interface Candidate {
   source: ImportanceRegionSource;
   trackId?: number;
   predicted?: boolean;
+  recoveryOnly?: boolean;
+  associationConfidence?: number;
+  identityAmbiguous?: boolean;
 }
 
 interface CandidateCluster {
@@ -85,6 +88,9 @@ function signalCandidate(region: SalientRegion): Candidate {
   const confidence = clamp01(region.score);
   let evidence = policy.prior * 0.68 + confidence * 0.32;
   if (region.predicted) evidence *= 0.42;
+  // A YOLOX recovery can restore a missing trajectory or become a secondary
+  // target, but by itself must not outrank a stable SSD/face/pose primary.
+  if (region.recoveryOnly) evidence *= 0.82;
   const centerX = region.box.x + region.box.width / 2;
   const centerDistance = Math.abs(centerX - 0.5) * 2;
   evidence *= 1 - Math.min(0.05, centerDistance * 0.05);
@@ -96,6 +102,9 @@ function signalCandidate(region: SalientRegion): Candidate {
     source: policy.source,
     trackId: region.trackId,
     predicted: region.predicted,
+    recoveryOnly: region.recoveryOnly,
+    associationConfidence: region.associationConfidence,
+    identityAmbiguous: region.identityAmbiguous,
   };
 }
 
@@ -103,7 +112,8 @@ function belongsToCluster(candidate: Candidate, cluster: CandidateCluster): bool
   if (
     candidate.trackId != null
     && cluster.trackId === candidate.trackId
-    && cluster.candidates.some((existing) => existing.source === candidate.source)
+    && !candidate.identityAmbiguous
+    && cluster.candidates.every((existing) => !existing.identityAmbiguous)
   ) return true;
   // Face, pose and person detections are tracked by separate native trackers,
   // so their ids are not comparable.  A face contained by a body box is still
@@ -157,6 +167,8 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
     sources,
     trackId: cluster.trackId,
     predicted: ordered.every((candidate) => candidate.predicted),
+    associationConfidence: Math.min(...ordered.map((candidate) => candidate.associationConfidence ?? 1)),
+    identityAmbiguous: ordered.some((candidate) => candidate.identityAmbiguous),
   };
 }
 
@@ -171,6 +183,9 @@ function matchPreviousId(
   previous: ImportanceRegion[],
 ): string {
   if (region.trackId != null) {
+    const isCanonicalPerson = region.sources.some((source) =>
+      source === "person" || source === "pose" || source === "face" || source === "head" || source === "active-speaker");
+    if (isCanonicalPerson) return `canonical-person:${region.trackId}`;
     const namespace = ["person", "pose", "face", "head", "active-speaker", "object"]
       .find((source) => region.sources.includes(source as ImportanceRegionSource)) ?? region.sources[0] ?? "unknown";
     return `track:${namespace}:${region.trackId}`;
@@ -185,14 +200,20 @@ function matchPreviousId(
 function rankFrame(regions: SalientRegion[], previous: ImportanceRegion[]): ImportanceRegion[] {
   const ranked = clusterCandidates(regions)
     .filter((cluster) => cluster.candidates.some((candidate) => candidate.source !== "motion"))
-    .map((cluster) => {
+    // A recovery-only person box is not enough identity evidence to create a
+    // target. It must attach geometrically to face/head/pose evidence first.
+    .filter((cluster) => !cluster.candidates.some((candidate) => candidate.recoveryOnly)
+      || cluster.candidates.some((candidate) =>
+        !candidate.recoveryOnly && (candidate.source === "face" || candidate.source === "head" || candidate.source === "pose")))
+    .filter((cluster) => !cluster.candidates.some((candidate) => candidate.identityAmbiguous))
+    .map<ImportanceRegion>((cluster) => {
     const region = clusterRegion(cluster);
     const id = matchPreviousId(region, previous);
     const previousRegion = previous.find((candidate) => candidate.id === id);
     const importanceScore = previousRegion
       ? clamp01(region.importanceScore * 0.72 + previousRegion.importanceScore * 0.28 + 0.025)
       : region.importanceScore;
-    return { ...region, id, importanceScore, required: false, role: "candidate" as const };
+    return { ...region, id, importanceScore, required: false, role: "candidate" as const } satisfies ImportanceRegion;
     }).sort((a, b) => b.importanceScore - a.importanceScore);
 
   if (!ranked.length) return ranked;

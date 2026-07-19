@@ -37,3 +37,4 @@ public/models/nemo-parakeet-tdt-0.6b-v3-int8/*
 models_automation/r2_mirror/
 models_automation/prepared_models.json
 models_automation/__pycache__/
+benchmark-replays/

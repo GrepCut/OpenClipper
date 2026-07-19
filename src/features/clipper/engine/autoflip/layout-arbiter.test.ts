@@ -145,6 +145,19 @@ describe("layout arbiter", () => {
     expect(guarded.reasonCodes).toContain("insufficient-content-coverage");
   });
 
+  it("never trades away a Run 8 target envelope in visibility-first mode", () => {
+    const primary = region({ contentBox: { x: 0.35, y: 0.2, width: 0.2, height: 0.5 } });
+    const ctx = context(stableSamples(primary), {
+      baselineViewports: [{ x: 0.3, y: 0, width: 0.4, height: 1 }],
+      semanticViewports: [{ x: 0.45, y: 0, width: 0.2, height: 1 }],
+      baselineScore: 0.4,
+      semanticScore: 0.9,
+    });
+    const guarded = decide(ctx, { visibilityFirst: true });
+    expect(guarded.selectSemantic).toBe(false);
+    expect(guarded.reasonCodes).toContain("coverage-regression-vs-run8");
+  });
+
   it("enforces the subject-lifetime guard when enabled", () => {
     const samples = stableSamples(region(), 5);
     expect(decide(context(samples), { minSubjectLifetimeSec: 0.8 }).selectSemantic).toBe(true);

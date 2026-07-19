@@ -1,5 +1,23 @@
 # Clipper vision model notices
 
+## Light-ASD
+
+The bundled `light_asd_ava.onnx` is an ONNX export of the supplied AVA
+checkpoint from Light-ASD. Light-ASD is distributed under the MIT License.
+See <https://github.com/Junhua-Liao/Light-ASD>.
+
+## LR-ASD
+
+The bundled `lr_asd_ava.onnx` is a deterministic ONNX export of the supplied
+LR-ASD AVA checkpoint. LR-ASD is distributed under the MIT License. See
+<https://github.com/Junhua-Liao/LR-ASD>.
+
+## YOLOX-Tiny
+
+The bundled `yolox_tiny.onnx` is a dynamic-batch derivation of the supplied
+YOLOX-Tiny weights. Learned weights are unchanged. YOLOX is distributed under
+the Apache License 2.0. See <https://github.com/Megvii-BaseDetection/YOLOX>.
+
 The bundled `blaze_face_full_range.onnx` and `ssdlite_object_detection.onnx`
 files are reproducible conversions of the MediaPipe model assets already
 shipped under `public/models/`. They are used locally by Windows

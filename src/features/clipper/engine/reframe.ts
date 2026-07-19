@@ -289,6 +289,16 @@ export interface NativeVisionMetrics {
   trackerDurationMs: number;
   trackedSubjectCount: number;
   predictedSubjectCount: number;
+  recoveryTriggers: number;
+  yoloxInvocations: number;
+  acceptedRecoveries: number;
+  rejectedRecoveryDuplicates: number;
+  rejectedRecoveryCandidates: number;
+  acceptedPredictedIou: number;
+  acceptedPoseSupport: number;
+  acceptedFaceSupport: number;
+  acceptedTemporalPersistence: number;
+  yoloxInferenceMs: number;
   codecDecodeApiMs: number;
   histogramMs: number;
   sampleScaleMs: number;
@@ -366,6 +376,21 @@ function clipperByteTrackTrackingMode(): "bytetrack-v1" | "off" {
   return override === "false" || override === "0" || override === "off" ? "off" : "bytetrack-v1";
 }
 
+type ClipperObjectDetectorMode = "ssd" | "yolox-recovery" | "yolox-shadow" | "yolox-primary";
+
+function normalizeObjectDetectorMode(value: string | null | undefined): ClipperObjectDetectorMode | null {
+  return value === "ssd" || value === "yolox-recovery" || value === "yolox-shadow" || value === "yolox-primary"
+    ? value
+    : null;
+}
+
+function clipperObjectDetectorMode(): ClipperObjectDetectorMode {
+  const configured = normalizeObjectDetectorMode(import.meta.env.VITE_CLIPPER_OBJECT_DETECTOR_MODE)
+    ?? "yolox-recovery";
+  if (typeof window === "undefined") return configured;
+  return normalizeObjectDetectorMode(window.localStorage?.getItem("clipperObjectDetectorMode")) ?? configured;
+}
+
 async function probeNativeVision(): Promise<NativeVisionCapability> {
   if (!nativeVisionProbe) {
     nativeVisionProbe = import("@tauri-apps/api/core")
@@ -413,6 +438,7 @@ async function detectWinMlMedia(
       startTime: source.startTime,
       endTime: source.endTime,
       trackingMode: clipperByteTrackTrackingMode(),
+      objectDetectorMode: clipperObjectDetectorMode(),
     },
     signal,
     onProgress: onNativeProgress,

@@ -15,12 +15,25 @@ export interface SubjectDetection {
   trackId?: number;
   /** A short-lived Kalman prediction emitted while the target is occluded. */
   predicted?: boolean;
+  /** Detector that last observed this ByteTrack trajectory. */
+  detectorSource?: "ssd" | "yolox" | "pose";
+  /** Scene-local identity shared by person, face and pose evidence. */
+  canonicalId?: number;
+  associationConfidence?: number;
+  identityAmbiguous?: boolean;
+  recoveryOnly?: boolean;
 }
 
 /** Full-range face detector output used only for AutoFlip's landmark signals. */
 export interface AutoFlipFaceDetection {
   box: NormalizedBox;
   keypoints: Array<{ x: number; y: number }>;
+  /** Stable native face identity, used to attach active-speaker evidence. */
+  trackId?: number;
+  predicted?: boolean;
+  canonicalId?: number;
+  associationConfidence?: number;
+  identityAmbiguous?: boolean;
 }
 
 /** Compact pose output retained by the cropper; raw model keypoints stay transient. */
@@ -31,19 +44,70 @@ export interface PoseSubject {
   predicted?: boolean;
   headBox?: NormalizedBox;
   torsoBox?: NormalizedBox;
+  canonicalId?: number;
+  associationConfidence?: number;
+  identityAmbiguous?: boolean;
 }
 
 export interface SubjectDetectionSample {
   time: number;
   detections: SubjectDetection[];
+  /** Alternative detector output retained for benchmark attribution only. */
+  shadowDetections?: SubjectDetection[];
+  /** LR-ASD probabilities keyed to existing native face tracks. */
+  activeSpeakerScores?: Array<{ trackId: number; confidence: number }>;
   autoflipFaces?: AutoFlipFaceDetection[];
   poseSubjects?: PoseSubject[];
   /** Sparse semantic/action proposals aligned to this detector sample. */
   importanceSignals?: ImportanceSignalRegion[];
   /** Detector that produced this sample; persisted only as analysis provenance. */
   modelId?: string;
+  /** Scene boundary marker; pending recovery/ASD state must not cross it. */
+  sceneCut?: boolean;
   /** Present when the exact AutoFlip model could not be initialized. */
   degradedReason?: string;
+  /** Scene-local fused identities. Predicted-only snapshots are diagnostic and cannot create layout targets. */
+  canonicalPersons?: CanonicalPersonTrack[];
+  activeSpeakerDisabledReason?: string;
+}
+
+export interface ActiveSpeakerTelemetry {
+  enabled: boolean;
+  disabledReason?: string;
+  evaluatedWindows: number;
+  speakerSwitches: number;
+  ambiguousWindows: number;
+  asdDutyCycle: number;
+  runtimeMs?: number;
+}
+
+export type CanonicalTrackState = "observed" | "predicted" | "recovered";
+
+export interface CanonicalPersonTrack {
+  canonicalId: number;
+  personBox?: NormalizedBox;
+  faceBox?: NormalizedBox;
+  poseBox?: NormalizedBox;
+  sources: Array<"person" | "face" | "pose" | "yolox">;
+  confidence: number;
+  associationConfidence: number;
+  velocity: { x: number; y: number };
+  lastObservedTime: number;
+  state: CanonicalTrackState;
+  identityAmbiguous: boolean;
+}
+
+export interface CanonicalIdentityTelemetry {
+  births: number;
+  deaths: number;
+  switches: number;
+  ambiguousSamples: number;
+  sampleCount: number;
+  dropoutDurationsSec: number[];
+  successfulReacquisitions: number;
+  associationConfidences: number[];
+  acceptedRecoveries: Record<string, number>;
+  rejectedRecoveries: Record<string, number>;
 }
 
 export interface MotionRegion extends NormalizedBox {
@@ -110,6 +174,8 @@ export interface ImportanceRegion {
   sources: ImportanceRegionSource[];
   trackId?: number;
   predicted?: boolean;
+  associationConfidence?: number;
+  identityAmbiguous?: boolean;
 }
 
 export interface ImportanceRegionSample {
@@ -143,6 +209,24 @@ export interface ClipperLayoutSample {
   semanticScore?: number;
   decisionConfidence?: number;
   reasonCodes?: string[];
+  /** Run 9 counterfactual rescue ladder, persisted for offline replay/audit. */
+  candidateVariants?: Array<{
+    kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "contain-fail-safe";
+    mode: ClipperLayoutMode;
+    viewports: NormalizedBox[];
+    requiredCoverage: number[];
+  }>;
+  /** Per-required-envelope hard coverage before and after arbitration. */
+  baselineRequiredCoverage?: number[];
+  selectedRequiredCoverage?: number[];
+  visibilityRisk?: boolean;
+  /** Quality telemetry that does not use benchmark ground truth. */
+  qualityTelemetry?: {
+    containDutyCandidate: boolean;
+    subjectDisplayHeightFractions: number[];
+  };
+  /** Required boxes used to validate intermediate interpolation frames. */
+  coverageBoxes?: NormalizedBox[];
   cut?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
 }
@@ -232,6 +316,8 @@ export interface ClipperSmartCropBlob {
   importanceSamples?: ImportanceRegionSample[];
   /** v3: format-aware crop/split/contain decisions used before legacy collage logic. */
   layoutTracks?: Record<string, ClipperLayoutTrack>;
+  canonicalIdentityTelemetry?: CanonicalIdentityTelemetry;
+  activeSpeakerTelemetry?: ActiveSpeakerTelemetry;
   /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
   debug?: AutoFlipSceneDebug[];
 }

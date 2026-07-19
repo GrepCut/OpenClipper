@@ -58,6 +58,12 @@ export interface ArbiterParams {
   allowSplit?: boolean;
   /** Allow contain proposals to win arbitration (Run5: shadow-only). */
   allowContain?: boolean;
+  /** Run 9: compare hard per-target coverage before any composition score. */
+  visibilityFirst?: boolean;
+  /** Numerical tolerance for the no-regression coverage comparison. */
+  coverageEpsilon?: number;
+  /** Selects Iteration 10's canonical split/state-machine policy in replay. */
+  iteration10?: boolean;
 }
 
 /**
@@ -80,6 +86,22 @@ export const DEFAULT_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
   dualConfidence: 0.75,
   dualImportance: 0.75,
   decisionConfidenceScale: 0.3,
+});
+
+/** Run 9 candidate policy. Production keeps DEFAULT_ARBITER_PARAMS until gates pass. */
+export const RUN9_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
+  ...DEFAULT_ARBITER_PARAMS,
+  stabilityKeyframes: 3,
+  minRequiredContentCoverage: 0.98,
+  allowSplit: true,
+  allowContain: true,
+  visibilityFirst: true,
+  coverageEpsilon: 1e-6,
+});
+
+export const RUN10_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
+  ...RUN9_ARBITER_PARAMS,
+  iteration10: true,
 });
 
 /** Camera-motion classification of one analyzed scene for one output format. */
@@ -105,6 +127,14 @@ export interface ArbiterSampleContext {
   baselineScore: number;
   semanticScore: number;
   semanticViewports: NormalizedBox[];
+  /** Exact Run 8 viewports used by the hard Run 9 coverage comparator. */
+  baselineViewports?: NormalizedBox[];
+  /** Motion/lookahead envelopes. Omitted for historical replay artifacts. */
+  coverageRegions?: ImportanceRegion[];
+  /** Controller diagnostics persisted alongside the final decision. */
+  controllerReasonCodes?: string[];
+  /** Lookahead says Run 8 will lose coverage even if current coverage ties. */
+  visibilityRisk?: boolean;
   importanceSamples: ImportanceRegionSample[];
   importanceIndex: number;
   motionType?: string;
@@ -261,8 +291,25 @@ function effectiveProposalMargin(ctx: ArbiterSampleContext, params: ArbiterParam
 }
 
 function requiredContentCovered(ctx: ArbiterSampleContext, threshold: number): boolean {
-  return ctx.required.every((region) =>
+  const required = ctx.coverageRegions ?? ctx.required;
+  return required.every((region) =>
     Math.max(0, ...ctx.semanticViewports.map((viewport) => coveredFraction(viewport, region.contentBox))) >= threshold - EPSILON);
+}
+
+function coverageComparison(ctx: ArbiterSampleContext, epsilon: number): {
+  noRegression: boolean;
+  visibilityGain: boolean;
+} {
+  if (!ctx.baselineViewports?.length) return { noRegression: true, visibilityGain: false };
+  const required = ctx.coverageRegions ?? ctx.required;
+  let visibilityGain = false;
+  for (const region of required) {
+    const baseline = Math.max(0, ...ctx.baselineViewports.map((viewport) => coveredFraction(viewport, region.contentBox)));
+    const semantic = Math.max(0, ...ctx.semanticViewports.map((viewport) => coveredFraction(viewport, region.contentBox)));
+    if (semantic + epsilon < baseline) return { noRegression: false, visibilityGain: false };
+    if (semantic > baseline + epsilon) visibilityGain = true;
+  }
+  return { noRegression: true, visibilityGain };
 }
 
 function competitorRatio(ctx: ArbiterSampleContext, primary: ImportanceRegion): number {
@@ -298,6 +345,7 @@ export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterP
 
   const coverageThreshold = params.minRequiredContentCoverage ?? 0;
   const coverageOk = coverageThreshold <= 0 || requiredContentCovered(ctx, coverageThreshold);
+  const coverageOrder = coverageComparison(ctx, params.coverageEpsilon ?? 1e-6);
   const lifetimeThreshold = params.minSubjectLifetimeSec ?? 0;
   const lifetimeOk = lifetimeThreshold <= 0
     || (primary != null
@@ -305,6 +353,9 @@ export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterP
   const competitorOk = params.maxCompetitorImportanceRatio == null
     || (primary != null && competitorRatio(ctx, primary) <= params.maxCompetitorImportanceRatio + EPSILON);
 
+  const objectiveOk = params.visibilityFirst
+    ? coverageOrder.noRegression && (coverageOrder.visibilityGain || ctx.visibilityRisk === true || improvement >= margin)
+    : improvement >= margin;
   const selectSemantic = !ctx.cut
     && !ctx.explicitPadding
     && stable
@@ -313,7 +364,7 @@ export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterP
     // collage/contain path stays authoritative until those candidates
     // beat its dual-visibility result in a full benchmark.
     && modeAllowed
-    && improvement >= margin
+    && objectiveOk
     && coverageOk
     && lifetimeOk
     && competitorOk;
@@ -327,13 +378,20 @@ export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterP
     : "legacy-baseline";
 
   const reasonCodes = selectSemantic
-    ? ["stable-semantic-target", "proposal-margin"]
+    ? [
+        "stable-semantic-target",
+        ...(params.visibilityFirst && (coverageOrder.visibilityGain || ctx.visibilityRisk)
+          ? [ctx.visibilityRisk && !coverageOrder.visibilityGain ? "predicted-visibility-risk" : "visibility-coverage-gain"]
+          : ["proposal-margin"]),
+        ...(ctx.controllerReasonCodes ?? []),
+      ]
     : [
         ...(ctx.cut ? ["shot-boundary"] : []),
         ...(ctx.explicitPadding ? ["baseline-padding"] : []),
         ...(!stable ? ["unstable-target"] : []),
         ...(!reliable ? ["insufficient-semantic-evidence"] : []),
-        ...(improvement < margin ? ["insufficient-proposal-margin"] : []),
+        ...(!objectiveOk && !coverageOrder.noRegression ? ["coverage-regression-vs-run8"] : []),
+        ...(!objectiveOk && coverageOrder.noRegression ? ["insufficient-proposal-margin"] : []),
         ...(!coverageOk ? ["insufficient-content-coverage"] : []),
         ...(!lifetimeOk ? ["short-subject-lifetime"] : []),
         ...(!competitorOk ? ["ambiguous-competitor"] : []),

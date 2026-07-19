@@ -10,7 +10,11 @@ import { attachImportanceSignals, buildImportanceTimeline } from "./importance-r
 import { buildLayoutTracks } from "./layout-planner";
 import type { ArbiterSceneMotion } from "./layout-arbiter";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
+import { applyActiveSpeakerPolicy } from "./active-speaker";
+import { buildCanonicalPersonTracks } from "./canonical-person";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
+import { RUN10_ARBITER_PARAMS } from "./layout-arbiter";
+import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "./visibility-controller";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
 
 export interface BuildAutoFlipTrackInput {
@@ -44,6 +48,8 @@ export interface BuildAutoFlipTrackInput {
   importanceSignals?: ImportanceSignalSample[];
   /** Attach per-scene diagnostics to the returned blob (benchmark tooling only). */
   collectDebug?: boolean;
+  /** Build the Iteration 10 candidate. Omit for the bit-for-bit Run 8 production path. */
+  iteration10?: boolean;
 }
 
 const FULL_FRAME: NormalizedBox = { x: 0, y: 0, width: 1, height: 1 };
@@ -199,7 +205,12 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
   const sourceFrameRate = Number.isFinite(input.sourceFrameRate) && input.sourceFrameRate! > 0 ? input.sourceFrameRate! : 30;
   const kinematicOptions = kinematicOptionsForSmoothing(input.smoothing ?? "balanced");
   const scenes = splitScenes(input.clipStart, input.clipEnd, input.sceneCuts, sourceFrameRate);
-  const contentDetections = detectionsInContent(input.detections, contentRect);
+  const canonicalFusion = buildCanonicalPersonTracks(input.detections);
+  const activeSpeaker = applyActiveSpeakerPolicy(canonicalFusion.samples);
+  const contentDetections = detectionsInContent(
+    input.iteration10 ? activeSpeaker.samples : input.detections,
+    contentRect,
+  );
   const rawKeyframes = buildSalientKeyframes({
     clipStart: input.clipStart,
     clipEnd: input.clipEnd,
@@ -374,6 +385,10 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     frameWidth: sourceFrameWidth,
     frameHeight: sourceFrameHeight,
     sceneMotion,
+    arbiterParams: input.iteration10 ? { ...RUN10_ARBITER_PARAMS } : undefined,
+    visibilityControllerParams: input.iteration10
+      ? { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS }
+      : undefined,
   });
 
   return {
@@ -390,6 +405,8 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     aspectTracks,
     importanceSamples,
     layoutTracks,
+    canonicalIdentityTelemetry: canonicalFusion.telemetry,
+    activeSpeakerTelemetry: activeSpeaker.telemetry,
     debug: debugScenes,
   };
 }

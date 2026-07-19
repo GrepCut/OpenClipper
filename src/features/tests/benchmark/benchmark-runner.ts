@@ -37,6 +37,7 @@ export async function executeBenchmarkRun(input: {
   const config = {
     schemaVersion: 2,
     analyzer: "production-smart-follow",
+    promotionPolicy: "visibility-first",
     primaryAspectId: "9-16",
     acceptanceGates: PORTRAIT_ACCEPTANCE_GATES,
     run4RegressionFloor: RUN4_PORTRAIT_FLOOR,
@@ -93,6 +94,7 @@ export async function executeBenchmarkRun(input: {
           sourceFrameRate: output.sourceFrameRate,
           processingMs: output.processingMs,
           degradedReason: output.degradedReason,
+          nativeMetrics: output.nativeMetrics,
         };
         (manifest.clips as unknown[]).push(clipManifest);
         if (output.autoflipDebug != null) {
@@ -103,11 +105,19 @@ export async function executeBenchmarkRun(input: {
             JSON.stringify(output.autoflipDebug),
           );
         }
+        if (output.nativeMetrics != null) {
+          await benchmarkPersistenceService.writeArtifact(
+            input.datasetId,
+            run.id,
+            `clips/${clip.id}/native-metrics.json`,
+            JSON.stringify(output.nativeMetrics, null, 2),
+          );
+        }
         const portraitComparison = output.aspects.find((aspect) => aspect.aspectId === "9-16");
         if (portraitComparison) {
           const focusDelta = portraitComparison.metrics.focusHitRate - portraitComparison.baselineMetrics.focusHitRate;
           const visibilityDelta = portraitComparison.metrics.targetVisibilityRate - portraitComparison.baselineMetrics.targetVisibilityRate;
-          if (focusDelta < -0.1 && visibilityDelta < -0.1) {
+          if (visibilityDelta < -0.1) {
             catastrophicRegressions.push({ clipId: clip.id, focusDelta, visibilityDelta });
           }
         }
@@ -133,6 +143,8 @@ export async function executeBenchmarkRun(input: {
               selected: aspect.metrics,
               baseline: aspect.baselineMetrics,
               semanticCandidate: aspect.semanticCandidateMetrics,
+              detectorCandidate: aspect.detectorCandidateMetrics ?? null,
+              iteration10Candidate: aspect.iteration10CandidateMetrics ?? null,
             }, null, 2),
           );
           await benchmarkPersistenceService.writeArtifact(
@@ -147,6 +159,22 @@ export async function executeBenchmarkRun(input: {
             `clips/${clip.id}/${aspect.aspectId}-semantic-candidate.jsonl`,
             aspect.semanticCandidateDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
           );
+          if (aspect.detectorCandidateDetails) {
+            await benchmarkPersistenceService.writeArtifact(
+              input.datasetId,
+              run.id,
+              `clips/${clip.id}/${aspect.aspectId}-detector-candidate.jsonl`,
+              aspect.detectorCandidateDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
+            );
+          }
+          if (aspect.iteration10CandidateDetails) {
+            await benchmarkPersistenceService.writeArtifact(
+              input.datasetId,
+              run.id,
+              `clips/${clip.id}/${aspect.aspectId}-iteration10-candidate.jsonl`,
+              aspect.iteration10CandidateDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
+            );
+          }
           await benchmarkPersistenceService.putResult({
             runId: run.id,
             clipId: clip.id,
@@ -195,14 +223,15 @@ export async function executeBenchmarkRun(input: {
         passed: false,
       },
     };
-    gateEvaluation.passed = [gateEvaluation.focusHit, gateEvaluation.visibility, gateEvaluation.dualAllVisible, gateEvaluation.processingTime]
+    // Focus measures centering, not whether the target remains in frame. Keep it
+    // diagnostic, but make visibility the promotion decision as requested by the
+    // project owner. The ambitious gate still reports runtime independently.
+    gateEvaluation.passed = [gateEvaluation.visibility, gateEvaluation.dualAllVisible, gateEvaluation.processingTime]
       .every((value) => value === true);
     gateEvaluation.run4Floor.passed = [
-      gateEvaluation.run4Floor.focusHit,
       gateEvaluation.run4Floor.visibility,
       gateEvaluation.run4Floor.dualAllVisible,
       gateEvaluation.run4Floor.noCatastrophicRegression,
-      gateEvaluation.processingTime,
     ].every((value) => value === true);
     const manifestPath = await benchmarkPersistenceService.writeArtifact(
       input.datasetId,

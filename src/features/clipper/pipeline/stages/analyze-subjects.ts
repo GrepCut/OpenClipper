@@ -149,6 +149,7 @@ export async function runAnalyzeSubjectsStage(
     smoothing: input.smoothing ?? "balanced",
     headroom: input.headroom,
     degradedReason,
+    iteration10: true,
   });
   blob.engine = pending?.engine ?? "wasm";
   session.smartCropAnalysis = blob;

@@ -4,12 +4,29 @@ import {
   importanceAtTime,
   interpolateBox,
   precedingIndex,
+  proposalScore,
   requiredRegions,
   type ArbiterParams,
 } from "../../../clipper/engine/autoflip/layout-arbiter";
+import {
+  buildViewports,
+  createVisibilityFramingState,
+  DEFAULT_SEMANTIC_FRAMING_PARAMS,
+  rawMode,
+  type SemanticFramingParams,
+} from "../../../clipper/engine/autoflip/layout-planner";
+import {
+  createVisibilityControllerState,
+  planVisibilityRescue,
+  RUN9_VISIBILITY_CONTROLLER_PARAMS,
+  ITERATION10_VISIBILITY_CONTROLLER_PARAMS,
+  type VisibilityControllerParams,
+  type VisibilityVariant,
+} from "../../../clipper/engine/autoflip/visibility-controller";
 import { calculateBenchmarkMetrics, type BenchmarkFrameDetail, type BenchmarkFrameInput } from "../metrics";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
 import type { ClipArtifacts, RecordedAutoflipDebug } from "./replay-io";
+import { calculateReplayOracles, type ReplayOracleReport } from "./replay-oracles";
 
 /** A recorded layout sample re-decided under candidate arbiter params. */
 export interface ReplayedSample {
@@ -18,6 +35,17 @@ export interface ReplayedSample {
   mode: ClipperLayoutSample["mode"];
   strategy: NonNullable<ClipperLayoutSample["strategy"]>;
   viewports: NormalizedBox[];
+  reasonCodes?: string[];
+  candidateVariants?: VisibilityVariant[];
+  requiredRegionIds?: string[];
+  subjectDisplayHeightFractions?: number[];
+}
+
+export interface ReplayGeometry {
+  frameWidth: number;
+  frameHeight: number;
+  framing: SemanticFramingParams;
+  visibilityController?: VisibilityControllerParams;
 }
 
 function motionTypeForSample(debug: RecordedAutoflipDebug, formatId: string, time: number): string | undefined {
@@ -34,25 +62,63 @@ export function replayTrack(
   debug: RecordedAutoflipDebug,
   formatId: string,
   params: ArbiterParams,
+  geometry?: ReplayGeometry,
 ): ReplayedSample[] {
   const track = debug.layoutTracks[formatId];
   if (!track) throw new Error(`No layout track for format ${formatId}.`);
   const importanceSamples = debug.importanceSamples;
+  const visibilityState = createVisibilityFramingState();
+  const visibilityControllerState = createVisibilityControllerState();
   return track.samples.map((sample) => {
-    const desiredMode = sample.candidateMode ?? sample.mode;
     const explicitPadding = sample.reasonCodes?.includes("baseline-padding") ?? false;
     const importance = importanceAtTime(importanceSamples, sample.t);
     const importanceIndex = precedingIndex(importanceSamples, sample.t);
-    const semanticViewports = sample.candidateViewports ?? [];
+    const baselineViewports = sample.baselineViewports ?? sample.viewports;
+    const desiredMode = geometry
+      ? rawMode(importance, geometry.frameWidth / Math.max(1, geometry.frameHeight), track.targetAspectRatio)
+      : sample.candidateMode ?? sample.mode;
+    let semanticViewports = geometry
+      ? buildViewports(
+          desiredMode,
+          importance,
+          baselineViewports[0]!,
+          geometry.frameWidth / Math.max(1, geometry.frameHeight),
+          track.targetAspectRatio,
+          geometry.framing,
+          visibilityState,
+          Boolean(sample.cut),
+        )
+      : sample.candidateViewports ?? [];
+    const required = requiredRegions(importance);
+    const visibilityDecision = geometry?.visibilityController?.enabled
+      ? planVisibilityRescue({
+          samples: importanceSamples,
+          importanceIndex,
+          baselineViewport: baselineViewports[0]!,
+          sourceAspect: geometry.frameWidth / Math.max(1, geometry.frameHeight),
+          targetAspect: track.targetAspectRatio,
+          state: visibilityControllerState,
+          params: geometry.visibilityController,
+        })
+      : null;
+    const selectedMode = visibilityDecision?.mode ?? desiredMode;
+    if (visibilityDecision) semanticViewports = visibilityDecision.viewports;
+    const coverageRegions = visibilityDecision?.envelopes ?? required;
+    const baselineScore = geometry ? proposalScore(baselineViewports, coverageRegions) : sample.baselineScore ?? 0;
+    const semanticScore = geometry ? proposalScore(semanticViewports, coverageRegions) : sample.semanticScore ?? 0;
     const decision = decideLayoutStrategy({
       t: sample.t,
       cut: Boolean(sample.cut),
       explicitPadding,
-      desiredMode,
-      required: requiredRegions(importance),
-      baselineScore: sample.baselineScore ?? 0,
-      semanticScore: sample.semanticScore ?? 0,
+      desiredMode: selectedMode,
+      required,
+      baselineScore,
+      semanticScore,
       semanticViewports,
+      baselineViewports,
+      coverageRegions,
+      controllerReasonCodes: visibilityDecision?.reasonCodes,
+      visibilityRisk: visibilityDecision?.visibilityRisk,
       importanceSamples,
       importanceIndex,
       motionType: motionTypeForSample(debug, formatId, sample.t),
@@ -62,14 +128,20 @@ export function replayTrack(
     // originally went semantic has no exact baseline crop; its viewports only
     // gate interpolation shape, never scoring, because legacy frames are
     // composed from the recorded baseline jsonl rows.
-    const baselineViewports = sample.baselineViewports ?? sample.viewports;
     const baselineMode = sample.strategy === "legacy-baseline" ? sample.mode : "single-crop";
     return {
       t: sample.t,
       cut: Boolean(sample.cut),
-      mode: decision.selectSemantic ? desiredMode : baselineMode,
+      mode: decision.selectSemantic ? selectedMode : baselineMode,
       strategy: decision.strategy,
       viewports: decision.selectSemantic ? semanticViewports : baselineViewports,
+      reasonCodes: decision.reasonCodes,
+      candidateVariants: visibilityDecision?.variants,
+      requiredRegionIds: required.map((region) => region.id),
+      subjectDisplayHeightFractions: coverageRegions.map((region) => Math.min(1, Math.max(
+        ...(decision.selectSemantic ? semanticViewports : baselineViewports).map((viewport) =>
+          region.contentBox.height / Math.max(1e-9, viewport.height)),
+      ))),
     };
   });
 }
@@ -101,9 +173,25 @@ export function composeFrames(
         interpolateBox(viewport, next.viewports[viewportIndex]!, factor));
     }
     if (!viewports.length || previous.strategy === "legacy-baseline") {
-      return { timestampUs: row.timestampUs, viewports: row.viewports, layoutMode: row.layoutMode };
+      return {
+        timestampUs: row.timestampUs,
+        viewports: row.viewports,
+        layoutMode: row.layoutMode,
+        reasonCodes: previous.reasonCodes,
+        requiredRegionIds: previous.requiredRegionIds,
+        subjectDisplayHeightFractions: previous.subjectDisplayHeightFractions,
+        cut: previous.cut && Math.abs(row.timestampUs / 1_000_000 - previous.t) <= 0.05,
+      };
     }
-    return { timestampUs: row.timestampUs, viewports, layoutMode: previous.mode };
+    return {
+      timestampUs: row.timestampUs,
+      viewports,
+      layoutMode: previous.mode,
+      reasonCodes: previous.reasonCodes,
+      requiredRegionIds: previous.requiredRegionIds,
+      subjectDisplayHeightFractions: previous.subjectDisplayHeightFractions,
+      cut: previous.cut && Math.abs(row.timestampUs / 1_000_000 - previous.t) <= 0.05,
+    };
   });
 }
 
@@ -112,6 +200,10 @@ export interface ClipReplayResult {
   clipName: string;
   metrics: BenchmarkMetrics;
   strategyCounts: Record<string, number>;
+  reasonCounts: Record<string, number>;
+  counterfactualCounts: Record<string, number>;
+  counterfactualMetrics: Record<string, BenchmarkMetrics>;
+  oracles: ReplayOracleReport;
 }
 
 export function scoreClip(
@@ -127,16 +219,78 @@ export function scoreClip(
   }).metrics;
 }
 
-export function replayClip(clip: ClipArtifacts, params: ArbiterParams): ClipReplayResult {
-  const samples = replayTrack(clip.debug, clip.formatId, params);
+export function replayClip(
+  clip: ClipArtifacts,
+  params: ArbiterParams,
+  framing?: SemanticFramingParams,
+  visibilityController?: VisibilityControllerParams,
+): ClipReplayResult {
+  const controller = visibilityController ?? (params.visibilityFirst
+    ? { ...(params.iteration10 ? ITERATION10_VISIBILITY_CONTROLLER_PARAMS : RUN9_VISIBILITY_CONTROLLER_PARAMS) }
+    : undefined);
+  const samples = replayTrack(clip.debug, clip.formatId, params, framing || controller ? {
+    frameWidth: clip.dims.width,
+    frameHeight: clip.dims.height,
+    framing: framing ?? DEFAULT_SEMANTIC_FRAMING_PARAMS,
+    visibilityController: controller,
+  } : undefined);
   const frames = composeFrames(samples, clip.baselineRows);
+  const oracles = calculateReplayOracles({
+    keyframes: clip.keyframes,
+    importanceSamples: clip.debug.importanceSamples,
+    replaySamples: samples,
+    frames,
+    subjectSamples: clip.debug.subjectSamples,
+  });
   const strategyCounts: Record<string, number> = {};
-  for (const sample of samples) strategyCounts[sample.strategy] = (strategyCounts[sample.strategy] ?? 0) + 1;
+  const reasonCounts: Record<string, number> = {};
+  const counterfactualCounts: Record<string, number> = {};
+  for (const sample of samples) {
+    strategyCounts[sample.strategy] = (strategyCounts[sample.strategy] ?? 0) + 1;
+    for (const reason of sample.reasonCodes ?? []) reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
+    for (const candidate of sample.candidateVariants ?? []) {
+      counterfactualCounts[candidate.kind] = (counterfactualCounts[candidate.kind] ?? 0) + 1;
+    }
+  }
+  const counterfactualMetrics: Record<string, BenchmarkMetrics> = {};
+  const kinds: VisibilityVariant["kind"][] = [
+    "run8-baseline",
+    "shifted-crop",
+    "wider-crop",
+    "stable-split-v2",
+    "stable-split-v3",
+    "contain-fail-safe",
+  ];
+  for (const kind of kinds) {
+    const variantSamples = samples.map((sample): ReplayedSample => {
+      const candidate = sample.candidateVariants?.find((entry) => entry.kind === kind);
+      if (!candidate || kind === "run8-baseline") {
+        return { ...sample, strategy: "legacy-baseline" };
+      }
+      return {
+        ...sample,
+        mode: candidate.mode,
+        strategy: candidate.mode === "split"
+          ? "semantic-split"
+          : candidate.mode === "contain"
+            ? "semantic-contain"
+            : "semantic-single",
+        viewports: candidate.viewports,
+      };
+    });
+    counterfactualMetrics[kind] = scoreClip(composeFrames(variantSamples, clip.baselineRows), clip.keyframes, clip.dims);
+  }
+  const metrics = scoreClip(frames, clip.keyframes, clip.dims);
+  metrics.missLedger = oracles.missLedger;
   return {
     clipId: clip.clipId,
     clipName: clip.dims.name,
-    metrics: scoreClip(frames, clip.keyframes, clip.dims),
+    metrics,
     strategyCounts,
+    reasonCounts,
+    counterfactualCounts,
+    counterfactualMetrics,
+    oracles,
   };
 }
 
@@ -146,6 +300,10 @@ export interface AggregateMetrics {
   /** Mean over clips that have dual-target frames, like computeBenchmarkColumnStats. */
   dualAllVisible: number | null;
   clipCount: number;
+  containDutyCycle?: number;
+  modeSwitchesPerMinute?: number;
+  p95ViewportCenterVelocity?: number | null;
+  p95ViewportCenterAcceleration?: number | null;
 }
 
 /** Per-clip averages, matching `computeBenchmarkColumnStats.portrait9x16`. */
@@ -159,6 +317,14 @@ export function aggregate(results: ClipReplayResult[]): AggregateMetrics {
     visibility: mean(results.map((result) => result.metrics.targetVisibilityRate)),
     dualAllVisible: dual.length ? mean(dual) : null,
     clipCount: results.length,
+    containDutyCycle: mean(results.map((result) => result.metrics.containDutyCycle ?? 0)),
+    modeSwitchesPerMinute: mean(results.map((result) => result.metrics.modeSwitchesPerMinute ?? 0)),
+    p95ViewportCenterVelocity: mean(results
+      .map((result) => result.metrics.p95ViewportCenterVelocity)
+      .filter((value): value is number => value != null)),
+    p95ViewportCenterAcceleration: mean(results
+      .map((result) => result.metrics.p95ViewportCenterAcceleration)
+      .filter((value): value is number => value != null)),
   };
 }
 

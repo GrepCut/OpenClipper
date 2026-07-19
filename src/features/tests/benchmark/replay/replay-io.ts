@@ -1,16 +1,23 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { ClipperLayoutTrack, ImportanceRegionSample } from "../../../clipper/shared/smart-crop";
+import type { ActiveSpeakerTelemetry, CanonicalIdentityTelemetry, ClipperLayoutTrack, ImportanceRegionSample, SubjectDetectionSample } from "../../../clipper/shared/smart-crop";
+import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout-planner";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
 import { TEST_ASPECTS } from "../../types";
 import type { BenchmarkFrameDetail } from "../metrics";
 
 /** Shape of the per-clip autoflip-debug.json artifact. */
 export interface RecordedAutoflipDebug {
+  schemaVersion?: number;
+  semanticFramingParams?: SemanticFramingParams | null;
   scenes: Array<{ formatId: string; start: number; end: number; motionType: string }>;
   importanceSamples: ImportanceRegionSample[];
   layoutTracks: Record<string, ClipperLayoutTrack>;
+  /** Benchmark-only raw evidence; never consumed by the production arbiter. */
+  subjectSamples?: SubjectDetectionSample[];
+  canonicalIdentityTelemetry?: CanonicalIdentityTelemetry;
+  activeSpeakerTelemetry?: ActiveSpeakerTelemetry;
 }
 
 export interface RecordedStrategyComparison {

@@ -11,6 +11,7 @@ import {
 import { SubjectDetectorWorkerClient } from "../../clipper/workers/subject-detect/client";
 import type { SubjectDetectionSample } from "../../clipper/shared/smart-crop";
 import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-autoflip-track";
+import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/canonical-person";
 import {
   augmentFaceSamplesWithDetectedHeads,
   buildCollageTracksForRegions,
@@ -42,6 +43,10 @@ export interface TestBenchmarkAspectOutput {
   baselineDetails: ReturnType<typeof calculateBenchmarkMetrics>["details"];
   semanticCandidateMetrics: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
   semanticCandidateDetails: ReturnType<typeof calculateBenchmarkMetrics>["details"];
+  detectorCandidateMetrics?: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
+  detectorCandidateDetails?: ReturnType<typeof calculateBenchmarkMetrics>["details"];
+  iteration10CandidateMetrics?: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
+  iteration10CandidateDetails?: ReturnType<typeof calculateBenchmarkMetrics>["details"];
   oracle: ReturnType<typeof calculateLayoutOracle>;
 }
 
@@ -54,6 +59,7 @@ export interface TestBenchmarkAnalysisOutput {
   processingMs: number;
   degradedReason: string | null;
   autoflipDebug: unknown;
+  nativeMetrics: Record<string, unknown> | null;
 }
 
 function normalizedViewport(
@@ -156,8 +162,57 @@ export async function runTestBenchmarkAnalysis(input: {
     headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
+    iteration10: true,
   });
   blob.engine = engine;
+  const iteration10CandidateBlob = buildAutoFlipTrack({
+    clipStart: 0,
+    clipEnd: input.clip.duration,
+    detections,
+    faces: faceSamples,
+    sceneCuts: summary.sceneCutTimestamps,
+    hasSolidColorBackground: summary.hasSolidColorBackground,
+    solidBackgroundColor: summary.solidBackgroundColor ?? undefined,
+    staticFeatureSamples: summary.staticFeatureSamples,
+    contentRect: summary.contentRect,
+    targetAspectRatios: aspectRatios,
+    sourceFrameRate: summary.sourceFrameRate,
+    trackerVersion: summary.engine === "winml" ? summary.trackerVersion : undefined,
+    frameWidth: input.clip.width,
+    frameHeight: input.clip.height,
+    smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
+    headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
+    degradedReason: degradedReason ?? undefined,
+    collectDebug: true,
+    iteration10: true,
+  });
+  iteration10CandidateBlob.engine = engine;
+  const hasDetectorShadow = detections.some((sample) => sample.shadowDetections?.length);
+  const detectorCandidateBlob = hasDetectorShadow ? buildAutoFlipTrack({
+    clipStart: 0,
+    clipEnd: input.clip.duration,
+    detections: detections.map((sample) => ({
+      ...sample,
+      detections: sample.shadowDetections?.length ? sample.shadowDetections : sample.detections,
+      shadowDetections: undefined,
+      modelId: "yolox-tiny-shadow",
+    })),
+    faces: faceSamples,
+    sceneCuts: summary.sceneCutTimestamps,
+    hasSolidColorBackground: summary.hasSolidColorBackground,
+    solidBackgroundColor: summary.solidBackgroundColor ?? undefined,
+    staticFeatureSamples: summary.staticFeatureSamples,
+    contentRect: summary.contentRect,
+    targetAspectRatios: aspectRatios,
+    sourceFrameRate: summary.sourceFrameRate,
+    trackerVersion: summary.engine === "winml" ? summary.trackerVersion : undefined,
+    frameWidth: input.clip.width,
+    frameHeight: input.clip.height,
+    smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
+    headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
+    degradedReason: degradedReason ?? undefined,
+    collectDebug: true,
+  }) : null;
 
   const collageFaceSamples = augmentFaceSamplesWithDetectedHeads(faceSamples, detections);
   const regions = deriveTwoSpeakerRegions(collageFaceSamples);
@@ -214,6 +269,9 @@ export async function runTestBenchmarkAnalysis(input: {
         timestampUs: Math.round(timestamp * 1_000_000),
         layoutMode: plannedLayout.mode,
         viewports: plannedLayout.viewports.map((viewport) => normalizedViewport(viewport, source.width, source.height)),
+        reasonCodes: plannedLayout.reasonCodes,
+        requiredRegionIds: plannedLayout.requiredRegionIds,
+        subjectDisplayHeightFractions: plannedLayout.subjectDisplayHeightFractions,
       } : baselineFrames[index]!;
     });
     const layoutTrack = resolveLayoutTrack(blob.layoutTracks, aspect.formatId);
@@ -244,6 +302,38 @@ export async function runTestBenchmarkAnalysis(input: {
       sourceWidth: source.width,
       sourceHeight: source.height,
     });
+    const detectorCandidateEvaluated = detectorCandidateBlob ? calculateBenchmarkMetrics({
+      keyframes: input.keyframes,
+      frames: timestamps.map((timestamp, index) => {
+        const render = resolveClipperLayoutRender(detectorCandidateBlob, aspect.formatId, source, timestamp);
+        return render ? {
+          timestampUs: Math.round(timestamp * 1_000_000),
+          layoutMode: render.mode,
+          viewports: render.viewports.map((viewport) => normalizedViewport(viewport, source.width, source.height)),
+          reasonCodes: render.reasonCodes,
+          requiredRegionIds: render.requiredRegionIds,
+          subjectDisplayHeightFractions: render.subjectDisplayHeightFractions,
+        } : baselineFrames[index]!;
+      }),
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+    }) : null;
+    const iteration10CandidateEvaluated = calculateBenchmarkMetrics({
+      keyframes: input.keyframes,
+      frames: timestamps.map((timestamp, index) => {
+        const render = resolveClipperLayoutRender(iteration10CandidateBlob, aspect.formatId, source, timestamp);
+        return render ? {
+          timestampUs: Math.round(timestamp * 1_000_000),
+          layoutMode: render.mode,
+          viewports: render.viewports.map((viewport) => normalizedViewport(viewport, source.width, source.height)),
+          reasonCodes: render.reasonCodes,
+          requiredRegionIds: render.requiredRegionIds,
+          subjectDisplayHeightFractions: render.subjectDisplayHeightFractions,
+        } : baselineFrames[index]!;
+      }),
+      sourceWidth: source.width,
+      sourceHeight: source.height,
+    });
     const oracle = calculateLayoutOracle({
       timestampsSec: timestamps,
       keyframes: input.keyframes,
@@ -262,6 +352,10 @@ export async function runTestBenchmarkAnalysis(input: {
       baselineDetails: baselineEvaluated.details,
       semanticCandidateMetrics: semanticEvaluated.metrics,
       semanticCandidateDetails: semanticEvaluated.details,
+      detectorCandidateMetrics: detectorCandidateEvaluated?.metrics,
+      detectorCandidateDetails: detectorCandidateEvaluated?.details,
+      iteration10CandidateMetrics: iteration10CandidateEvaluated.metrics,
+      iteration10CandidateDetails: iteration10CandidateEvaluated.details,
       oracle,
     };
   });
@@ -271,6 +365,8 @@ export async function runTestBenchmarkAnalysis(input: {
     aspect.metrics.realtimeFactor = input.clip.duration / Math.max(0.001, processingMs / 1000);
     aspect.baselineMetrics.processingMs = processingMs;
     aspect.semanticCandidateMetrics.processingMs = processingMs;
+    if (aspect.detectorCandidateMetrics) aspect.detectorCandidateMetrics.processingMs = processingMs;
+    if (aspect.iteration10CandidateMetrics) aspect.iteration10CandidateMetrics.processingMs = processingMs;
   }
   return {
     aspects,
@@ -281,9 +377,29 @@ export async function runTestBenchmarkAnalysis(input: {
     processingMs,
     degradedReason,
     autoflipDebug: {
+      schemaVersion: 3,
+      semanticFramingParams: null,
       scenes: blob.debug ?? [],
       importanceSamples: blob.importanceSamples ?? [],
       layoutTracks: blob.layoutTracks ?? {},
+      subjectSamples: buildCanonicalPersonTracks(detections).samples,
+      canonicalIdentityTelemetry: blob.canonicalIdentityTelemetry,
+      activeSpeakerTelemetry: blob.activeSpeakerTelemetry,
+      candidates: {
+        ...(detectorCandidateBlob ? { yolox: {
+          importanceSamples: detectorCandidateBlob.importanceSamples ?? [],
+          layoutTracks: detectorCandidateBlob.layoutTracks ?? {},
+        } } : {}),
+        iteration10: {
+          importanceSamples: iteration10CandidateBlob.importanceSamples ?? [],
+          layoutTracks: iteration10CandidateBlob.layoutTracks ?? {},
+          canonicalIdentityTelemetry: iteration10CandidateBlob.canonicalIdentityTelemetry,
+          activeSpeakerTelemetry: iteration10CandidateBlob.activeSpeakerTelemetry,
+        },
+      },
     },
+    nativeMetrics: summary.engine === "winml"
+      ? summary.metrics as unknown as Record<string, unknown>
+      : null,
   };
 }

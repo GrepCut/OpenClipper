@@ -85,8 +85,14 @@ export interface BenchmarkMetrics {
   layoutModeFrameCounts?: Record<"single-crop" | "split" | "contain", number>;
   layoutModeRates?: Record<"single-crop" | "split" | "contain", number>;
   meanViewportCenterVelocity?: number | null;
+  p95ViewportCenterVelocity?: number | null;
   p95ViewportCenterAcceleration?: number | null;
   meanFocusReacquisitionMs?: number | null;
+  modeSwitchesPerMinute?: number;
+  containDutyCycle?: number;
+  medianSubjectDisplayHeightFraction?: number | null;
+  p10SubjectDisplayHeightFraction?: number | null;
+  missLedger?: Record<"no-evidence" | "identity-mismatch" | "layout-uncovered" | "late-transition" | "interpolation-loss", number>;
   processingMs?: number;
   realtimeFactor?: number;
 }

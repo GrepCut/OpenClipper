@@ -19,6 +19,7 @@ pub struct TrackDetection {
     pub score: f32,
     /// Index in the source result set; lets callers retain face landmarks.
     pub source_index: usize,
+    pub detector_source: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]
@@ -29,6 +30,7 @@ pub struct TrackOutput {
     pub track_id: u64,
     pub predicted: bool,
     pub source_index: Option<usize>,
+    pub detector_source: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +54,7 @@ struct Track {
     lost_since: Option<f64>,
     observed: bool,
     source_index: Option<usize>,
+    detector_source: Option<&'static str>,
 }
 
 impl Track {
@@ -96,6 +99,7 @@ impl Track {
             lost_since: None,
             observed: true,
             source_index: Some(detection.source_index),
+            detector_source: detection.detector_source,
         }
     }
 
@@ -184,6 +188,7 @@ impl Track {
         self.lost_since = None;
         self.observed = true;
         self.source_index = Some(detection.source_index);
+        self.detector_source = detection.detector_source;
     }
 
     fn box_(&self) -> NormalizedBox {
@@ -326,6 +331,7 @@ impl ByteTracker {
                     track_id: track.id,
                     predicted: !track.observed,
                     source_index: track.source_index,
+                    detector_source: track.detector_source,
                 }),
                 TrackState::Lost
                     if track
@@ -342,6 +348,7 @@ impl ByteTracker {
                         track_id: track.id,
                         predicted: true,
                         source_index: None,
+                        detector_source: track.detector_source,
                     })
                 }
                 _ => None,
@@ -556,6 +563,7 @@ mod tests {
             label: label.into(),
             score,
             source_index,
+            detector_source: Some("test"),
         }
     }
 

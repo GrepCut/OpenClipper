@@ -8,26 +8,31 @@
  * modified. Reports go to stdout and (with --out) a JSON file.
  *
  *   npm run replay:arbiter -- --mode self-check
+ *   npm run replay:arbiter -- --mode run9 --run <run-8-id>
  *   npm run replay:arbiter -- --mode single --params "{\"proposalMargin\":0.1}"
  *   npm run replay:arbiter -- --mode sweep --grid grids/run6-coarse.json --top 25
  *   npm run replay:arbiter -- --mode loco --grid grids/run6-top.json
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DEFAULT_ARBITER_PARAMS, type ArbiterParams } from "../src/features/clipper/engine/autoflip/layout-arbiter";
+import { DEFAULT_ARBITER_PARAMS, RUN9_ARBITER_PARAMS, RUN10_ARBITER_PARAMS, type ArbiterParams } from "../src/features/clipper/engine/autoflip/layout-arbiter";
 import { aggregate, replayClip, selfCheck } from "../src/features/tests/benchmark/replay/replay-engine";
 import { loadRun } from "../src/features/tests/benchmark/replay/replay-io";
 import {
   RUN5_PORTRAIT_FLOOR,
+  RUN8_PORTRAIT_FLOOR,
   evaluateParams,
   expandGrid,
+  expandFramingGrid,
   leaveOneClipOut,
+  leaveOneClipOutFraming,
   sweep,
+  sweepFraming,
   type ParamGrid,
 } from "../src/features/tests/benchmark/replay/replay-sweep";
 
 const DEFAULT_DATASET = "cd986c2a-d998-4a96-afec-218d052d8c78";
-const DEFAULT_RUN = "87a76f18-e997-48cf-af13-48cf539ab8a4";
+const DEFAULT_RUN = "9062956a-ee2a-4aaa-a574-1bc07047fd56";
 
 function parseArgs(argv: string[]): Map<string, string> {
   const args = new Map<string, string>();
@@ -89,12 +94,12 @@ function main(): void {
       process.exitCode = 1;
     }
     output.selfCheck = result;
-  } else if (mode === "single") {
+  } else if (mode === "single" || mode === "run9" || mode === "run10") {
     const params: ArbiterParams = {
-      ...DEFAULT_ARBITER_PARAMS,
+      ...(mode === "run10" ? RUN10_ARBITER_PARAMS : mode === "run9" ? RUN9_ARBITER_PARAMS : DEFAULT_ARBITER_PARAMS),
       ...(args.has("params") ? JSON.parse(args.get("params")!) as Partial<ArbiterParams> : {}),
     };
-    const evaluated = evaluateParams(clips, params);
+    const evaluated = evaluateParams(clips, params, mode === "run9" || mode === "run10" ? RUN8_PORTRAIT_FLOOR : RUN5_PORTRAIT_FLOOR);
     console.log(`Params: ${describeParams(params)}\n`);
     console.log("| Clip | Focus | Visibility | Dual | ΔFocus | ΔVisibility |");
     console.log("|---|---:|---:|---:|---:|---:|");
@@ -103,13 +108,58 @@ function main(): void {
       console.log(`| ${result.clipName} | ${pct(result.metrics.focusHitRate)} | ${pct(result.metrics.targetVisibilityRate)} | ${pct(result.metrics.dualTargetAllVisibleRate)} | ${((result.metrics.focusHitRate - recorded.focusHitRate) * 100).toFixed(2)} | ${((result.metrics.targetVisibilityRate - recorded.targetVisibilityRate) * 100).toFixed(2)} |`);
     }
     console.log(`\nAggregate: focus ${pct(evaluated.overall.focusHit)}  visibility ${pct(evaluated.overall.visibility)}  dual ${pct(evaluated.overall.dualAllVisible)}`);
-    console.log(`Recorded (Run5): focus ${pct(recordedAggregate.focusHit)}  visibility ${pct(recordedAggregate.visibility)}  dual ${pct(recordedAggregate.dualAllVisible)}`);
-    console.log(`Gates vs Run5 floor: ${evaluated.gates.passed ? "PASS" : `FAIL (${evaluated.gates.reasons.join("; ")})`}`);
+    console.log(`Recorded baseline: focus ${pct(recordedAggregate.focusHit)}  visibility ${pct(recordedAggregate.visibility)}  dual ${pct(recordedAggregate.dualAllVisible)}`);
+    console.log(`Quality: contain ${pct(evaluated.overall.containDutyCycle)}  switches ${(evaluated.overall.modeSwitchesPerMinute ?? 0).toFixed(2)}/min`);
+    console.log(`Gates: ${evaluated.gates.passed ? "PASS" : `FAIL (${evaluated.gates.reasons.join("; ")})`}`);
     if (evaluated.regressedClips.length) console.log(`Soft-flagged clips (>5 pp drop): ${evaluated.regressedClips.join(", ")}`);
     output.evaluated = evaluated;
-  } else if (mode === "sweep" || mode === "loco") {
+    if (mode === "run10") {
+      output.oracles = evaluated.perClip.map((result) => ({ clipId: result.clipId, clipName: result.clipName, ...result.oracles }));
+    }
+  } else if (mode === "sweep" || mode === "loco" || mode === "framing-sweep" || mode === "framing-loco") {
     if (!args.has("grid")) throw new Error(`--grid <file.json> is required for mode ${mode}.`);
     const grid = JSON.parse(readFileSync(resolve(args.get("grid")!), "utf8")) as ParamGrid;
+    if (mode === "framing-sweep" || mode === "framing-loco") {
+      const framingSets = expandFramingGrid(grid);
+      const framingArbiterParams: ArbiterParams = {
+        ...DEFAULT_ARBITER_PARAMS,
+        ...(args.has("params") ? JSON.parse(args.get("params")!) as Partial<ArbiterParams> : {}),
+      };
+      console.log(`Framing grid: ${Object.keys(grid).join(", ")} → ${framingSets.length} combinations.\n`);
+      if (mode === "framing-sweep") {
+        const results = sweepFraming(clips, framingSets, framingArbiterParams, RUN5_PORTRAIT_FLOOR, (done, total) => {
+          process.stdout.write(`\r  evaluated ${done}/${total}...`);
+        });
+        console.log("\n\n| # | Focus | Visibility | Dual | Gates | Framing |");
+        console.log("|---|---:|---:|---:|---|---|");
+        for (const [index, result] of results.slice(0, topCount).entries()) {
+          console.log(`| ${index + 1} | ${pct(result.overall.focusHit)} | ${pct(result.overall.visibility)} | ${pct(result.overall.dualAllVisible)} | ${result.gates.passed ? "PASS" : `fail: ${result.gates.reasons.join("; ")}`} | ${JSON.stringify(result.framing)} |`);
+        }
+        output.top = results.slice(0, topCount).map((result) => ({
+          framing: result.framing,
+          overall: result.overall,
+          gates: result.gates,
+          catastrophicClips: result.catastrophicClips,
+          regressedClips: result.regressedClips,
+        }));
+      } else {
+        const report = leaveOneClipOutFraming(clips, framingSets, framingArbiterParams, RUN5_PORTRAIT_FLOOR, (done, total) => {
+          process.stdout.write(`\r  fold ${done}/${total}...`);
+        });
+        console.log(`\n\nHeld-out mean: focus ${pct(report.heldOutMean.focusHit)}  visibility ${pct(report.heldOutMean.visibility)}  dual ${pct(report.heldOutMean.dualAllVisible)}`);
+        console.log(`Recorded mean: focus ${pct(report.recordedMean.focusHit)}  visibility ${pct(report.recordedMean.visibility)}  dual ${pct(report.recordedMean.dualAllVisible)}`);
+        console.log("Framing-choice stability across folds:");
+        for (const entry of report.framingStability) console.log(`  ${entry.folds}/${clips.length}: ${JSON.stringify(entry.framing)}`);
+        output.framingLoco = report;
+      }
+      if (args.has("out")) {
+        const outPath = resolve(args.get("out")!);
+        mkdirSync(dirname(outPath), { recursive: true });
+        writeFileSync(outPath, JSON.stringify(output, null, 2));
+        console.log(`\nFull report written to ${outPath}`);
+      }
+      return;
+    }
     const paramSets = expandGrid(grid);
     console.log(`Grid: ${Object.keys(grid).join(", ")} → ${paramSets.length} combinations.\n`);
     if (mode === "sweep") {

@@ -26,6 +26,21 @@ fn verify_clipper_vision_models() {
         });
         let actual = format!("{:x}", Sha256::digest(bytes));
         assert_eq!(actual, expected, "{name}: bundled ONNX SHA-256 mismatch");
+        if let (Some(label_file), Some(label_hash)) = (
+            model["labelFile"].as_str(),
+            model["labelSha256"].as_str(),
+        ) {
+            let label_path = root.join(label_file);
+            println!("cargo:rerun-if-changed={}", label_path.display());
+            let label_bytes = fs::read(&label_path).unwrap_or_else(|error| {
+                panic!("Cannot read bundled label file {}: {error}", label_path.display())
+            });
+            assert_eq!(
+                format!("{:x}", Sha256::digest(label_bytes)),
+                label_hash,
+                "{name}: bundled label SHA-256 mismatch"
+            );
+        }
     }
     let label = &manifest["labelMap"];
     let label_file = label["file"]

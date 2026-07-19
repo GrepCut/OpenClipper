@@ -7,7 +7,7 @@ use ffmpeg_next::software::scaling::{context::Context as Scaler, flag::Flags};
 use ffmpeg_next::{format::Pixel, media::Type};
 use image::{imageops::FilterType, ImageBuffer, Rgb};
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
@@ -19,10 +19,10 @@ use super::clipper_border::detect_border_features;
 use super::clipper_frames::{should_decode_video_packet, AutoFlipShotBoundaryDetector};
 use super::histogram::compute_autoflip_histogram_raw;
 use super::vision_logic::{
-    box_iou, decode_blaze, decode_movenet, decode_ssd, detect_motion_saliency,
+    box_iou, decode_blaze, decode_movenet, decode_ssd, decode_yolox, detect_motion_saliency,
     weighted_face_nms, AutoFlipFaceDetection, Letterbox, NormalizedBox, PoseSubject,
     RecoveryPolicy, Rotation, SubjectDetection, BLAZE_INPUT_SIZE, MOVENET_INPUT_SIZE,
-    SSD_INPUT_SIZE,
+    SSD_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
 use super::winml_vision::{
     fp16_variant_path, resource_paths, NativeVisionDevice, NativeVisionError, VisionModel,
@@ -47,6 +47,25 @@ const OBJECT_WORKERS: usize = 1;
 const POSE_PERSON_SAMPLE_STRIDE: usize = 2;
 const POSE_RECOVERY_SAMPLE_STRIDE: usize = 1;
 const POSE_PERSON_CONFIDENCE: f32 = 0.25;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ObjectDetectorMode {
+    Ssd,
+    YoloXRecovery,
+    YoloXShadow,
+    YoloXPrimary,
+}
+
+impl ObjectDetectorMode {
+    pub fn parse(value: Option<&str>) -> Self {
+        match value {
+            Some("yolox-recovery") => Self::YoloXRecovery,
+            Some("yolox-shadow") => Self::YoloXShadow,
+            Some("yolox-primary") => Self::YoloXPrimary,
+            _ => Self::Ssd,
+        }
+    }
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,10 +92,14 @@ pub struct NativeFaceSample {
 pub struct NativeSubjectSample {
     time: f64,
     detections: Vec<SubjectDetection>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    shadow_detections: Vec<SubjectDetection>,
     autoflip_faces: Vec<AutoFlipFaceDetection>,
     pose_subjects: Vec<PoseSubject>,
     importance_signals: Vec<NativeImportanceSignalRegion>,
     model_id: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scene_cut: Option<bool>,
 }
 
 #[derive(Clone, Serialize)]
@@ -132,6 +155,16 @@ pub struct NativeVisionMetrics {
     tracker_duration_ms: u64,
     tracked_subject_count: usize,
     predicted_subject_count: usize,
+    recovery_triggers: usize,
+    yolox_invocations: usize,
+    accepted_recoveries: usize,
+    rejected_recovery_duplicates: usize,
+    rejected_recovery_candidates: usize,
+    accepted_predicted_iou: usize,
+    accepted_pose_support: usize,
+    accepted_face_support: usize,
+    accepted_temporal_persistence: usize,
+    yolox_inference_ms: u64,
     codec_decode_api_ms: u64,
     histogram_ms: u64,
     sample_scale_ms: u64,
@@ -215,12 +248,69 @@ struct ObjectResult {
     index: usize,
     time: f64,
     detections: Vec<SubjectDetection>,
+    shadow_detections: Vec<SubjectDetection>,
     poses: Vec<PoseSubject>,
     motion_signal: Option<(NormalizedBox, f32)>,
     device: NativeVisionDevice,
     pose_device: NativeVisionDevice,
     duration_ms: u64,
     pose_duration_ms: u64,
+    recovery_triggered: bool,
+    yolox_invoked: bool,
+    yolox_duration_ms: u64,
+}
+
+struct RecoveryTriggerState {
+    tracker: ByteTracker,
+    predicted_person_streak: usize,
+    low_person_streak: usize,
+}
+
+impl RecoveryTriggerState {
+    fn new() -> Self {
+        Self {
+            tracker: ByteTracker::new(),
+            predicted_person_streak: 0,
+            low_person_streak: 0,
+        }
+    }
+
+    fn update(
+        &mut self,
+        time: f64,
+        scene_cut: bool,
+        detections: &[SubjectDetection],
+        has_observed_pose: bool,
+    ) -> bool {
+        if scene_cut {
+            self.tracker.reset();
+            self.predicted_person_streak = 0;
+            self.low_person_streak = 0;
+        }
+        let tracked = self.tracker.update(time, &subject_track_inputs(detections));
+        let has_predicted_person = tracked.iter().any(|item| {
+            item.label.eq_ignore_ascii_case("person") && item.predicted
+        });
+        self.predicted_person_streak = if has_predicted_person {
+            self.predicted_person_streak + 1
+        } else {
+            0
+        };
+        let best_person = detections
+            .iter()
+            .filter(|item| item.label.eq_ignore_ascii_case("person"))
+            .map(|item| item.score)
+            .fold(0.0f32, f32::max);
+        self.low_person_streak = if best_person < 0.6 {
+            self.low_person_streak + 1
+        } else {
+            0
+        };
+        !scene_cut
+            && (self.predicted_person_streak >= 2
+                || self.low_person_streak >= 2
+                || (best_person == 0.0 && has_observed_pose))
+    }
 }
 
 enum WorkerResult {
@@ -372,6 +462,79 @@ fn prepare_ssd_into(
         *target = value as f32;
     }
     Ok(())
+}
+
+fn prepare_yolox_into(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {
+    let size = YOLOX_INPUT_SIZE as u32;
+    let scale = (size as f32 / frame.width as f32).min(size as f32 / frame.height as f32);
+    let width = (frame.width as f32 * scale).round().clamp(1.0, size as f32) as u32;
+    let height = (frame.height as f32 * scale).round().clamp(1.0, size as f32) as u32;
+    let resized = image::imageops::resize(&rgb_view(frame), width, height, FilterType::Triangle);
+    let plane = YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
+    debug_assert_eq!(output.len(), plane * 3);
+    output.fill(114.0);
+    for y in 0..height as usize {
+        for x in 0..width as usize {
+            let source = (y * width as usize + x) * 3;
+            let destination = y * YOLOX_INPUT_SIZE + x;
+            output[destination] = resized.as_raw()[source + 2] as f32;
+            output[plane + destination] = resized.as_raw()[source + 1] as f32;
+            output[plane * 2 + destination] = resized.as_raw()[source] as f32;
+        }
+    }
+    Letterbox {
+        scale,
+        pad_x: 0.0,
+        pad_y: 0.0,
+        source_width: frame.width,
+        source_height: frame.height,
+    }
+}
+
+fn evaluate_yolox_batch(
+    model: &mut Option<WinMlModel>,
+    batch: &[Arc<AnalysisFrame>],
+    model_path: &Path,
+    labels: &[String],
+) -> Result<(Vec<Vec<SubjectDetection>>, NativeVisionDevice), NativeVisionError> {
+    let count = batch.len();
+    let bound = if count == 1 { 1 } else { MAX_BATCH };
+    let frame_elements = 3 * YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
+    let mut input = vec![114.0f32; bound * frame_elements];
+    let letterboxes = batch.iter().enumerate().map(|(index, frame)| {
+        prepare_yolox_into(frame, &mut input[index * frame_elements..(index + 1) * frame_elements])
+    }).collect::<Vec<_>>();
+    let shape = [bound as i64, 3, YOLOX_INPUT_SIZE as i64, YOLOX_INPUT_SIZE as i64];
+    let evaluated = if let Some(current) = model.as_mut() {
+        current.evaluate(&shape, &input).map(|output| (output, current.device()))
+    } else {
+        WinMlModel::create(
+            VisionModel::YoloX,
+            model_path,
+            None,
+            "images",
+            &["output"],
+            &shape,
+            &input,
+        ).map(|(created, output)| {
+            let device = created.device();
+            *model = Some(created);
+            (output, device)
+        })
+    }?;
+    if evaluated.0.len() != 1 {
+        return Err(NativeVisionError::new("tensor_contract_mismatch", "YOLOX output count changed", true));
+    }
+    let stride = batch_stride(evaluated.0[0].len(), bound, "YOLOX")?;
+    let detections = letterboxes.into_iter().enumerate().map(|(index, letterbox)| {
+        decode_yolox(
+            &evaluated.0[0][index * stride..(index + 1) * stride],
+            labels,
+            letterbox,
+            0.1,
+        ).map_err(|message| NativeVisionError::new("tensor_contract_mismatch", message, true))
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok((detections, evaluated.1))
 }
 
 fn prepare_blaze_into(frame: &AnalysisFrame, input: &mut [f32]) -> Letterbox {
@@ -848,14 +1011,18 @@ fn spawn_object_worker(
     cancelled: Arc<AtomicBool>,
     model_path: std::path::PathBuf,
     fp16_model_path: std::path::PathBuf,
+    yolox_model_path: std::path::PathBuf,
     pose_model_path: std::path::PathBuf,
     labels: Arc<Vec<String>>,
+    yolox_labels: Arc<Vec<String>>,
+    detector_mode: ObjectDetectorMode,
     tracking_enabled: bool,
     preprocess_time_us: Arc<AtomicU64>,
     pose_preprocess_time_us: Arc<AtomicU64>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut model: Option<WinMlModel> = None;
+        let mut yolox_model: Option<WinMlModel> = None;
         let mut pose_model: Option<WinMlModel> = None;
         let frame_elems = SSD_INPUT_SIZE * SSD_INPUT_SIZE * 3;
         let mut input = vec![0.0f32; MAX_BATCH * frame_elems];
@@ -871,6 +1038,7 @@ fn spawn_object_worker(
         let resize_options =
             ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FastFilterType::Bilinear));
         let mut pose_sample_index = 0usize;
+        let mut recovery_trigger_state = RecoveryTriggerState::new();
         let mut previous_motion_frame: Option<Arc<AnalysisFrame>> = None;
         while let Ok(first) = jobs.recv() {
             if cancelled.load(Ordering::Relaxed) {
@@ -879,75 +1047,85 @@ fn spawn_object_worker(
             let batch = drain_batch(&jobs, first);
             let count = batch.len();
             let bound = if count == 1 { 1 } else { MAX_BATCH };
-            let preprocess_started = Instant::now();
             let input = &mut input[..bound * frame_elems];
-            input.fill(0.0);
-            for (index, frame) in batch.iter().enumerate() {
-                if let Err(error) = prepare_ssd_into(
-                    frame,
-                    &mut input[index * frame_elems..(index + 1) * frame_elems],
-                    &mut resizer,
-                    &mut resized,
-                    &resize_options,
-                ) {
-                    let _ = results.send(WorkerResult::Error(error));
-                    return;
-                }
-            }
-            preprocess_time_us.fetch_add(
-                preprocess_started.elapsed().as_micros() as u64,
-                Ordering::Relaxed,
-            );
             let shape = [bound as i64, 320, 320, 3];
-            let started = Instant::now();
-            let evaluated = if let Some(current) = model.as_mut() {
-                current
-                    .evaluate(&shape, input)
-                    .map(|output| (output, current.device()))
-            } else {
-                WinMlModel::create(
-                    VisionModel::Object,
-                    &model_path,
-                    Some(&fp16_model_path),
-                    "normalized_input_image_tensor",
-                    &["raw_outputs/box_encodings", "raw_outputs/class_predictions"],
-                    &shape,
-                    input,
-                )
-                .map(|(created, output)| {
-                    let device = created.device();
-                    model = Some(created);
-                    (output, device)
+            let mut evaluate_ssd = || -> Result<(Vec<Vec<SubjectDetection>>, NativeVisionDevice), NativeVisionError> {
+                let preprocess_started = Instant::now();
+                input.fill(0.0);
+                for (index, frame) in batch.iter().enumerate() {
+                    prepare_ssd_into(
+                        frame,
+                        &mut input[index * frame_elems..(index + 1) * frame_elems],
+                        &mut resizer,
+                        &mut resized,
+                        &resize_options,
+                    )?;
+                }
+                preprocess_time_us.fetch_add(
+                    preprocess_started.elapsed().as_micros() as u64,
+                    Ordering::Relaxed,
+                );
+                let evaluated = if let Some(current) = model.as_mut() {
+                    current
+                        .evaluate(&shape, input)
+                        .map(|output| (output, current.device()))
+                } else {
+                    WinMlModel::create(
+                        VisionModel::Object,
+                        &model_path,
+                        Some(&fp16_model_path),
+                        "normalized_input_image_tensor",
+                        &["raw_outputs/box_encodings", "raw_outputs/class_predictions"],
+                        &shape,
+                        input,
+                    )
+                    .map(|(created, output)| {
+                        let device = created.device();
+                        model = Some(created);
+                        (output, device)
+                    })
+                };
+                evaluated.and_then(|(output, device)| {
+                    if output.len() != 2 {
+                        return Err(NativeVisionError::new(
+                            "tensor_contract_mismatch",
+                            "SSD output count changed",
+                            true,
+                        ));
+                    }
+                    let box_stride = batch_stride(output[0].len(), bound, "SSD")?;
+                    let class_stride = batch_stride(output[1].len(), bound, "SSD")?;
+                    let mut outcomes = Vec::with_capacity(count);
+                    for index in 0..count {
+                        let detections = decode_ssd(
+                            &output[0][index * box_stride..(index + 1) * box_stride],
+                            &output[1][index * class_stride..(index + 1) * class_stride],
+                            &labels,
+                            if tracking_enabled { 0.1 } else { 0.6 },
+                        ).map_err(|message| NativeVisionError::new("tensor_contract_mismatch", message, true))?;
+                        outcomes.push(detections);
+                    }
+                    Ok((outcomes, device))
                 })
             };
-            match evaluated.and_then(|(output, device)| {
-                if output.len() != 2 {
-                    return Err(NativeVisionError::new(
-                        "tensor_contract_mismatch",
-                        "SSD output count changed",
-                        true,
-                    ));
-                }
-                let box_stride = batch_stride(output[0].len(), bound, "SSD")?;
-                let class_stride = batch_stride(output[1].len(), bound, "SSD")?;
-                let mut outcomes = Vec::with_capacity(count);
-                for index in 0..count {
-                    let detections = decode_ssd(
-                        &output[0][index * box_stride..(index + 1) * box_stride],
-                        &output[1][index * class_stride..(index + 1) * class_stride],
-                        &labels,
-                        if tracking_enabled { 0.1 } else { 0.6 },
-                    )
-                    .map_err(|message| {
-                        NativeVisionError::new("tensor_contract_mismatch", message, true)
-                    })?;
-                    outcomes.push(detections);
-                }
-                Ok((outcomes, device))
-            }) {
+            let started = Instant::now();
+            let decoded = if detector_mode == ObjectDetectorMode::YoloXPrimary {
+                evaluate_yolox_batch(&mut yolox_model, &batch, &yolox_model_path, &yolox_labels)
+                    .or_else(|_| evaluate_ssd())
+            } else {
+                evaluate_ssd()
+            };
+            match decoded {
                 Ok((outcomes, device)) => {
+                    let shadow_outcomes = if detector_mode == ObjectDetectorMode::YoloXShadow {
+                        evaluate_yolox_batch(&mut yolox_model, &batch, &yolox_model_path, &yolox_labels)
+                            .map(|value| value.0)
+                            .unwrap_or_else(|_| vec![Vec::new(); count])
+                    } else {
+                        vec![Vec::new(); count]
+                    };
                     let duration_ms = started.elapsed().as_millis() as u64 / count as u64;
-                    for (frame, detections) in batch.into_iter().zip(outcomes) {
+                    for ((frame, detections), shadow_detections) in batch.into_iter().zip(outcomes).zip(shadow_outcomes) {
                         let motion_signal = if frame.scene_cut {
                             None
                         } else {
@@ -976,6 +1154,30 @@ fn spawn_object_worker(
                         };
                         pose_sample_index = pose_sample_index.wrapping_add(1);
                         if !should_run_pose {
+                            let recovery_triggered = detector_mode == ObjectDetectorMode::YoloXRecovery
+                                && recovery_trigger_state.update(
+                                    frame.time,
+                                    frame.scene_cut,
+                                    &detections,
+                                    false,
+                                );
+                            let recovery_started = Instant::now();
+                            let (shadow_detections, yolox_invoked) = if recovery_triggered {
+                                match evaluate_yolox_batch(
+                                    &mut yolox_model,
+                                    std::slice::from_ref(&frame),
+                                    &yolox_model_path,
+                                    &yolox_labels,
+                                ) {
+                                    Ok((mut values, _)) => (values.pop().unwrap_or_default(), true),
+                                    Err(_) => (Vec::new(), true),
+                                }
+                            } else {
+                                (shadow_detections, detector_mode == ObjectDetectorMode::YoloXShadow)
+                            };
+                            let yolox_duration_ms = recovery_triggered
+                                .then(|| recovery_started.elapsed().as_millis() as u64)
+                                .unwrap_or(0);
                             let pose_device = pose_model
                                 .as_ref()
                                 .map(WinMlModel::device)
@@ -984,12 +1186,16 @@ fn spawn_object_worker(
                                 index: frame.index,
                                 time: frame.time,
                                 detections,
+                                shadow_detections,
                                 poses: Vec::new(),
                                 motion_signal,
                                 device,
                                 pose_device,
                                 duration_ms,
                                 pose_duration_ms: 0,
+                                recovery_triggered,
+                                yolox_invoked,
+                                yolox_duration_ms,
                             }));
                             continue;
                         }
@@ -1050,16 +1256,44 @@ fn spawn_object_worker(
                                     return;
                                 }
                             };
+                        let recovery_triggered = detector_mode == ObjectDetectorMode::YoloXRecovery
+                            && recovery_trigger_state.update(
+                                frame.time,
+                                frame.scene_cut,
+                                &detections,
+                                poses.iter().any(|pose| pose.score >= 0.25),
+                            );
+                        let recovery_started = Instant::now();
+                        let (shadow_detections, yolox_invoked) = if recovery_triggered {
+                            match evaluate_yolox_batch(
+                                &mut yolox_model,
+                                std::slice::from_ref(&frame),
+                                &yolox_model_path,
+                                &yolox_labels,
+                            ) {
+                                Ok((mut values, _)) => (values.pop().unwrap_or_default(), true),
+                                Err(_) => (Vec::new(), true),
+                            }
+                        } else {
+                            (shadow_detections, detector_mode == ObjectDetectorMode::YoloXShadow)
+                        };
+                        let yolox_duration_ms = recovery_triggered
+                            .then(|| recovery_started.elapsed().as_millis() as u64)
+                            .unwrap_or(0);
                         let _ = results.send(WorkerResult::Object(ObjectResult {
                             index: frame.index,
                             time: frame.time,
                             detections,
+                            shadow_detections,
                             poses,
                             motion_signal,
                             device,
                             pose_device,
                             duration_ms,
                             pose_duration_ms: pose_started.elapsed().as_millis() as u64,
+                            recovery_triggered,
+                            yolox_invoked,
+                            yolox_duration_ms,
                         }));
                     }
                 }
@@ -1131,6 +1365,7 @@ fn subject_track_inputs(detections: &[SubjectDetection]) -> Vec<TrackDetection> 
             label: detection.label.clone(),
             score: detection.score,
             source_index,
+            detector_source: detection.detector_source,
         })
         .collect()
 }
@@ -1144,6 +1379,7 @@ fn face_track_inputs(faces: &[AutoFlipFaceDetection]) -> Vec<TrackDetection> {
             label: "face".into(),
             score: face.score,
             source_index,
+            detector_source: None,
         })
         .collect()
 }
@@ -1158,6 +1394,7 @@ fn pose_track_inputs(poses: &[PoseSubject]) -> Vec<TrackDetection> {
             label: "pose-person".into(),
             score: pose.score,
             source_index,
+            detector_source: None,
         })
         .collect()
 }
@@ -1171,6 +1408,7 @@ fn tracked_subjects(outputs: Vec<TrackOutput>) -> Vec<SubjectDetection> {
             score: output.score,
             track_id: Some(output.track_id),
             predicted: output.predicted.then_some(true),
+            detector_source: output.detector_source,
         })
         .collect()
 }
@@ -1204,6 +1442,8 @@ fn remap_face_box(
                 y: map_y(point.y),
             })
             .collect(),
+        track_id: face.track_id,
+        predicted: face.predicted,
         score: face.score,
     }
 }
@@ -1214,16 +1454,21 @@ fn tracked_faces(
 ) -> Vec<AutoFlipFaceDetection> {
     outputs
         .into_iter()
-        .map(
-            |output| match output.source_index.and_then(|index| faces.get(index)) {
+        .map(|output| {
+            let mut face = match output.source_index.and_then(|index| faces.get(index)) {
                 Some(face) => remap_face_box(face, output.box_),
                 None => AutoFlipFaceDetection {
                     box_: output.box_,
                     keypoints: Vec::new(),
+                    track_id: None,
+                    predicted: None,
                     score: output.score,
                 },
-            },
-        )
+            };
+            face.track_id = Some(output.track_id);
+            face.predicted = output.predicted.then_some(true);
+            face
+        })
         .collect()
 }
 
@@ -1279,6 +1524,104 @@ fn tracked_poses(outputs: Vec<TrackOutput>, poses: &[PoseSubject]) -> Vec<PoseSu
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum RecoveryAcceptanceReason {
+    PredictedIou,
+    PoseSupport,
+    FaceSupport,
+    TemporalPersistence,
+}
+
+#[derive(Default)]
+struct RecoveryFusionStats {
+    accepted: usize,
+    rejected_duplicates: usize,
+    rejected_candidates: usize,
+    predicted_iou: usize,
+    pose_support: usize,
+    face_support: usize,
+    temporal_persistence: usize,
+}
+
+fn box_contains_center(container: NormalizedBox, child: NormalizedBox) -> bool {
+    let x = child.x + child.width / 2.0;
+    let y = child.y + child.height / 2.0;
+    x >= container.x
+        && x <= container.x + container.width
+        && y >= container.y
+        && y <= container.y + container.height
+}
+
+fn fuse_recovery_detections(
+    ssd: &[SubjectDetection],
+    yolox: &[SubjectDetection],
+    predicted_tracks: &[TrackOutput],
+    poses: &[PoseSubject],
+    faces: &[AutoFlipFaceDetection],
+    history: &VecDeque<Vec<NormalizedBox>>,
+) -> (Vec<SubjectDetection>, RecoveryFusionStats) {
+    let mut fused = ssd.to_vec();
+    let mut stats = RecoveryFusionStats::default();
+    let has_stable_ssd_person = ssd.iter().any(|item| {
+        item.label.eq_ignore_ascii_case("person")
+            && item.predicted != Some(true)
+            && item.score >= 0.6
+    });
+    for candidate in yolox.iter().filter(|item| {
+        item.label.eq_ignore_ascii_case("person") && item.score >= 0.6
+    }) {
+        if fused.iter().any(|stable| {
+            stable.label.eq_ignore_ascii_case(&candidate.label)
+                && stable.predicted != Some(true)
+                && box_iou(stable.box_, candidate.box_) >= 0.45
+        }) {
+            stats.rejected_duplicates += 1;
+            continue;
+        }
+        let predicted_iou = predicted_tracks.iter().any(|track| {
+            track.label.eq_ignore_ascii_case("person")
+                && track.predicted
+                && box_iou(track.box_, candidate.box_) >= 0.2
+        });
+        let reason = if predicted_iou {
+            Some(RecoveryAcceptanceReason::PredictedIou)
+        } else if has_stable_ssd_person {
+            None
+        } else if poses.iter().any(|pose| {
+            pose.predicted != Some(true)
+                && (box_iou(pose.box_, candidate.box_) >= 0.2
+                    || box_contains_center(candidate.box_, pose.box_))
+        }) {
+            Some(RecoveryAcceptanceReason::PoseSupport)
+        } else if faces.iter().any(|face| {
+            face.predicted != Some(true) && box_contains_center(candidate.box_, face.box_)
+        }) {
+            Some(RecoveryAcceptanceReason::FaceSupport)
+        } else if history.len() >= 2 && history.iter().rev().take(2).all(|prior| {
+            prior.iter().any(|box_| box_iou(*box_, candidate.box_) >= 0.3)
+        }) {
+            Some(RecoveryAcceptanceReason::TemporalPersistence)
+        } else {
+            None
+        };
+        let Some(reason) = reason else {
+            stats.rejected_candidates += 1;
+            continue;
+        };
+        let mut accepted = candidate.clone();
+        accepted.detector_source = Some("yolox");
+        fused.push(accepted);
+        stats.accepted += 1;
+        match reason {
+            RecoveryAcceptanceReason::PredictedIou => stats.predicted_iou += 1,
+            RecoveryAcceptanceReason::PoseSupport => stats.pose_support += 1,
+            RecoveryAcceptanceReason::FaceSupport => stats.face_support += 1,
+            RecoveryAcceptanceReason::TemporalPersistence => stats.temporal_persistence += 1,
+        }
+    }
+    (fused, stats)
+}
+
 pub fn analyze(
     file_path: String,
     start_time: f64,
@@ -1286,6 +1629,7 @@ pub fn analyze(
     resource_dir: &Path,
     cancelled: Arc<AtomicBool>,
     tracking_enabled: bool,
+    detector_mode: ObjectDetectorMode,
     mut progress: impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<NativeVisionSummary, NativeVisionError> {
     if end_time <= start_time {
@@ -1295,13 +1639,20 @@ pub fn analyze(
             true,
         ));
     }
-    let (face_model_path, object_model_path, pose_model_path, labels_path) =
-        resource_paths(resource_dir);
+    let resources = resource_paths(resource_dir);
+    let face_model_path = resources.face;
+    let object_model_path = resources.ssd;
+    let pose_model_path = resources.pose;
+    let labels_path = resources.ssd_labels;
+    let yolox_model_path = resources.yolox;
+    let yolox_labels_path = resources.yolox_labels;
     for path in [
         &face_model_path,
         &object_model_path,
         &pose_model_path,
         &labels_path,
+        &yolox_model_path,
+        &yolox_labels_path,
     ] {
         if !path.is_file() {
             return Err(NativeVisionError::new(
@@ -1323,6 +1674,12 @@ pub fn analyze(
         .map(str::trim)
         .map(str::to_owned)
         .collect();
+    let yolox_labels = std::fs::read_to_string(&yolox_labels_path)
+        .map_err(|error| NativeVisionError::new("model_missing", format!("Cannot read YOLOX labels: {error}"), false))?
+        .lines()
+        .map(str::trim)
+        .map(str::to_owned)
+        .collect();
 
     progress(NativeVisionProgress {
         phase: "initializing",
@@ -1340,6 +1697,7 @@ pub fn analyze(
     let object_preprocess_time_us = Arc::new(AtomicU64::new(0));
     let pose_preprocess_time_us = Arc::new(AtomicU64::new(0));
     let labels: Arc<Vec<String>> = Arc::new(labels);
+    let yolox_labels: Arc<Vec<String>> = Arc::new(yolox_labels);
     let (face_job_sender, face_job_receiver) =
         crossbeam_channel::bounded::<FaceJob>(QUEUE_CAPACITY);
     let (object_sender, object_receiver) =
@@ -1366,8 +1724,11 @@ pub fn analyze(
                 cancelled.clone(),
                 object_model_path.clone(),
                 object_fp16_path.clone(),
+                yolox_model_path.clone(),
                 pose_model_path.clone(),
                 labels.clone(),
+                yolox_labels.clone(),
+                detector_mode,
                 tracking_enabled,
                 object_preprocess_time_us.clone(),
                 pose_preprocess_time_us.clone(),
@@ -1795,10 +2156,23 @@ pub fn analyze(
     let mut recovery_face_passes = 0;
     let tracker_started = Instant::now();
     let mut object_tracker = ByteTracker::new();
+    let mut recovery_reference_tracker = ByteTracker::new();
+    let mut shadow_object_tracker = ByteTracker::new();
     let mut face_tracker = ByteTracker::new();
     let mut pose_tracker = ByteTracker::new();
     let mut tracked_subject_count = 0usize;
     let mut predicted_subject_count = 0usize;
+    let mut recovery_history: VecDeque<Vec<NormalizedBox>> = VecDeque::with_capacity(3);
+    let mut recovery_triggers = 0usize;
+    let mut yolox_invocations = 0usize;
+    let mut accepted_recoveries = 0usize;
+    let mut rejected_recovery_duplicates = 0usize;
+    let mut rejected_recovery_candidates = 0usize;
+    let mut accepted_predicted_iou = 0usize;
+    let mut accepted_pose_support = 0usize;
+    let mut accepted_face_support = 0usize;
+    let mut accepted_temporal_persistence = 0usize;
+    let mut yolox_inference_ms = 0u64;
     for index in 0..sample_count {
         let face = face_results
             .remove(&index)
@@ -1813,23 +2187,28 @@ pub fn analyze(
         recovery_face_passes += face.recovery_passes;
         object_inference_ms += object.duration_ms;
         pose_inference_ms += object.pose_duration_ms;
+        recovery_triggers += usize::from(object.recovery_triggered);
+        yolox_invocations += usize::from(object.yolox_invoked);
+        yolox_inference_ms += object.yolox_duration_ms;
         if tracking_enabled && face.scene_cut {
             object_tracker.reset();
+            recovery_reference_tracker.reset();
+            shadow_object_tracker.reset();
             face_tracker.reset();
             pose_tracker.reset();
+            recovery_history.clear();
         }
-        let mut detections = if tracking_enabled {
-            let tracked = tracked_subjects(
-                object_tracker.update(object.time, &subject_track_inputs(&object.detections)),
-            );
-            tracked_subject_count += tracked.len();
-            predicted_subject_count += tracked
-                .iter()
-                .filter(|item| item.predicted == Some(true))
-                .count();
-            tracked
+        let autoflip_faces = if tracking_enabled {
+            tracked_faces(
+                face_tracker.update(face.time, &face_track_inputs(&face.faces)),
+                &face.faces,
+            )
         } else {
-            object.detections
+            face.faces
+                .iter()
+                .filter(|item| item.score >= 0.6)
+                .cloned()
+                .collect()
         };
         let pose_subjects = if tracking_enabled {
             if preserve_raw_pose_observations {
@@ -1844,7 +2223,63 @@ pub fn analyze(
                 )
             }
         } else {
-            object.poses
+            object.poses.clone()
+        };
+        let detector_inputs = if detector_mode == ObjectDetectorMode::YoloXRecovery {
+            let reference = if tracking_enabled {
+                recovery_reference_tracker.update(
+                    object.time,
+                    &subject_track_inputs(&object.detections),
+                )
+            } else {
+                Vec::new()
+            };
+            let (fused, stats) = fuse_recovery_detections(
+                &object.detections,
+                &object.shadow_detections,
+                &reference,
+                &pose_subjects,
+                &autoflip_faces,
+                &recovery_history,
+            );
+            accepted_recoveries += stats.accepted;
+            rejected_recovery_duplicates += stats.rejected_duplicates;
+            rejected_recovery_candidates += stats.rejected_candidates;
+            accepted_predicted_iou += stats.predicted_iou;
+            accepted_pose_support += stats.pose_support;
+            accepted_face_support += stats.face_support;
+            accepted_temporal_persistence += stats.temporal_persistence;
+            let current = object.shadow_detections.iter()
+                .filter(|item| item.label.eq_ignore_ascii_case("person") && item.score >= 0.6)
+                .map(|item| item.box_)
+                .collect();
+            recovery_history.push_back(current);
+            while recovery_history.len() > 3 {
+                recovery_history.pop_front();
+            }
+            fused
+        } else {
+            object.detections.clone()
+        };
+        let mut detections = if tracking_enabled {
+            let tracked = tracked_subjects(
+                object_tracker.update(object.time, &subject_track_inputs(&detector_inputs)),
+            );
+            tracked_subject_count += tracked.len();
+            predicted_subject_count += tracked
+                .iter()
+                .filter(|item| item.predicted == Some(true))
+                .count();
+            tracked
+        } else {
+            detector_inputs
+        };
+        let shadow_detections = if tracking_enabled && !object.shadow_detections.is_empty() {
+            tracked_subjects(
+                shadow_object_tracker.update(object.time, &subject_track_inputs(&object.shadow_detections)),
+            )
+        } else {
+            object.shadow_detections
         };
         for pose in pose_subjects
             .iter()
@@ -1864,30 +2299,26 @@ pub fn analyze(
                     score: pose.score,
                     track_id: pose.track_id,
                     predicted: pose.predicted,
+                    detector_source: Some("pose"),
                 });
             }
         }
-        let autoflip_faces = if tracking_enabled {
-            tracked_faces(
-                face_tracker.update(face.time, &face_track_inputs(&face.faces)),
-                &face.faces,
-            )
-        } else {
-            face.faces
-                .iter()
-                .filter(|item| item.score >= 0.6)
-                .cloned()
-                .collect()
-        };
         let subject = NativeSubjectSample {
             time: object.time,
             detections,
+            shadow_detections,
             autoflip_faces,
             pose_subjects,
             importance_signals: object.motion_signal.into_iter().map(|(box_, confidence)| {
                 NativeImportanceSignalRegion { box_, kind: "motion", confidence }
             }).collect(),
-            model_id: "clipper-vision-v2",
+            model_id: match detector_mode {
+                ObjectDetectorMode::Ssd => "clipper-vision-v2",
+                ObjectDetectorMode::YoloXRecovery => "clipper-vision-v2+yolox-recovery",
+                ObjectDetectorMode::YoloXShadow => "clipper-vision-v2+yolox-shadow",
+                ObjectDetectorMode::YoloXPrimary => "clipper-vision-v3-yolox-candidate",
+            },
+            scene_cut: face.scene_cut.then_some(true),
         };
         let face_sample = face.face_bucket.then(|| NativeFaceSample {
             time: face.time,
@@ -1962,7 +2393,11 @@ pub fn analyze(
                 sample_raw_height
             },
         ),
-        model_version: "clipper-vision-v2",
+        model_version: match detector_mode {
+            ObjectDetectorMode::YoloXPrimary => "clipper-vision-v3-yolox-candidate",
+            ObjectDetectorMode::YoloXRecovery => "clipper-vision-v2+yolox-recovery",
+            _ => "clipper-vision-v2",
+        },
         tracker_version: tracking_enabled.then_some("bytetrack-v1"),
         metrics: NativeVisionMetrics {
             decode_duration_ms,
@@ -1980,6 +2415,16 @@ pub fn analyze(
             tracker_duration_ms,
             tracked_subject_count,
             predicted_subject_count,
+            recovery_triggers,
+            yolox_invocations,
+            accepted_recoveries,
+            rejected_recovery_duplicates,
+            rejected_recovery_candidates,
+            accepted_predicted_iou,
+            accepted_pose_support,
+            accepted_face_support,
+            accepted_temporal_persistence,
+            yolox_inference_ms,
             codec_decode_api_ms: (t_codec_decode_api / 1_000) as u64,
             histogram_ms: (t_histogram / 1_000) as u64,
             sample_scale_ms: (t_sample_scale / 1_000) as u64,
@@ -2000,6 +2445,17 @@ pub fn analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn person(x: f32, score: f32, source: &'static str) -> SubjectDetection {
+        SubjectDetection {
+            box_: NormalizedBox { x, y: 0.2, width: 0.2, height: 0.5 },
+            label: "person".into(),
+            score,
+            track_id: None,
+            predicted: None,
+            detector_source: Some(source),
+        }
+    }
 
     #[test]
     fn canonical_rotations_only() {
@@ -2053,6 +2509,69 @@ mod tests {
         assert!(pose_track_inputs(&[pose]).is_empty());
     }
 
+    #[test]
+    fn recovery_trigger_waits_for_two_predicted_or_low_person_samples_and_resets_at_cut() {
+        let mut state = RecoveryTriggerState::new();
+        assert!(!state.update(0.0, false, &[person(0.1, 0.9, "ssd")], false));
+        assert!(!state.update(0.2, false, &[person(0.11, 0.9, "ssd")], false));
+        assert!(!state.update(0.4, false, &[], false));
+        assert!(state.update(0.6, false, &[], false));
+        assert!(!state.update(0.8, true, &[], true));
+    }
+
+    #[test]
+    fn recovery_keeps_ssd_duplicates_and_accepts_yolox_for_a_predicted_track() {
+        let ssd = vec![person(0.1, 0.9, "ssd")];
+        let yolox = vec![person(0.11, 0.95, "yolox"), person(0.62, 0.8, "yolox")];
+        let predicted = vec![TrackOutput {
+            box_: NormalizedBox { x: 0.6, y: 0.2, width: 0.22, height: 0.5 },
+            label: "person".into(),
+            score: 0.45,
+            track_id: 9,
+            predicted: true,
+            source_index: None,
+            detector_source: Some("ssd"),
+        }];
+        let (fused, stats) = fuse_recovery_detections(
+            &ssd,
+            &yolox,
+            &predicted,
+            &[],
+            &[],
+            &VecDeque::new(),
+        );
+        assert_eq!(fused.len(), 2);
+        assert_eq!(stats.rejected_duplicates, 1);
+        assert_eq!(stats.accepted, 1);
+        assert_eq!(stats.predicted_iou, 1);
+        assert_eq!(fused[0].detector_source, Some("ssd"));
+        assert_eq!(fused[1].detector_source, Some("yolox"));
+    }
+
+    #[test]
+    fn recovery_support_does_not_add_a_competitor_beside_stable_ssd() {
+        let ssd = vec![person(0.1, 0.9, "ssd")];
+        let yolox = vec![person(0.65, 0.9, "yolox")];
+        let face = AutoFlipFaceDetection {
+            box_: NormalizedBox { x: 0.69, y: 0.25, width: 0.08, height: 0.1 },
+            keypoints: Vec::new(),
+            track_id: Some(4),
+            predicted: None,
+            score: 0.9,
+        };
+        let (fused, stats) = fuse_recovery_detections(
+            &ssd,
+            &yolox,
+            &[],
+            &[],
+            &[face],
+            &VecDeque::new(),
+        );
+        assert_eq!(fused, ssd);
+        assert_eq!(stats.accepted, 0);
+        assert_eq!(stats.rejected_candidates, 1);
+    }
+
     /// Debug-only smoke/benchmark hook. It never persists application data;
     /// opt in with OPENCLIPPER_WINML_BENCHMARK=<video path> and optionally
     /// OPENCLIPPER_WINML_BENCHMARK_END=<seconds> (default 3.0).
@@ -2077,6 +2596,7 @@ mod tests {
             root,
             Arc::new(AtomicBool::new(false)),
             true,
+            ObjectDetectorMode::Ssd,
             |progress| {
                 if progress.face_sample.is_some() || progress.subject_sample.is_some() {
                     events.push(progress);

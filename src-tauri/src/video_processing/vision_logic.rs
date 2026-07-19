@@ -12,6 +12,9 @@ pub const MOVENET_INPUT_SIZE: usize = 512;
 pub const MOVENET_POSE_COUNT: usize = 6;
 pub const MOVENET_KEYPOINT_COUNT: usize = 17;
 pub const MOVENET_INSTANCE_SIZE: usize = 56;
+pub const YOLOX_INPUT_SIZE: usize = 416;
+pub const YOLOX_PREDICTION_COUNT: usize = 3549;
+pub const YOLOX_CLASS_COUNT: usize = 80;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +44,8 @@ pub struct SubjectDetection {
     pub track_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub predicted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detector_source: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -55,8 +60,85 @@ pub struct AutoFlipFaceDetection {
     #[serde(rename = "box")]
     pub box_: NormalizedBox,
     pub keypoints: Vec<Keypoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predicted: Option<bool>,
     #[serde(skip)]
     pub score: f32,
+}
+
+pub fn decode_yolox(
+    output: &[f32],
+    labels: &[String],
+    letterbox: Letterbox,
+    score_threshold: f32,
+) -> Result<Vec<SubjectDetection>, String> {
+    let row_size = 5 + YOLOX_CLASS_COUNT;
+    if output.len() != YOLOX_PREDICTION_COUNT * row_size || labels.len() < YOLOX_CLASS_COUNT {
+        return Err("tensor_contract_mismatch: invalid YOLOX output or label count".into());
+    }
+    let mut candidates = Vec::new();
+    let mut row_index = 0usize;
+    for stride in [8usize, 16, 32] {
+        let side = YOLOX_INPUT_SIZE / stride;
+        for grid_y in 0..side {
+            for grid_x in 0..side {
+                let row = &output[row_index * row_size..(row_index + 1) * row_size];
+                row_index += 1;
+                let (class_index, class_score) = row[5..]
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .unwrap_or((0, 0.0));
+                let score = row[4] * class_score;
+                if score < score_threshold {
+                    continue;
+                }
+                let center_x = (row[0] + grid_x as f32) * stride as f32;
+                let center_y = (row[1] + grid_y as f32) * stride as f32;
+                let width = row[2].clamp(-20.0, 20.0).exp() * stride as f32;
+                let height = row[3].clamp(-20.0, 20.0).exp() * stride as f32;
+                let inverse_x = |value: f32| {
+                    ((value - letterbox.pad_x) / letterbox.scale / letterbox.source_width as f32)
+                        .clamp(0.0, 1.0)
+                };
+                let inverse_y = |value: f32| {
+                    ((value - letterbox.pad_y) / letterbox.scale / letterbox.source_height as f32)
+                        .clamp(0.0, 1.0)
+                };
+                let left = inverse_x(center_x - width / 2.0);
+                let top = inverse_y(center_y - height / 2.0);
+                let right = inverse_x(center_x + width / 2.0);
+                let bottom = inverse_y(center_y + height / 2.0);
+                if right <= left || bottom <= top {
+                    continue;
+                }
+                candidates.push(SubjectDetection {
+                    box_: NormalizedBox { x: left, y: top, width: right - left, height: bottom - top },
+                    label: labels[class_index].clone(),
+                    score,
+                    track_id: None,
+                    predicted: None,
+                    detector_source: Some("yolox"),
+                });
+            }
+        }
+    }
+    debug_assert_eq!(row_index, YOLOX_PREDICTION_COUNT);
+    candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let mut selected: Vec<SubjectDetection> = Vec::with_capacity(100);
+    for candidate in candidates {
+        if selected.iter().any(|kept| kept.label == candidate.label && box_iou(kept.box_, candidate.box_) >= 0.45) {
+            continue;
+        }
+        selected.push(candidate);
+        if selected.len() == 100 {
+            break;
+        }
+    }
+    Ok(selected)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -306,6 +388,7 @@ pub fn decode_ssd(
             score,
             track_id: None,
             predicted: None,
+            detector_source: Some("ssd"),
         });
     }
     candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
@@ -410,6 +493,8 @@ pub fn decode_blaze(
                 height: (bottom_right.y - top_left.y).max(0.0),
             },
             keypoints,
+            track_id: None,
+            predicted: None,
             score,
         });
     }
@@ -469,6 +554,8 @@ pub fn weighted_face_nms(
                 height: weighted(|item| item.box_.height),
             },
             keypoints,
+            track_id: None,
+            predicted: None,
             score: group.iter().map(|item| item.score).sum::<f32>() / group.len() as f32,
         });
     }
@@ -780,6 +867,29 @@ mod tests {
         let detections = decode_ssd(&boxes, &scores, &labels, 0.6).expect("SSD contract");
         assert_eq!(detections.len(), 1);
         assert_eq!(detections[0].label, "label-1");
+    }
+
+    #[test]
+    fn yolox_decodes_grid_and_applies_class_aware_nms() {
+        let mut output = vec![0.0f32; YOLOX_PREDICTION_COUNT * (5 + YOLOX_CLASS_COUNT)];
+        // First 8px-grid cell: centered at (8,8), 16x16 pixels, class 0.
+        output[0] = 1.0;
+        output[1] = 1.0;
+        output[2] = 2.0f32.ln();
+        output[3] = 2.0f32.ln();
+        output[4] = 0.9;
+        output[5] = 0.8;
+        let labels = (0..YOLOX_CLASS_COUNT).map(|index| format!("class-{index}")).collect::<Vec<_>>();
+        let detections = decode_yolox(
+            &output,
+            &labels,
+            Letterbox { scale: 1.0, pad_x: 0.0, pad_y: 0.0, source_width: 416, source_height: 416 },
+            0.1,
+        ).expect("YOLOX contract");
+        assert_eq!(detections.len(), 1);
+        assert_eq!(detections[0].label, "class-0");
+        assert!((detections[0].score - 0.72).abs() < 1e-6);
+        assert!((detections[0].box_.width - 16.0 / 416.0).abs() < 1e-6);
     }
 
     #[test]

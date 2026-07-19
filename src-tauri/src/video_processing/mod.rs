@@ -101,8 +101,8 @@ pub async fn probe_clipper_winml(app_handle: AppHandle) -> ClipperWinMlCapabilit
                 }
             }
         };
-        let (face, object, pose, labels) = winml_vision::resource_paths(&resource_dir);
-        let root = face.parent().unwrap_or(&resource_dir);
+        let resources = winml_vision::resource_paths(&resource_dir);
+        let root = resources.face.parent().unwrap_or(&resource_dir);
         let manifest_path = root.join("manifest.json");
         let manifest = std::fs::read(&manifest_path)
             .ok()
@@ -116,9 +116,11 @@ pub async fn probe_clipper_winml(app_handle: AppHandle) -> ClipperWinMlCapabilit
             };
         };
         for (name, path) in [
-            ("blaze_face_full_range", face),
-            ("autoflip_ssdlite", object),
-            ("movenet_multipose_lightning", pose),
+            ("blaze_face_full_range", resources.face),
+            ("autoflip_ssdlite", resources.ssd),
+            ("movenet_multipose_lightning", resources.pose),
+            ("yolox_tiny", resources.yolox),
+            ("lr_asd_ava", resources.active_speaker),
         ] {
             let expected = manifest["models"][name]["onnxSha256"].as_str();
             let actual = std::fs::read(&path)
@@ -137,12 +139,12 @@ pub async fn probe_clipper_winml(app_handle: AppHandle) -> ClipperWinMlCapabilit
                 };
             }
         }
-        if !labels.is_file() {
+        if !resources.ssd_labels.is_file() || !resources.yolox_labels.is_file() {
             return ClipperWinMlCapability {
                 available: false,
                 model_version: None,
                 reason_code: Some("model_missing"),
-                reason: Some(format!("Missing {}", labels.display())),
+                reason: Some("Missing detector label map".into()),
             };
         }
         ClipperWinMlCapability {
@@ -163,6 +165,7 @@ pub fn start_clipper_winml_analysis(
     start_time: f64,
     end_time: f64,
     tracking_mode: Option<String>,
+    object_detector_mode: Option<String>,
     app_handle: AppHandle,
     webview: WebviewWindow,
     jobs: State<'_, NativeJobRegistry>,
@@ -185,6 +188,7 @@ pub fn start_clipper_winml_analysis(
     let finish_session_id = session_id.clone();
     let finish_job_id = job_id.clone();
     let tracking_enabled = tracking_mode.as_deref().unwrap_or("bytetrack-v1") != "off";
+    let detector_mode = winml_pipeline::ObjectDetectorMode::parse(object_detector_mode.as_deref());
 
     tauri::async_runtime::spawn(async move {
         let joined = tauri::async_runtime::spawn_blocking(move || {
@@ -195,6 +199,7 @@ pub fn start_clipper_winml_analysis(
                 &resource_dir,
                 task_cancelled,
                 tracking_enabled,
+                detector_mode,
                 |progress| {
                     task_emitter.progress(&progress).map_err(|error| {
                         winml_vision::NativeVisionError::new("cancelled", error, false)
@@ -236,6 +241,7 @@ pub fn start_clipper_winml_analysis(
     _start_time: f64,
     _end_time: f64,
     _tracking_mode: Option<String>,
+    _object_detector_mode: Option<String>,
     _app_handle: AppHandle,
     _webview: WebviewWindow,
     _jobs: State<'_, NativeJobRegistry>,

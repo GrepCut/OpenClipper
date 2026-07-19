@@ -24,6 +24,8 @@ pub const BATCH_BOUND: usize = 8;
 pub enum VisionModel {
     Face,
     Object,
+    YoloX,
+    ActiveSpeaker,
     Pose,
 }
 
@@ -165,6 +167,30 @@ fn load_model(path: &Path) -> Result<LearningModel, NativeVisionError> {
 }
 
 impl WinMlModel {
+    pub fn create_multi(
+        kind: VisionModel,
+        path: &Path,
+        output_names: &[&str],
+    ) -> Result<Self, NativeVisionError> {
+        let apartment = MtaApartment::initialize()?;
+        let model = load_model(path)?;
+        let config = SessionConfig {
+            device: NativeVisionDevice::Cpu,
+            precision: ModelPrecision::Float32,
+        };
+        let session = Self::make_session(&model, config)?;
+        Ok(Self {
+            kind,
+            model,
+            session,
+            single_session: None,
+            fp32_path: path.to_path_buf(),
+            input_name: HSTRING::new(),
+            output_names: output_names.iter().map(|name| HSTRING::from(*name)).collect(),
+            _apartment: apartment,
+        })
+    }
+
     pub fn create(
         kind: VisionModel,
         path: &Path,
@@ -274,24 +300,33 @@ impl WinMlModel {
         shape: &[i64],
         input: &[f32],
     ) -> Result<Vec<Vec<f32>>, NativeVisionError> {
-        let tensor =
-            TensorFloat::CreateFromShapeArrayAndDataArray(shape, input).map_err(|error| {
+        Self::evaluate_session_named(session, &[(input_name, shape, input)], output_names)
+    }
+
+    fn evaluate_session_named(
+        session: &LearningModelSession,
+        inputs: &[(&HSTRING, &[i64], &[f32])],
+        output_names: &[HSTRING],
+    ) -> Result<Vec<Vec<f32>>, NativeVisionError> {
+        let binding = LearningModelBinding::CreateFromSession(session).map_err(|error| {
+            winml_error("evaluation_failed", "Could not create WinML binding", error)
+        })?;
+        for (input_name, shape, input) in inputs {
+            let tensor = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input).map_err(|error| {
                 winml_error(
                     "tensor_contract_mismatch",
                     "Could not create input tensor",
                     error,
                 )
             })?;
-        let binding = LearningModelBinding::CreateFromSession(session).map_err(|error| {
-            winml_error("evaluation_failed", "Could not create WinML binding", error)
-        })?;
-        binding.Bind(input_name, &tensor).map_err(|error| {
-            winml_error(
-                "tensor_contract_mismatch",
-                "Could not bind input tensor",
-                error,
-            )
-        })?;
+            binding.Bind(input_name, &tensor).map_err(|error| {
+                winml_error(
+                    "tensor_contract_mismatch",
+                    "Could not bind input tensor",
+                    error,
+                )
+            })?;
+        }
         let result = session
             .Evaluate(&binding, &HSTRING::new())
             .map_err(|error| winml_error("evaluation_failed", "WinML evaluation failed", error))?;
@@ -453,6 +488,34 @@ impl WinMlModel {
         }
     }
 
+    pub fn evaluate_named(
+        &mut self,
+        inputs: &[(&str, &[i64], &[f32])],
+    ) -> Result<Vec<Vec<f32>>, NativeVisionError> {
+        let batch = inputs.first().and_then(|input| input.1.first()).copied().unwrap_or(1) as usize;
+        if batch != 1 && batch != BATCH_BOUND {
+            return Err(NativeVisionError::new(
+                "tensor_contract_mismatch",
+                format!("Unsupported batch size {batch}"),
+                true,
+            ));
+        }
+        if batch == 1 && self.single_session.is_none() {
+            let device = Self::device_for(self.session.config)?;
+            self.single_session = Some(make_bound_session(&self.model, &device, 1).map_err(|error| {
+                winml_error(Self::error_code(self.session.config.device), "WinML session creation failed", error)
+            })?);
+        }
+        let names = inputs.iter().map(|input| HSTRING::from(input.0)).collect::<Vec<_>>();
+        let bound = inputs.iter().enumerate().map(|(index, input)| (&names[index], input.1, input.2)).collect::<Vec<_>>();
+        let session = if batch == 1 {
+            self.single_session.as_ref().expect("created above")
+        } else {
+            &self.session.value
+        };
+        Self::evaluate_session_named(session, &bound, &self.output_names)
+    }
+
     fn evaluate_once(
         &mut self,
         shape: &[i64],
@@ -510,14 +573,27 @@ impl Drop for WinMlModel {
     }
 }
 
-pub fn resource_paths(resource_dir: &Path) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+pub struct VisionResourcePaths {
+    pub face: PathBuf,
+    pub ssd: PathBuf,
+    pub pose: PathBuf,
+    pub ssd_labels: PathBuf,
+    pub yolox: PathBuf,
+    pub yolox_labels: PathBuf,
+    pub active_speaker: PathBuf,
+}
+
+pub fn resource_paths(resource_dir: &Path) -> VisionResourcePaths {
     let root = resource_dir.join("resources/models/clipper-vision");
-    (
-        root.join("blaze_face_full_range.onnx"),
-        root.join("ssdlite_object_detection.onnx"),
-        root.join("movenet_multipose_lightning.onnx"),
-        root.join("ssdlite_object_detection_labelmap.txt"),
-    )
+    VisionResourcePaths {
+        face: root.join("blaze_face_full_range.onnx"),
+        ssd: root.join("ssdlite_object_detection.onnx"),
+        pose: root.join("movenet_multipose_lightning.onnx"),
+        ssd_labels: root.join("ssdlite_object_detection_labelmap.txt"),
+        yolox: root.join("yolox_tiny.onnx"),
+        yolox_labels: root.join("coco80.txt"),
+        active_speaker: root.join("lr_asd_ava.onnx"),
+    }
 }
 
 /// The optional fp16 sibling of an fp32 model file ("x.onnx" → "x.fp16.onnx").
@@ -533,6 +609,43 @@ mod tests {
         device: NativeVisionDevice::Cpu,
         precision: ModelPrecision::Float32,
     };
+
+    #[test]
+    fn lr_asd_accepts_named_audio_and_face_inputs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/models/clipper-vision");
+        let mut model = WinMlModel::create_multi(
+            VisionModel::ActiveSpeaker,
+            &root.join("lr_asd_ava.onnx"),
+            &["speaker_probability"],
+        ).expect("load LR-ASD");
+        let audio = vec![0.0f32; 100 * 13];
+        let faces = vec![0.0f32; 25 * 112 * 112];
+        let outputs = model.evaluate_named(&[
+            ("audio_mfcc", &[1, 100, 13], &audio),
+            ("face_gray", &[1, 25, 112, 112], &faces),
+        ]).expect("evaluate LR-ASD");
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].len(), 25);
+        assert!(outputs[0].iter().all(|score| score.is_finite() && *score >= 0.0 && *score <= 1.0));
+    }
+
+    #[test]
+    fn yolox_dynamic_batch_evaluates_with_winml() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/models/clipper-vision");
+        let input = vec![114.0f32; 3 * 416 * 416];
+        let (model, outputs) = WinMlModel::create(
+            VisionModel::YoloX,
+            &root.join("yolox_tiny.onnx"),
+            None,
+            "images",
+            &["output"],
+            &[1, 3, 416, 416],
+            &input,
+        ).expect("evaluate YOLOX");
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].len(), 3549 * 85);
+        drop(model);
+    }
 
     #[test]
     fn bundled_models_load_and_evaluate_with_winml() {

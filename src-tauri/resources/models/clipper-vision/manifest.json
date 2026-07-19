@@ -12,6 +12,69 @@
   },
   "modelVersion": "clipper-vision-v2",
   "models": {
+    "light_asd_ava": {
+      "dynamicBatch": true,
+      "dynamicTime": true,
+      "inputs": [
+        { "dtype": "float32", "name": "audio_mfcc", "shape": [1, "4*time", 13] },
+        { "dtype": "float32", "name": "face_gray", "shape": [1, "time", 112, 112] }
+      ],
+      "onnxFile": "light_asd_ava.onnx",
+      "onnxSha256": "a7921c52195888a960aa3b592927a95c9c47d63a800787def487f48b10c2f1cf",
+      "outputs": [{ "dtype": "float32", "name": "speaker_probability", "shape": [1, "time"] }],
+      "preprocessing": {
+        "audio": "mono-16khz-mfcc13-four-rows-per-frame",
+        "face": "grayscale-112x112",
+        "fps": 25
+      },
+      "sourcePath": "reference-algorithms/Light-ASD/weight/pretrain_AVA_CVPR.model",
+      "sourceSha256": "d44bc3ea7baa8e0946fa3921311714a630ed8b90a1928fab0dbe30d918909317"
+    },
+    "lr_asd_ava": {
+      "dynamicBatch": true,
+      "dynamicTime": true,
+      "inputs": [
+        { "dtype": "float32", "name": "audio_mfcc", "shape": [1, "4*time", 13] },
+        { "dtype": "float32", "name": "face_gray", "shape": [1, "time", 112, 112] }
+      ],
+      "onnxFile": "lr_asd_ava.onnx",
+      "onnxSha256": "8dba7d770fafdd60ae0d7ce521bc83cf2e8852f3ce30878aee6a134efd53cfbb",
+      "outputs": [{ "dtype": "float32", "name": "speaker_probability", "shape": [1, "time"] }],
+      "parity": { "windowsSec": [1, 2, 3, 4, 5, 6], "maxAbsError": 1.1641532182693481e-9 },
+      "preprocessing": {
+        "audio": "mono-16khz-mfcc13-four-rows-per-frame",
+        "face": "grayscale-112x112",
+        "fps": 25
+      },
+      "sourcePath": "reference-algorithms/active-speaker/lr-asd/weight/pretrain_AVA.model",
+      "sourceSha256": "85e6c77fc981595234790d1e128ebb60352d37726b2445e0ef8891e2512fe9e3"
+    },
+    "yolox_tiny": {
+      "batchParity": { "batchSize": 2, "maxAbsErrorVsSingle": 0.0 },
+      "decoder": {
+        "classCount": 80,
+        "inputSize": 416,
+        "nmsIouThreshold": 0.45,
+        "predictionCount": 3549,
+        "scoreThreshold": 0.1,
+        "strides": [8, 16, 32]
+      },
+      "dynamicBatch": true,
+      "input": { "dtype": "float32", "name": "images", "shape": [1, 3, 416, 416] },
+      "labelFile": "coco80.txt",
+      "labelSha256": "bd17f1ee35d5f3c862a4894605855abbb9dda4b0621fdb0ac4c2c8c7bb7e730a",
+      "onnxFile": "yolox_tiny.onnx",
+      "onnxSha256": "e7556b815abedd1a50eddc7ee92a32ca264182dc35367656f0757c838f036385",
+      "outputs": [{ "dtype": "float32", "name": "output", "shape": [1, 3549, 85] }],
+      "preprocessing": {
+        "colorOrder": "bgr",
+        "layout": "nchw",
+        "resize": "bilinear-letterbox-top-left",
+        "valueRange": [0.0, 255.0]
+      },
+      "sourcePath": "public/models/yolox_tiny/yolox_tiny.onnx",
+      "sourceSha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
+    },
     "autoflip_ssdlite": {
       "batchParity": {
         "batchSize": 3,

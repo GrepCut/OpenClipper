@@ -144,6 +144,9 @@ export interface ResolvedClipperLayout {
   mode: ClipperLayoutMode;
   viewports: ClipperCropRect[];
   solidBackgroundColor?: { r: number; g: number; b: number };
+  reasonCodes?: string[];
+  requiredRegionIds?: string[];
+  subjectDisplayHeightFractions?: number[];
 }
 
 /** Resolves a v3 editing decision; absent on persisted legacy analyses. */
@@ -165,6 +168,9 @@ export function resolveClipperLayoutRender(
       sh: viewport.height * source.height,
     })),
     solidBackgroundColor: sample.solidBackgroundColor ?? blob.solidBackgroundColor,
+    reasonCodes: sample.reasonCodes,
+    requiredRegionIds: sample.requiredRegionIds,
+    subjectDisplayHeightFractions: sample.qualityTelemetry?.subjectDisplayHeightFractions,
   };
 }
 

@@ -1,8 +1,9 @@
 import type { NormalizedBox } from "../../shared/smart-crop";
 
-// v14 keeps the proven v2/Run4 camera path as a lossless baseline and lets
-// semantic layout override it only after a conservative, persisted decision.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v14-hybrid-arbiter";
+// v16 promotes the canonical-person fusion and stable visibility state machine
+// validated by the native Run 10 benchmark. Run 8 remains the per-sample
+// fallback for any untrusted decision.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v16-canonical";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v2";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;
@@ -48,6 +49,10 @@ export interface SalientRegion {
   isRequired: boolean;
   trackId?: number;
   predicted?: boolean;
+  /** Recovery detector evidence may fill a dropout but must not displace stable primary evidence. */
+  recoveryOnly?: boolean;
+  associationConfidence?: number;
+  identityAmbiguous?: boolean;
 }
 
 export interface KeyFrameSalientInput {

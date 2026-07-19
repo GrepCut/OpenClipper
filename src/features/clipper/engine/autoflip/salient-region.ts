@@ -60,8 +60,8 @@ function faceRegionsFromDetection(face: AutoFlipFaceDetection): SalientRegion[] 
   return [
     // VisualScorer's default is area-only and it evaluates each emitted
     // landmark rectangle independently.
-    { box: core, score: weightedScore(clamp01(core.width * core.height), "face_core"), signalType: "face_core", isRequired: false },
-    { box: all, score: weightedScore(clamp01(all.width * all.height), "face_all"), signalType: "face_all", isRequired: false },
+    { box: core, score: weightedScore(clamp01(core.width * core.height), "face_core"), signalType: "face_core", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous },
+    { box: all, score: weightedScore(clamp01(all.width * all.height), "face_all"), signalType: "face_all", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous },
   ];
 }
 
@@ -78,6 +78,9 @@ function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] 
       isRequired: false,
       trackId: detection.trackId,
       predicted: detection.predicted,
+      recoveryOnly: detection.detectorSource === "yolox",
+      associationConfidence: detection.associationConfidence,
+      identityAmbiguous: detection.identityAmbiguous,
     };
     // LocalizationToRegionCalculator(output_all_signals: true) emits both the
     // class-specific signal and the low-priority generic object signal.
@@ -169,6 +172,8 @@ function poseRegions(poses: PoseSubject[], faces: AutoFlipFaceDetection[], prefe
       isRequired: false,
       trackId: pose.trackId,
       predicted: pose.predicted,
+      associationConfidence: pose.associationConfidence,
+      identityAmbiguous: pose.identityAmbiguous,
     });
   }
   return regions;
@@ -208,7 +213,15 @@ export function syntheticHeadRegions(
     };
     if (head.width <= 0 || head.height <= 0) continue;
     if (faces.some((face) => boxesIntersect(head, face.box))) continue;
-    regions.push({ box: head, score: weightedScore(0.5, "face_full"), signalType: "face_full", isRequired: false });
+    regions.push({
+      box: head,
+      score: weightedScore(0.5, "face_full"),
+      signalType: "face_full",
+      isRequired: false,
+      trackId: detection.trackId,
+      associationConfidence: detection.associationConfidence,
+      identityAmbiguous: detection.identityAmbiguous,
+    });
   }
   return regions;
 }

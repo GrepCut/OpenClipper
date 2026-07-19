@@ -13,6 +13,10 @@ export interface BenchmarkFrameInput {
   timestampUs: number;
   viewports: NormalizedViewport[];
   layoutMode?: ClipperLayoutMode;
+  reasonCodes?: string[];
+  requiredRegionIds?: string[];
+  subjectDisplayHeightFractions?: number[];
+  cut?: boolean;
 }
 
 export interface BenchmarkTargetDetail {
@@ -29,6 +33,7 @@ export interface BenchmarkFrameDetail {
   viewports: NormalizedViewport[];
   layoutMode: ClipperLayoutMode;
   targets: BenchmarkTargetDetail[];
+  reasonCodes?: string[];
 }
 
 function contains(viewport: NormalizedViewport, target: TestTarget): boolean {
@@ -90,9 +95,19 @@ export function calculateBenchmarkMetrics(input: {
   const previouslyHit = new Map<0 | 1, boolean>();
   let previousCenter: { x: number; y: number; timestampUs: number } | null = null;
   let previousVelocity: { x: number; y: number; timestampUs: number } | null = null;
+  let previousLayoutMode: ClipperLayoutMode | null = null;
+  let modeSwitchCount = 0;
+  let firstTimestampUs: number | null = null;
+  let lastTimestampUs: number | null = null;
+  const displayHeights: number[] = [];
 
   for (const frame of input.frames) {
     const layoutMode = frame.layoutMode ?? (frame.viewports.length > 1 ? "split" : "single-crop");
+    firstTimestampUs ??= frame.timestampUs;
+    lastTimestampUs = frame.timestampUs;
+    if (!frame.cut && previousLayoutMode != null && previousLayoutMode !== layoutMode) modeSwitchCount++;
+    previousLayoutMode = layoutMode;
+    displayHeights.push(...(frame.subjectDisplayHeightFractions ?? []).filter(Number.isFinite));
     layoutModeFrameCounts[layoutMode] += 1;
     const targets = evaluateGroundTruth(input.keyframes, frame.timestampUs);
     const targetDetails = targets.map<BenchmarkTargetDetail>((target) => {
@@ -157,6 +172,7 @@ export function calculateBenchmarkMetrics(input: {
       viewports: frame.viewports,
       layoutMode,
       targets: targetDetails,
+      reasonCodes: frame.reasonCodes,
     });
   }
 
@@ -164,6 +180,8 @@ export function calculateBenchmarkMetrics(input: {
   const frameCount = input.frames.length;
   const mean = errors.length ? errors.reduce((sum, value) => sum + value, 0) / errors.length : null;
   const sortedAccelerations = [...centerAccelerations].sort((a, b) => a - b);
+  const sortedVelocities = [...centerVelocities].sort((a, b) => a - b);
+  displayHeights.sort((a, b) => a - b);
   const meanVelocity = centerVelocities.length
     ? centerVelocities.reduce((sum, value) => sum + value, 0) / centerVelocities.length
     : null;
@@ -199,8 +217,16 @@ export function calculateBenchmarkMetrics(input: {
         contain: frameCount ? layoutModeFrameCounts.contain / frameCount : 0,
       },
       meanViewportCenterVelocity: meanVelocity,
+      p95ViewportCenterVelocity: quantile(sortedVelocities, 0.95),
       p95ViewportCenterAcceleration: quantile(sortedAccelerations, 0.95),
       meanFocusReacquisitionMs: meanReacquisitionMs,
+      modeSwitchesPerMinute: modeSwitchCount / Math.max(
+        1 / 60,
+        ((lastTimestampUs ?? 0) - (firstTimestampUs ?? 0)) / 60_000_000,
+      ),
+      containDutyCycle: frameCount ? layoutModeFrameCounts.contain / frameCount : 0,
+      medianSubjectDisplayHeightFraction: quantile(displayHeights, 0.5),
+      p10SubjectDisplayHeightFraction: quantile(displayHeights, 0.1),
     },
     details,
   };

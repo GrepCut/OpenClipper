@@ -92,4 +92,28 @@ describe("human importance ranking", () => {
     }]);
     expect(timeline[0]!.regions).toEqual([]);
   });
+
+  it("rejects unsupported YOLOX recovery and retains it only with pose/face association", () => {
+    const timeline = buildImportanceTimeline([{
+      time: 0,
+      isShotChange: false,
+      regions: [
+        region("human", 0.1, 0.85, 1),
+        { ...region("human", 0.7, 0.95, 2), recoveryOnly: true },
+      ],
+    }]);
+    expect(timeline[0]!.regions.find((item) => item.role === "primary")!.trackId).toBe(1);
+    expect(timeline[0]!.regions.find((item) => item.trackId === 2)).toBeUndefined();
+
+    const supported = buildImportanceTimeline([{
+      time: 0,
+      isShotChange: false,
+      regions: [
+        region("human", 0.1, 0.85, 1),
+        { ...region("human", 0.7, 0.95, 2), recoveryOnly: true },
+        { ...region("pose_torso", 0.7, 0.9, 22), box: { x: 0.7, y: 0.2, width: 0.16, height: 0.24 } },
+      ],
+    }]);
+    expect(supported[0]!.regions.some((item) => item.sources.includes("pose"))).toBe(true);
+  });
 });
