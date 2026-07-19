@@ -24,7 +24,6 @@ use crate::video_processing::extract_clipper_segment_to_path_blocking;
 
 const TEST_ARCHIVE_SCHEMA_VERSION: u32 = 1;
 const MIN_CLIP_SECONDS: f64 = 3.0;
-const MAX_CLIP_SECONDS: f64 = 60.0;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -163,8 +162,8 @@ pub async fn test_clip_create(
         return Err("Test dataset was not found.".into());
     }
     let duration = input.end_time - input.start_time;
-    if !duration.is_finite() || !(MIN_CLIP_SECONDS..=MAX_CLIP_SECONDS).contains(&duration) {
-        return Err("Test clips must be between 3 and 60 seconds.".into());
+    if !duration.is_finite() || duration < MIN_CLIP_SECONDS {
+        return Err(format!("Test clips must be at least {MIN_CLIP_SECONDS:.0} seconds."));
     }
     let source = PathBuf::from(&input.source_path);
     if !source.is_file() {
@@ -187,9 +186,11 @@ pub async fn test_clip_create(
         return Err(error);
     }
     let (actual_duration, width, height, frame_rate) = probe_video(&output_path)?;
-    if actual_duration > MAX_CLIP_SECONDS + 0.05 || actual_duration < MIN_CLIP_SECONDS - 0.05 {
+    if actual_duration < MIN_CLIP_SECONDS - 0.05 {
         let _ = fs::remove_dir_all(&clip_dir);
-        return Err(format!("Trimmed clip duration is outside 3–60 seconds ({actual_duration:.3}s)."));
+        return Err(format!(
+            "Trimmed clip duration is below {MIN_CLIP_SECONDS:.0} seconds ({actual_duration:.3}s)."
+        ));
     }
     let sha256 = sha256_file(&output_path)?;
     let now = Utc::now().to_rfc3339();
@@ -571,8 +572,11 @@ async fn import_staged_dataset(
             return Err(format!("Clip {} is missing or has an invalid checksum.", clip.name));
         }
         let (duration, _, _, _) = probe_video(&source)?;
-        if !(MIN_CLIP_SECONDS - 0.05..=MAX_CLIP_SECONDS + 0.05).contains(&duration) {
-            return Err(format!("Imported clip {} is outside the 3–60 second limit.", clip.name));
+        if duration < MIN_CLIP_SECONDS - 0.05 {
+            return Err(format!(
+                "Imported clip {} is shorter than {MIN_CLIP_SECONDS:.0} seconds.",
+                clip.name
+            ));
         }
         let new_id = Uuid::new_v4().to_string();
         let target = assembled.join("clips").join(&new_id).join("clip.mp4");
@@ -621,6 +625,11 @@ async fn import_staged_dataset(
                 id: Set(frame_id.clone()),
                 clip_id: Set(new_id.clone()),
                 timestamp_us: Set(archived.keyframe.timestamp_us),
+                layout_intent: Set(if archived.keyframe.layout_intent.is_empty() {
+                    "crop".into()
+                } else {
+                    archived.keyframe.layout_intent.clone()
+                }),
                 created_at: Set(now.clone()),
                 updated_at: Set(now.clone()),
             }.insert(&transaction).await.map_err(|error| error.to_string())?;
@@ -631,7 +640,8 @@ async fn import_staged_dataset(
                     slot: Set(target.slot),
                     x: Set(target.x),
                     y: Set(target.y),
-                    radius: Set(target.radius),
+                    width: Set(target.width),
+                    height: Set(target.height),
                 }.insert(&transaction).await.map_err(|error| error.to_string())?;
             }
         }

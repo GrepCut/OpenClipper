@@ -134,7 +134,7 @@ export function TestDatasetPage() {
 
         <VStack align="stretch" gap={3}>
           <Text fontSize="xl" fontWeight="bold">Clips</Text>
-          {clips.length === 0 ? <Text color={theme.text.muted}>No clips yet. Add a source and trim a 3–60 second test segment.</Text> : clips.map((clip) => (
+          {clips.length === 0 ? <Text color={theme.text.muted}>No clips yet. Add a source and trim a test segment (min 3 seconds).</Text> : clips.map((clip) => (
             <TestClipListRow
               key={clip.id}
               clip={clip}

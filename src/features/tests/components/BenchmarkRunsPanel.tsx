@@ -14,8 +14,8 @@ function percentage(value: number | undefined): string {
   return value == null ? "—" : `${Math.round(value * 1000) / 10}%`;
 }
 
-function formatP95(value: number | null | undefined): string {
-  return value == null ? "—" : value.toFixed(2);
+function formatP5(value: number | null | undefined): string {
+  return value == null ? "—" : `${Math.round(value * 1000) / 10}%`;
 }
 
 function formatStatRow(
@@ -25,9 +25,9 @@ function formatStatRow(
 ): [string, string, string, string] {
   return [
     label === "avg" ? "Average" : label === "median" ? "Median" : label === "max" ? "Max" : "Min",
-    asPercent(stats.visible[label]),
-    asPercent(stats.focusHit[label]),
-    formatP95(stats.p95Error[label]),
+    asPercent(stats.coverage[label]),
+    asPercent(stats.coverageHit[label]),
+    formatP5(stats.p5Coverage[label]),
   ];
 }
 
@@ -189,7 +189,7 @@ export function BenchmarkRunsPanel({
                 bg={theme.background.tertiary}
                 borderTopRadius="2xl"
               >
-                {["Clip", "Aspect", "Visible", "Focus hit", "P95 error"].map((label) => (
+                {["Clip", "Aspect", "Coverage", "Coverage hit", "P5 coverage"].map((label) => (
                   <Text key={label} color={theme.text.muted} fontSize="xs" fontWeight="semibold">
                     {label}
                   </Text>
@@ -214,9 +214,9 @@ export function BenchmarkRunsPanel({
                   >
                     <Text fontSize="sm" color={theme.text.primary}>{clip?.name ?? result.clipId}</Text>
                     <Text fontSize="sm" color={theme.text.primary}>{result.aspectId}</Text>
-                    <Text fontSize="sm" color={theme.text.primary}>{percentage(result.metricsJson.targetVisibilityRate)}</Text>
-                    <Text fontSize="sm" color={theme.text.primary}>{percentage(result.metricsJson.focusHitRate)}</Text>
-                    <Text fontSize="sm" color={theme.text.primary}>{result.metricsJson.p95FocusErrorRadius?.toFixed(2) ?? "—"}</Text>
+                    <Text fontSize="sm" color={theme.text.primary}>{percentage(result.metricsJson.meanCoverageFraction)}</Text>
+                    <Text fontSize="sm" color={theme.text.primary}>{percentage(result.metricsJson.coverageHitRate)}</Text>
+                    <Text fontSize="sm" color={theme.text.primary}>{formatP5(result.metricsJson.p5CoverageFraction ?? undefined)}</Text>
                   </Grid>
                 );
               })}
@@ -228,9 +228,9 @@ export function BenchmarkRunsPanel({
             <Text fontSize="md" fontWeight="semibold" mb={2}>Primary 9:16 result</Text>
             <SimpleGrid columns={{ base: 1, sm: 3 }} gap={2} mb={4}>
               {[
-                ["Visible", percentage(columnStats.portrait9x16.visible.avg ?? undefined)],
-                ["Focus hit", percentage(columnStats.portrait9x16.focusHit.avg ?? undefined)],
-                ["Both targets visible", percentage(columnStats.portrait9x16.dualAllVisible.avg ?? undefined)],
+                ["Coverage", percentage(columnStats.portrait9x16.coverage.avg ?? undefined)],
+                ["Coverage hit", percentage(columnStats.portrait9x16.coverageHit.avg ?? undefined)],
+                ["Both boxes covered", percentage(columnStats.portrait9x16.dualAllCovered.avg ?? undefined)],
               ].map(([label, value]) => (
                 <Box key={label} border="1px solid" borderColor={theme.dashboard.border} borderRadius="xl" p={3} bg={theme.background.card}>
                   <Text color={theme.text.muted} fontSize="xs">{label}</Text>
@@ -255,13 +255,13 @@ export function BenchmarkRunsPanel({
                   bg={theme.background.tertiary}
                   borderTopRadius="2xl"
                 >
-                  {["", "Visible", "Focus hit", "P95 error"].map((label) => (
+                  {["", "Coverage", "Coverage hit", "P5 coverage"].map((label) => (
                     <Text key={label || "stat"} color={theme.text.muted} fontSize="xs" fontWeight="semibold">
                       {label}
                     </Text>
                   ))}
                 </Grid>
-                {summaryRows.map(([label, visible, focusHit, p95], index) => {
+                {summaryRows.map(([label, coverage, coverageHit, p5], index) => {
                   const isLast = index === summaryRows.length - 1;
                   return (
                     <Grid
@@ -277,9 +277,9 @@ export function BenchmarkRunsPanel({
                       borderBottomRadius={isLast ? "2xl" : undefined}
                     >
                       <Text fontSize="sm" color={theme.text.muted} fontWeight="medium">{label}</Text>
-                      <Text fontSize="sm" color={theme.text.primary}>{visible}</Text>
-                      <Text fontSize="sm" color={theme.text.primary}>{focusHit}</Text>
-                      <Text fontSize="sm" color={theme.text.primary}>{p95}</Text>
+                      <Text fontSize="sm" color={theme.text.primary}>{coverage}</Text>
+                      <Text fontSize="sm" color={theme.text.primary}>{coverageHit}</Text>
+                      <Text fontSize="sm" color={theme.text.primary}>{p5}</Text>
                     </Grid>
                   );
                 })}

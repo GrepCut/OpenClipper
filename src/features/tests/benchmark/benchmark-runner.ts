@@ -14,17 +14,17 @@ export interface BenchmarkRunnerProgress {
 }
 
 const PORTRAIT_ACCEPTANCE_GATES = {
-  minFocusHitRate: 0.705,
-  minTargetVisibilityRate: 0.92,
-  minDualTargetAllVisibleRate: 0.75,
+  minCoverageHitRate: 0.85,
+  minMeanCoverageFraction: 0.80,
+  minDualTargetAllCoveredRate: 0.75,
   /** Three times the run3 mean on the reference machine. */
   maxMeanProcessingMs: 12_350,
 };
 
 const RUN4_PORTRAIT_FLOOR = {
-  minFocusHitRate: 0.654671121995118,
-  minTargetVisibilityRate: 0.895474843578556,
-  minDualTargetAllVisibleRate: 0.350063482044689,
+  minCoverageHitRate: 0.654671121995118,
+  minMeanCoverageFraction: 0.895474843578556,
+  minDualTargetAllCoveredRate: 0.350063482044689,
 };
 
 export async function executeBenchmarkRun(input: {
@@ -64,7 +64,7 @@ export async function executeBenchmarkRun(input: {
   };
   let completedClips = 0;
   let failedClips = 0;
-  const catastrophicRegressions: Array<{ clipId: string; focusDelta: number; visibilityDelta: number }> = [];
+  const catastrophicRegressions: Array<{ clipId: string; coverageHitDelta: number; coverageDelta: number }> = [];
   try {
     for (const [clipIndex, clip] of input.clips.entries()) {
       if (input.signal.aborted) throw new DOMException("Benchmark cancelled", "AbortError");
@@ -115,10 +115,10 @@ export async function executeBenchmarkRun(input: {
         }
         const portraitComparison = output.aspects.find((aspect) => aspect.aspectId === "9-16");
         if (portraitComparison) {
-          const focusDelta = portraitComparison.metrics.focusHitRate - portraitComparison.baselineMetrics.focusHitRate;
-          const visibilityDelta = portraitComparison.metrics.targetVisibilityRate - portraitComparison.baselineMetrics.targetVisibilityRate;
-          if (visibilityDelta < -0.1) {
-            catastrophicRegressions.push({ clipId: clip.id, focusDelta, visibilityDelta });
+          const coverageHitDelta = portraitComparison.metrics.coverageHitRate - portraitComparison.baselineMetrics.coverageHitRate;
+          const coverageDelta = portraitComparison.metrics.meanCoverageFraction - portraitComparison.baselineMetrics.meanCoverageFraction;
+          if (coverageDelta < -0.1) {
+            catastrophicRegressions.push({ clipId: clip.id, coverageHitDelta, coverageDelta });
           }
         }
         for (const aspect of output.aspects) {
@@ -209,28 +209,25 @@ export async function executeBenchmarkRun(input: {
       : null;
     const portrait = columnStats.portrait9x16;
     const gateEvaluation = {
-      focusHit: portrait.focusHit.avg == null ? null : portrait.focusHit.avg >= PORTRAIT_ACCEPTANCE_GATES.minFocusHitRate,
-      visibility: portrait.visible.avg == null ? null : portrait.visible.avg >= PORTRAIT_ACCEPTANCE_GATES.minTargetVisibilityRate,
-      dualAllVisible: portrait.dualAllVisible.avg == null ? null : portrait.dualAllVisible.avg >= PORTRAIT_ACCEPTANCE_GATES.minDualTargetAllVisibleRate,
+      coverageHit: portrait.coverageHit.avg == null ? null : portrait.coverageHit.avg >= PORTRAIT_ACCEPTANCE_GATES.minCoverageHitRate,
+      coverage: portrait.coverage.avg == null ? null : portrait.coverage.avg >= PORTRAIT_ACCEPTANCE_GATES.minMeanCoverageFraction,
+      dualAllCovered: portrait.dualAllCovered.avg == null ? null : portrait.dualAllCovered.avg >= PORTRAIT_ACCEPTANCE_GATES.minDualTargetAllCoveredRate,
       processingTime: meanProcessingMs == null ? null : meanProcessingMs <= PORTRAIT_ACCEPTANCE_GATES.maxMeanProcessingMs,
       meanProcessingMs,
       passed: false,
       run4Floor: {
-        focusHit: portrait.focusHit.avg == null ? null : portrait.focusHit.avg >= RUN4_PORTRAIT_FLOOR.minFocusHitRate,
-        visibility: portrait.visible.avg == null ? null : portrait.visible.avg >= RUN4_PORTRAIT_FLOOR.minTargetVisibilityRate,
-        dualAllVisible: portrait.dualAllVisible.avg == null ? null : portrait.dualAllVisible.avg >= RUN4_PORTRAIT_FLOOR.minDualTargetAllVisibleRate,
+        coverageHit: portrait.coverageHit.avg == null ? null : portrait.coverageHit.avg >= RUN4_PORTRAIT_FLOOR.minCoverageHitRate,
+        coverage: portrait.coverage.avg == null ? null : portrait.coverage.avg >= RUN4_PORTRAIT_FLOOR.minMeanCoverageFraction,
+        dualAllCovered: portrait.dualAllCovered.avg == null ? null : portrait.dualAllCovered.avg >= RUN4_PORTRAIT_FLOOR.minDualTargetAllCoveredRate,
         noCatastrophicRegression: catastrophicRegressions.length === 0,
         passed: false,
       },
     };
-    // Focus measures centering, not whether the target remains in frame. Keep it
-    // diagnostic, but make visibility the promotion decision as requested by the
-    // project owner. The ambitious gate still reports runtime independently.
-    gateEvaluation.passed = [gateEvaluation.visibility, gateEvaluation.dualAllVisible, gateEvaluation.processingTime]
+    gateEvaluation.passed = [gateEvaluation.coverage, gateEvaluation.dualAllCovered, gateEvaluation.processingTime]
       .every((value) => value === true);
     gateEvaluation.run4Floor.passed = [
-      gateEvaluation.run4Floor.visibility,
-      gateEvaluation.run4Floor.dualAllVisible,
+      gateEvaluation.run4Floor.coverage,
+      gateEvaluation.run4Floor.dualAllCovered,
       gateEvaluation.run4Floor.noCatastrophicRegression,
     ].every((value) => value === true);
     const manifestPath = await benchmarkPersistenceService.writeArtifact(

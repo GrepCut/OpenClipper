@@ -74,10 +74,17 @@ function main(): void {
   console.log(`Loading run ${runId} (dataset ${datasetId}, aspect ${aspectId})...`);
   const { manifest, clips } = loadRun(datasetId, runId, aspectId);
   console.log(`Loaded ${clips.length} clips.\n`);
+  const portraitStats = manifest.columnStats.portrait9x16 as Record<string, { avg: number | null } | number>;
   const recordedAggregate = {
-    focusHit: manifest.columnStats.portrait9x16.focusHit.avg,
-    visibility: manifest.columnStats.portrait9x16.visible.avg,
-    dualAllVisible: manifest.columnStats.portrait9x16.dualAllVisible.avg,
+    coverageHit: (portraitStats.coverageHit as { avg: number | null } | undefined)?.avg
+      ?? (portraitStats.focusHit as { avg: number | null } | undefined)?.avg
+      ?? null,
+    coverage: (portraitStats.coverage as { avg: number | null } | undefined)?.avg
+      ?? (portraitStats.visible as { avg: number | null } | undefined)?.avg
+      ?? null,
+    dualAllCovered: (portraitStats.dualAllCovered as { avg: number | null } | undefined)?.avg
+      ?? (portraitStats.dualAllVisible as { avg: number | null } | undefined)?.avg
+      ?? null,
   };
 
   const output: Record<string, unknown> = { datasetId, runId, aspectId, mode };
@@ -85,7 +92,7 @@ function main(): void {
   if (mode === "self-check") {
     const result = selfCheck(clips, { ...DEFAULT_ARBITER_PARAMS }, aspectId === "9-16"
       ? recordedAggregate
-      : { focusHit: null, visibility: null, dualAllVisible: null });
+      : { coverageHit: null, coverage: null, dualAllCovered: null });
     if (result.passed) {
       console.log("SELF-CHECK PASSED: replay reproduces the recorded run exactly.");
     } else {
@@ -101,14 +108,14 @@ function main(): void {
     };
     const evaluated = evaluateParams(clips, params, mode === "run9" || mode === "run10" ? RUN8_PORTRAIT_FLOOR : RUN5_PORTRAIT_FLOOR);
     console.log(`Params: ${describeParams(params)}\n`);
-    console.log("| Clip | Focus | Visibility | Dual | ΔFocus | ΔVisibility |");
+    console.log("| Clip | Cov hit | Coverage | Dual | ΔHit | ΔCov |");
     console.log("|---|---:|---:|---:|---:|---:|");
     for (const [index, result] of evaluated.perClip.entries()) {
       const recorded = clips[index]!.comparison.selected;
-      console.log(`| ${result.clipName} | ${pct(result.metrics.focusHitRate)} | ${pct(result.metrics.targetVisibilityRate)} | ${pct(result.metrics.dualTargetAllVisibleRate)} | ${((result.metrics.focusHitRate - recorded.focusHitRate) * 100).toFixed(2)} | ${((result.metrics.targetVisibilityRate - recorded.targetVisibilityRate) * 100).toFixed(2)} |`);
+      console.log(`| ${result.clipName} | ${pct(result.metrics.coverageHitRate)} | ${pct(result.metrics.meanCoverageFraction)} | ${pct(result.metrics.dualTargetAllCoveredRate)} | ${((result.metrics.coverageHitRate - recorded.coverageHitRate) * 100).toFixed(2)} | ${((result.metrics.meanCoverageFraction - recorded.meanCoverageFraction) * 100).toFixed(2)} |`);
     }
-    console.log(`\nAggregate: focus ${pct(evaluated.overall.focusHit)}  visibility ${pct(evaluated.overall.visibility)}  dual ${pct(evaluated.overall.dualAllVisible)}`);
-    console.log(`Recorded baseline: focus ${pct(recordedAggregate.focusHit)}  visibility ${pct(recordedAggregate.visibility)}  dual ${pct(recordedAggregate.dualAllVisible)}`);
+    console.log(`\nAggregate: covHit ${pct(evaluated.overall.coverageHit)}  coverage ${pct(evaluated.overall.coverage)}  dual ${pct(evaluated.overall.dualAllCovered)}`);
+    console.log(`Recorded baseline: covHit ${pct(recordedAggregate.coverageHit)}  coverage ${pct(recordedAggregate.coverage)}  dual ${pct(recordedAggregate.dualAllCovered)}`);
     console.log(`Quality: contain ${pct(evaluated.overall.containDutyCycle)}  switches ${(evaluated.overall.modeSwitchesPerMinute ?? 0).toFixed(2)}/min`);
     console.log(`Gates: ${evaluated.gates.passed ? "PASS" : `FAIL (${evaluated.gates.reasons.join("; ")})`}`);
     if (evaluated.regressedClips.length) console.log(`Soft-flagged clips (>5 pp drop): ${evaluated.regressedClips.join(", ")}`);
@@ -130,10 +137,10 @@ function main(): void {
         const results = sweepFraming(clips, framingSets, framingArbiterParams, RUN5_PORTRAIT_FLOOR, (done, total) => {
           process.stdout.write(`\r  evaluated ${done}/${total}...`);
         });
-        console.log("\n\n| # | Focus | Visibility | Dual | Gates | Framing |");
+        console.log("\n\n| # | Cov hit | Coverage | Dual | Gates | Framing |");
         console.log("|---|---:|---:|---:|---|---|");
         for (const [index, result] of results.slice(0, topCount).entries()) {
-          console.log(`| ${index + 1} | ${pct(result.overall.focusHit)} | ${pct(result.overall.visibility)} | ${pct(result.overall.dualAllVisible)} | ${result.gates.passed ? "PASS" : `fail: ${result.gates.reasons.join("; ")}`} | ${JSON.stringify(result.framing)} |`);
+          console.log(`| ${index + 1} | ${pct(result.overall.coverageHit)} | ${pct(result.overall.coverage)} | ${pct(result.overall.dualAllCovered)} | ${result.gates.passed ? "PASS" : `fail: ${result.gates.reasons.join("; ")}`} | ${JSON.stringify(result.framing)} |`);
         }
         output.top = results.slice(0, topCount).map((result) => ({
           framing: result.framing,
@@ -146,8 +153,8 @@ function main(): void {
         const report = leaveOneClipOutFraming(clips, framingSets, framingArbiterParams, RUN5_PORTRAIT_FLOOR, (done, total) => {
           process.stdout.write(`\r  fold ${done}/${total}...`);
         });
-        console.log(`\n\nHeld-out mean: focus ${pct(report.heldOutMean.focusHit)}  visibility ${pct(report.heldOutMean.visibility)}  dual ${pct(report.heldOutMean.dualAllVisible)}`);
-        console.log(`Recorded mean: focus ${pct(report.recordedMean.focusHit)}  visibility ${pct(report.recordedMean.visibility)}  dual ${pct(report.recordedMean.dualAllVisible)}`);
+        console.log(`\n\nHeld-out mean: covHit ${pct(report.heldOutMean.coverageHit)}  coverage ${pct(report.heldOutMean.coverage)}  dual ${pct(report.heldOutMean.dualAllCovered)}`);
+        console.log(`Recorded mean: covHit ${pct(report.recordedMean.coverageHit)}  coverage ${pct(report.recordedMean.coverage)}  dual ${pct(report.recordedMean.dualAllCovered)}`);
         console.log("Framing-choice stability across folds:");
         for (const entry of report.framingStability) console.log(`  ${entry.folds}/${clips.length}: ${JSON.stringify(entry.framing)}`);
         output.framingLoco = report;
@@ -168,32 +175,32 @@ function main(): void {
         if (done % 50 === 0 || done === total) process.stdout.write(`\r  evaluated ${done}/${total}...`);
       });
       console.log(`\n  done in ${((Date.now() - started) / 1000).toFixed(1)}s.\n`);
-      console.log(`| # | Focus | Visibility | Dual | Worst ΔF | Worst ΔV | Gates | Params |`);
+      console.log(`| # | Cov hit | Coverage | Dual | Worst ΔHit | Worst ΔCov | Gates | Params |`);
       console.log("|---|---:|---:|---:|---:|---:|---|---|");
       for (const [index, result] of results.slice(0, topCount).entries()) {
-        console.log(`| ${index + 1} | ${pct(result.overall.focusHit)} | ${pct(result.overall.visibility)} | ${pct(result.overall.dualAllVisible)} | ${(result.worstFocusDelta * 100).toFixed(1)} | ${(result.worstVisibilityDelta * 100).toFixed(1)} | ${result.gates.passed ? "PASS" : "fail"} | ${describeParams(result.params)} |`);
+        console.log(`| ${index + 1} | ${pct(result.overall.coverageHit)} | ${pct(result.overall.coverage)} | ${pct(result.overall.dualAllCovered)} | ${(result.worstCoverageHitDelta * 100).toFixed(1)} | ${(result.worstCoverageDelta * 100).toFixed(1)} | ${result.gates.passed ? "PASS" : "fail"} | ${describeParams(result.params)} |`);
       }
       const baseline = evaluateParams(clips, { ...DEFAULT_ARBITER_PARAMS });
-      console.log(`\nDefaults for reference: focus ${pct(baseline.overall.focusHit)}  visibility ${pct(baseline.overall.visibility)}  dual ${pct(baseline.overall.dualAllVisible)}`);
+      console.log(`\nDefaults for reference: covHit ${pct(baseline.overall.coverageHit)}  coverage ${pct(baseline.overall.coverage)}  dual ${pct(baseline.overall.dualAllCovered)}`);
       output.top = results.slice(0, topCount).map((result) => ({
         params: result.params,
         overall: result.overall,
         gates: result.gates,
-        worstFocusDelta: result.worstFocusDelta,
-        worstVisibilityDelta: result.worstVisibilityDelta,
+        worstCoverageHitDelta: result.worstCoverageHitDelta,
+        worstCoverageDelta: result.worstCoverageDelta,
         regressedClips: result.regressedClips,
       }));
     } else {
       const report = leaveOneClipOut(clips, paramSets, RUN5_PORTRAIT_FLOOR, (done, total) => {
         process.stdout.write(`\r  fold ${done}/${total}...`);
       });
-      console.log("\n\n| Held-out clip | Focus | Rec. focus | Visibility | Rec. vis. | Chosen params |");
+      console.log("\n\n| Held-out clip | Cov hit | Rec. hit | Coverage | Rec. cov | Chosen params |");
       console.log("|---|---:|---:|---:|---:|---|");
       for (const fold of report.folds) {
-        console.log(`| ${fold.heldOutClip} | ${pct(fold.heldOut.focusHit)} | ${pct(fold.recordedHeldOut.focusHit)} | ${pct(fold.heldOut.visibility)} | ${pct(fold.recordedHeldOut.visibility)} | ${describeParams(fold.chosenParams)} |`);
+        console.log(`| ${fold.heldOutClip} | ${pct(fold.heldOut.coverageHit)} | ${pct(fold.recordedHeldOut.coverageHit)} | ${pct(fold.heldOut.coverage)} | ${pct(fold.recordedHeldOut.coverage)} | ${describeParams(fold.chosenParams)} |`);
       }
-      console.log(`\nHeld-out mean: focus ${pct(report.heldOutMean.focusHit)}  visibility ${pct(report.heldOutMean.visibility)}  dual ${pct(report.heldOutMean.dualAllVisible)}`);
-      console.log(`Recorded mean: focus ${pct(report.recordedMean.focusHit)}  visibility ${pct(report.recordedMean.visibility)}  dual ${pct(report.recordedMean.dualAllVisible)}`);
+      console.log(`\nHeld-out mean: covHit ${pct(report.heldOutMean.coverageHit)}  coverage ${pct(report.heldOutMean.coverage)}  dual ${pct(report.heldOutMean.dualAllCovered)}`);
+      console.log(`Recorded mean: covHit ${pct(report.recordedMean.coverageHit)}  coverage ${pct(report.recordedMean.coverage)}  dual ${pct(report.recordedMean.dualAllCovered)}`);
       console.log("\nParam-choice stability across folds:");
       for (const entry of report.paramStability) {
         console.log(`  ${entry.folds}/18 folds: ${describeParams(entry.params)}`);

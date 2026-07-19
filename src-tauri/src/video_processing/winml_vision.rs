@@ -25,6 +25,7 @@ pub enum VisionModel {
     Face,
     Object,
     YoloX,
+    #[cfg_attr(not(test), allow(dead_code))]
     ActiveSpeaker,
     Pose,
 }
@@ -167,6 +168,7 @@ fn load_model(path: &Path) -> Result<LearningModel, NativeVisionError> {
 }
 
 impl WinMlModel {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn create_multi(
         kind: VisionModel,
         path: &Path,
@@ -488,6 +490,7 @@ impl WinMlModel {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn evaluate_named(
         &mut self,
         inputs: &[(&str, &[i64], &[f32])],

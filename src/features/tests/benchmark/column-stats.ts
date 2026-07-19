@@ -8,15 +8,15 @@ export interface ColumnStatSummary {
 }
 
 export interface BenchmarkColumnStats {
-  visible: ColumnStatSummary;
-  focusHit: ColumnStatSummary;
-  p95Error: ColumnStatSummary;
+  coverage: ColumnStatSummary;
+  coverageHit: ColumnStatSummary;
+  p5Coverage: ColumnStatSummary;
   sampleCount: number;
   /** Primary product target; the all-aspect aggregate is retained for compatibility. */
   portrait9x16: {
-    visible: ColumnStatSummary;
-    focusHit: ColumnStatSummary;
-    dualAllVisible: ColumnStatSummary;
+    coverage: ColumnStatSummary;
+    coverageHit: ColumnStatSummary;
+    dualAllCovered: ColumnStatSummary;
     sampleCount: number;
   };
 }
@@ -49,24 +49,24 @@ export function computeBenchmarkColumnStats(results: BenchmarkResult[]): Benchma
   const completed = results.filter((result) => result.status === "completed");
   const portrait = completed.filter((result) => result.aspectId === "9-16");
   return {
-    visible: summarizeValues(
-      completed.map((result) => result.metricsJson.targetVisibilityRate).filter((value) => value != null),
+    coverage: summarizeValues(
+      completed.map((result) => result.metricsJson.meanCoverageFraction).filter((value) => value != null),
     ),
-    focusHit: summarizeValues(
-      completed.map((result) => result.metricsJson.focusHitRate).filter((value) => value != null),
+    coverageHit: summarizeValues(
+      completed.map((result) => result.metricsJson.coverageHitRate).filter((value) => value != null),
     ),
-    p95Error: summarizeValues(
+    p5Coverage: summarizeValues(
       completed
-        .map((result) => result.metricsJson.p95FocusErrorRadius)
+        .map((result) => result.metricsJson.p5CoverageFraction)
         .filter((value): value is number => value != null),
     ),
     sampleCount: completed.length,
     portrait9x16: {
-      visible: summarizeValues(portrait.map((result) => result.metricsJson.targetVisibilityRate)),
-      focusHit: summarizeValues(portrait.map((result) => result.metricsJson.focusHitRate)),
-      dualAllVisible: summarizeValues(
+      coverage: summarizeValues(portrait.map((result) => result.metricsJson.meanCoverageFraction)),
+      coverageHit: summarizeValues(portrait.map((result) => result.metricsJson.coverageHitRate)),
+      dualAllCovered: summarizeValues(
         portrait
-          .map((result) => result.metricsJson.dualTargetAllVisibleRate)
+          .map((result) => result.metricsJson.dualTargetAllCoveredRate)
           .filter((value): value is number => value != null),
       ),
       sampleCount: portrait.length,

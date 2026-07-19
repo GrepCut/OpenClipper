@@ -4,6 +4,13 @@ import { calculateReplayOracles } from "./replay-oracles";
 import type { ReplayedSample } from "./replay-engine";
 
 const viewport = (x: number) => ({ x, y: 0, width: 0.3, height: 1 });
+
+function gtBox(x: number, y: number, height: number) {
+  const width = (height * 1080 * (9 / 16)) / 1920;
+  return { id: "t", slot: 0 as const, x, y, width, height };
+}
+
+const targetBox = gtBox(0.71, 0.25, 0.2);
 const region = (id: string, x: number, required = true) => ({
   id,
   box: { x, y: 0.2, width: 0.1, height: 0.3 },
@@ -29,7 +36,7 @@ describe("replay oracle attribution", () => {
       cut: false,
       mode: "single-crop",
       strategy: "semantic-single",
-      viewports: [viewport(index === 3 ? 0.65 : 0)],
+      viewports: [viewport(index === 3 ? targetBox.x - 0.02 : 0)],
       requiredRegionIds: index >= 2 ? ["target"] : [],
       reasonCodes: ["test-reason"],
       candidateVariants: index === 2 ? [{ kind: "shifted-crop", mode: "single-crop", viewports: [viewport(0)], requiredCoverage: [0] }] : [],
@@ -37,8 +44,8 @@ describe("replay oracle attribution", () => {
     const frames = replaySamples.map((sample) => ({ timestampUs: sample.t * 1_000_000, viewports: sample.viewports, layoutMode: sample.mode }));
     const report = calculateReplayOracles({
       keyframes: [
-        { id: "a", timestampUs: 0, targets: [{ id: "t", slot: 0, x: 0.75, y: 0.5, radius: 0.1 }] },
-        { id: "b", timestampUs: 600_000, targets: [{ id: "t", slot: 0, x: 0.75, y: 0.5, radius: 0.1 }] },
+        { id: "a", timestampUs: 0, targets: [targetBox] },
+        { id: "b", timestampUs: 600_000, targets: [targetBox] },
       ],
       importanceSamples,
       replaySamples,

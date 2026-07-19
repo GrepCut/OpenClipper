@@ -10,10 +10,10 @@ function baselineRow(timestampUs: number): BenchmarkFrameDetail {
   return {
     timestampUs,
     targetCount: 1,
-    allTargetsVisible: true,
+    allTargetsCovered: true,
     viewports: [{ x: 0.05, y: 0, width: 0.4, height: 1 }],
     layoutMode: "single-crop",
-    targets: [{ slot: 0, visible: true, focusHit: true, focusErrorRadius: 0.5 }],
+    targets: [{ slot: 0, coverageHit: true, coverageFraction: 0.95 }],
   };
 }
 

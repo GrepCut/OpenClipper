@@ -1,5 +1,4 @@
 export const TEST_MIN_CLIP_SECONDS = 3;
-export const TEST_MAX_CLIP_SECONDS = 60;
 
 export interface TestDataset {
   id: string;
@@ -35,16 +34,20 @@ export interface TestClip {
 export interface TestTarget {
   id: string;
   slot: 0 | 1;
-  /** Normalized source coordinates. */
+  /** Normalized top-left crop rect in source space. */
   x: number;
   y: number;
-  /** Source pixels divided by the shorter source dimension. */
-  radius: number;
+  width: number;
+  height: number;
 }
+
+export type TestLayoutIntent = "crop" | "contain";
 
 export interface TestKeyframe {
   id: string;
   timestampUs: number;
+  /** crop: 1–2 targets locked to 9:16. contain: one free-aspect visibility rect. */
+  layoutIntent?: TestLayoutIntent;
   targets: TestTarget[];
 }
 
@@ -66,28 +69,27 @@ export interface BenchmarkRun {
 export interface BenchmarkMetrics {
   frameCount: number;
   targetObservationCount: number;
-  visibleTargetCount: number;
-  allTargetsVisibleFrameCount: number;
-  focusHitCount: number;
+  coveredTargetCount: number;
+  allTargetsCoveredFrameCount: number;
+  coverageHitCount: number;
   dualTargetFrameCount: number;
-  dualTargetAllVisibleFrameCount: number;
-  targetVisibilityRate: number;
-  allTargetsVisibleFrameRate: number;
-  focusHitRate: number;
-  dualTargetAllVisibleRate: number | null;
-  meanFocusErrorRadius: number | null;
-  medianFocusErrorRadius: number | null;
-  p95FocusErrorRadius: number | null;
+  dualTargetAllCoveredFrameCount: number;
+  meanCoverageFraction: number;
+  allTargetsCoveredFrameRate: number;
+  coverageHitRate: number;
+  dualTargetAllCoveredRate: number | null;
+  medianCoverageFraction: number | null;
+  p5CoverageFraction: number | null;
   singleTargetFrameCount?: number;
-  singleTargetVisibilityRate?: number | null;
-  singleTargetFocusHitRate?: number | null;
-  dualTargetFocusHitRate?: number | null;
+  singleTargetMeanCoverageFraction?: number | null;
+  singleTargetCoverageHitRate?: number | null;
+  dualTargetCoverageHitRate?: number | null;
   layoutModeFrameCounts?: Record<"single-crop" | "split" | "contain", number>;
   layoutModeRates?: Record<"single-crop" | "split" | "contain", number>;
   meanViewportCenterVelocity?: number | null;
   p95ViewportCenterVelocity?: number | null;
   p95ViewportCenterAcceleration?: number | null;
-  meanFocusReacquisitionMs?: number | null;
+  meanCoverageReacquisitionMs?: number | null;
   modeSwitchesPerMinute?: number;
   containDutyCycle?: number;
   medianSubjectDisplayHeightFraction?: number | null;

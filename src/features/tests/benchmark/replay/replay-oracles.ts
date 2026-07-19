@@ -1,4 +1,6 @@
 import type { ImportanceRegion, ImportanceRegionSample, NormalizedBox, SubjectDetectionSample } from "../../../clipper/shared/smart-crop";
+import { COVERAGE_HIT_THRESHOLD, coverageOfTarget, targetBox } from "../target-geometry";
+import { coveredFraction } from "../../../clipper/engine/autoflip/layout-arbiter";
 import type { TestKeyframe, TestTarget } from "../../types";
 import { evaluateGroundTruth } from "../ground-truth";
 import type { BenchmarkFrameInput } from "../metrics";
@@ -37,13 +39,12 @@ export interface ReplayOracleReport {
 
 const EPSILON = 1e-9;
 
-function pointIn(box: NormalizedBox, target: TestTarget): boolean {
-  return target.x >= box.x - EPSILON && target.x <= box.x + box.width + EPSILON
-    && target.y >= box.y - EPSILON && target.y <= box.y + box.height + EPSILON;
+function coversTarget(box: NormalizedBox, target: TestTarget): boolean {
+  return coveredFraction(box, targetBox(target)) >= COVERAGE_HIT_THRESHOLD - EPSILON;
 }
 
 function visible(viewports: NormalizedBox[], target: TestTarget): boolean {
-  return viewports.some((viewport) => pointIn(viewport, target));
+  return coverageOfTarget(viewports, target) >= COVERAGE_HIT_THRESHOLD - EPSILON;
 }
 
 function preceding<T>(items: T[], predicate: (item: T) => number, time: number): number {
@@ -67,7 +68,7 @@ function observedEvidence(sample: ImportanceRegionSample | undefined): Importanc
 }
 
 function sourceOf(regions: ImportanceRegion[], target: TestTarget): string {
-  const sources = regions.filter((region) => pointIn(region.contentBox, target)).flatMap((region) => region.sources);
+  const sources = regions.filter((region) => coversTarget(region.contentBox, target)).flatMap((region) => region.sources);
   return [...new Set(sources)].sort().join("+") || "none";
 }
 
@@ -136,13 +137,13 @@ export function calculateReplayOracles(input: {
         ...(raw.poseSubjects ?? []).filter((item) => !item.predicted).flatMap((item) => [item.box, ...(item.headBox ? [item.headBox] : [])]),
       ] : null;
       const evidenceHit = rawEvidence
-        ? rawEvidence.some((box) => pointIn(box, target))
-        : evidence.some((region) => pointIn(region.contentBox, target));
+        ? rawEvidence.some((box) => coversTarget(box, target))
+        : evidence.some((region) => coversTarget(region.contentBox, target));
       const canonicalHit = raw?.canonicalPersons?.some((track) =>
         track.state !== "predicted"
         && !track.identityAmbiguous
-        && [track.personBox, track.faceBox, track.poseBox].some((box) => box != null && pointIn(box, target)));
-      const identityHit = canonicalHit ?? required.some((region) => pointIn(region.contentBox, target));
+        && [track.personBox, track.faceBox, track.poseBox].some((box) => box != null && coversTarget(box, target)));
+      const identityHit = canonicalHit ?? required.some((region) => coversTarget(region.contentBox, target));
       const layoutHit = variants.some((variant) => visible(variant.viewports, target));
       const futureHit = [0.2, 0.4, 0.6, 0.8, 1].some((offset) => {
         const futureIndex = preceding(input.replaySamples, (sample) => sample.t, time + offset);

@@ -79,7 +79,7 @@ export function TestsHomeView() {
         <Box p={10} border="1px dashed" borderColor={theme.dashboard.border} borderRadius="2xl" textAlign="center">
           <FlaskConical size={34} style={{ margin: "0 auto 12px" }} />
           <Text fontWeight="semibold">No manual test datasets yet</Text>
-          <Text color={theme.text.muted} fontSize="sm" mt={1}>Create one, then add independently stored clips up to 60 seconds.</Text>
+          <Text color={theme.text.muted} fontSize="sm" mt={1}>Create one, then add independently stored clips from your source videos.</Text>
         </Box>
       ) : (
         <VStack align="stretch" gap={3}>

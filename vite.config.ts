@@ -152,6 +152,14 @@ export default defineConfig(({ mode, command }) => {
       __OPEN_CLIPPER_MODELS_CDN_BASE__: JSON.stringify(modelsCdnBase),
     },
     publicDir: omitModelsFromTauriBuild ? false : undefined,
+    optimizeDeps: {
+      entries: [join(rootDir, "index.html")],
+    },
+    build: {
+      rollupOptions: {
+        input: join(rootDir, "index.html"),
+      },
+    },
     worker: {
       format: "es",
     },
@@ -168,7 +176,7 @@ export default defineConfig(({ mode, command }) => {
           }
         : undefined,
       watch: {
-        ignored: ["**/src-tauri/**"],
+        ignored: ["**/src-tauri/**", "**/reference-algorithms/**"],
       },
     },
   };

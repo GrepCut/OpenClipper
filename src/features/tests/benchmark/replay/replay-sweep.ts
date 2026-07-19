@@ -24,33 +24,33 @@ export interface EvaluatedParams {
   overall: AggregateMetrics;
   perClip: ClipReplayResult[];
   /** Deltas vs the recorded selected metrics of the source run, in rate units. */
-  worstFocusDelta: number;
-  worstVisibilityDelta: number;
-  worstClipVisibility: number;
+  worstCoverageHitDelta: number;
+  worstCoverageDelta: number;
+  worstClipCoverage: number;
   qualityPenalty: number;
-  /** Clips where visibility dropped by more than 10 pp. Focus is diagnostic only. */
+  /** Clips where coverage dropped by more than 10 pp. Coverage hit is diagnostic only. */
   catastrophicClips: string[];
-  /** Clips where focus or visibility dropped by more than 5 pp (soft flag). */
+  /** Clips where coverage hit or coverage dropped by more than 5 pp (soft flag). */
   regressedClips: string[];
   gates: { passed: boolean; reasons: string[] };
 }
 
 export interface GateThresholds {
-  minFocus: number;
-  minVisibility: number;
+  minCoverageHit: number;
+  minCoverage: number;
   minDual: number;
 }
 
 /** Run6 recorded 9:16 aggregate — the immutable promotion floor. */
 export const RUN6_PORTRAIT_FLOOR: GateThresholds = {
-  minFocus: 0.6925,
-  minVisibility: 0.9091,
+  minCoverageHit: 0.6925,
+  minCoverage: 0.9091,
   minDual: 0.350063482044689,
 };
-/** Run 8 production floor used for Run 9 promotion. Focus is diagnostic only. */
+/** Run 8 production floor used for Run 9 promotion. Coverage hit is diagnostic only. */
 export const RUN8_PORTRAIT_FLOOR: GateThresholds = {
-  minFocus: 0,
-  minVisibility: 0.9186,
+  minCoverageHit: 0,
+  minCoverage: 0.9186,
   minDual: 0.5121,
 };
 /** Backwards-compatible export for existing replay scripts. */
@@ -64,27 +64,27 @@ export function evaluateParams(
 ): EvaluatedParams {
   const perClip = clips.map((clip) => replayClip(clip, params, framing));
   const overall = aggregate(perClip);
-  let worstFocusDelta = 0;
-  let worstVisibilityDelta = 0;
-  let worstClipVisibility = 1;
+  let worstCoverageHitDelta = 0;
+  let worstCoverageDelta = 0;
+  let worstClipCoverage = 1;
   const catastrophicClips: string[] = [];
   const regressedClips: string[] = [];
   for (const [index, result] of perClip.entries()) {
     const recorded = clips[index]!.comparison.selected;
-    const focusDelta = result.metrics.focusHitRate - recorded.focusHitRate;
-    const visibilityDelta = result.metrics.targetVisibilityRate - recorded.targetVisibilityRate;
-    worstFocusDelta = Math.min(worstFocusDelta, focusDelta);
-    worstVisibilityDelta = Math.min(worstVisibilityDelta, visibilityDelta);
-    worstClipVisibility = Math.min(worstClipVisibility, result.metrics.targetVisibilityRate);
-    if (visibilityDelta < -0.1) catastrophicClips.push(result.clipName);
-    else if (visibilityDelta < -0.05) regressedClips.push(result.clipName);
+    const coverageHitDelta = result.metrics.coverageHitRate - recorded.coverageHitRate;
+    const coverageDelta = result.metrics.meanCoverageFraction - recorded.meanCoverageFraction;
+    worstCoverageHitDelta = Math.min(worstCoverageHitDelta, coverageHitDelta);
+    worstCoverageDelta = Math.min(worstCoverageDelta, coverageDelta);
+    worstClipCoverage = Math.min(worstClipCoverage, result.metrics.meanCoverageFraction);
+    if (coverageDelta < -0.1) catastrophicClips.push(result.clipName);
+    else if (coverageDelta < -0.05 || coverageHitDelta < -0.05) regressedClips.push(result.clipName);
   }
   const containPenalty = Math.max(0, (overall.containDutyCycle ?? 0) - 0.05);
   const switchPenalty = Math.max(0, (overall.modeSwitchesPerMinute ?? 0) - 6) / 60;
   const qualityPenalty = containPenalty + switchPenalty;
   const reasons: string[] = [];
-  if (overall.visibility < gatesAt.minVisibility) reasons.push(`visibility ${(overall.visibility * 100).toFixed(2)} < ${(gatesAt.minVisibility * 100).toFixed(2)}`);
-  if ((overall.dualAllVisible ?? 0) < gatesAt.minDual) reasons.push(`dual ${((overall.dualAllVisible ?? 0) * 100).toFixed(2)} < ${(gatesAt.minDual * 100).toFixed(2)}`);
+  if (overall.coverage < gatesAt.minCoverage) reasons.push(`coverage ${(overall.coverage * 100).toFixed(2)} < ${(gatesAt.minCoverage * 100).toFixed(2)}`);
+  if ((overall.dualAllCovered ?? 0) < gatesAt.minDual) reasons.push(`dual ${((overall.dualAllCovered ?? 0) * 100).toFixed(2)} < ${(gatesAt.minDual * 100).toFixed(2)}`);
   if (catastrophicClips.length) reasons.push(`catastrophic: ${catastrophicClips.join(", ")}`);
   if ((overall.containDutyCycle ?? 0) > 0.05) reasons.push(`contain duty ${((overall.containDutyCycle ?? 0) * 100).toFixed(2)} > 5.00`);
   if ((overall.modeSwitchesPerMinute ?? 0) > 6) reasons.push(`mode switches ${(overall.modeSwitchesPerMinute ?? 0).toFixed(2)}/min > 6`);
@@ -93,9 +93,9 @@ export function evaluateParams(
     framing,
     overall,
     perClip,
-    worstFocusDelta,
-    worstVisibilityDelta,
-    worstClipVisibility,
+    worstCoverageHitDelta,
+    worstCoverageDelta,
+    worstClipCoverage,
     qualityPenalty,
     catastrophicClips,
     regressedClips,
@@ -108,10 +108,10 @@ export function compareByObjective(a: EvaluatedParams, b: EvaluatedParams): numb
   if (a.catastrophicClips.length !== b.catastrophicClips.length) {
     return a.catastrophicClips.length - b.catastrophicClips.length;
   }
-  if (a.worstClipVisibility !== b.worstClipVisibility) return b.worstClipVisibility - a.worstClipVisibility;
-  if (a.overall.visibility !== b.overall.visibility) return b.overall.visibility - a.overall.visibility;
-  const dualA = a.overall.dualAllVisible ?? 0;
-  const dualB = b.overall.dualAllVisible ?? 0;
+  if (a.worstClipCoverage !== b.worstClipCoverage) return b.worstClipCoverage - a.worstClipCoverage;
+  if (a.overall.coverage !== b.overall.coverage) return b.overall.coverage - a.overall.coverage;
+  const dualA = a.overall.dualAllCovered ?? 0;
+  const dualB = b.overall.dualAllCovered ?? 0;
   if (dualA !== dualB) return dualB - dualA;
   if (a.qualityPenalty !== b.qualityPenalty) return a.qualityPenalty - b.qualityPenalty;
   const costA = a.perClip.reduce((sum, result) => sum + (result.metrics.processingMs ?? 0), 0);
@@ -136,16 +136,16 @@ export function sweep(
 export interface LocoFold {
   heldOutClip: string;
   chosenParams: ArbiterParams;
-  trainFocus: number;
-  heldOut: { focusHit: number; visibility: number; dualAllVisible: number | null };
-  recordedHeldOut: { focusHit: number; visibility: number; dualAllVisible: number | null };
+  trainCoverageHit: number;
+  heldOut: { coverageHit: number; coverage: number; dualAllCovered: number | null };
+  recordedHeldOut: { coverageHit: number; coverage: number; dualAllCovered: number | null };
 }
 
 export interface LocoReport {
   folds: LocoFold[];
   /** Mean held-out metrics across folds — the honest generalization estimate. */
-  heldOutMean: { focusHit: number; visibility: number; dualAllVisible: number | null };
-  recordedMean: { focusHit: number; visibility: number; dualAllVisible: number | null };
+  heldOutMean: { coverageHit: number; coverage: number; dualAllCovered: number | null };
+  recordedMean: { coverageHit: number; coverage: number; dualAllCovered: number | null };
   /** How often each distinct winning param set was chosen across folds. */
   paramStability: Array<{ params: ArbiterParams; folds: number }>;
 }
@@ -169,23 +169,23 @@ export function leaveOneClipOut(
     folds.push({
       heldOutClip: heldOut.dims.name,
       chosenParams: best.params,
-      trainFocus: best.overall.focusHit,
+      trainCoverageHit: best.overall.coverageHit,
       heldOut: {
-        focusHit: heldOutResult.metrics.focusHitRate,
-        visibility: heldOutResult.metrics.targetVisibilityRate,
-        dualAllVisible: heldOutResult.metrics.dualTargetAllVisibleRate,
+        coverageHit: heldOutResult.metrics.coverageHitRate,
+        coverage: heldOutResult.metrics.meanCoverageFraction,
+        dualAllCovered: heldOutResult.metrics.dualTargetAllCoveredRate,
       },
       recordedHeldOut: {
-        focusHit: heldOut.comparison.selected.focusHitRate,
-        visibility: heldOut.comparison.selected.targetVisibilityRate,
-        dualAllVisible: heldOut.comparison.selected.dualTargetAllVisibleRate,
+        coverageHit: heldOut.comparison.selected.coverageHitRate,
+        coverage: heldOut.comparison.selected.meanCoverageFraction,
+        dualAllCovered: heldOut.comparison.selected.dualTargetAllCoveredRate,
       },
     });
     onProgress?.(index + 1, clips.length);
   }
   const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
-  const dual = folds.map((fold) => fold.heldOut.dualAllVisible).filter((value): value is number => value != null);
-  const recordedDual = folds.map((fold) => fold.recordedHeldOut.dualAllVisible).filter((value): value is number => value != null);
+  const dual = folds.map((fold) => fold.heldOut.dualAllCovered).filter((value): value is number => value != null);
+  const recordedDual = folds.map((fold) => fold.recordedHeldOut.dualAllCovered).filter((value): value is number => value != null);
   const byKey = new Map<string, { params: ArbiterParams; folds: number }>();
   for (const fold of folds) {
     const key = JSON.stringify(fold.chosenParams);
@@ -196,14 +196,14 @@ export function leaveOneClipOut(
   return {
     folds,
     heldOutMean: {
-      focusHit: mean(folds.map((fold) => fold.heldOut.focusHit)),
-      visibility: mean(folds.map((fold) => fold.heldOut.visibility)),
-      dualAllVisible: dual.length ? mean(dual) : null,
+      coverageHit: mean(folds.map((fold) => fold.heldOut.coverageHit)),
+      coverage: mean(folds.map((fold) => fold.heldOut.coverage)),
+      dualAllCovered: dual.length ? mean(dual) : null,
     },
     recordedMean: {
-      focusHit: mean(folds.map((fold) => fold.recordedHeldOut.focusHit)),
-      visibility: mean(folds.map((fold) => fold.recordedHeldOut.visibility)),
-      dualAllVisible: recordedDual.length ? mean(recordedDual) : null,
+      coverageHit: mean(folds.map((fold) => fold.recordedHeldOut.coverageHit)),
+      coverage: mean(folds.map((fold) => fold.recordedHeldOut.coverage)),
+      dualAllCovered: recordedDual.length ? mean(recordedDual) : null,
     },
     paramStability: [...byKey.values()].sort((a, b) => b.folds - a.folds),
   };
@@ -253,8 +253,8 @@ export interface FramingLocoReport {
   folds: Array<{
     heldOutClip: string;
     chosenFraming: SemanticFramingParams;
-    heldOut: { focusHit: number; visibility: number; dualAllVisible: number | null };
-    recordedHeldOut: { focusHit: number; visibility: number; dualAllVisible: number | null };
+    heldOut: { coverageHit: number; coverage: number; dualAllCovered: number | null };
+    recordedHeldOut: { coverageHit: number; coverage: number; dualAllCovered: number | null };
   }>;
   heldOutMean: AggregateMetrics;
   recordedMean: AggregateMetrics;
@@ -277,25 +277,25 @@ export function leaveOneClipOutFraming(
       heldOutClip: heldOut.dims.name,
       chosenFraming: best.framing!,
       heldOut: {
-        focusHit: result.metrics.focusHitRate,
-        visibility: result.metrics.targetVisibilityRate,
-        dualAllVisible: result.metrics.dualTargetAllVisibleRate,
+        coverageHit: result.metrics.coverageHitRate,
+        coverage: result.metrics.meanCoverageFraction,
+        dualAllCovered: result.metrics.dualTargetAllCoveredRate,
       },
       recordedHeldOut: {
-        focusHit: heldOut.comparison.selected.focusHitRate,
-        visibility: heldOut.comparison.selected.targetVisibilityRate,
-        dualAllVisible: heldOut.comparison.selected.dualTargetAllVisibleRate,
+        coverageHit: heldOut.comparison.selected.coverageHitRate,
+        coverage: heldOut.comparison.selected.meanCoverageFraction,
+        dualAllCovered: heldOut.comparison.selected.dualTargetAllCoveredRate,
       },
     });
     onProgress?.(index + 1, clips.length);
   }
   const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
   const aggregateFolds = (source: "heldOut" | "recordedHeldOut"): AggregateMetrics => {
-    const dual = folds.map((fold) => fold[source].dualAllVisible).filter((value): value is number => value != null);
+    const dual = folds.map((fold) => fold[source].dualAllCovered).filter((value): value is number => value != null);
     return {
-      focusHit: mean(folds.map((fold) => fold[source].focusHit)),
-      visibility: mean(folds.map((fold) => fold[source].visibility)),
-      dualAllVisible: dual.length ? mean(dual) : null,
+      coverageHit: mean(folds.map((fold) => fold[source].coverageHit)),
+      coverage: mean(folds.map((fold) => fold[source].coverage)),
+      dualAllCovered: dual.length ? mean(dual) : null,
       clipCount: folds.length,
     };
   };

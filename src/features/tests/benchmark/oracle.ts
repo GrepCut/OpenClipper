@@ -1,4 +1,5 @@
 import type { TestKeyframe, TestTarget } from "../types";
+import { targetCenter, targetBox } from "./target-geometry";
 import { evaluateGroundTruth } from "./ground-truth";
 import { calculateBenchmarkMetrics, type BenchmarkFrameInput, type NormalizedViewport } from "./metrics";
 
@@ -20,8 +21,8 @@ function centeredViewport(
 ): NormalizedViewport {
   const nominal = nominalSize(sourceAspect, targetAspect);
   const size = { width: nominal.width * scale, height: nominal.height * scale };
-  const centerX = targets.reduce((sum, target) => sum + target.x, 0) / Math.max(1, targets.length);
-  const centerY = targets.reduce((sum, target) => sum + target.y, 0) / Math.max(1, targets.length);
+  const centerX = targets.reduce((sum, target) => sum + targetCenter(target).x, 0) / Math.max(1, targets.length);
+  const centerY = targets.reduce((sum, target) => sum + targetCenter(target).y, 0) / Math.max(1, targets.length);
   return {
     x: clamp(centerX - size.width / 2, 0, 1 - size.width),
     y: clamp(centerY - size.height / 2, 0, 1 - size.height),
@@ -43,7 +44,7 @@ function framesForPolicy(input: {
     const targets = evaluateGroundTruth(input.keyframes, timestampUs);
     const split = input.splitDualTargets && targets.length === 2;
     const viewports = split
-      ? targets.map((target) => centeredViewport([target], sourceAspect, input.targetAspectRatio * 2, 0.1))
+      ? targets.map((target) => targetBox(target))
       : [centeredViewport(targets, sourceAspect, input.targetAspectRatio)];
     return { timestampUs, viewports, layoutMode: split ? "split" : "single-crop" };
   });

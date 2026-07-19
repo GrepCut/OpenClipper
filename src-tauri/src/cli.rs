@@ -97,11 +97,11 @@ pub struct BenchmarkCliClipSummary {
 pub struct BenchmarkCliAspectSummary {
     pub aspect_id: String,
     pub status: String,
-    pub focus_hit_rate: Option<f64>,
-    pub target_visibility_rate: Option<f64>,
-    pub dual_target_all_visible_rate: Option<f64>,
+    pub coverage_hit_rate: Option<f64>,
+    pub mean_coverage_fraction: Option<f64>,
+    pub dual_target_all_covered_rate: Option<f64>,
     pub layout_mode_rates: Option<HashMap<String, f64>>,
-    pub mean_focus_error_radius: Option<f64>,
+    pub median_coverage_fraction: Option<f64>,
     pub error: Option<String>,
 }
 
@@ -454,24 +454,24 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
             continue;
         }
         for aspect in &clip.aspects {
-            let focus = aspect
-                .focus_hit_rate
+            let coverage_hit = aspect
+                .coverage_hit_rate
                 .map(|value| format!("{:.1}%", value * 100.0))
                 .unwrap_or_else(|| "—".to_string());
-            let mean_err = aspect
-                .mean_focus_error_radius
-                .map(|value| format!("{value:.3}"))
-                .unwrap_or_else(|| "—".to_string());
-            let visibility = aspect
-                .target_visibility_rate
+            let median_cov = aspect
+                .median_coverage_fraction
                 .map(|value| format!("{:.1}%", value * 100.0))
                 .unwrap_or_else(|| "—".to_string());
-            let dual_visibility = aspect
-                .dual_target_all_visible_rate
+            let coverage = aspect
+                .mean_coverage_fraction
+                .map(|value| format!("{:.1}%", value * 100.0))
+                .unwrap_or_else(|| "—".to_string());
+            let dual_covered = aspect
+                .dual_target_all_covered_rate
                 .map(|value| format!("{:.1}%", value * 100.0))
                 .unwrap_or_else(|| "—".to_string());
             println!(
-                "- {} {} focusHit={focus} visible={visibility} dualVisible={dual_visibility} meanErr={mean_err} [{}]",
+                "- {} {} coverageHit={coverage_hit} coverage={coverage} dualCovered={dual_covered} medianCov={median_cov} [{}]",
                 clip.clip_name, aspect.aspect_id, aspect.status
             );
             if let Some(error) = &aspect.error {

@@ -7,7 +7,7 @@ import { appToast } from "../../../shared/utils/toast.service";
 import { pathBackedFile } from "../../clipper/platform/native-source";
 import { resolveFilePlayableUrl } from "../../clipper/persistence/tauri-media";
 import { testDataService } from "../test-data.service";
-import { TEST_MAX_CLIP_SECONDS, TEST_MIN_CLIP_SECONDS, type TestClip } from "../types";
+import { TEST_MIN_CLIP_SECONDS, type TestClip } from "../types";
 
 function timeLabel(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -26,7 +26,7 @@ export function CreateTestClipModal(props: {
   const [url, setUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [name, setName] = useState("");
-  const [range, setRange] = useState<[number, number]>([0, TEST_MAX_CLIP_SECONDS]);
+  const [range, setRange] = useState<[number, number]>([0, 0]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function CreateTestClipModal(props: {
     setUrl(null);
     setDuration(0);
     setName("");
-    setRange([0, TEST_MAX_CLIP_SECONDS]);
+    setRange([0, 0]);
   }, [props.open]);
 
   const choose = async () => {
@@ -57,7 +57,6 @@ export function CreateTestClipModal(props: {
   const changeRange = (next: number[]) => {
     let start = Math.max(0, next[0] ?? 0);
     let end = Math.min(duration, next[1] ?? duration);
-    if (end - start > TEST_MAX_CLIP_SECONDS) end = Math.min(duration, start + TEST_MAX_CLIP_SECONDS);
     if (end - start < TEST_MIN_CLIP_SECONDS) {
       end = Math.min(duration, start + TEST_MIN_CLIP_SECONDS);
       start = Math.max(0, end - TEST_MIN_CLIP_SECONDS);
@@ -67,7 +66,7 @@ export function CreateTestClipModal(props: {
   };
 
   const submit = async () => {
-    if (!sourcePath || range[1] - range[0] < TEST_MIN_CLIP_SECONDS || range[1] - range[0] > TEST_MAX_CLIP_SECONDS || loading) return;
+    if (!sourcePath || range[1] - range[0] < TEST_MIN_CLIP_SECONDS || loading) return;
     setLoading(true);
     try {
       const clip = await testDataService.createClip({
@@ -92,7 +91,7 @@ export function CreateTestClipModal(props: {
     <StyledModal
       isOpen={props.open}
       onClose={props.onClose}
-      title="Add a 3–60 second test clip"
+      title="Add a test clip"
       size="xl"
       isLoading={loading}
       footer={
@@ -122,7 +121,7 @@ export function CreateTestClipModal(props: {
                 onLoadedMetadata={(event) => {
                   const value = event.currentTarget.duration;
                   setDuration(value);
-                  setRange([0, Math.min(TEST_MAX_CLIP_SECONDS, value)]);
+                  setRange([0, value]);
                 }}
               />
             </Box>

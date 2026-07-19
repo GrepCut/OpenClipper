@@ -18,7 +18,8 @@ pub struct TestTargetDto {
     pub slot: i32,
     pub x: f64,
     pub y: f64,
-    pub radius: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -26,7 +27,21 @@ pub struct TestTargetDto {
 pub struct TestKeyframeDto {
     pub id: String,
     pub timestamp_us: i64,
+    #[serde(default = "default_layout_intent")]
+    pub layout_intent: String,
     pub targets: Vec<TestTargetDto>,
+}
+
+fn default_layout_intent() -> String {
+    "crop".into()
+}
+
+fn layout_intent(frame: &TestKeyframeDto) -> &str {
+    if frame.layout_intent.is_empty() || frame.layout_intent == "crop" {
+        "crop"
+    } else {
+        frame.layout_intent.as_str()
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -173,12 +188,14 @@ impl TestRepository {
                     slot: target.slot,
                     x: target.x,
                     y: target.y,
-                    radius: target.radius,
+                    width: target.width,
+                    height: target.height,
                 })
                 .collect();
             output.push(TestKeyframeDto {
                 id: frame.id,
                 timestamp_us: frame.timestamp_us,
+                layout_intent: frame.layout_intent,
                 targets,
             });
         }
@@ -190,7 +207,11 @@ impl TestRepository {
         clip_id: &str,
         keyframes: Vec<TestKeyframeDto>,
     ) -> DbResult<(i32, Vec<TestKeyframeDto>)> {
-        validate_keyframes(&keyframes)?;
+        let clip = test_clip::Entity::find_by_id(clip_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Test clip was not found."))?;
+        validate_keyframes(&keyframes, clip.width as f64, clip.height as f64)?;
         let transaction = db.begin().await?;
         let existing = test_keyframe::Entity::find()
             .filter(test_keyframe::Column::ClipId.eq(clip_id))
@@ -213,6 +234,7 @@ impl TestRepository {
                 id: Set(frame.id.clone()),
                 clip_id: Set(clip_id.to_owned()),
                 timestamp_us: Set(frame.timestamp_us),
+                layout_intent: Set(frame.layout_intent.clone()),
                 created_at: Set(now.clone()),
                 updated_at: Set(now.clone()),
             }
@@ -225,16 +247,13 @@ impl TestRepository {
                     slot: Set(target.slot),
                     x: Set(target.x),
                     y: Set(target.y),
-                    radius: Set(target.radius),
+                    width: Set(target.width),
+                    height: Set(target.height),
                 }
                 .insert(&transaction)
                 .await?;
             }
         }
-        let clip = test_clip::Entity::find_by_id(clip_id)
-            .one(&transaction)
-            .await?
-            .ok_or_else(|| DbError::message("Test clip was not found."))?;
         let revision = clip.annotation_revision + 1;
         let dataset_id = clip.dataset_id.clone();
         let mut active: test_clip::ActiveModel = clip.into();
@@ -341,25 +360,45 @@ impl TestRepository {
     }
 }
 
-fn validate_keyframes(keyframes: &[TestKeyframeDto]) -> DbResult<()> {
+fn validate_keyframes(keyframes: &[TestKeyframeDto], source_width: f64, source_height: f64) -> DbResult<()> {
+    const TARGET_ASPECT: f64 = 9.0 / 16.0;
+    const ASPECT_TOLERANCE: f64 = 0.01;
     let mut last = None;
     for frame in keyframes {
         if frame.timestamp_us < 0 || last.is_some_and(|value| frame.timestamp_us <= value) {
             return Err(DbError::message("Keyframes must have unique ascending timestamps."));
         }
-        if !(1..=2).contains(&frame.targets.len()) {
-            return Err(DbError::message("Each keyframe must contain one or two targets."));
+        let intent = layout_intent(frame);
+        if intent != "crop" && intent != "contain" {
+            return Err(DbError::message("Keyframe layout intent must be crop or contain."));
+        }
+        if intent == "contain" {
+            if frame.targets.len() != 1 {
+                return Err(DbError::message("Contain keyframes must contain exactly one target."));
+            }
+        } else if !(1..=2).contains(&frame.targets.len()) {
+            return Err(DbError::message("Each crop keyframe must contain one or two targets."));
         }
         for (index, target) in frame.targets.iter().enumerate() {
             if target.slot != index as i32
                 || !target.x.is_finite()
                 || !target.y.is_finite()
-                || !target.radius.is_finite()
-                || !(0.0..=1.0).contains(&target.x)
-                || !(0.0..=1.0).contains(&target.y)
-                || target.radius <= 0.0
+                || !target.width.is_finite()
+                || !target.height.is_finite()
+                || target.width <= 0.0
+                || target.height <= 0.0
+                || target.x < 0.0
+                || target.y < 0.0
+                || target.x + target.width > 1.0 + 1e-9
+                || target.y + target.height > 1.0 + 1e-9
             {
                 return Err(DbError::message("Invalid normalized target geometry."));
+            }
+            if intent == "crop" {
+                let aspect = (target.width * source_width) / (target.height * source_height).max(1e-9);
+                if (aspect - TARGET_ASPECT).abs() > ASPECT_TOLERANCE {
+                    return Err(DbError::message("Target crop boxes must be 9:16 in pixel space."));
+                }
             }
         }
         last = Some(frame.timestamp_us);

@@ -12,6 +12,8 @@ pub struct Model {
     #[sea_orm(indexed)]
     pub timestamp_us: i64,
     #[sea_orm(column_type = "Text")]
+    pub layout_intent: String,
+    #[sea_orm(column_type = "Text")]
     pub created_at: String,
     #[sea_orm(column_type = "Text")]
     pub updated_at: String,

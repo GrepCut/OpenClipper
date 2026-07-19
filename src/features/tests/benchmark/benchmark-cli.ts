@@ -11,11 +11,11 @@ export interface BenchmarkCliRequest {
 export interface BenchmarkCliAspectSummary {
   aspectId: string;
   status: string;
-  focusHitRate: number | null;
-  targetVisibilityRate: number | null;
-  dualTargetAllVisibleRate: number | null;
+  coverageHitRate: number | null;
+  meanCoverageFraction: number | null;
+  dualTargetAllCoveredRate: number | null;
   layoutModeRates: Record<"single-crop" | "split" | "contain", number> | null;
-  meanFocusErrorRadius: number | null;
+  medianCoverageFraction: number | null;
   error: string | null;
 }
 
@@ -91,11 +91,11 @@ function summarizeResults(
     const aspects = clipResults.map((result) => ({
       aspectId: result.aspectId,
       status: result.status,
-      focusHitRate: result.metricsJson.focusHitRate ?? null,
-      targetVisibilityRate: result.metricsJson.targetVisibilityRate ?? null,
-      dualTargetAllVisibleRate: result.metricsJson.dualTargetAllVisibleRate ?? null,
+      coverageHitRate: result.metricsJson.coverageHitRate ?? null,
+      meanCoverageFraction: result.metricsJson.meanCoverageFraction ?? null,
+      dualTargetAllCoveredRate: result.metricsJson.dualTargetAllCoveredRate ?? null,
       layoutModeRates: result.metricsJson.layoutModeRates ?? null,
-      meanFocusErrorRadius: result.metricsJson.meanFocusErrorRadius ?? null,
+      medianCoverageFraction: result.metricsJson.medianCoverageFraction ?? null,
       error: result.error,
     }));
     const failed = clipResults.some((result) => result.status === "failed");

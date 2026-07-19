@@ -201,6 +201,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn migration_drops_legacy_test_target_radius_column() {
+        let dir = tempdir().expect("tempdir");
+        let db_path = dir.path().join("clipper.sqlite3");
+        let database = open_test_database(&db_path).await;
+        synchronize_schema(&database).await.expect("schema sync");
+        database
+            .execute_unprepared(
+                "ALTER TABLE test_targets ADD COLUMN radius REAL NOT NULL DEFAULT 0.1",
+            )
+            .await
+            .expect("add legacy radius column");
+        ManualMigrator::run(&database).await.expect("migrate");
+
+        let rows = database
+            .query_all_raw(Statement::from_string(
+                database.get_database_backend(),
+                "PRAGMA table_info(test_targets)",
+            ))
+            .await
+            .expect("table info");
+        let names: Vec<String> = rows
+            .into_iter()
+            .map(|row| row.try_get::<String>("", "name").expect("column name"))
+            .collect();
+        assert!(!names.iter().any(|name| name == "radius"));
+    }
+
+    #[tokio::test]
     async fn test_dataset_annotations_and_immutable_run_roundtrip() {
         let dir = tempdir().expect("tempdir");
         let db_path = dir.path().join("clipper.sqlite3");
@@ -241,12 +269,14 @@ mod tests {
         let frames = vec![TestKeyframeDto {
             id: "frame-1".into(),
             timestamp_us: 1_000_000,
+            layout_intent: "crop".into(),
             targets: vec![TestTargetDto {
                 id: "target-1".into(),
                 slot: 0,
-                x: 0.5,
-                y: 0.4,
-                radius: 0.1,
+                x: 0.35,
+                y: 0.1,
+                width: 0.253125,
+                height: 0.8,
             }],
         }];
         let (revision, _) = TestRepository::replace_annotations(&database, "clip-1", frames)
@@ -254,6 +284,25 @@ mod tests {
             .expect("save annotations");
         assert_eq!(revision, 1);
         assert_eq!(TestRepository::annotations(&database, "clip-1").await.unwrap().len(), 1);
+
+        let contain_frames = vec![TestKeyframeDto {
+            id: "frame-contain".into(),
+            timestamp_us: 2_000_000,
+            layout_intent: "contain".into(),
+            targets: vec![TestTargetDto {
+                id: "target-contain".into(),
+                slot: 0,
+                x: 0.05,
+                y: 0.1,
+                width: 0.9,
+                height: 0.75,
+            }],
+        }];
+        let (_, saved) = TestRepository::replace_annotations(&database, "clip-1", contain_frames)
+            .await
+            .expect("save contain annotations");
+        assert_eq!(saved[0].layout_intent, "contain");
+        assert_eq!(saved[0].targets[0].width, 0.9);
 
         TestRepository::create_run(
             &database,

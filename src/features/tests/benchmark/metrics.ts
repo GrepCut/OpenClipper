@@ -1,6 +1,7 @@
 import { evaluateGroundTruth } from "./ground-truth";
 import type { BenchmarkMetrics, TestKeyframe, TestTarget } from "../types";
 import type { ClipperLayoutMode } from "../../clipper/shared/smart-crop";
+import { COVERAGE_HIT_THRESHOLD, coverageOfTarget } from "./target-geometry";
 
 export interface NormalizedViewport {
   x: number;
@@ -21,37 +22,18 @@ export interface BenchmarkFrameInput {
 
 export interface BenchmarkTargetDetail {
   slot: 0 | 1;
-  visible: boolean;
-  focusHit: boolean;
-  focusErrorRadius: number;
+  coverageFraction: number;
+  coverageHit: boolean;
 }
 
 export interface BenchmarkFrameDetail {
   timestampUs: number;
   targetCount: number;
-  allTargetsVisible: boolean;
+  allTargetsCovered: boolean;
   viewports: NormalizedViewport[];
   layoutMode: ClipperLayoutMode;
   targets: BenchmarkTargetDetail[];
   reasonCodes?: string[];
-}
-
-function contains(viewport: NormalizedViewport, target: TestTarget): boolean {
-  return target.x >= viewport.x - 1e-9
-    && target.x <= viewport.x + viewport.width + 1e-9
-    && target.y >= viewport.y - 1e-9
-    && target.y <= viewport.y + viewport.height + 1e-9;
-}
-
-function distanceInShortSideUnits(
-  target: TestTarget,
-  viewport: NormalizedViewport,
-  sourceWidth: number,
-  sourceHeight: number,
-): number {
-  const dx = (target.x - (viewport.x + viewport.width / 2)) * sourceWidth;
-  const dy = (target.y - (viewport.y + viewport.height / 2)) * sourceHeight;
-  return Math.hypot(dx, dy) / Math.max(1, Math.min(sourceWidth, sourceHeight));
 }
 
 function quantile(sorted: number[], p: number): number | null {
@@ -71,17 +53,17 @@ export function calculateBenchmarkMetrics(input: {
   sourceHeight: number;
 }): { metrics: BenchmarkMetrics; details: BenchmarkFrameDetail[] } {
   let targetObservationCount = 0;
-  let visibleTargetCount = 0;
-  let allTargetsVisibleFrameCount = 0;
-  let focusHitCount = 0;
+  let coveredTargetCount = 0;
+  let allTargetsCoveredFrameCount = 0;
+  let coverageHitCount = 0;
   let dualTargetFrameCount = 0;
-  let dualTargetAllVisibleFrameCount = 0;
+  let dualTargetAllCoveredFrameCount = 0;
   let singleTargetFrameCount = 0;
-  let singleTargetVisibleCount = 0;
-  let singleTargetFocusHitCount = 0;
+  let singleTargetCoverageSum = 0;
+  let singleTargetCoverageHitCount = 0;
   let dualTargetObservationCount = 0;
-  let dualTargetFocusHitCount = 0;
-  const errors: number[] = [];
+  let dualTargetCoverageHitCount = 0;
+  const coverages: number[] = [];
   const details: BenchmarkFrameDetail[] = [];
   const layoutModeFrameCounts: Record<ClipperLayoutMode, number> = {
     "single-crop": 0,
@@ -111,38 +93,33 @@ export function calculateBenchmarkMetrics(input: {
     layoutModeFrameCounts[layoutMode] += 1;
     const targets = evaluateGroundTruth(input.keyframes, frame.timestampUs);
     const targetDetails = targets.map<BenchmarkTargetDetail>((target) => {
-      const visible = frame.viewports.some((viewport) => contains(viewport, target));
-      const distance = frame.viewports.length
-        ? Math.min(...frame.viewports.map((viewport) =>
-          distanceInShortSideUnits(target, viewport, input.sourceWidth, input.sourceHeight)))
-        : Number.POSITIVE_INFINITY;
-      const focusErrorRadius = distance / Math.max(0.001, target.radius);
-      const focusHit = focusErrorRadius <= 1;
+      const coverageFraction = coverageOfTarget(frame.viewports, target);
+      const coverageHit = coverageFraction >= COVERAGE_HIT_THRESHOLD;
       targetObservationCount += 1;
-      if (visible) visibleTargetCount += 1;
-      if (focusHit) focusHitCount += 1;
+      coveredTargetCount += coverageFraction;
+      if (coverageHit) coverageHitCount += 1;
       if (targets.length === 1) {
-        if (visible) singleTargetVisibleCount += 1;
-        if (focusHit) singleTargetFocusHitCount += 1;
+        singleTargetCoverageSum += coverageFraction;
+        if (coverageHit) singleTargetCoverageHitCount += 1;
       } else if (targets.length === 2) {
         dualTargetObservationCount += 1;
-        if (focusHit) dualTargetFocusHitCount += 1;
+        if (coverageHit) dualTargetCoverageHitCount += 1;
       }
       const wasHit = previouslyHit.get(target.slot) ?? false;
-      if (!focusHit && wasHit && !missStartedAt.has(target.slot)) missStartedAt.set(target.slot, frame.timestampUs);
-      if (focusHit && missStartedAt.has(target.slot)) {
+      if (!coverageHit && wasHit && !missStartedAt.has(target.slot)) missStartedAt.set(target.slot, frame.timestampUs);
+      if (coverageHit && missStartedAt.has(target.slot)) {
         reacquisitionDurationsMs.push((frame.timestampUs - missStartedAt.get(target.slot)!) / 1000);
         missStartedAt.delete(target.slot);
       }
-      previouslyHit.set(target.slot, focusHit);
-      if (Number.isFinite(focusErrorRadius)) errors.push(focusErrorRadius);
-      return { slot: target.slot, visible, focusHit, focusErrorRadius };
+      previouslyHit.set(target.slot, coverageHit);
+      if (Number.isFinite(coverageFraction)) coverages.push(coverageFraction);
+      return { slot: target.slot, coverageFraction, coverageHit };
     });
-    const allTargetsVisible = targetDetails.length > 0 && targetDetails.every((target) => target.visible);
-    if (allTargetsVisible) allTargetsVisibleFrameCount += 1;
+    const allTargetsCovered = targetDetails.length > 0 && targetDetails.every((target) => target.coverageHit);
+    if (allTargetsCovered) allTargetsCoveredFrameCount += 1;
     if (targetDetails.length === 2) {
       dualTargetFrameCount += 1;
-      if (allTargetsVisible) dualTargetAllVisibleFrameCount += 1;
+      if (allTargetsCovered) dualTargetAllCoveredFrameCount += 1;
     }
     if (targetDetails.length === 1) singleTargetFrameCount += 1;
     const primaryViewport = frame.viewports[0];
@@ -168,7 +145,7 @@ export function calculateBenchmarkMetrics(input: {
     details.push({
       timestampUs: frame.timestampUs,
       targetCount: targetDetails.length,
-      allTargetsVisible,
+      allTargetsCovered,
       viewports: frame.viewports,
       layoutMode,
       targets: targetDetails,
@@ -176,9 +153,9 @@ export function calculateBenchmarkMetrics(input: {
     });
   }
 
-  errors.sort((a, b) => a - b);
+  coverages.sort((a, b) => a - b);
   const frameCount = input.frames.length;
-  const mean = errors.length ? errors.reduce((sum, value) => sum + value, 0) / errors.length : null;
+  const meanCoverage = targetObservationCount ? coveredTargetCount / targetObservationCount : 0;
   const sortedAccelerations = [...centerAccelerations].sort((a, b) => a - b);
   const sortedVelocities = [...centerVelocities].sort((a, b) => a - b);
   displayHeights.sort((a, b) => a - b);
@@ -192,24 +169,23 @@ export function calculateBenchmarkMetrics(input: {
     metrics: {
       frameCount,
       targetObservationCount,
-      visibleTargetCount,
-      allTargetsVisibleFrameCount,
-      focusHitCount,
+      coveredTargetCount,
+      allTargetsCoveredFrameCount,
+      coverageHitCount,
       dualTargetFrameCount,
-      dualTargetAllVisibleFrameCount,
-      targetVisibilityRate: targetObservationCount ? visibleTargetCount / targetObservationCount : 0,
-      allTargetsVisibleFrameRate: frameCount ? allTargetsVisibleFrameCount / frameCount : 0,
-      focusHitRate: targetObservationCount ? focusHitCount / targetObservationCount : 0,
-      dualTargetAllVisibleRate: dualTargetFrameCount
-        ? dualTargetAllVisibleFrameCount / dualTargetFrameCount
+      dualTargetAllCoveredFrameCount,
+      meanCoverageFraction: meanCoverage,
+      allTargetsCoveredFrameRate: frameCount ? allTargetsCoveredFrameCount / frameCount : 0,
+      coverageHitRate: targetObservationCount ? coverageHitCount / targetObservationCount : 0,
+      dualTargetAllCoveredRate: dualTargetFrameCount
+        ? dualTargetAllCoveredFrameCount / dualTargetFrameCount
         : null,
-      meanFocusErrorRadius: mean,
-      medianFocusErrorRadius: quantile(errors, 0.5),
-      p95FocusErrorRadius: quantile(errors, 0.95),
+      medianCoverageFraction: quantile(coverages, 0.5),
+      p5CoverageFraction: quantile(coverages, 0.05),
       singleTargetFrameCount,
-      singleTargetVisibilityRate: singleTargetFrameCount ? singleTargetVisibleCount / singleTargetFrameCount : null,
-      singleTargetFocusHitRate: singleTargetFrameCount ? singleTargetFocusHitCount / singleTargetFrameCount : null,
-      dualTargetFocusHitRate: dualTargetObservationCount ? dualTargetFocusHitCount / dualTargetObservationCount : null,
+      singleTargetMeanCoverageFraction: singleTargetFrameCount ? singleTargetCoverageSum / singleTargetFrameCount : null,
+      singleTargetCoverageHitRate: singleTargetFrameCount ? singleTargetCoverageHitCount / singleTargetFrameCount : null,
+      dualTargetCoverageHitRate: dualTargetObservationCount ? dualTargetCoverageHitCount / dualTargetObservationCount : null,
       layoutModeFrameCounts,
       layoutModeRates: {
         "single-crop": frameCount ? layoutModeFrameCounts["single-crop"] / frameCount : 0,
@@ -219,7 +195,7 @@ export function calculateBenchmarkMetrics(input: {
       meanViewportCenterVelocity: meanVelocity,
       p95ViewportCenterVelocity: quantile(sortedVelocities, 0.95),
       p95ViewportCenterAcceleration: quantile(sortedAccelerations, 0.95),
-      meanFocusReacquisitionMs: meanReacquisitionMs,
+      meanCoverageReacquisitionMs: meanReacquisitionMs,
       modeSwitchesPerMinute: modeSwitchCount / Math.max(
         1 / 60,
         ((lastTimestampUs ?? 0) - (firstTimestampUs ?? 0)) / 60_000_000,

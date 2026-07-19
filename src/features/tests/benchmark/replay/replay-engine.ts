@@ -295,10 +295,10 @@ export function replayClip(
 }
 
 export interface AggregateMetrics {
-  focusHit: number;
-  visibility: number;
+  coverageHit: number;
+  coverage: number;
   /** Mean over clips that have dual-target frames, like computeBenchmarkColumnStats. */
-  dualAllVisible: number | null;
+  dualAllCovered: number | null;
   clipCount: number;
   containDutyCycle?: number;
   modeSwitchesPerMinute?: number;
@@ -310,12 +310,12 @@ export interface AggregateMetrics {
 export function aggregate(results: ClipReplayResult[]): AggregateMetrics {
   const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
   const dual = results
-    .map((result) => result.metrics.dualTargetAllVisibleRate)
+    .map((result) => result.metrics.dualTargetAllCoveredRate)
     .filter((value): value is number => value != null);
   return {
-    focusHit: mean(results.map((result) => result.metrics.focusHitRate)),
-    visibility: mean(results.map((result) => result.metrics.targetVisibilityRate)),
-    dualAllVisible: dual.length ? mean(dual) : null,
+    coverageHit: mean(results.map((result) => result.metrics.coverageHitRate)),
+    coverage: mean(results.map((result) => result.metrics.meanCoverageFraction)),
+    dualAllCovered: dual.length ? mean(dual) : null,
     clipCount: results.length,
     containDutyCycle: mean(results.map((result) => result.metrics.containDutyCycle ?? 0)),
     modeSwitchesPerMinute: mean(results.map((result) => result.metrics.modeSwitchesPerMinute ?? 0)),
@@ -341,7 +341,7 @@ export interface SelfCheckResult {
 export function selfCheck(
   clips: ClipArtifacts[],
   params: ArbiterParams,
-  recordedAggregate: { focusHit: number | null; visibility: number | null; dualAllVisible: number | null },
+  recordedAggregate: { coverageHit: number | null; coverage: number | null; dualAllCovered: number | null },
 ): SelfCheckResult {
   const failures: string[] = [];
   const results: ClipReplayResult[] = [];
@@ -359,9 +359,9 @@ export function selfCheck(
     results.push(result);
     const recordedMetrics = clip.comparison.selected;
     const checks: Array<[string, number, number | null]> = [
-      ["focusHitRate", result.metrics.focusHitRate, recordedMetrics.focusHitRate],
-      ["targetVisibilityRate", result.metrics.targetVisibilityRate, recordedMetrics.targetVisibilityRate],
-      ["dualTargetAllVisibleRate", result.metrics.dualTargetAllVisibleRate ?? -1, recordedMetrics.dualTargetAllVisibleRate ?? -1],
+      ["coverageHitRate", result.metrics.coverageHitRate, recordedMetrics.coverageHitRate],
+      ["meanCoverageFraction", result.metrics.meanCoverageFraction, recordedMetrics.meanCoverageFraction],
+      ["dualTargetAllCoveredRate", result.metrics.dualTargetAllCoveredRate ?? -1, recordedMetrics.dualTargetAllCoveredRate ?? -1],
     ];
     for (const [label, actual, expected] of checks) {
       if (expected == null) continue;
@@ -372,9 +372,9 @@ export function selfCheck(
   }
   const overall = aggregate(results);
   const aggregateChecks: Array<[string, number | null, number | null]> = [
-    ["aggregate focusHit", overall.focusHit, recordedAggregate.focusHit],
-    ["aggregate visibility", overall.visibility, recordedAggregate.visibility],
-    ["aggregate dualAllVisible", overall.dualAllVisible, recordedAggregate.dualAllVisible],
+    ["aggregate coverageHit", overall.coverageHit, recordedAggregate.coverageHit],
+    ["aggregate coverage", overall.coverage, recordedAggregate.coverage],
+    ["aggregate dualAllCovered", overall.dualAllCovered, recordedAggregate.dualAllCovered],
   ];
   for (const [label, actual, expected] of aggregateChecks) {
     if (expected == null || actual == null) continue;

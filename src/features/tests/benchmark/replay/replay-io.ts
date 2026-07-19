@@ -40,9 +40,9 @@ export interface RunManifest {
   clips: Array<{ clipId: string; error?: string }>;
   columnStats: {
     portrait9x16: {
-      visible: { avg: number | null };
-      focusHit: { avg: number | null };
-      dualAllVisible: { avg: number | null };
+      coverage: { avg: number | null };
+      coverageHit: { avg: number | null };
+      dualAllCovered: { avg: number | null };
       sampleCount: number;
     };
   };

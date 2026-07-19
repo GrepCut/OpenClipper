@@ -35,16 +35,15 @@ struct NormalizedViewport {
 #[serde(rename_all = "camelCase")]
 struct BenchmarkTargetDetail {
     slot: i32,
-    visible: bool,
-    focus_hit: bool,
-    focus_error_radius: f64,
+    coverage_fraction: f64,
+    coverage_hit: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BenchmarkFrameDetail {
     timestamp_us: i64,
-    all_targets_visible: bool,
+    all_targets_covered: bool,
     viewports: Vec<NormalizedViewport>,
     targets: Vec<BenchmarkTargetDetail>,
 }
@@ -53,9 +52,8 @@ struct BenchmarkFrameDetail {
 #[serde(rename_all = "camelCase")]
 struct ManifestTarget {
     slot: i32,
-    visible: bool,
-    focus_hit: bool,
-    focus_error_radius: f64,
+    coverage_fraction: f64,
+    coverage_hit: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -69,7 +67,7 @@ struct ManifestFrame {
     timestamp_us: i64,
     timestamp_sec: f64,
     score: f64,
-    all_targets_visible: bool,
+    all_targets_covered: bool,
     targets: Vec<ManifestTarget>,
     viewports: Vec<NormalizedViewport>,
 }
@@ -173,10 +171,10 @@ fn remove_prefixed_exports(export_dir: &Path, clip_id: &str, aspect_id: &str) ->
 }
 
 fn target_score(target: &BenchmarkTargetDetail) -> f64 {
-    if !target.visible {
-        VISIBILITY_MISS_BASE + target.focus_error_radius
+    if !target.coverage_hit {
+        VISIBILITY_MISS_BASE + (1.0 - target.coverage_fraction)
     } else {
-        target.focus_error_radius
+        1.0 - target.coverage_fraction
     }
 }
 
@@ -300,8 +298,106 @@ fn clone_target(target: &TestTargetDto) -> TestTargetDto {
         slot: target.slot,
         x: target.x,
         y: target.y,
-        radius: target.radius,
+        width: target.width,
+        height: target.height,
     }
+}
+
+fn layout_intent_at(frame: &TestKeyframeDto) -> &str {
+    if frame.layout_intent.is_empty() || frame.layout_intent == "crop" {
+        "crop"
+    } else {
+        frame.layout_intent.as_str()
+    }
+}
+
+fn evaluate_layout_intent(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> &str {
+    if keyframes.is_empty() {
+        return "crop";
+    }
+    if timestamp_us <= keyframes[0].timestamp_us {
+        return layout_intent_at(&keyframes[0]);
+    }
+    let last = keyframes.last().expect("keyframes checked");
+    if timestamp_us >= last.timestamp_us {
+        return layout_intent_at(last);
+    }
+    let mut next_index = 1usize;
+    while next_index < keyframes.len() && keyframes[next_index].timestamp_us < timestamp_us {
+        next_index += 1;
+    }
+    let next = &keyframes[next_index];
+    if next.timestamp_us == timestamp_us {
+        return layout_intent_at(next);
+    }
+    layout_intent_at(&keyframes[next_index - 1])
+}
+
+fn clamp_target_rect(target: &TestTargetDto) -> TestTargetDto {
+    let width = target.width.clamp(0.001, 1.0);
+    let height = target.height.clamp(0.001, 1.0);
+    TestTargetDto {
+        id: target.id.clone(),
+        slot: target.slot,
+        x: target.x.clamp(0.0, 1.0 - width),
+        y: target.y.clamp(0.0, 1.0 - height),
+        width,
+        height,
+    }
+}
+
+fn interpolate_contain_targets(
+    previous: &TestKeyframeDto,
+    next: &TestKeyframeDto,
+    factor: f64,
+) -> Vec<TestTargetDto> {
+    let Some(target) = previous.targets.first() else {
+        return Vec::new();
+    };
+    let target_next = if layout_intent_at(next) == "contain" {
+        next.targets.first()
+    } else {
+        None
+    };
+    let Some(target_next) = target_next else {
+        return vec![clone_target(target)];
+    };
+    vec![clamp_target_rect(&TestTargetDto {
+        id: target.id.clone(),
+        slot: 0,
+        x: target.x + (target_next.x - target.x) * factor,
+        y: target.y + (target_next.y - target.y) * factor,
+        width: target.width + (target_next.width - target.width) * factor,
+        height: target.height + (target_next.height - target.height) * factor,
+    })]
+}
+
+fn interpolate_crop_targets(
+    previous: &TestKeyframeDto,
+    next: &TestKeyframeDto,
+    factor: f64,
+) -> Vec<TestTargetDto> {
+    if layout_intent_at(next) != "crop" {
+        return previous.targets.iter().map(clone_target).collect();
+    }
+    previous
+        .targets
+        .iter()
+        .map(|target| {
+            let target_next = next.targets.iter().find(|candidate| candidate.slot == target.slot);
+            match target_next {
+                Some(next_target) => TestTargetDto {
+                    id: target.id.clone(),
+                    slot: target.slot,
+                    x: target.x + (next_target.x - target.x) * factor,
+                    y: target.y + (next_target.y - target.y) * factor,
+                    width: target.width + (next_target.width - target.width) * factor,
+                    height: target.height + (next_target.height - target.height) * factor,
+                },
+                None => clone_target(target),
+            }
+        })
+        .collect()
 }
 
 fn evaluate_ground_truth(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> Vec<TestTargetDto> {
@@ -326,23 +422,10 @@ fn evaluate_ground_truth(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> Ve
     let previous = &keyframes[next_index - 1];
     let factor = (timestamp_us - previous.timestamp_us) as f64
         / (next.timestamp_us - previous.timestamp_us).max(1) as f64;
-    previous
-        .targets
-        .iter()
-        .map(|target| {
-            let target_next = next.targets.iter().find(|candidate| candidate.slot == target.slot);
-            match target_next {
-                Some(next_target) => TestTargetDto {
-                    id: target.id.clone(),
-                    slot: target.slot,
-                    x: target.x + (next_target.x - target.x) * factor,
-                    y: target.y + (next_target.y - target.y) * factor,
-                    radius: target.radius + (next_target.radius - target.radius) * factor,
-                },
-                None => clone_target(target),
-            }
-        })
-        .collect()
+    if evaluate_layout_intent(keyframes, timestamp_us) == "contain" {
+        return interpolate_contain_targets(previous, next, factor);
+    }
+    interpolate_crop_targets(previous, next, factor)
 }
 
 fn set_pixel(rgb: &mut [u8], width: u32, height: u32, x: i32, y: i32, color: [u8; 3]) {
@@ -425,31 +508,6 @@ fn draw_crop_viewport_border(
     );
 }
 
-fn draw_circle_border(rgb: &mut [u8], width: u32, height: u32, cx: f64, cy: f64, radius: f64, color: [u8; 3]) {
-    let short_side = width.min(height) as f64;
-    let pixel_radius = radius * short_side;
-    let center_x = cx * width as f64;
-    let center_y = cy * height as f64;
-    let steps = ((pixel_radius * 2.0 * std::f64::consts::PI).max(32.0)) as usize;
-    for step in 0..steps {
-        let angle = step as f64 / steps as f64 * std::f64::consts::TAU;
-        let ring_x = center_x + angle.cos() * pixel_radius;
-        let ring_y = center_y + angle.sin() * pixel_radius;
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                set_pixel(
-                    rgb,
-                    width,
-                    height,
-                    (ring_x + dx as f64).round() as i32,
-                    (ring_y + dy as f64).round() as i32,
-                    color,
-                );
-            }
-        }
-    }
-}
-
 fn slot_color(slot: i32) -> [u8; 3] {
     if slot == 1 { [244, 114, 182] } else { [34, 211, 238] }
 }
@@ -465,7 +523,17 @@ fn annotate_frame(
         draw_crop_viewport_border(&mut rgb, width, height, viewport);
     }
     for target in ground_truth {
-        draw_circle_border(&mut rgb, width, height, target.x, target.y, target.radius, slot_color(target.slot));
+        draw_rect_border(
+            &mut rgb,
+            width,
+            height,
+            target.x,
+            target.y,
+            target.width,
+            target.height,
+            slot_color(target.slot),
+            3,
+        );
     }
     rgb
 }
@@ -488,20 +556,20 @@ fn read_frame_details(path: &Path) -> Result<Vec<BenchmarkFrameDetail>, String> 
 }
 
 fn export_filename(clip_id: &str, aspect_id: &str, rank: usize, detail: &BenchmarkFrameDetail) -> String {
-    let max_error = detail
+    let min_coverage = detail
         .targets
         .iter()
-        .map(|target| target.focus_error_radius)
-        .fold(0.0, f64::max);
-    let vis = if detail.all_targets_visible { 1 } else { 0 };
+        .map(|target| target.coverage_fraction)
+        .fold(1.0, f64::min);
+    let covered = if detail.all_targets_covered { 1 } else { 0 };
     format!(
-        "{}_{}_rank{:03}_t{}ms_err{:.2}_vis{}.jpg",
+        "{}_{}_rank{:03}_t{}ms_cov{:.2}_hit{}.jpg",
         clip_id,
         aspect_id,
         rank,
         detail.timestamp_us / 1_000,
-        max_error,
-        vis
+        min_coverage,
+        covered
     )
 }
 
@@ -555,16 +623,15 @@ fn export_benchmark_miss_frames_sync(
             timestamp_us: ranked_frame.detail.timestamp_us,
             timestamp_sec,
             score: ranked_frame.score,
-            all_targets_visible: ranked_frame.detail.all_targets_visible,
+            all_targets_covered: ranked_frame.detail.all_targets_covered,
             targets: ranked_frame
                 .detail
                 .targets
                 .iter()
                 .map(|target| ManifestTarget {
                     slot: target.slot,
-                    visible: target.visible,
-                    focus_hit: target.focus_hit,
-                    focus_error_radius: target.focus_error_radius,
+                    coverage_fraction: target.coverage_fraction,
+                    coverage_hit: target.coverage_hit,
                 })
                 .collect(),
             viewports: ranked_frame.detail.viewports.clone(),
@@ -769,16 +836,15 @@ pub async fn export_benchmark_run_miss_frames(
 mod tests {
     use super::*;
 
-    fn frame_at(timestamp_us: i64, visible: bool, error: f64) -> BenchmarkFrameDetail {
+    fn frame_at(timestamp_us: i64, covered: bool, coverage: f64) -> BenchmarkFrameDetail {
         BenchmarkFrameDetail {
             timestamp_us,
-            all_targets_visible: visible,
+            all_targets_covered: covered,
             viewports: Vec::new(),
             targets: vec![BenchmarkTargetDetail {
                 slot: 0,
-                visible,
-                focus_hit: error <= 1.0,
-                focus_error_radius: error,
+                coverage_hit: covered,
+                coverage_fraction: coverage,
             }],
         }
     }
@@ -787,6 +853,7 @@ mod tests {
         TestKeyframeDto {
             id: format!("kf-{timestamp_us}"),
             timestamp_us,
+            layout_intent: "crop".into(),
             targets: Vec::new(),
         }
     }
@@ -794,9 +861,9 @@ mod tests {
     #[test]
     fn samples_one_nearest_frame_per_keyframe() {
         let frames = vec![
-            frame_at(1_000_000, true, 1.0),
-            frame_at(2_000_000, true, 2.0),
-            frame_at(3_000_000, false, 5.0),
+            frame_at(1_000_000, true, 0.95),
+            frame_at(2_000_000, true, 0.92),
+            frame_at(3_000_000, false, 0.4),
         ];
         let keyframes = vec![keyframe_at(1_050_000), keyframe_at(2_900_000)];
         let sampled = sample_frames_at_keyframes(&frames, &keyframes).expect("sample");
@@ -806,23 +873,23 @@ mod tests {
     }
 
     #[test]
-    fn ranks_invisible_keyframe_samples_first() {
+    fn ranks_uncovered_keyframe_samples_first() {
         let sampled = vec![
             SampledKeyframeFrame {
                 keyframe_timestamp_us: 1_000_000,
-                detail: frame_at(1_000_000, true, 2.0),
+                detail: frame_at(1_000_000, true, 0.95),
             },
             SampledKeyframeFrame {
                 keyframe_timestamp_us: 2_000_000,
-                detail: frame_at(2_000_000, false, 1.0),
+                detail: frame_at(2_000_000, false, 0.4),
             },
             SampledKeyframeFrame {
                 keyframe_timestamp_us: 3_000_000,
-                detail: frame_at(3_000_000, true, 1.0),
+                detail: frame_at(3_000_000, true, 0.92),
             },
             SampledKeyframeFrame {
                 keyframe_timestamp_us: 4_000_000,
-                detail: frame_at(4_000_000, true, 3.0),
+                detail: frame_at(4_000_000, true, 0.5),
             },
         ];
         let ranked = select_worst_half(sampled);
@@ -842,8 +909,8 @@ mod tests {
             .collect();
         let subsampled = subsample_random_half_of_worst(worst_half, 8, "run-seed");
         assert_eq!(subsampled.len(), 2);
-        assert_eq!(subsampled[0].keyframe_timestamp_us, 8_000_000);
-        assert_eq!(subsampled[1].keyframe_timestamp_us, 3_000_000);
+        assert_eq!(subsampled[0].keyframe_timestamp_us, 7_000_000);
+        assert_eq!(subsampled[1].keyframe_timestamp_us, 5_000_000);
     }
 
     #[test]

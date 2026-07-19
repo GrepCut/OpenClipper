@@ -516,7 +516,6 @@ pub(crate) struct ExtractedVideoFrame {
     pub rgb: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    pub timestamp_sec: f64,
 }
 
 pub(crate) fn extract_frame_rgb_at_timestamp(
@@ -592,7 +591,6 @@ pub(crate) fn extract_frame_rgb_at_timestamp(
         rgb: pixels,
         width,
         height,
-        timestamp_sec: selected_frame.pts().unwrap_or(0) as f64 * time_base_sec,
     })
 }
 
