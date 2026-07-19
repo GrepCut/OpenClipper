@@ -74,7 +74,7 @@ describe("buildAutoFlipTrack solid-background policy", () => {
 });
 
 describe("buildAutoFlipTrack matched-aspect reframing", () => {
-  it("zooms and recenters reliable pose salience by default", () => {
+  it("keeps the full-frame cover crop for matched-aspect footage", () => {
     const detections: SubjectDetectionSample[] = Array.from({ length: 11 }, (_, index) => ({
       time: index * 0.2,
       detections: [],
@@ -98,7 +98,6 @@ describe("buildAutoFlipTrack matched-aspect reframing", () => {
       sourceFrameRate: 5,
     });
     const samples = track.aspectTracks!.landscape!.samples;
-    expect(samples.some((sample) => sample.crop.width < 0.99)).toBe(true);
-    expect(samples.at(-1)!.crop.x + samples.at(-1)!.crop.width / 2).toBeGreaterThan(0.6);
+    expect(samples.every((sample) => sample.crop.width >= 0.99)).toBe(true);
   });
 });

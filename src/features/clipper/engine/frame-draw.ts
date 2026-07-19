@@ -158,7 +158,7 @@ export function resolveClipperLayoutRender(
 ): ResolvedClipperLayout | undefined {
   if (!blob) return undefined;
   const sample = interpolateLayoutSample(resolveLayoutTrack(blob.layoutTracks, formatId), time);
-  if (!sample?.viewports.length || sample.strategy === "legacy-baseline") return undefined;
+  if (!sample?.viewports.length) return undefined;
   return {
     mode: sample.mode,
     viewports: sample.viewports.map((viewport) => ({

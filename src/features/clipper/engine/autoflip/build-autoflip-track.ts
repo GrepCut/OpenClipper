@@ -3,7 +3,7 @@ import type { FaceBoxSample } from "../../shared/face-samples";
 import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
 import type { CentroidSample } from "../reframe";
 import { cropRectToCentroid } from "./frame-crop-region";
-import { analyzeSceneMotion, computeSalienceZoomScale } from "./scene-camera-motion";
+import { analyzeSceneMotion } from "./scene-camera-motion";
 import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { attachImportanceSignals, buildImportanceTimeline } from "./importance-ranker";
@@ -12,7 +12,7 @@ import type { ArbiterSceneMotion } from "./layout-arbiter";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
 import { applyActiveSpeakerPolicy } from "./active-speaker";
 import { buildCanonicalPersonTracks } from "./canonical-person";
-import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MIN_ZOOM_SCALE, AUTOFLIP_MIN_ZOOM_SCENE_SEC, AUTOFLIP_MODEL_ID, AUTOFLIP_ZOOM_MARGIN } from "./types";
+import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID } from "./types";
 import { RUN10_ARBITER_PARAMS } from "./layout-arbiter";
 import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "./visibility-controller";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
@@ -30,10 +30,8 @@ export interface BuildAutoFlipTrackInput {
   frameWidth?: number;
   frameHeight?: number;
   smoothing?: ClipperSmoothingStrength;
-  /** Sizes the salience-driven zoom margin; defaults to "normal". */
+  /** Reserved for framing margins; the crop window itself never zooms below nominal. */
   headroom?: ClipperHeadroom;
-  /** Allow zooming when source and target aspects match (on by default). */
-  matchedAspectZoom?: boolean;
   degradedReason?: string;
   hasSolidColorBackground?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
@@ -89,6 +87,42 @@ function intoSourceRect(rect: NormalizedBox, content: NormalizedBox): Normalized
     width: rect.width * content.width,
     height: rect.height * content.height,
   };
+}
+
+/**
+ * Static letterbox/pillarbox bars are dead pixels: spanning them costs no
+ * content but lets the crop keep the source's own bars (its native look)
+ * instead of synthesizing blur padding, and restores the full-height framing
+ * band that content-space cropping would otherwise truncate. Afterwards the
+ * window is floored at the nominal source-space cover crop for the target
+ * aspect, mirroring the no-zoom invariant in source coordinates.
+ */
+function expandCropAcrossBars(
+  rect: NormalizedBox,
+  content: NormalizedBox,
+  sourceAspect: number,
+  targetAspectRatio: number,
+): NormalizedBox {
+  let { x, y, width, height } = rect;
+  if (content.height < 1 - 1e-6) {
+    y = 0;
+    height = 1;
+  }
+  if (content.width < 1 - 1e-6) {
+    x = 0;
+    width = 1;
+  }
+  const nominalWidth = sourceAspect >= targetAspectRatio ? targetAspectRatio / sourceAspect : 1;
+  const nominalHeight = sourceAspect >= targetAspectRatio ? 1 : sourceAspect / targetAspectRatio;
+  if (width < nominalWidth) {
+    x = Math.max(0, Math.min(1 - nominalWidth, x + width / 2 - nominalWidth / 2));
+    width = nominalWidth;
+  }
+  if (height < nominalHeight) {
+    y = Math.max(0, Math.min(1 - nominalHeight, y + height / 2 - nominalHeight / 2));
+    height = nominalHeight;
+  }
+  return { x, y, width, height };
 }
 
 function detectionsInContent(detections: SubjectDetectionSample[], content: NormalizedBox): SubjectDetectionSample[] {
@@ -243,44 +277,18 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
 
   for (const [formatId, targetAspectRatio] of Object.entries(targets)) {
     const samples: AutoFlipCropSample[] = [];
-    // One zoom scale per original scene (chunks of a forced split share it),
-    // so a long take cannot pump between zoom levels.  When the source already
-    // matches the target aspect, the classic full-frame passthrough wins
-    // unless the caller opted in.
-    const aspectMatchesSource = Math.abs(frameWidth / frameHeight - targetAspectRatio) < 0.001;
-    const sceneZoom = new Array<number>(scenes.length).fill(1);
-    if (!aspectMatchesSource || input.matchedAspectZoom !== false) {
-      const margin = AUTOFLIP_ZOOM_MARGIN[input.headroom ?? "normal"];
-      let index = 0;
-      while (index < scenes.length) {
-        let groupEnd = index + 1;
-        while (groupEnd < scenes.length && scenes[groupEnd]!.continueLastScene) groupEnd++;
-        const groupDuration = scenes[groupEnd - 1]!.end - scenes[index]!.start;
-        const minZoomDuration = aspectMatchesSource ? AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC : AUTOFLIP_MIN_ZOOM_SCENE_SEC;
-        if (groupDuration >= minZoomDuration) {
-          const groupKeyframes = rawKeyframes.filter(
-            (keyframe) => keyframe.time >= scenes[index]!.start - 1e-9 && keyframe.time <= scenes[groupEnd - 1]!.end + 1e-9,
-          );
-          const scale = hasForegroundSalience(groupKeyframes) ? computeSalienceZoomScale({
-            keyframes: groupKeyframes,
-            frameWidth,
-            frameHeight,
-            targetAspectRatio,
-            margin,
-            minScale: AUTOFLIP_MIN_ZOOM_SCALE,
-          }) : 1;
-          for (let sceneIndex = index; sceneIndex < groupEnd; sceneIndex++) sceneZoom[sceneIndex] = scale;
-        }
-        index = groupEnd;
-      }
-    }
+    // The crop window never shrinks below the nominal cover crop. A zoomed
+    // window caps how much of the subject's full-height context band the
+    // output can retain, which loses vertical content that reframing is
+    // supposed to preserve; the stock AutoFlip SceneCameraMotionAnalyzer
+    // likewise keeps the target-sized window and moves it instead of scaling.
     // Product policy layered on top of AutoFlip: when BorderDetection found a
     // stable solid background, retaining the active image and padding it is
     // preferable to throwing away slide/gameplay content merely to fill a
     // vertical target. The renderer recognizes this non-matching aspect and
     // uses the graph-compatible solid-colour padding path.
     let continuationFocus: FocusPointFrame[] = [];
-    for (const [sceneIndex, scene] of scenes.entries()) {
+    for (const scene of scenes) {
       // The production baseline intentionally uses only Run4 inputs. Motion
       // and other experimental importance proposals must never move it.
       const sceneKeyframes = rawKeyframes.filter(
@@ -332,7 +340,6 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         targetAspectRatio,
         hasSolidColorBackground: sceneBackground.hasSolid,
         sceneTimestampsUs: timeline.timestampsUs,
-        cropScale: sceneZoom[sceneIndex],
       });
       const cropRects = cropScenePath({
         summary: motion.summary,
@@ -374,7 +381,14 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         samples.push({ t: time, crop: intoSourceRect({ x: (1 - width) / 2, y: (1 - height) / 2, width, height }, contentRect) });
       }
     }
-    aspectTracks[formatId] = { targetAspectRatio, samples };
+    const sourceAspect = sourceFrameWidth / Math.max(1, sourceFrameHeight);
+    aspectTracks[formatId] = {
+      targetAspectRatio,
+      samples: samples.map((sample) => ({
+        ...sample,
+        crop: expandCropAcrossBars(sample.crop, contentRect, sourceAspect, targetAspectRatio),
+      })),
+    };
   }
 
   const primaryTrack = aspectTracks[Object.keys(aspectTracks)[0]!]!;

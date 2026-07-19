@@ -195,7 +195,7 @@ export type ClipperLayoutStrategy =
 export interface ClipperLayoutSample {
   t: number;
   mode: ClipperLayoutMode;
-  /** The renderer falls through to the proven v2/Run4 path for legacy-baseline. */
+  /** Legacy-baseline samples carry the Run4 camera-path window as their viewports. */
   strategy?: ClipperLayoutStrategy;
   viewports: NormalizedBox[];
   /** Shadow proposal retained even when the baseline wins arbitration. */

@@ -405,39 +405,41 @@ export function TestClipEditorPage() {
           })}
         </Box>
 
-        <HStack gap={3}>
+        <HStack gap={3} align="flex-start">
           <Button size="sm" onClick={() => videoRef.current?.paused ? void videoRef.current.play() : videoRef.current?.pause()}>{videoRef.current?.paused === false ? "Pause" : "Play"}</Button>
           <Text minW="70px">{formatTime(currentTime)}</Text>
-          <Slider.Root flex="1" min={0} max={clip.duration} step={1 / Math.max(1, clip.frameRate)} value={[currentTime]} onValueChange={(details) => {
-            const time = details.value[0] ?? 0;
-            if (videoRef.current) videoRef.current.currentTime = time;
-            syncDraftToTime(time);
-          }}><Slider.Control><Slider.Track><Slider.Range /></Slider.Track><Slider.Thumb index={0} /></Slider.Control></Slider.Root>
+          <VStack flex="1" gap={1} align="stretch">
+            <Slider.Root flex="1" min={0} max={clip.duration} step={1 / Math.max(1, clip.frameRate)} value={[currentTime]} onValueChange={(details) => {
+              const time = details.value[0] ?? 0;
+              if (videoRef.current) videoRef.current.currentTime = time;
+              syncDraftToTime(time);
+            }}><Slider.Control><Slider.Track><Slider.Range /></Slider.Track><Slider.Thumb index={0} /></Slider.Control></Slider.Root>
+            <Box position="relative" h="18px" w="100%">
+              {keyframes.map((frame) => {
+                const isContain = frame.layoutIntent === "contain";
+                return (
+                  <Box
+                    key={frame.id}
+                    as="button"
+                    title={formatTime(frame.timestampUs / 1e6)}
+                    position="absolute"
+                    left={`${(frame.timestampUs / 1e6 / clip.duration) * 100}%`}
+                    transform="translateX(-50%)"
+                    w={isContain ? "10px" : "8px"}
+                    h={isContain ? "10px" : "14px"}
+                    borderRadius={isContain ? "sm" : "full"}
+                    bg={isContain ? CONTAIN_COLOR : (frame.targets.length === 2 ? TARGET_COLORS[1] : TARGET_COLORS[0])}
+                    onClick={() => {
+                      const time = frame.timestampUs / 1e6;
+                      if (videoRef.current) videoRef.current.currentTime = time;
+                      syncDraftToTime(time);
+                    }}
+                  />
+                );
+              })}
+            </Box>
+          </VStack>
         </HStack>
-        <Box position="relative" h="18px" mx="75px">
-          {keyframes.map((frame) => {
-            const isContain = frame.layoutIntent === "contain";
-            return (
-              <Box
-                key={frame.id}
-                as="button"
-                title={formatTime(frame.timestampUs / 1e6)}
-                position="absolute"
-                left={`${(frame.timestampUs / 1e6 / clip.duration) * 100}%`}
-                transform="translateX(-50%)"
-                w={isContain ? "10px" : "8px"}
-                h={isContain ? "10px" : "14px"}
-                borderRadius={isContain ? "sm" : "full"}
-                bg={isContain ? CONTAIN_COLOR : (frame.targets.length === 2 ? TARGET_COLORS[1] : TARGET_COLORS[0])}
-                onClick={() => {
-                  const time = frame.timestampUs / 1e6;
-                  if (videoRef.current) videoRef.current.currentTime = time;
-                  syncDraftToTime(time);
-                }}
-              />
-            );
-          })}
-        </Box>
 
         <HStack gap={2} flexWrap="wrap">
           <OutlinedActionButton startIcon={<Plus size={16} />} onClick={addOrUpdateKeyframe}>
