@@ -1,9 +1,9 @@
 import type { NormalizedBox } from "../../shared/smart-crop";
 
-// v16 promotes the canonical-person fusion and stable visibility state machine
-// validated by the native Run 10 benchmark. Run 8 remains the per-sample
-// fallback for any untrusted decision.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v16-canonical";
+// v17 promotes the detector segment router (Iteration 11): eligible segments
+// take the shadow-detector candidate geometry with frozen run-4 parameters.
+// The Iteration 10 path remains the per-segment fallback.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v17-iteration11";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v2";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;

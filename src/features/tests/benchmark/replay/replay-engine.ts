@@ -24,6 +24,7 @@ import {
   type VisibilityControllerParams,
   type VisibilityVariant,
 } from "../../../clipper/engine/autoflip/visibility-controller";
+import { spliceDetectorSegments } from "../../../clipper/engine/autoflip/segment-detector-splice";
 import { calculateBenchmarkMetrics, type BenchmarkFrameDetail, type BenchmarkFrameInput } from "../metrics";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
 import type { ClipArtifacts, RecordedAutoflipDebug } from "./replay-io";
@@ -133,7 +134,11 @@ export function replayTrack(
     // originally went semantic has no exact baseline crop; its viewports only
     // gate interpolation shape, never scoring, because legacy frames are
     // composed from the recorded baseline jsonl rows.
-    const baselineMode = sample.strategy === "legacy-baseline" ? sample.mode : "single-crop";
+    // Spliced samples keep the production pre-splice mode, so it is the
+    // faithful baseline for re-deciding them just like legacy-baseline rows.
+    const baselineMode = sample.strategy === "legacy-baseline" || sample.strategy === "detector-splice"
+      ? sample.mode
+      : "single-crop";
     return {
       t: sample.t,
       cut: Boolean(sample.cut),
@@ -345,6 +350,52 @@ export function aggregate(results: ClipReplayResult[]): AggregateMetrics {
   };
 }
 
+/**
+ * Re-applies the recorded Iteration 11 router splice to replayed samples.
+ * The splice itself is pure; feeding it the recorded decisions and the
+ * recorded detector-candidate tracks reproduces the production swap exactly,
+ * so an iteration11 run stays self-checkable sample by sample.
+ */
+export function applyRecordedRouterSplice(
+  samples: ReplayedSample[],
+  debug: RecordedAutoflipDebug,
+  formatId: string,
+): ReplayedSample[] {
+  const decisions = debug.routerDecisions ?? [];
+  const detectorTrack = debug.detectorSpliceTracks?.[formatId];
+  if (!decisions.some((decision) => decision.useDetector) || !detectorTrack) return samples;
+  const targetAspectRatio = debug.layoutTracks[formatId]?.targetAspectRatio ?? detectorTrack.targetAspectRatio;
+  const layoutSamples = samples.map((sample): ClipperLayoutSample => ({
+    t: sample.t,
+    cut: sample.cut,
+    mode: sample.mode,
+    strategy: sample.strategy,
+    viewports: sample.viewports,
+    reasonCodes: sample.reasonCodes,
+    coverageBoxes: sample.coverageBoxes,
+    requiredRegionIds: sample.requiredRegionIds ?? [],
+  }));
+  const spliced = spliceDetectorSegments({
+    layoutTracks: { [formatId]: { targetAspectRatio, samples: layoutSamples } },
+    detectorLayoutTracks: { [formatId]: detectorTrack },
+    decisions,
+  }).layoutTracks[formatId]!.samples;
+  return samples.map((sample, index) => {
+    const layoutSample = spliced[index]!;
+    if (!layoutSample.routerSwapped) return sample;
+    return {
+      ...sample,
+      strategy: layoutSample.strategy ?? sample.strategy,
+      viewports: layoutSample.viewports,
+      coverageBoxes: layoutSample.coverageBoxes,
+      reasonCodes: layoutSample.reasonCodes,
+      subjectDisplayHeightFractions:
+        layoutSample.qualityTelemetry?.subjectDisplayHeightFractions
+          ?? sample.subjectDisplayHeightFractions,
+    };
+  });
+}
+
 export interface SelfCheckResult {
   passed: boolean;
   failures: string[];
@@ -370,7 +421,10 @@ export function selfCheck(
   const failures: string[] = [];
   const results: ClipReplayResult[] = [];
   for (const clip of clips) {
-    const samples = replayTrack(clip.debug, clip.formatId, params);
+    const replayed = replayTrack(clip.debug, clip.formatId, params);
+    const samples = clip.debug.replayConfig?.productionPolicy === "iteration11"
+      ? applyRecordedRouterSplice(replayed, clip.debug, clip.formatId)
+      : replayed;
     const recorded = clip.debug.layoutTracks[clip.formatId]!.samples;
     for (const [index, sample] of samples.entries()) {
       const expected = recorded[index]!.strategy ?? "legacy-baseline";

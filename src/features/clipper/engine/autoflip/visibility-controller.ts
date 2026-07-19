@@ -59,6 +59,21 @@ export const ITERATION10_VISIBILITY_CONTROLLER_PARAMS: Readonly<VisibilityContro
   widerHoldSec: 1.2,
 });
 
+/**
+ * Stricter switching regime paired with detector-candidate geometry. Frozen
+ * verbatim from the run-4 shadow experiment that validated the segment router;
+ * Iteration 11 must not retune these values.
+ */
+export const ITERATION11_DETECTOR_VISIBILITY_PARAMS: Readonly<VisibilityControllerParams> = Object.freeze({
+  ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS,
+  splitPendingSec: 0.8,
+  splitMinDurationSec: 2,
+  splitExitStableSec: 1.6,
+  containMinDurationSec: 0.8,
+  widerHoldSec: 1.6,
+  maxSwitchesPerMinute: 4,
+});
+
 export type VisibilityMachineState = "common" | "split-pending" | "split-active" | "merge-pending" | "contain-failsafe";
 
 export interface VisibilityControllerState {

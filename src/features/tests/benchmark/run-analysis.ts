@@ -14,7 +14,8 @@ import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-autoflip
 import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/canonical-person";
 import { buildDetectorHypothesisBank } from "../../clipper/engine/autoflip/detector-hypotheses";
 import { RUN10_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout-arbiter";
-import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "../../clipper/engine/autoflip/visibility-controller";
+import { DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS } from "../../clipper/engine/autoflip/segment-detector-router";
+import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS, ITERATION11_DETECTOR_VISIBILITY_PARAMS } from "../../clipper/engine/autoflip/visibility-controller";
 import {
   augmentFaceSamplesWithDetectedHeads,
   buildCollageTracksForRegions,
@@ -166,6 +167,7 @@ export async function runTestBenchmarkAnalysis(input: {
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
     iteration10: true,
+    iteration11: true,
   });
   blob.engine = engine;
   const iteration10CandidateBlob = buildAutoFlipTrack({
@@ -381,16 +383,20 @@ export async function runTestBenchmarkAnalysis(input: {
     processingMs,
     degradedReason,
     autoflipDebug: {
-      schemaVersion: 4,
+      schemaVersion: 5,
       replayConfig: {
-        productionPolicy: "iteration10",
+        productionPolicy: "iteration11",
         arbiterParams: { ...RUN10_ARBITER_PARAMS },
         visibilityControllerParams: { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS },
+        detectorRouterParams: { ...DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS },
+        detectorVisibilityParams: { ...ITERATION11_DETECTOR_VISIBILITY_PARAMS },
       },
       semanticFramingParams: null,
       scenes: blob.debug ?? [],
       importanceSamples: blob.importanceSamples ?? [],
       layoutTracks: blob.layoutTracks ?? {},
+      routerDecisions: blob.routerDecisions ?? [],
+      detectorSpliceTracks: blob.detectorSpliceTracks,
       subjectSamples: canonicalSamples,
       detectorHypothesisSamples: buildDetectorHypothesisBank(canonicalSamples),
       canonicalIdentityTelemetry: blob.canonicalIdentityTelemetry,

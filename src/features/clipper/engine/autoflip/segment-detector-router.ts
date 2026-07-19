@@ -2,26 +2,12 @@ import type {
   ClipperLayoutMode,
   DetectorHypothesis,
   DetectorHypothesisSample,
+  DetectorSegmentDecision,
+  DetectorSegmentFeatures,
   NormalizedBox,
 } from "../../shared/smart-crop";
 
-export interface DetectorSegmentFeatures {
-  sampleCount: number;
-  yoloxPresence: number;
-  ssdPresence: number;
-  yoloxConfidence: number;
-  ssdConfidence: number;
-  yoloxFaceSupport: number;
-  yoloxPoseSupport: number;
-  yoloxPersistence: number;
-  ssdPersistence: number;
-  agreement: number;
-  personExcess: number;
-  groupSpread: number;
-  ambiguity: number;
-  motionPenalty: number;
-  saliencySupport: number;
-}
+export type { DetectorSegmentDecision, DetectorSegmentFeatures } from "../../shared/smart-crop";
 
 export interface DetectorSegmentRouterParams {
   segmentDurationSec: number;
@@ -75,15 +61,6 @@ export const DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS: DetectorSegmentRouterParams
       saliencySupport: 0.25,
     },
   };
-
-export interface DetectorSegmentDecision {
-  start: number;
-  end: number;
-  useDetector: boolean;
-  score: number;
-  features: DetectorSegmentFeatures;
-  reasonCodes: string[];
-}
 
 export interface GroupUnionLayout {
   mode: ClipperLayoutMode;

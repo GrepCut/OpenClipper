@@ -14,7 +14,7 @@ import { scoreClip } from "./replay-engine";
 import { composeFrames, replayTrack } from "./replay-engine";
 import { RUN10_ARBITER_PARAMS } from "../../../clipper/engine/autoflip/layout-arbiter";
 import { DEFAULT_SEMANTIC_FRAMING_PARAMS } from "../../../clipper/engine/autoflip/layout-planner";
-import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "../../../clipper/engine/autoflip/visibility-controller";
+import { ITERATION11_DETECTOR_VISIBILITY_PARAMS } from "../../../clipper/engine/autoflip/visibility-controller";
 
 export interface DetectorRouterReplayResult {
   metrics: BenchmarkMetrics;
@@ -35,15 +35,7 @@ const iteration10CandidateCache = new WeakMap<
   Array<BenchmarkFrameInput | undefined>
 >();
 
-const STABLE_DETECTOR_VISIBILITY_PARAMS = {
-  ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS,
-  splitPendingSec: 0.8,
-  splitMinDurationSec: 2,
-  splitExitStableSec: 1.6,
-  containMinDurationSec: 0.8,
-  widerHoldSec: 1.6,
-  maxSwitchesPerMinute: 4,
-};
+const STABLE_DETECTOR_VISIBILITY_PARAMS = ITERATION11_DETECTOR_VISIBILITY_PARAMS;
 
 function frameInput(
   row: ClipArtifacts["baselineRows"][number],

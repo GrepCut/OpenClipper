@@ -150,6 +150,7 @@ export async function runAnalyzeSubjectsStage(
     headroom: input.headroom,
     degradedReason,
     iteration10: true,
+    iteration11: true,
   });
   blob.engine = pending?.engine ?? "wasm";
   session.smartCropAnalysis = blob;

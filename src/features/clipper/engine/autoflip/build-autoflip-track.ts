@@ -1,20 +1,23 @@
 import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings";
 import type { FaceBoxSample } from "../../shared/face-samples";
-import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
+import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperLayoutTrack, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
 import type { CentroidSample } from "../reframe";
 import { cropRectToCentroid } from "./frame-crop-region";
 import { analyzeSceneMotion } from "./scene-camera-motion";
 import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { attachImportanceSignals, buildImportanceTimeline } from "./importance-ranker";
-import { buildLayoutTracks } from "./layout-planner";
+import { buildLayoutTracks, DEFAULT_SEMANTIC_FRAMING_PARAMS } from "./layout-planner";
 import type { ArbiterSceneMotion } from "./layout-arbiter";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
 import { applyActiveSpeakerPolicy } from "./active-speaker";
 import { buildCanonicalPersonTracks } from "./canonical-person";
+import { buildDetectorHypothesisBank } from "./detector-hypotheses";
+import { DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS, routeDetectorSegments, type DetectorSegmentRouterParams } from "./segment-detector-router";
+import { spliceDetectorSegments } from "./segment-detector-splice";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID } from "./types";
 import { RUN10_ARBITER_PARAMS } from "./layout-arbiter";
-import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "./visibility-controller";
+import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS, ITERATION11_DETECTOR_VISIBILITY_PARAMS } from "./visibility-controller";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
 
 export interface BuildAutoFlipTrackInput {
@@ -48,6 +51,13 @@ export interface BuildAutoFlipTrackInput {
   collectDebug?: boolean;
   /** Build the Iteration 10 candidate. Omit for the bit-for-bit Run 8 production path. */
   iteration10?: boolean;
+  /**
+   * Iteration 11: route eligible segments to the detector candidate via the
+   * segment router. Omit for the bit-for-bit Iteration 10 path.
+   */
+  iteration11?: boolean;
+  /** Router thresholds; omit for the frozen run-4 defaults. Benchmark replay only. */
+  detectorRouterParams?: DetectorSegmentRouterParams;
 }
 
 const FULL_FRAME: NormalizedBox = { x: 0, y: 0, width: 1, height: 1 };
@@ -393,7 +403,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
 
   const primaryTrack = aspectTracks[Object.keys(aspectTracks)[0]!]!;
   const samples: SmartCropSample[] = primaryTrack.samples.map((sample) => rectToSample(sample.t, sample.crop, Boolean(sample.cut)));
-  const layoutTracks = buildLayoutTracks({
+  let layoutTracks = buildLayoutTracks({
     aspectTracks,
     importanceSamples,
     frameWidth: sourceFrameWidth,
@@ -404,6 +414,49 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
       ? { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS }
       : undefined,
   });
+
+  let routerDecisions: ReturnType<typeof routeDetectorSegments> | undefined;
+  let detectorSpliceTracks: Record<string, ClipperLayoutTrack> | undefined;
+  if (input.iteration11) {
+    const routerParams = input.detectorRouterParams ?? DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS;
+    routerDecisions = routeDetectorSegments(buildDetectorHypothesisBank(canonicalFusion.samples), routerParams);
+    const hasDetectorShadow = input.detections.some((sample) => sample.shadowDetections?.length);
+    if (hasDetectorShadow && routerDecisions.some((decision) => decision.useDetector)) {
+      // Mirrors the benchmark's detector-candidate blob (run-analysis.ts) and
+      // the replay's candidate geometry: Run 8 track over the shadow
+      // detections, re-decided with the RUN10 arbiter, semantic framing and
+      // the stricter detector visibility regime, over the PRODUCTION scene
+      // motion — the exact configuration the run-4 shadow experiment scored.
+      const detectorBlob = buildAutoFlipTrack({
+        ...input,
+        detections: input.detections.map((sample) => ({
+          ...sample,
+          detections: sample.shadowDetections?.length ? sample.shadowDetections : sample.detections,
+          shadowDetections: undefined,
+          modelId: "yolox-tiny-shadow",
+        })),
+        collectDebug: false,
+        iteration10: false,
+        iteration11: false,
+      });
+      const detectorLayoutTracks = buildLayoutTracks({
+        aspectTracks: detectorBlob.aspectTracks ?? {},
+        importanceSamples: detectorBlob.importanceSamples ?? [],
+        frameWidth: sourceFrameWidth,
+        frameHeight: sourceFrameHeight,
+        sceneMotion,
+        arbiterParams: { ...RUN10_ARBITER_PARAMS },
+        semanticFramingParams: DEFAULT_SEMANTIC_FRAMING_PARAMS,
+        visibilityControllerParams: { ...ITERATION11_DETECTOR_VISIBILITY_PARAMS },
+      });
+      layoutTracks = spliceDetectorSegments({
+        layoutTracks,
+        detectorLayoutTracks,
+        decisions: routerDecisions,
+      }).layoutTracks;
+      if (input.collectDebug) detectorSpliceTracks = detectorLayoutTracks;
+    }
+  }
 
   return {
     analyzerVersion: AUTOFLIP_ANALYZER_VERSION,
@@ -421,6 +474,8 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     layoutTracks,
     canonicalIdentityTelemetry: canonicalFusion.telemetry,
     activeSpeakerTelemetry: activeSpeaker.telemetry,
+    routerDecisions,
+    detectorSpliceTracks,
     debug: debugScenes,
   };
 }

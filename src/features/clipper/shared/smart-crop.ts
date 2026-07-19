@@ -160,6 +160,34 @@ export interface DetectorHypothesisSample {
   hypotheses: DetectorHypothesis[];
 }
 
+export interface DetectorSegmentFeatures {
+  sampleCount: number;
+  yoloxPresence: number;
+  ssdPresence: number;
+  yoloxConfidence: number;
+  ssdConfidence: number;
+  yoloxFaceSupport: number;
+  yoloxPoseSupport: number;
+  yoloxPersistence: number;
+  ssdPersistence: number;
+  agreement: number;
+  personExcess: number;
+  groupSpread: number;
+  ambiguity: number;
+  motionPenalty: number;
+  saliencySupport: number;
+}
+
+/** One aspect-independent routing verdict for a short scene segment. */
+export interface DetectorSegmentDecision {
+  start: number;
+  end: number;
+  useDetector: boolean;
+  score: number;
+  features: DetectorSegmentFeatures;
+  reasonCodes: string[];
+}
+
 export interface MotionRegion extends NormalizedBox {
   energy: number;
   expansion: number;
@@ -239,7 +267,8 @@ export type ClipperLayoutStrategy =
   | "legacy-baseline"
   | "semantic-single"
   | "semantic-split"
-  | "semantic-contain";
+  | "semantic-contain"
+  | "detector-splice";
 
 /** Source-space render instruction for one instant of one output format. */
 export interface ClipperLayoutSample {
@@ -277,6 +306,8 @@ export interface ClipperLayoutSample {
   };
   /** Required boxes used to validate intermediate interpolation frames. */
   coverageBoxes?: NormalizedBox[];
+  /** Iteration 11: geometry came from the detector candidate via the segment router. */
+  routerSwapped?: boolean;
   cut?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
 }
@@ -368,6 +399,14 @@ export interface ClipperSmartCropBlob {
   layoutTracks?: Record<string, ClipperLayoutTrack>;
   canonicalIdentityTelemetry?: CanonicalIdentityTelemetry;
   activeSpeakerTelemetry?: ActiveSpeakerTelemetry;
+  /** Iteration 11: per-segment router verdicts; absent when the router flag is off. */
+  routerDecisions?: DetectorSegmentDecision[];
+  /**
+   * Iteration 11 diagnostics: the detector-candidate layout tracks the splice
+   * consulted. Recorded only under collectDebug so offline replay can
+   * reproduce the splice deterministically; never persisted by production.
+   */
+  detectorSpliceTracks?: Record<string, ClipperLayoutTrack>;
   /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
   debug?: AutoFlipSceneDebug[];
 }

@@ -6,9 +6,11 @@ import type {
   CanonicalIdentityTelemetry,
   ClipperLayoutTrack,
   DetectorHypothesisSample,
+  DetectorSegmentDecision,
   ImportanceRegionSample,
   SubjectDetectionSample,
 } from "../../../clipper/shared/smart-crop";
+import type { DetectorSegmentRouterParams } from "../../../clipper/engine/autoflip/segment-detector-router";
 import {
   DEFAULT_ARBITER_PARAMS,
   RUN10_ARBITER_PARAMS,
@@ -28,6 +30,10 @@ export interface RecordedAutoflipDebug {
     productionPolicy: string;
     arbiterParams: ArbiterParams;
     visibilityControllerParams?: VisibilityControllerParams;
+    /** Schema v5: frozen router thresholds active during the run. */
+    detectorRouterParams?: DetectorSegmentRouterParams;
+    /** Schema v5: visibility regime paired with detector-candidate geometry. */
+    detectorVisibilityParams?: VisibilityControllerParams;
   };
   semanticFramingParams?: SemanticFramingParams | null;
   scenes: Array<{
@@ -38,6 +44,10 @@ export interface RecordedAutoflipDebug {
   }>;
   importanceSamples: ImportanceRegionSample[];
   layoutTracks: Record<string, ClipperLayoutTrack>;
+  /** Schema v5: per-segment router verdicts the production splice acted on. */
+  routerDecisions?: DetectorSegmentDecision[];
+  /** Schema v5: detector-candidate tracks the splice consulted, for exact replay. */
+  detectorSpliceTracks?: Record<string, ClipperLayoutTrack>;
   /** Benchmark-only raw evidence; never consumed by the production arbiter. */
   subjectSamples?: SubjectDetectionSample[];
   /** Source-preserving evidence and legal router features; never production input. */
