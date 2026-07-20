@@ -57,6 +57,106 @@
       </div>
     </div>
     <div id="root"></div>
+
+    <!--
+      Inline bootstrap — replaces the former src/bootstrap.ts module.
+      Runs synchronously before the React bundle so we can:
+        1. Set up the Tauri startup-log bridge (__OPEN_CLIPPER_STARTUP_LOG__)
+        2. Provide __OPEN_CLIPPER_MARK_INTERACTIVE__ to dismiss the boot shell
+        3. Forward uncaught errors / unhandled rejections to the Tauri backend
+        4. Emit a 1-second heartbeat proving the event loop is alive
+    -->
+    <script>
+      (function () {
+        "use strict";
+
+        function stringify(value) {
+          if (value instanceof Error) {
+            return (value.name + ": " + value.message + "\n" + (value.stack || "")).trim();
+          }
+          if (typeof value === "string") return value;
+          try { return JSON.stringify(value); } catch (_) { return String(value); }
+        }
+
+        function report(level, message, details) {
+          var invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+          if (!invoke) return;
+          invoke("frontend_startup_log", {
+            level: level,
+            message: message,
+            details: details === undefined ? null : stringify(details).slice(0, 20000),
+          }).catch(function () {});
+        }
+
+        // Expose the log bridge so main.tsx can call startupLog?.()
+        window.__OPEN_CLIPPER_STARTUP_LOG__ = report;
+
+        // Dismiss the boot shell when the first interactive route commits
+        var interactiveReported = false;
+        window.__OPEN_CLIPPER_MARK_INTERACTIVE__ = function (route) {
+          if (interactiveReported) return;
+          interactiveReported = true;
+          var shell = document.getElementById("open-clipper-boot-shell");
+          if (shell) shell.remove();
+          report("info", "interactive route committed", {
+            route: route,
+            navigationMs: Math.round(performance.now()),
+          });
+        };
+
+        // Forward console.error / console.warn to Tauri logs
+        var origError = console.error.bind(console);
+        var origWarn = console.warn.bind(console);
+        console.error = function () {
+          origError.apply(console, arguments);
+          report("error", "console.error", Array.prototype.map.call(arguments, stringify).join(" | "));
+        };
+        console.warn = function () {
+          origWarn.apply(console, arguments);
+          report("warn", "console.warn", Array.prototype.map.call(arguments, stringify).join(" | "));
+        };
+
+        // Catch-all error handlers
+        window.addEventListener("error", function (event) {
+          report("error", "uncaught window error", {
+            message: event.message,
+            filename: event.filename,
+            line: event.lineno,
+            column: event.colno,
+            error: stringify(event.error),
+          });
+        });
+        window.addEventListener("unhandledrejection", function (event) {
+          report("error", "unhandled promise rejection", event.reason);
+        });
+
+        report("info", "frontend bootstrap started", window.location.href);
+
+        // Heartbeat — proof the event loop is alive
+        window.setTimeout(function () {
+          report("info", "frontend event loop heartbeat after 1 second");
+        }, 1000);
+
+        // Observe #root so we can report when React commits its first content
+        var root = document.getElementById("root");
+        if (root) {
+          var observer = new MutationObserver(function () {
+            if (root.childNodes.length > 0) {
+              report("info", "React committed its first DOM content", {
+                childNodes: root.childNodes.length,
+                textPreview: (root.textContent || "").slice(0, 200),
+                navigationMs: Math.round(performance.now()),
+              });
+              observer.disconnect();
+            }
+          });
+          observer.observe(root, { childList: true, subtree: true });
+        } else {
+          report("error", "root DOM element is missing before frontend import");
+        }
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

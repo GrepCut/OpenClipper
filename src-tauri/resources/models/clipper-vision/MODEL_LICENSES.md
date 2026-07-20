@@ -1,11 +1,5 @@
 # Clipper vision model notices
 
-## Light-ASD
-
-The bundled `light_asd_ava.onnx` is an ONNX export of the supplied AVA
-checkpoint from Light-ASD. Light-ASD is distributed under the MIT License.
-See <https://github.com/Junhua-Liao/Light-ASD>.
-
 ## LR-ASD
 
 The bundled `lr_asd_ava.onnx` is a deterministic ONNX export of the supplied
@@ -58,8 +52,8 @@ The bundled `osnet_x0_25_msmt17.onnx` is a deterministic ONNX export of the
 OSNet x0.25 MSMT17 checkpoint from deep-person-reid. OSNet is distributed
 under the MIT License. See <https://github.com/KaiyangZhou/deep-person-reid>.
 
-Used in shadow mode only (adaptive ReID diagnostics); layout routing is
-unchanged unless explicitly promoted.
+Feeds person re-identification embeddings used by canonical-person track
+association across frames.
 
 ## TransNetV2
 
@@ -67,19 +61,7 @@ The bundled `transnetv2.onnx` is a deterministic ONNX export of the TransNetV2
 shot-boundary model. TransNetV2 is distributed under the Apache License 2.0.
 See <https://github.com/soCzech/TransNetV2>.
 
-Used in shadow mode only (cut-detection diagnostics); production scene cuts
-still come from the histogram `AutoFlipShotBoundaryDetector` until promoted.
-
-## OSNet x0.5
-
-The bundled `osnet_x0_5_msmt17.onnx` is a deterministic ONNX export of the
-OSNet x0.5 MSMT17 combineall checkpoint from deep-person-reid (SHA256
-`e96cbd20ee9cc3c6dcc0e8f4fbba8c8069d47647a5a96a59ce381fb785c54f68`).
-OSNet is distributed under the MIT License. See
-<https://github.com/KaiyangZhou/deep-person-reid>.
-
-Used in shadow mode only (adaptive ReID diagnostics); layout routing is
-unchanged unless explicitly promoted.
+Drives production scene-cut resets for the AutoFlip tracker.
 
 ## ViNet-S
 
@@ -89,5 +71,4 @@ ViNet++ ViNet-S saliency checkpoint (SHA256
 ViNet++ is distributed under CC BY-NC-SA 4.0. See
 `reference-algorithms/video-saliency/vinet-v2/`.
 
-Used in shadow mode only (temporal video-saliency diagnostics); layout routing
-is unchanged unless explicitly promoted.
+Feeds the `video-saliency` importance signal used in crop framing decisions.

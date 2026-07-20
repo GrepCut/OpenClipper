@@ -1,8 +1,8 @@
 //! Generalization models (TransNetV2, OSNet, ViNet).
 //!
-//! Enabled by default when ONNX weights exist. ViNet saliency feeds importance
-//! signals; TransNet drives scene-cut resets; OSNet embeddings assist multi-person
-//! identity fusion. Set `CLIPPER_SHADOW_MODELS=0` to disable all.
+//! ViNet saliency feeds importance signals; TransNet drives scene-cut resets;
+//! OSNet embeddings assist multi-person identity fusion. Always enabled when
+//! the corresponding ONNX weights exist on disk.
 
 use std::path::Path;
 
@@ -16,17 +16,7 @@ use crate::video_processing::winml_vision::{NativeVisionError, VisionModel, WinM
 const TRANSNET_WINDOW: usize = 100;
 const TRANSNET_HEIGHT: usize = 27;
 const TRANSNET_WIDTH: usize = 48;
-const TRANSNET_CUT_THRESHOLD: f32 = 0.5; // ponytail: used when TransNet shadow graduates from diagnostics to cut resets (5.5)
-fn transnet_scene_cuts_enabled() -> bool {
-    match std::env::var("CLIPPER_TRANSNET_SCENE_CUTS").ok().as_deref() {
-        Some("0") | Some("false") => false,
-        _ => true,
-    }
-}
-
-pub fn transnet_scene_cuts_authority() -> bool {
-    transnet_scene_cuts_enabled()
-}
+const TRANSNET_CUT_THRESHOLD: f32 = 0.5;
 
 const VINET_CLIPS: usize = 32;
 const VINET_HEIGHT: usize = 224;
@@ -43,28 +33,11 @@ pub struct GeneralizationShadowConfig {
 }
 
 impl GeneralizationShadowConfig {
-    /// All models on by default; `CLIPPER_SHADOW_MODELS=0` disables all, or pass a
-    /// comma whitelist (e.g. `transnet,vinet`) to enable only those names.
     pub fn resolve() -> Self {
-        match std::env::var("CLIPPER_SHADOW_MODELS").ok().as_deref() {
-            None => Self {
-                transnet: true,
-                osnet: true,
-                vinet: true,
-            },
-            Some("0") | Some("false") => Self::default(),
-            Some(raw) => {
-                let tokens = raw
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|token| !token.is_empty())
-                    .collect::<Vec<_>>();
-                Self {
-                    transnet: tokens.iter().any(|token| token.eq_ignore_ascii_case("transnet")),
-                    osnet: tokens.iter().any(|token| token.eq_ignore_ascii_case("osnet")),
-                    vinet: tokens.iter().any(|token| token.eq_ignore_ascii_case("vinet")),
-                }
-            }
+        Self {
+            transnet: true,
+            osnet: true,
+            vinet: true,
         }
     }
 
@@ -461,7 +434,7 @@ impl GeneralizationShadowRunner {
                 self.latest_saliency = Some(sample);
             }
         }
-        transnet_cut && transnet_scene_cuts_enabled()
+        transnet_cut
     }
 
     fn motion_saliency_from_rgb(
@@ -830,15 +803,6 @@ pub fn calibrate_transnet_vs_histogram(samples: &[TransNetShadowSample]) -> Tran
     }
 }
 
-#[allow(dead_code)] // ponytail: wired in 5.5 when TransNet replaces histogram-only cut resets
-pub fn transnet_cut_candidates(samples: &[TransNetShadowSample]) -> Vec<f64> {
-    samples
-        .iter()
-        .filter(|sample| sample.many_frame_probability >= TRANSNET_CUT_THRESHOLD)
-        .map(|sample| sample.time)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -851,7 +815,6 @@ mod tests {
 
     #[test]
     fn shadow_config_resolve_defaults_all_on() {
-        std::env::remove_var("CLIPPER_SHADOW_MODELS");
         let config = GeneralizationShadowConfig::resolve();
         assert!(config.transnet && config.osnet && config.vinet);
     }

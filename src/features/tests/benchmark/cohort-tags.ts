@@ -46,6 +46,3 @@ export function resolveClipCohorts(clip: TestClip): BenchmarkCohort[] {
   return ["mixed"];
 }
 
-export function isHoldoutDataset(role: string | undefined): boolean {
-  return role === "holdout";
-}

@@ -13,7 +13,7 @@ use std::time::Instant;
 use super::bytetrack::{ByteTracker, TrackDetection, TrackOutput};
 use super::clipper_border::detect_border_features;
 use super::clipper_frames::{should_decode_video_packet, AutoFlipShotBoundaryDetector};
-use super::generalization_shadow::{GeneralizationShadowConfig, GeneralizationShadowDiagnostics, GeneralizationShadowRunner, transnet_scene_cuts_authority};
+use super::generalization_shadow::{GeneralizationShadowConfig, GeneralizationShadowDiagnostics, GeneralizationShadowRunner};
 use super::histogram::compute_autoflip_histogram_raw;
 use super::vision_logic::{
     box_iou, decode_blaze, decode_movenet, decode_yolox, detect_motion_saliency,
@@ -1520,9 +1520,6 @@ pub fn analyze(
                     );
                     if shot_detector.push(relative, histogram) {
                         scene_cut_timestamps.push(relative);
-                        if !transnet_scene_cuts_authority() {
-                            pending_scene_cut = true;
-                        }
                     }
                     histogram_sample_count += 1;
                     t_histogram += started.elapsed().as_micros();

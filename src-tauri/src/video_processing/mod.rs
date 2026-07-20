@@ -12,14 +12,6 @@ mod winml_pipeline;
 #[cfg(windows)]
 mod winml_vision;
 
-/// `default_on`: production default after handoff promotion. Explicit `0`/`false` disables.
-pub(crate) fn clipper_env_enabled(name: &str, default_on: bool) -> bool {
-    match std::env::var(name).ok().as_deref() {
-        Some("0") | Some("false") => false,
-        Some("1") | Some("true") => true,
-        _ => default_on,
-    }
-}
 
 pub(crate) use clipper_frames::{
     extract_clipper_segment_to_path_blocking, extract_frame_rgb_at_timestamp,

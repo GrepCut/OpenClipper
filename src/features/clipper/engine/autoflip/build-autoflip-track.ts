@@ -11,7 +11,6 @@ import { applyActiveSpeakerPolicy } from "./active-speaker";
 import { buildCanonicalPersonTracks } from "./canonical-person";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID } from "./types";
 import { RUN10_ARBITER_PARAMS } from "./layout-arbiter";
-import { groupUnionCropEnabled, shotCropSmoothingEnabled } from "./generalization-flags";
 import { smoothShotCropSamples } from "./shot-crop-smoothing";
 import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "./visibility-controller";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
@@ -363,9 +362,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
       }
     }
     const sourceAspect = sourceFrameWidth / Math.max(1, sourceFrameHeight);
-    const smoothedSamples = shotCropSmoothingEnabled()
-      ? smoothShotCropSamples(samples, input.sceneCuts)
-      : samples;
+    const smoothedSamples = smoothShotCropSamples(samples, input.sceneCuts);
     aspectTracks[formatId] = {
       targetAspectRatio,
       samples: smoothedSamples.map((sample) => ({
@@ -383,7 +380,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     frameHeight: sourceFrameHeight,
     arbiterParams: {
       ...(input.iteration10 ? { ...RUN10_ARBITER_PARAMS } : {}),
-      allowGroupUnion: groupUnionCropEnabled(),
+      allowGroupUnion: true,
     },
     visibilityControllerParams: input.iteration10
       ? { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS }

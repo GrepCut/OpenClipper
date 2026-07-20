@@ -3,10 +3,9 @@
 Niezależny, zweryfikowany zestaw modeli Open Clipper do ręcznej publikacji w
 Cloudflare R2 pod `https://models.openclipper.grepcut.com/v1`.
 
-Automatyzacja publikuje wyłącznie modele pobierane na żądanie przez web i Tauri:
-AutoFlip, BlazeFace, runtime Magic Touch oraz produkcyjne pliki Parakeet.
-Testowe WAV-y, README i natywne `src-tauri/resources/models/clipper-vision`
-nie wchodzą do CDN.
+Automatyzacja publikuje wyłącznie produkcyjne pliki Parakeet (ASR), jedyny
+model pobierany na żądanie przez runtime. Testowe WAV-y, README i natywne
+`src-tauri/resources/models/clipper-vision` nie wchodzą do CDN.
 
 ```powershell
 npm run models:prepare

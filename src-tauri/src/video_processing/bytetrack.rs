@@ -12,10 +12,6 @@ const LOW_MATCH_COST: f32 = 0.5; // Keep low-confidence recovery conservative.
 const MAX_LOST_SECONDS: f64 = 1.0;
 const PREDICTION_HOLD_SECONDS: f64 = 0.6;
 
-fn camera_motion_compensation_enabled() -> bool {
-    super::clipper_env_enabled("CLIPPER_CAMERA_MOTION_COMPENSATION", true)
-}
-
 #[derive(Clone, Debug)]
 pub struct TrackDetection {
     pub box_: NormalizedBox,
@@ -289,19 +285,14 @@ impl ByteTracker {
     }
 
     pub fn update(&mut self, time: f64, detections: &[TrackDetection]) -> Vec<TrackOutput> {
-        let gmc_enabled = camera_motion_compensation_enabled();
-        let (working, motion) = if gmc_enabled {
-            if let Some(center) = Self::estimate_global_center(detections) {
-                let (dx, dy) = match self.last_global_center {
-                    Some((previous_x, previous_y)) => (center.0 - previous_x, center.1 - previous_y),
-                    None => (0.0, 0.0),
-                };
-                self.last_global_center = Some(center);
-                self.last_camera_motion = (dx * dx + dy * dy).sqrt();
-                (Self::compensate_detections(detections, dx, dy), self.last_camera_motion)
-            } else {
-                (detections.to_vec(), 0.0)
-            }
+        let (working, motion) = if let Some(center) = Self::estimate_global_center(detections) {
+            let (dx, dy) = match self.last_global_center {
+                Some((previous_x, previous_y)) => (center.0 - previous_x, center.1 - previous_y),
+                None => (0.0, 0.0),
+            };
+            self.last_global_center = Some(center);
+            self.last_camera_motion = (dx * dx + dy * dy).sqrt();
+            (Self::compensate_detections(detections, dx, dy), self.last_camera_motion)
         } else {
             (detections.to_vec(), 0.0)
         };
