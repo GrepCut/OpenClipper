@@ -29,19 +29,19 @@
     "models:verify": "python models_automation\\models_manager.py verify",
     "models:promote": "python models_automation\\models_manager.py promote",
     "models:rollback": "python models_automation\\models_manager.py rollback",
-    "models:status": "python models_automation\\models_manager.py status"
+    "models:status": "python models_automation\\models_manager.py status",
+    "clipper-vision:sync": "python scripts/models/sync_clipper_vision_from_public.py",
+    "clipper-vision:sync:dry": "python scripts/models/sync_clipper_vision_from_public.py --dry-run",
+    "clipper-vision:prepare-generalization": "python scripts/models/prepare_generalization_winml.py && python scripts/models/sync_clipper_vision_from_public.py"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.24.2",
     "@emotion/react": "^11.14.0",
     "@fontsource/inter": "^5.2.8",
     "@mediabunny/mp3-encoder": "1.50.8",
-    "@mediapipe/tasks-vision": "^0.10.35",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2",
-    "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-tflite": "0.0.1-alpha.10",
     "axios": "^1.11.0",
     "framer-motion": "^12.23.24",
     "idb": "^8.0.3",

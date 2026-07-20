@@ -63,7 +63,7 @@ fn frontend_ready(
 ) -> Result<(), String> {
     log::info!(target: "frontend", "frontend_ready received; session_id={session_id}");
     let retired = jobs.activate_session(&session_id)?;
-    video_processing::cleanup_clipper_frame_sessions(&retired);
+    let _ = retired;
     Ok(())
 }
 
@@ -189,8 +189,7 @@ pub fn run() {
                 && payload.event() == tauri::webview::PageLoadEvent::Started
             {
                 let jobs = webview.state::<video_processing::NativeJobRegistry>();
-                let retired = jobs.retire_active_session();
-                video_processing::cleanup_clipper_frame_sessions(&retired);
+                let _retired = jobs.retire_active_session();
             }
             if webview.label() == "main"
                 && payload.event() == tauri::webview::PageLoadEvent::Finished
@@ -243,11 +242,8 @@ pub fn run() {
             cli::get_benchmark_cli_request,
             cli::log_benchmark_cli_progress,
             cli::finish_benchmark_cli_command,
-            video_processing::start_clipper_media_extraction,
-            video_processing::probe_clipper_winml,
             video_processing::start_clipper_winml_analysis,
             video_processing::cancel_clipper_native_job,
-            video_processing::cleanup_clipper_frames,
             video_processing::snap_clipper_to_keyframe,
             video_processing::extract_clipper_segment,
             media_protocol::register_media_source,
@@ -278,6 +274,8 @@ pub fn run() {
             commands::test_benchmark::test_dataset_get,
             commands::test_benchmark::test_dataset_create,
             commands::test_benchmark::test_dataset_update,
+            commands::test_benchmark::test_dataset_update_role,
+            commands::test_benchmark::test_clip_update_cohorts,
             commands::test_benchmark::test_dataset_delete,
             commands::test_benchmark::test_clip_list,
             commands::test_benchmark::test_clip_get,
@@ -380,7 +378,6 @@ pub fn run() {
                 });
             }
 
-            video_processing::cleanup_clipper_frames_cache_on_startup(app.handle());
             log::info!(target: "startup", "startup setup completed");
             Ok(())
         })

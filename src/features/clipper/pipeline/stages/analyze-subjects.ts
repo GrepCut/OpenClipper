@@ -1,7 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
 import {
   AUTOFLIP_ANALYZER_VERSION,
   buildAutoFlipTrack,
+  primaryAspectTrackSampleCount,
 } from "../../engine/autoflip/build-autoflip-track";
 import { augmentFaceSamplesWithDetectedHeads } from "../../engine/collage";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats";
@@ -16,7 +16,7 @@ import {
 import { clipperPipelineService, markClipperStepCompleted } from "../../persistence/pipeline-api";
 import type { PipelineReporter } from "../reporter";
 import type { ClipperSession } from "../session";
-import { isRestoredClipAnalysisValid } from "../is-restored-analysis-valid";
+import { isRestoredSmartCropAnalysisValid } from "../is-restored-analysis-valid";
 
 export interface AnalyzeSubjectsInput {
   projectId: string;
@@ -33,7 +33,8 @@ function isValidRestoredBlob(
   start: number,
   end: number,
 ): boolean {
-  return isRestoredClipAnalysisValid(blob, {
+  if (blob?.engine === "wasm") return false;
+  return isRestoredSmartCropAnalysisValid(blob, {
     start,
     end,
     version: AUTOFLIP_ANALYZER_VERSION,
@@ -86,48 +87,27 @@ export async function runAnalyzeSubjectsStage(
 
   const pending = session.pendingSubjectExtraction ?? null;
   session.pendingSubjectExtraction = null;
-  const detectionTasks = pending?.detectionTasks ?? [];
-  const completedDetections = pending?.detections ?? [];
-  let degradedReason = pending?.degradedReason;
+  const detections = pending?.detections ?? [];
+  const degradedReason = pending?.degradedReason
+    ?? detections.find((sample) => sample.degradedReason)?.degradedReason;
 
-  const total = detectionTasks.length + completedDetections.length;
-  let completed = completedDetections.length;
-  const trackedTasks = detectionTasks.map((task) =>
-    task.finally(() => {
-      completed++;
-      if (!options.signal.aborted) {
-        reporter.subjectProgress(total > 0 ? Math.min(0.95, completed / total) : 0.95);
-      }
-    }),
-  );
-  const settled = await Promise.allSettled(trackedTasks);
-  benchmark?.enterPhase("autoflip-track-build");
-  pending?.dispose?.();
-  const detections = [
-    ...completedDetections,
-    ...settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])),
-  ];
-  degradedReason = degradedReason ?? detections.find((sample) => sample.degradedReason)?.degradedReason;
-  const detectorFailure = settled.find(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-  if (detectorFailure) {
+  if (!pending || detections.length === 0) {
     session.smartCropAnalysis = null;
-    session.smartFollowTrackCache = null;
-    if (pending?.jobId) void invoke("cleanup_clipper_frames", { jobId: pending.jobId }).catch(() => {});
     await markClipperStepCompleted(input.projectId, "analyze_subjects", {
       analyzerVersion: AUTOFLIP_ANALYZER_VERSION,
       modelId: null,
       sampleCount: 0,
       localDataPath: null,
-      degradedReason: `AutoFlip SSD Lite unavailable: ${String(detectorFailure.reason)}`,
+      degradedReason: degradedReason ?? "WinML subject analysis did not return detections.",
     });
     await markClipperStepCompleted(input.projectId, "preview_ready");
     reporter.subjectProgress(1);
     await writeFaceActionBenchmarkIfPresent(session, input.projectId);
     return;
   }
-  if (pending?.jobId) void invoke("cleanup_clipper_frames", { jobId: pending.jobId }).catch(() => {});
+
+  reporter.subjectProgress(0.95);
+  benchmark?.enterPhase("autoflip-track-build");
 
   const { frameWidth, frameHeight } = frameDimensions(session);
   const blob = buildAutoFlipTrack({
@@ -135,26 +115,24 @@ export async function runAnalyzeSubjectsStage(
     clipEnd: input.clipEnd,
     detections,
     faces: session.faceCache?.sortedSamples() ?? [],
-    sceneCuts: pending?.sceneCutTimestamps ?? [],
-    hasSolidColorBackground: pending?.hasSolidColorBackground,
-    solidBackgroundColor: pending?.solidBackgroundColor ?? undefined,
-    staticFeatureSamples: pending?.staticFeatureSamples,
-    importanceSignals: pending?.importanceSignals,
-    contentRect: pending?.contentRect,
+    sceneCuts: pending.sceneCutTimestamps,
+    hasSolidColorBackground: pending.hasSolidColorBackground,
+    solidBackgroundColor: pending.solidBackgroundColor ?? undefined,
+    staticFeatureSamples: pending.staticFeatureSamples,
+    importanceSignals: pending.importanceSignals,
+    contentRect: pending.contentRect,
     targetAspectRatios: cropAspectRatios(),
-    sourceFrameRate: pending?.sourceFrameRate,
-    trackerVersion: pending?.trackerVersion,
+    sourceFrameRate: pending.sourceFrameRate,
+    trackerVersion: pending.trackerVersion,
     frameWidth,
     frameHeight,
     smoothing: input.smoothing ?? "balanced",
     headroom: input.headroom,
     degradedReason,
     iteration10: true,
-    iteration11: true,
   });
-  blob.engine = pending?.engine ?? "wasm";
+  blob.engine = "winml";
   session.smartCropAnalysis = blob;
-  session.smartFollowTrackCache = null;
   session.collageFaceSamples = augmentFaceSamplesWithDetectedHeads(
     session.faceCache?.sortedSamples() ?? [],
     detections,
@@ -165,7 +143,7 @@ export async function runAnalyzeSubjectsStage(
   await markClipperStepCompleted(input.projectId, "analyze_subjects", {
     analyzerVersion: blob.analyzerVersion,
     modelId: blob.modelId,
-    sampleCount: blob.samples.length,
+    sampleCount: primaryAspectTrackSampleCount(blob),
     localDataPath: clipperSmartCropDataRelativePath(input.projectId),
     degradedReason: degradedReason ?? null,
   });
@@ -177,7 +155,7 @@ export async function runAnalyzeSubjectsStage(
 async function writeFaceActionBenchmarkIfPresent(session: ClipperSession, projectId: string): Promise<void> {
   const benchmark = session.faceActionBenchmark;
   if (!benchmark) return;
-  benchmark.setMeta("subjectSampleCountFinal", session.smartCropAnalysis?.samples.length ?? 0);
+  benchmark.setMeta("subjectSampleCountFinal", session.smartCropAnalysis ? primaryAspectTrackSampleCount(session.smartCropAnalysis) : 0);
   await writeClipperFaceActionBenchmark(projectId, benchmark.toTxt());
   session.faceActionBenchmark = null;
 }

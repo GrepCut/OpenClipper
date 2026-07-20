@@ -78,7 +78,6 @@ function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] 
       isRequired: false,
       trackId: detection.trackId,
       predicted: detection.predicted,
-      recoveryOnly: detection.detectorSource === "yolox",
       associationConfidence: detection.associationConfidence,
       identityAmbiguous: detection.identityAmbiguous,
     };

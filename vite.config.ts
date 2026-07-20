@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv, type Plugin, type PreviewServer, type ViteDevServer } from "vite";
@@ -31,52 +31,6 @@ function crossOriginPolicyPlugin() {
         }
         next();
       });
-    },
-  };
-}
-
-const TFLITE_WASM_DIR = fileURLToPath(
-  new URL("./node_modules/@tensorflow/tfjs-tflite/wasm", import.meta.url),
-);
-
-const TFLITE_CONTENT_TYPES: Record<string, string> = {
-  ".wasm": "application/wasm",
-  ".js": "text/javascript",
-};
-
-/**
- * Serves/emits the tfjs-tflite WASM runtime under `/tflite/`. The subject
- * detection worker points `setWasmPath` there; the runtime then picks the
- * SIMD/threaded variant itself. The binaries live only in node_modules, so
- * dev serves them via middleware and build emits them into the bundle —
- * nothing is committed to `public/`.
- */
-function tfliteRuntimePlugin(): Plugin {
-  return {
-    name: "tflite-wasm-runtime",
-    configureServer(server: ViteDevServer) {
-      server.middlewares.use("/tflite", (req, res: ServerResponse, next) => {
-        const name = (req.url ?? "").split("?")[0].replace(/^\//, "");
-        if (!name || name.includes("/") || name.includes("..")) return next();
-        let content: Buffer;
-        try {
-          content = readFileSync(join(TFLITE_WASM_DIR, name));
-        } catch {
-          return next();
-        }
-        const ext = name.slice(name.lastIndexOf("."));
-        res.setHeader("Content-Type", TFLITE_CONTENT_TYPES[ext] ?? "application/octet-stream");
-        res.end(content);
-      });
-    },
-    generateBundle() {
-      for (const name of readdirSync(TFLITE_WASM_DIR)) {
-        this.emitFile({
-          type: "asset" as const,
-          fileName: `tflite/${name}`,
-          source: readFileSync(join(TFLITE_WASM_DIR, name)),
-        });
-      }
     },
   };
 }
@@ -144,7 +98,6 @@ export default defineConfig(({ mode, command }) => {
     plugins: [
       react(),
       crossOriginPolicyPlugin(),
-      tfliteRuntimePlugin(),
       ...(omitModelsFromTauriBuild ? [tauriPublicAssetsPlugin()] : []),
     ],
     base: isTauriBuild ? "./" : "/",

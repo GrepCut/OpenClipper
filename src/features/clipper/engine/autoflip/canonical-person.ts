@@ -17,6 +17,25 @@ interface TrackState extends CanonicalPersonTrack {
   poseSourceId?: number;
   previousCenter?: { x: number; y: number; time: number };
   dropoutStartedAt?: number;
+  lastReidEmbedding?: number[];
+}
+
+const REID_SIMILARITY_THRESHOLD = 0.6; // ponytail: fixed threshold; upgrade path = per-cohort calibration
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let index = 0; index < a.length; index++) {
+    const left = a[index]!;
+    const right = b[index]!;
+    dot += left * right;
+    normA += left * left;
+    normB += right * right;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom > EPSILON ? dot / denom : 0;
 }
 
 interface Evidence<T> {
@@ -24,7 +43,6 @@ interface Evidence<T> {
   box: NormalizedBox;
   sourceId?: number;
   predicted: boolean;
-  recovery: boolean;
   confidence: number;
 }
 
@@ -72,6 +90,7 @@ function associationScore(
   evidence: Evidence<unknown>,
   kind: "person" | "face" | "pose",
   time: number,
+  reidEmbedding?: number[],
 ): number {
   const box = trackBox(track);
   if (!box || time - track.lastObservedTime > MAX_DROPOUT_SEC + EPSILON) return Number.NEGATIVE_INFINITY;
@@ -84,7 +103,11 @@ function associationScore(
     ? Number(containsCenter(track.personBox ?? box, evidence.box))
     : Number(containsCenter(evidence.box, track.faceBox ?? box) || containsCenter(box, evidence.box));
   const continuity = evidence.sourceId != null && evidence.sourceId === priorId ? 2.5 : 0;
-  const score = continuity + overlap * 1.6 + containment * 0.9 + Math.max(0, 0.65 - distance) * 1.4;
+  let score = continuity + overlap * 1.6 + containment * 0.9 + Math.max(0, 0.65 - distance) * 1.4;
+  if (kind === "person" && reidEmbedding?.length && track.lastReidEmbedding?.length) {
+    const similarity = cosineSimilarity(reidEmbedding, track.lastReidEmbedding);
+    if (similarity > REID_SIMILARITY_THRESHOLD) score += similarity * 1.5;
+  }
   const geometryValid = continuity > 0 || overlap >= 0.08 || containment > 0 || distance <= 0.28;
   return geometryValid ? score : Number.NEGATIVE_INFINITY;
 }
@@ -95,6 +118,7 @@ function assignGlobally<T>(
   tracks: TrackState[],
   kind: "person" | "face" | "pose",
   time: number,
+  reidEmbedding?: number[],
 ): Map<number, { track: TrackState; confidence: number; ambiguous: boolean }> {
   let bestScore = 0;
   let best = new Map<number, number>();
@@ -109,7 +133,7 @@ function assignGlobally<T>(
     visit(index + 1, used, score, chosen);
     for (let trackIndex = 0; trackIndex < tracks.length; trackIndex++) {
       if (used.has(trackIndex)) continue;
-      const candidate = associationScore(tracks[trackIndex]!, evidence[index]!, kind, time);
+      const candidate = associationScore(tracks[trackIndex]!, evidence[index]!, kind, time, reidEmbedding);
       if (!Number.isFinite(candidate) || candidate < 0.45) continue;
       used.add(trackIndex);
       chosen.set(index, trackIndex);
@@ -121,7 +145,7 @@ function assignGlobally<T>(
   visit(0, new Set(), 0, new Map());
   const result = new Map<number, { track: TrackState; confidence: number; ambiguous: boolean }>();
   for (const [evidenceIndex, trackIndex] of best) {
-    const scores = tracks.map((track) => associationScore(track, evidence[evidenceIndex]!, kind, time));
+    const scores = tracks.map((track) => associationScore(track, evidence[evidenceIndex]!, kind, time, reidEmbedding));
     const selected = scores[trackIndex]!;
     const runnerUp = Math.max(0, ...scores.filter((_, index) => index !== trackIndex && Number.isFinite(scores[index])));
     const confidence = Math.max(0, Math.min(1, 0.45 + selected / 5));
@@ -154,15 +178,14 @@ function observedPersonEvidence(sample: SubjectDetectionSample): Evidence<Subjec
       box: value.box,
       sourceId: value.trackId,
       predicted: Boolean(value.predicted),
-      recovery: value.detectorSource === "yolox" || Boolean(value.recoveryOnly),
       confidence: value.score,
     }));
 }
 
 /**
  * Fuses independent native tracker namespaces into scene-local person IDs.
- * Only an observed primary person can create a track. Face, pose, prediction,
- * recovery and ASD evidence may update an existing track but never create one.
+ * Only an observed primary person can create a track. Face, pose, prediction
+ * and ASD evidence may update an existing track but never create one.
  */
 export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): CanonicalFusionResult {
   const telemetry: CanonicalIdentityTelemetry = {
@@ -174,8 +197,6 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
     dropoutDurationsSec: [],
     successfulReacquisitions: 0,
     associationConfidences: [],
-    acceptedRecoveries: {},
-    rejectedRecoveries: {},
   };
   let tracks: TrackState[] = [];
   let nextId = 1;
@@ -205,8 +226,8 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
     for (const track of tracks) track.identityAmbiguous = false;
 
     const people = observedPersonEvidence(sample);
-    const primary = people.filter((item) => !item.predicted && !item.recovery);
-    const personAssignments = assignGlobally(primary, tracks, "person", sample.time);
+    const primary = people.filter((item) => !item.predicted);
+    const personAssignments = assignGlobally(primary, tracks, "person", sample.time, sample.reidEmbedding);
     const assignedPeople = new Map<SubjectDetection, { track: TrackState; confidence: number; ambiguous: boolean }>();
     for (const [index, assignment] of personAssignments) assignedPeople.set(primary[index]!.value, assignment);
     for (const item of primary) {
@@ -231,10 +252,10 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
     }
 
     const faces: Evidence<AutoFlipFaceDetection>[] = (sample.autoflipFaces ?? []).map((value) => ({
-      value, box: value.box, sourceId: value.trackId, predicted: Boolean(value.predicted), recovery: false, confidence: 1,
+      value, box: value.box, sourceId: value.trackId, predicted: Boolean(value.predicted), confidence: 1,
     }));
     const poses: Evidence<PoseSubject>[] = (sample.poseSubjects ?? []).map((value) => ({
-      value, box: value.box, sourceId: value.trackId, predicted: Boolean(value.predicted), recovery: false, confidence: value.score,
+      value, box: value.box, sourceId: value.trackId, predicted: Boolean(value.predicted), confidence: value.score,
     }));
     const faceAssignments = assignGlobally(faces, tracks, "face", sample.time);
     for (const [index, item] of faces.entries()) {
@@ -264,12 +285,9 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
       poseAssignments.set(index, { track, confidence: 1, ambiguous: false });
       telemetry.births++;
     }
-    const secondaryPeople = people.filter((item) => item.predicted || item.recovery);
-    const secondaryAssignments = assignGlobally(secondaryPeople, tracks, "person", sample.time);
+    const secondaryPeople = people.filter((item) => item.predicted);
+    const secondaryAssignments = assignGlobally(secondaryPeople, tracks, "person", sample.time, sample.reidEmbedding);
     for (const [index, assignment] of secondaryAssignments) assignedPeople.set(secondaryPeople[index]!.value, assignment);
-    for (const item of secondaryPeople.filter((candidate) => !assignedPeople.has(candidate.value) && candidate.recovery)) {
-      telemetry.rejectedRecoveries["no-identity-support"] = (telemetry.rejectedRecoveries["no-identity-support"] ?? 0) + 1;
-    }
 
     const touch = (track: TrackState, box: NormalizedBox, confidence: number, observed: boolean) => {
       if (!observed) return;
@@ -297,11 +315,8 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
       if (observed) track.personBox = detection.box;
       if (item.sourceId != null) track.personSourceId = item.sourceId;
       recordSourceOwner("person", item.sourceId, track.canonicalId);
-      track.state = item.recovery ? "recovered" : item.predicted ? "predicted" : "observed";
-      if (item.recovery) {
-        track.sources = [...new Set([...track.sources, "yolox"] as const)];
-        telemetry.acceptedRecoveries["canonical-trajectory"] = (telemetry.acceptedRecoveries["canonical-trajectory"] ?? 0) + 1;
-      } else track.sources = [...new Set([...track.sources, "person"] as const)];
+      track.state = item.predicted ? "predicted" : "observed";
+      track.sources = [...new Set([...track.sources, "person"] as const)];
       track.associationConfidence = assignment.confidence;
       track.identityAmbiguous ||= assignment.ambiguous;
       touch(track, detection.box, detection.score, observed);
@@ -312,7 +327,6 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
         canonicalId: track.canonicalId,
         associationConfidence: assignment.confidence,
         identityAmbiguous: assignment.ambiguous,
-        recoveryOnly: item.recovery,
       };
     });
 
@@ -347,6 +361,12 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
 
     for (const track of tracks) {
       if (sample.time > track.lastObservedTime + EPSILON) track.dropoutStartedAt ??= track.lastObservedTime;
+    }
+    if (sample.reidEmbedding?.length) {
+      const primaryTrack = [...assignedPeople.values()]
+        .filter((assignment) => assignment.confidence > 0)
+        .sort((left, right) => right.confidence - left.confidence)[0]?.track;
+      if (primaryTrack) primaryTrack.lastReidEmbedding = sample.reidEmbedding;
     }
     if (tracks.some((track) => track.identityAmbiguous)) telemetry.ambiguousSamples++;
     return {

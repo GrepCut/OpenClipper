@@ -518,12 +518,31 @@ pub(crate) struct ExtractedVideoFrame {
     pub height: u32,
 }
 
+pub(crate) fn probe_video_duration_sec(input: &ffmpeg::format::context::Input) -> Option<f64> {
+    if input.duration() > 0 {
+        return Some(input.duration() as f64 / ffmpeg::ffi::AV_TIME_BASE as f64);
+    }
+    let stream = input.streams().best(Type::Video)?;
+    if stream.duration() <= 0 {
+        return None;
+    }
+    let time_base = stream.time_base();
+    Some(
+        stream.duration() as f64 * time_base.numerator() as f64
+            / time_base.denominator() as f64,
+    )
+}
+
 pub(crate) fn extract_frame_rgb_at_timestamp(
     video_path: &Path,
     timestamp_sec: f64,
 ) -> Result<ExtractedVideoFrame, String> {
     ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))?;
     let mut input = ffmpeg::format::input(video_path).map_err(|e| format!("Cannot open video: {e}"))?;
+    let timestamp_sec = match probe_video_duration_sec(&input) {
+        Some(duration) if duration > 0.05 => timestamp_sec.min(duration - 0.05),
+        _ => timestamp_sec,
+    };
     let stream = input
         .streams()
         .best(Type::Video)

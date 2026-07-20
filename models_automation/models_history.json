@@ -14,6 +14,13 @@
       "fileCount": 15,
       "totalSize": 711802798,
       "cdnBaseUrl": "https://models.openclipper.grepcut.com/v1"
+    },
+    {
+      "promotedAt": "2026-07-19T18:05:41Z",
+      "manifestSha256": "1c9ea6ec83ce8c7e6c01d422aa9ed4cd7d1dc9350342908a01982fadb37c6007",
+      "fileCount": 15,
+      "totalSize": 711802798,
+      "cdnBaseUrl": "https://models.openclipper.grepcut.com/v1"
     }
   ]
 }

@@ -148,6 +148,11 @@ export function BenchmarkRunsPanel({
                     {run.status}
                   </Box>
                 </HStack>
+                {run.error ? (
+                  <Text fontSize="xs" color={theme.status.danger} mt={1}>
+                    {run.error}
+                  </Text>
+                ) : null}
               </Box>
             );
           })}

@@ -26,7 +26,6 @@ ROLLBACK_ROOT = MIRROR_ROOT / "_rollback" / "previous"
 # Only browser/Tauri download-on-demand assets belong in the CDN. Native
 # clipper-vision models are deliberately bundled under src-tauri/resources.
 MODEL_DIRECTORIES = (
-    "autoflip_ssdlite",
     "blaze_face_full_range",
     "blaze_face_short_range",
     "magic_touch",

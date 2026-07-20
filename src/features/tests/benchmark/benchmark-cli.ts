@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { executeBenchmarkRun } from "./benchmark-runner";
+import { computeCohortStats } from "./cohort-stats";
+import { isHoldoutDataset } from "./cohort-tags";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
 import type { BenchmarkResult, BenchmarkRun, TestClip, TestDataset, TestKeyframe } from "../types";
 
@@ -30,11 +32,13 @@ export interface BenchmarkCliClipSummary {
 export interface BenchmarkCliSummary {
   datasetId: string;
   datasetName: string;
+  datasetRole?: "tuning" | "holdout";
   runId: string;
   status: string;
   completedClips: number;
   failedClips: number;
   manifestPath: string | null;
+  cohortStats?: ReturnType<typeof computeCohortStats>;
   missFramesExportDir?: string | null;
   missFramesCount?: number | null;
   error: string | null;
@@ -60,6 +64,11 @@ export async function loadBenchmarkRunInput(datasetId: string): Promise<{
   const ready = clips.filter((clip) => annotations[clip.id]?.length);
   if (!ready.length) {
     throw new Error("No annotated clips found. Add at least one keyframe before running the benchmark.");
+  }
+  if (isHoldoutDataset(dataset.datasetRole) && process.env.CLIPPER_ALLOW_HOLDOUT !== "1") {
+    throw new Error(
+      "Holdout datasets are promotion-only. Set CLIPPER_ALLOW_HOLDOUT=1 to run this dataset.",
+    );
   }
   return { dataset, clips: ready, annotations };
 }
@@ -112,15 +121,18 @@ function summarizeResults(
 
   const completedClips = clipSummaries.filter((clip) => clip.status === "completed").length;
   const failedClips = clipSummaries.length - completedClips;
+  const cohortStats = computeCohortStats(results, clips);
 
   return {
     datasetId: dataset.id,
     datasetName: dataset.name,
+    datasetRole: dataset.datasetRole,
     runId: run.id,
     status: run.status,
     completedClips,
     failedClips,
     manifestPath: null,
+    cohortStats,
     error: run.error,
     clips: clipSummaries,
   };

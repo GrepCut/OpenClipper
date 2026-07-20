@@ -6,11 +6,7 @@
     "tensorflow": "2.15.1",
     "tf2onnx": "1.16.1"
   },
-  "labelMap": {
-    "file": "ssdlite_object_detection_labelmap.txt",
-    "sha256": "c7e79c855f73cbba9f33d649d60e1676eb0a974021a41696d1ac0d4b7f7e0211"
-  },
-  "modelVersion": "clipper-vision-v2",
+  "modelVersion": "clipper-vision-v3-yolox",
   "models": {
     "light_asd_ava": {
       "dynamicBatch": true,
@@ -74,109 +70,6 @@
       },
       "sourcePath": "public/models/yolox_tiny/yolox_tiny.onnx",
       "sourceSha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
-    },
-    "autoflip_ssdlite": {
-      "batchParity": {
-        "batchSize": 3,
-        "maxAbsErrorVsSingle": 0.0
-      },
-      "decoder": {
-        "anchorCount": 2034,
-        "aspectRatios": [1.0, 2.0, 0.5, 3.0, 0.3333],
-        "boxCenterScale": 10.0,
-        "boxSizeScale": 5.0,
-        "classCount": 91,
-        "inputSize": 320,
-        "maxDetections": 5,
-        "maxScale": 0.95,
-        "minScale": 0.2,
-        "nmsIouThreshold": 0.4,
-        "scoreThreshold": 0.6,
-        "strides": [16, 32, 64, 128, 256, 512]
-      },
-      "dynamicBatch": true,
-      "input": {
-        "dtype": "float32",
-        "name": "normalized_input_image_tensor",
-        "quantization": {
-          "dimension": 0,
-          "scales": [],
-          "zeroPoints": []
-        },
-        "shape": [1, 320, 320, 3]
-      },
-      "onnxFile": "ssdlite_object_detection.onnx",
-      "onnxSha256": "61f7f3f925ad38093215d63d52a2e2c7238f15a5b6f466de688bfff89ac09d3b",
-      "outputs": [
-        {
-          "dtype": "float32",
-          "name": "raw_outputs/box_encodings",
-          "quantization": {
-            "dimension": 0,
-            "scales": [],
-            "zeroPoints": []
-          },
-          "shape": [1, 2034, 4]
-        },
-        {
-          "dtype": "float32",
-          "name": "raw_outputs/class_predictions",
-          "quantization": {
-            "dimension": 0,
-            "scales": [],
-            "zeroPoints": []
-          },
-          "shape": [1, 2034, 91]
-        }
-      ],
-      "parity": {
-        "raw_outputs/box_encodings": {
-          "maxAbsError": 1.7642974853515625e-5,
-          "meanAbsError": 1.0262494924972998e-6,
-          "onnxOutputSha256": "ca8cc7f21f6525dd08c8ada0635f4acb58bc220ea8cccafb85bce8b554ee045c",
-          "tfliteOutputSha256": "2664a5e8f2eea6ae28c515721fe43011f7ea90a6baba569f4c0844b745aad14b"
-        },
-        "raw_outputs/class_predictions": {
-          "maxAbsError": 8.58306884765625e-6,
-          "meanAbsError": 1.052803554557613e-6,
-          "onnxOutputSha256": "174d0e6788915e0ec0882e899fd5959af68039406a86d3d66a886b80220b686a",
-          "tfliteOutputSha256": "f779f1c14dc5b12099c0735756033f19e45d39678e12374eb29c22ad6e9206b0"
-        }
-      },
-      "parityTolerance": {
-        "absolute": 0.0005,
-        "relative": 0.0005
-      },
-      "preprocessing": {
-        "colorOrder": "rgb",
-        "layout": "nhwc",
-        "resize": "bilinear-stretch",
-        "valueRange": [0.0, 255.0]
-      },
-      "sourcePath": "public/models/autoflip_ssdlite/ssdlite_object_detection.tflite",
-      "sourceSha256": "8e10a2e2f5db85d8f90628f00752a89ff241c5b2ca82f3b92fc496c7bda122ef"
-    },
-    "autoflip_ssdlite_fp16": {
-      "derivedFrom": "autoflip_ssdlite",
-      "dynamicBatch": true,
-      "keepIoTypes": true,
-      "onnxFile": "ssdlite_object_detection.fp16.onnx",
-      "onnxSha256": "72293018d3b17134d1363372f3ded98f24897181945ce256350d60d0a6600caa",
-      "parity": {
-        "raw_outputs/box_encodings": {
-          "maxAbsErrorVsFp32": 0.0343017578125,
-          "meanAbsErrorVsFp32": 0.0022215943317860365
-        },
-        "raw_outputs/class_predictions": {
-          "maxAbsErrorVsFp32": 0.026262283325195312,
-          "meanAbsErrorVsFp32": 0.0028585591353476048
-        }
-      },
-      "parityTolerance": {
-        "raw_outputs/box_encodings": 0.25,
-        "raw_outputs/class_predictions": 0.25
-      },
-      "precision": "float16"
     },
     "blaze_face_full_range": {
       "batchParity": {},
@@ -321,6 +214,75 @@
       },
       "sourceArchiveSha256": "f01b9e5e8c3bc31f82e9ca7fa4a2876f25d7a54b65c83da5df2eca3e1632cec8",
       "sourceUrl": "https://www.kaggle.com/models/google/movenet/tensorFlow2/multipose-lightning/1"
+    },
+    "osnet_x0_25": {
+      "dynamicBatch": true,
+      "input": { "dtype": "float32", "name": "input", "shape": [16, 3, 256, 128] },
+      "onnxFile": "osnet_x0_25_msmt17.onnx",
+      "onnxSha256": "e78604f4ccda49b8f41cd0f8f7303800ce75d2361895ebb0729513c1bf53d277",
+      "outputs": [{ "dtype": "float32", "name": "output", "shape": [16, 512] }],
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nchw",
+        "resize": "bilinear",
+        "valueRange": [0.0, 1.0]
+      },
+      "sourcePath": "public/models/osnet/osnet_x0_25_msmt17.onnx",
+      "usage": "shadow-reid"
+    },
+    "osnet_x0_5": {
+      "dynamicBatch": true,
+      "input": { "dtype": "float32", "name": "input", "shape": [1, 3, 256, 128] },
+      "onnxFile": "osnet_x0_5_msmt17.onnx",
+      "onnxSha256": "8a228689f8a2539a4f60c40eb006cde5f4d022875a4c1bc5432824539873f7c5",
+      "outputs": [{ "dtype": "float32", "name": "output", "shape": [1, 512] }],
+      "parity": { "maxAbsError": 0.00017690658569335938 },
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nchw",
+        "resize": "bilinear",
+        "valueRange": [0.0, 1.0]
+      },
+      "sourcePath": "public/models/osnet/osnet_x0_5_msmt17_combineall_256x128_amsgrad_ep150_stp60_lr0.0015_b64_fb10_softmax_labelsmooth_flip_jitter.pth",
+      "sourceSha256": "e96cbd20ee9cc3c6dcc0e8f4fbba8c8069d47647a5a96a59ce381fb785c54f68",
+      "usage": "shadow-reid"
+    },
+    "transnetv2": {
+      "dynamicBatch": false,
+      "input": { "dtype": "float32", "name": "input", "shape": [1, 100, 27, 48, 3] },
+      "onnxFile": "transnetv2.onnx",
+      "onnxSha256": "c4d54a682bace32f25136ef83ca2c9d403e8f8193775efeb995172a0d95a8e0c",
+      "outputs": [
+        { "dtype": "float32", "name": "534", "shape": [1, 100, 1] },
+        { "dtype": "float32", "name": "535", "shape": [1, 100, 1] }
+      ],
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "ntdhw",
+        "resize": "nearest-27x48",
+        "valueRange": [0.0, 1.0]
+      },
+      "sourcePath": "public/models/transnetv2/transnetv2.onnx",
+      "usage": "shadow-shot-boundary"
+    },
+    "vinet_s_saliency": {
+      "dynamicBatch": true,
+      "input": { "dtype": "float32", "name": "video", "shape": [1, 3, 32, 224, 384] },
+      "onnxFile": "vinet-s-saliency.onnx",
+      "onnxSha256": "9c36968a0f8ea63119b15f40bbda2c97f6aaa3f06e9f38d563da4c1013e2d4c8",
+      "outputs": [{ "dtype": "float32", "name": "saliency", "shape": [1, 224, 384] }],
+      "parity": { "maxAbsError": 1.3073940863250755e-7 },
+      "preprocessing": {
+        "clipCount": 32,
+        "colorOrder": "rgb",
+        "layout": "ncdhw",
+        "normalize": "imagenet",
+        "resize": "bilinear-224x384",
+        "valueRange": [0.0, 1.0]
+      },
+      "sourcePath": "public/models/vinet/vinet-s-saliency.safetensors",
+      "sourceSha256": "803e6d265d46d3f4f3d7ec2c6c2f3b4511f9ba176aa12e348ac317788ca0dc68",
+      "usage": "shadow-video-saliency"
     }
   },
   "onnxOpset": 15,

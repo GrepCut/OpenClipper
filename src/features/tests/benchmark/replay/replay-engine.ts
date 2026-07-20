@@ -19,12 +19,11 @@ import {
 import {
   createVisibilityControllerState,
   planVisibilityRescue,
-  RUN9_VISIBILITY_CONTROLLER_PARAMS,
   ITERATION10_VISIBILITY_CONTROLLER_PARAMS,
   type VisibilityControllerParams,
   type VisibilityVariant,
 } from "../../../clipper/engine/autoflip/visibility-controller";
-import { spliceDetectorSegments } from "../../../clipper/engine/autoflip/segment-detector-splice";
+import { REPLAY_METRIC_TOLERANCE } from "./replay-tolerance";
 import { calculateBenchmarkMetrics, type BenchmarkFrameDetail, type BenchmarkFrameInput } from "../metrics";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
 import type { ClipArtifacts, RecordedAutoflipDebug } from "./replay-io";
@@ -51,11 +50,6 @@ export interface ReplayGeometry {
   visibilityController?: VisibilityControllerParams;
 }
 
-function motionTypeForSample(debug: RecordedAutoflipDebug, formatId: string, time: number): string | undefined {
-  return debug.scenes.find((scene) =>
-    scene.formatId === formatId && time >= scene.start - 1e-9 && time < scene.end + 1e-9)?.motionType;
-}
-
 /**
  * Re-runs the arbiter over every recorded layout sample of one format track.
  * Reconstructs the exact ArbiterSampleContext the production planner saw;
@@ -73,7 +67,6 @@ export function replayTrack(
   const visibilityState = createVisibilityFramingState();
   const visibilityControllerState = createVisibilityControllerState();
   return track.samples.map((sample) => {
-    const explicitPadding = sample.reasonCodes?.includes("baseline-padding") ?? false;
     const importance = importanceAtTime(importanceSamples, sample.t);
     const importanceIndex = precedingIndex(importanceSamples, sample.t);
     const baselineViewports = sample.baselineViewports ?? sample.viewports;
@@ -113,21 +106,10 @@ export function replayTrack(
     const baselineScore = geometry ? proposalScore(baselineViewports, coverageRegions) : sample.baselineScore ?? 0;
     const semanticScore = geometry ? proposalScore(semanticViewports, coverageRegions) : sample.semanticScore ?? 0;
     const decision = decideLayoutStrategy({
-      t: sample.t,
-      cut: Boolean(sample.cut),
-      explicitPadding,
       desiredMode: selectedMode,
-      required,
       baselineScore,
       semanticScore,
-      semanticViewports,
-      baselineViewports,
-      coverageRegions,
       controllerReasonCodes: visibilityDecision?.reasonCodes ?? recordedControllerReasonCodes,
-      visibilityRisk: visibilityDecision?.visibilityRisk ?? sample.visibilityRisk,
-      importanceSamples,
-      importanceIndex,
-      motionType: motionTypeForSample(debug, formatId, sample.t),
     }, params);
     // The Run4 crop is recorded as `viewports` whenever the baseline won, and
     // (from Run6 schemas on) always as `baselineViewports`. A Run5 sample that
@@ -247,8 +229,11 @@ export function replayClip(
   framing?: SemanticFramingParams,
   visibilityController?: VisibilityControllerParams,
 ): ClipReplayResult {
-  const controller = visibilityController ?? (params.visibilityFirst
-    ? { ...(params.iteration10 ? ITERATION10_VISIBILITY_CONTROLLER_PARAMS : RUN9_VISIBILITY_CONTROLLER_PARAMS) }
+  // RUN10_ARBITER_PARAMS is the only params object that sets both flags —
+  // this mirrors production, which always pairs it with the Iteration 10
+  // visibility controller.
+  const controller = visibilityController ?? (params.allowSplit === true && params.allowContain === true
+    ? { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS }
     : undefined);
   const samples = replayTrack(clip.debug, clip.formatId, params, framing || controller ? {
     frameWidth: clip.dims.width,
@@ -350,63 +335,12 @@ export function aggregate(results: ClipReplayResult[]): AggregateMetrics {
   };
 }
 
-/**
- * Re-applies the recorded Iteration 11 router splice to replayed samples.
- * The splice itself is pure; feeding it the recorded decisions and the
- * recorded detector-candidate tracks reproduces the production swap exactly,
- * so an iteration11 run stays self-checkable sample by sample.
- */
-export function applyRecordedRouterSplice(
-  samples: ReplayedSample[],
-  debug: RecordedAutoflipDebug,
-  formatId: string,
-): ReplayedSample[] {
-  const decisions = debug.routerDecisions ?? [];
-  const detectorTrack = debug.detectorSpliceTracks?.[formatId];
-  if (!decisions.some((decision) => decision.useDetector) || !detectorTrack) return samples;
-  const targetAspectRatio = debug.layoutTracks[formatId]?.targetAspectRatio ?? detectorTrack.targetAspectRatio;
-  const layoutSamples = samples.map((sample): ClipperLayoutSample => ({
-    t: sample.t,
-    cut: sample.cut,
-    mode: sample.mode,
-    strategy: sample.strategy,
-    viewports: sample.viewports,
-    reasonCodes: sample.reasonCodes,
-    coverageBoxes: sample.coverageBoxes,
-    requiredRegionIds: sample.requiredRegionIds ?? [],
-  }));
-  const spliced = spliceDetectorSegments({
-    layoutTracks: { [formatId]: { targetAspectRatio, samples: layoutSamples } },
-    detectorLayoutTracks: { [formatId]: detectorTrack },
-    decisions,
-  }).layoutTracks[formatId]!.samples;
-  return samples.map((sample, index) => {
-    const layoutSample = spliced[index]!;
-    if (!layoutSample.routerSwapped) return sample;
-    return {
-      ...sample,
-      strategy: layoutSample.strategy ?? sample.strategy,
-      viewports: layoutSample.viewports,
-      coverageBoxes: layoutSample.coverageBoxes,
-      reasonCodes: layoutSample.reasonCodes,
-      subjectDisplayHeightFractions:
-        layoutSample.qualityTelemetry?.subjectDisplayHeightFractions
-          ?? sample.subjectDisplayHeightFractions,
-    };
-  });
-}
-
 export interface SelfCheckResult {
   passed: boolean;
   failures: string[];
 }
 
-// JSON round-tripping normalized layout samples and re-interpolating them at
-// decoded-frame timestamps can move a viewport edge by ~1e-7. A target lying
-// exactly on the 0.85 boundary can therefore move one observation across the
-// hit threshold (the observed run-2 maximum is 0.1032 pp). Strategies must
-// still match exactly; metric drift is capped below the 0.2 pp promotion gate.
-export const SELF_CHECK_METRIC_TOLERANCE = 0.0011;
+export { REPLAY_METRIC_TOLERANCE as SELF_CHECK_METRIC_TOLERANCE } from "./replay-tolerance";
 
 /**
  * With default params the replay must reproduce the recorded run exactly:
@@ -421,10 +355,7 @@ export function selfCheck(
   const failures: string[] = [];
   const results: ClipReplayResult[] = [];
   for (const clip of clips) {
-    const replayed = replayTrack(clip.debug, clip.formatId, params);
-    const samples = clip.debug.replayConfig?.productionPolicy === "iteration11"
-      ? applyRecordedRouterSplice(replayed, clip.debug, clip.formatId)
-      : replayed;
+    const samples = replayTrack(clip.debug, clip.formatId, params);
     const recorded = clip.debug.layoutTracks[clip.formatId]!.samples;
     for (const [index, sample] of samples.entries()) {
       const expected = recorded[index]!.strategy ?? "legacy-baseline";
@@ -448,7 +379,7 @@ export function selfCheck(
     ];
     for (const [label, actual, expected] of checks) {
       if (expected == null) continue;
-      if (Math.abs(actual - expected) > SELF_CHECK_METRIC_TOLERANCE) {
+      if (Math.abs(actual - expected) > REPLAY_METRIC_TOLERANCE) {
         failures.push(`${clip.dims.name}: ${label} replayed ${actual.toFixed(6)}, recorded ${expected.toFixed(6)}`);
       }
     }

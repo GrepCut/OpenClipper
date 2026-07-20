@@ -12,6 +12,10 @@ const LOW_MATCH_COST: f32 = 0.5; // Keep low-confidence recovery conservative.
 const MAX_LOST_SECONDS: f64 = 1.0;
 const PREDICTION_HOLD_SECONDS: f64 = 0.6;
 
+fn camera_motion_compensation_enabled() -> bool {
+    super::clipper_env_enabled("CLIPPER_CAMERA_MOTION_COMPENSATION", true)
+}
+
 #[derive(Clone, Debug)]
 pub struct TrackDetection {
     pub box_: NormalizedBox,
@@ -46,6 +50,7 @@ struct Track {
     id: u64,
     label: String,
     score: f32,
+    score_ema: f32,
     mean: [f32; 8], // [cx, cy, aspect, height, vx, vy, va, vh]
     covariance: [[f32; 8]; 8],
     state: TrackState,
@@ -91,6 +96,7 @@ impl Track {
             id,
             label: detection.label.clone(),
             score: detection.score,
+            score_ema: detection.score,
             mean,
             covariance,
             state: TrackState::Tentative,
@@ -132,6 +138,7 @@ impl Track {
     }
 
     fn update(&mut self, time: f64, detection: &TrackDetection) {
+        let reacquired = self.lost_since.is_some();
         let height = detection.box_.height.max(1e-4);
         let measurement = [
             detection.box_.x + detection.box_.width / 2.0,
@@ -179,7 +186,14 @@ impl Track {
             }
         }
         self.covariance = subtract8(self.covariance, correction);
+        if reacquired {
+            // ponytail: observation-centric snap after reacquire; upgrade path = full OC-SORT
+            for index in 0..4 {
+                self.mean[index] = self.mean[index] * 0.35 + measurement[index] * 0.65;
+            }
+        }
         self.score = detection.score;
+        self.score_ema = self.score_ema * 0.8 + detection.score * 0.2;
         self.hits += 1;
         if self.hits >= 2 {
             self.state = TrackState::Tracked;
@@ -212,6 +226,8 @@ impl Track {
 pub struct ByteTracker {
     tracks: Vec<Track>,
     next_id: u64,
+    last_global_center: Option<(f32, f32)>,
+    last_camera_motion: f32,
 }
 
 impl ByteTracker {
@@ -219,14 +235,81 @@ impl ByteTracker {
         Self {
             tracks: Vec::new(),
             next_id: 1,
+            last_global_center: None,
+            last_camera_motion: 0.0,
         }
     }
 
     pub fn reset(&mut self) {
         self.tracks.clear();
+        self.last_global_center = None;
+        self.last_camera_motion = 0.0;
+    }
+
+    pub fn last_camera_motion(&self) -> f32 {
+        self.last_camera_motion
+    }
+
+    fn estimate_global_center(detections: &[TrackDetection]) -> Option<(f32, f32)> {
+        let high: Vec<_> = detections
+            .iter()
+            .filter(|detection| detection.score >= HIGH_SCORE)
+            .collect();
+        if high.is_empty() {
+            return None;
+        }
+        let count = high.len() as f32;
+        let cx = high
+            .iter()
+            .map(|detection| detection.box_.x + detection.box_.width / 2.0)
+            .sum::<f32>()
+            / count;
+        let cy = high
+            .iter()
+            .map(|detection| detection.box_.y + detection.box_.height / 2.0)
+            .sum::<f32>()
+            / count;
+        Some((cx, cy))
+    }
+
+    fn compensate_detections(
+        detections: &[TrackDetection],
+        dx: f32,
+        dy: f32,
+    ) -> Vec<TrackDetection> {
+        detections
+            .iter()
+            .map(|detection| {
+                let mut compensated = detection.clone();
+                compensated.box_.x = (compensated.box_.x - dx).clamp(0.0, 1.0);
+                compensated.box_.y = (compensated.box_.y - dy).clamp(0.0, 1.0);
+                compensated
+            })
+            .collect()
     }
 
     pub fn update(&mut self, time: f64, detections: &[TrackDetection]) -> Vec<TrackOutput> {
+        let gmc_enabled = camera_motion_compensation_enabled();
+        let (working, motion) = if gmc_enabled {
+            if let Some(center) = Self::estimate_global_center(detections) {
+                let (dx, dy) = match self.last_global_center {
+                    Some((previous_x, previous_y)) => (center.0 - previous_x, center.1 - previous_y),
+                    None => (0.0, 0.0),
+                };
+                self.last_global_center = Some(center);
+                self.last_camera_motion = (dx * dx + dy * dy).sqrt();
+                (Self::compensate_detections(detections, dx, dy), self.last_camera_motion)
+            } else {
+                (detections.to_vec(), 0.0)
+            }
+        } else {
+            (detections.to_vec(), 0.0)
+        };
+        self.last_camera_motion = motion;
+        self.update_associated(time, &working)
+    }
+
+    fn update_associated(&mut self, time: f64, detections: &[TrackDetection]) -> Vec<TrackOutput> {
         for track in &mut self.tracks {
             track.predict(time);
         }
@@ -327,7 +410,7 @@ impl ByteTracker {
                 TrackState::Tracked => Some(TrackOutput {
                     box_: track.box_(),
                     label: track.label.clone(),
-                    score: track.score,
+                    score: track.score_ema,
                     track_id: track.id,
                     predicted: !track.observed,
                     source_index: track.source_index,

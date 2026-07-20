@@ -11,6 +11,8 @@ pub struct Model {
     pub name: String,
     #[sea_orm(column_type = "Text")]
     pub description: Option<String>,
+    #[sea_orm(default_value = "tuning", column_type = "Text")]
+    pub dataset_role: String,
     #[sea_orm(indexed, column_type = "Text")]
     pub created_at: String,
     #[sea_orm(indexed, column_type = "Text")]

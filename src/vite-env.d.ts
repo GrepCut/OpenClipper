@@ -4,7 +4,6 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
   readonly VITE_APP_PLATFORM?: string;
   readonly VITE_GOOGLE_CLIENT_ID?: string;
-  readonly VITE_CLIPPER_WINML_VISION?: string;
 }
 
 interface ImportMeta {

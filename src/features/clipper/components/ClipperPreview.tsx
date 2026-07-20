@@ -2,13 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Box, Button, HStack, Slider, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { ListOrdered, Pause, Play } from "lucide-react";
 import { OutlinedActionButton, getOutlinedActionSurfaceProps, OUTLINED_ACTION_BUTTON_SIZE_PROPS } from "../../../shared/components/buttons/OutlinedActionButton";
-import { drawClipperPreviewFrame, formatNeedsFaceTracking, type ClipperFrameContext } from "../engine/frame-draw";
+import { drawClipperPreviewFrame, type ClipperFrameContext } from "../engine/frame-draw";
 import {
   deriveCollageAspectEligibility,
   deriveTwoSpeakerRegions,
   filterRegionsWithEligibleAspects,
 } from "../engine/collage";
-import type { FaceDetectFrameSource } from "../engine/reframe";
 import type { ClipperClipSegmentWindow } from "../engine/clip-segmentation";
 import {
   findGapJumpTarget,
@@ -16,7 +15,6 @@ import {
   sourceTimeToLocalTime,
 } from "../engine/clip-segment-time";
 import { FrameCanvasCache } from "../lib/media/video-frame-effect";
-import { ToolFaceDetectorService } from "../lib/media/face-detector";
 import { clipperError, clipperLog } from "../shared/logger";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
@@ -48,25 +46,6 @@ const TOOLBAR_ACTION_BUTTON_PROPS = {
 function truncatePreviewUrl(url: string, maxLen = 80): string {
   if (url.length <= maxLen) return url;
   return `${url.slice(0, maxLen)}…`;
-}
-
-async function makePreviewFrameSource(video: HTMLVideoElement): Promise<FaceDetectFrameSource> {
-  const frame = new VideoFrame(video, { timestamp: Math.round(video.currentTime * 1_000_000) });
-  let bitmap: ImageBitmap | undefined;
-  try {
-    bitmap = await createImageBitmap(frame);
-  } catch {
-    bitmap = undefined;
-  }
-  return {
-    frame,
-    bitmap,
-    rotationDegrees: 0,
-    release: () => {
-      bitmap?.close();
-      frame.close();
-    },
-  };
 }
 
 type VideoFrameCallbackCompat = HTMLVideoElement & {
@@ -409,17 +388,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = ({
     if (!render) return;
 
     const time = video.currentTime;
-
-    if (render.faceCache && !render.faceCache.hasBucket(time) && previewFormats.some((f) => formatNeedsFaceTracking(f, render.settings))) {
-      const cache = render.faceCache;
-      void cache
-        .ensure(time, ToolFaceDetectorService.getInstance(), () => makePreviewFrameSource(video))
-        .then(() => {
-          const v = videoRef.current;
-          if (v && Math.abs(v.currentTime - time) < 0.05) scheduleRedrawRef.current();
-        })
-        .catch((error) => clipperError("face-cache: preview detection failed", error));
-    }
 
     const source = { width: video.videoWidth, height: video.videoHeight };
     const caches = canvasCachesRef.current;

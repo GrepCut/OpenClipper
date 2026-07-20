@@ -1,4 +1,10 @@
-import type { FaceBox } from "../lib/media/face-detector";
+/** Pixel-space face bounding box from native WinML BlazeFace. */
+export interface FaceBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 /** One detection pass at a sampled timestamp. */
 export interface FaceBoxSample {
@@ -12,8 +18,7 @@ export interface FaceBoxSample {
 
 export interface ClipperFaceSamplesBlob {
   detectorVersion: string;
-  /** Runtime provenance is separate from the model/policy signature. */
-  engine?: "winml" | "wasm";
+  engine?: "winml";
   modelVersion?: string;
   clipStart: number;
   clipEnd: number;

@@ -4,6 +4,8 @@ export interface TestDataset {
   id: string;
   name: string;
   description: string | null;
+  /** tuning = strojenie/replay; holdout = promocja tylko (handoff §5.1). */
+  datasetRole?: "tuning" | "holdout";
   createdAt: string;
   updatedAt: string;
 }
@@ -27,6 +29,8 @@ export interface TestClip {
   frameRate: number;
   sha256: string;
   annotationRevision: number;
+  /** JSON array of cohort tags; see `benchmark/cohort-tags.ts`. */
+  cohortTagsJson?: string;
   createdAt: string;
   updatedAt: string;
 }

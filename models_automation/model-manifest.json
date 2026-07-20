@@ -1,17 +1,7 @@
 {
   "version": 1,
-  "totalSize": 711802798,
+  "totalSize": 705547465,
   "files": [
-    {
-      "path": "models/autoflip_ssdlite/ssdlite_object_detection.tflite",
-      "size": 6254668,
-      "sha256": "8e10a2e2f5db85d8f90628f00752a89ff241c5b2ca82f3b92fc496c7bda122ef"
-    },
-    {
-      "path": "models/autoflip_ssdlite/ssdlite_object_detection_labelmap.txt",
-      "size": 665,
-      "sha256": "c7e79c855f73cbba9f33d649d60e1676eb0a974021a41696d1ac0d4b7f7e0211"
-    },
     {
       "path": "models/blaze_face_full_range/blaze_face_full_range.tflite",
       "size": 1083786,

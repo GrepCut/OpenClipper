@@ -3,7 +3,7 @@ import { ArrowRight, Trash2 } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/OutlinedActionButton";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 import { colors, useTheme } from "../../../theme";
-import type { TestClip } from "../types";
+import { resolveClipCohorts } from "../benchmark/cohort-tags";
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString("en-US", {
@@ -18,6 +18,7 @@ interface TestClipListRowProps {
   isAnnotated: boolean;
   onOpen: () => void;
   onDelete: () => void;
+  onEditCohorts?: () => void;
 }
 
 export function TestClipListRow({
@@ -25,7 +26,9 @@ export function TestClipListRow({
   isAnnotated,
   onOpen,
   onDelete,
+  onEditCohorts,
 }: TestClipListRowProps) {
+  const cohorts = resolveClipCohorts(clip);
   const { theme, mode } = useTheme();
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
 
@@ -69,6 +72,9 @@ export function TestClipListRow({
             <Text fontSize="xs" color={theme.text.muted}>
               {clip.duration.toFixed(1)} s · {clip.width}×{clip.height}
             </Text>
+            <Text fontSize="xs" color={theme.text.muted}>
+              {cohorts.join(", ")}
+            </Text>
           </HStack>
         </VStack>
 
@@ -91,6 +97,11 @@ export function TestClipListRow({
             >
               Open
             </OutlinedActionButton>
+            {onEditCohorts ? (
+              <OutlinedActionButton width="100%" justifyContent="flex-start" onClick={onEditCohorts}>
+                Cohorts
+              </OutlinedActionButton>
+            ) : null}
             <OutlinedActionButton
               width="100%"
               justifyContent="flex-start"

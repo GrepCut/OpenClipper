@@ -31,7 +31,7 @@ function quantile(sorted: number[], p: number): number | null {
   return sorted[lower]! * (1 - factor) + sorted[upper]! * factor;
 }
 
-function summarizeValues(values: number[]): ColumnStatSummary {
+export function summarizeValues(values: number[]): ColumnStatSummary {
   if (!values.length) {
     return { avg: null, median: null, max: null, min: null };
   }

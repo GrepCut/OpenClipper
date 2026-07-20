@@ -22,6 +22,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub sha256: String,
     pub annotation_revision: i32,
+    #[sea_orm(default_value = "[]", column_type = "Text")]
+    pub cohort_tags_json: String,
     #[sea_orm(indexed, column_type = "Text")]
     pub created_at: String,
     #[sea_orm(indexed, column_type = "Text")]

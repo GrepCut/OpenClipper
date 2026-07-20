@@ -14,7 +14,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -67,38 +66,6 @@ MODELS: dict[str, dict[str, Any]] = {
         },
         "atol": 2e-4,
         "rtol": 2e-4,
-    },
-    "autoflip_ssdlite": {
-        "source": "public/models/autoflip_ssdlite/ssdlite_object_detection.tflite",
-        "sha256": "8e10a2e2f5db85d8f90628f00752a89ff241c5b2ca82f3b92fc496c7bda122ef",
-        "onnx": "ssdlite_object_detection.onnx",
-        "input": {"name": "normalized_input_image_tensor", "shape": [1, 320, 320, 3], "dtype": "float32"},
-        "outputs": [
-            {"name": "raw_outputs/box_encodings", "shape": [1, 2034, 4], "dtype": "float32"},
-            {"name": "raw_outputs/class_predictions", "shape": [1, 2034, 91], "dtype": "float32"},
-        ],
-        "preprocessing": {
-            "resize": "bilinear-stretch",
-            "colorOrder": "rgb",
-            "valueRange": [0.0, 255.0],
-            "layout": "nhwc",
-        },
-        "decoder": {
-            "anchorCount": 2034,
-            "inputSize": 320,
-            "strides": [16, 32, 64, 128, 256, 512],
-            "aspectRatios": [1.0, 2.0, 0.5, 3.0, 0.3333],
-            "minScale": 0.2,
-            "maxScale": 0.95,
-            "boxCenterScale": 10.0,
-            "boxSizeScale": 5.0,
-            "scoreThreshold": 0.6,
-            "nmsIouThreshold": 0.4,
-            "maxDetections": 5,
-            "classCount": 91,
-        },
-        "atol": 5e-4,
-        "rtol": 5e-4,
     },
 }
 
@@ -346,14 +313,6 @@ def main() -> None:
             "parityTolerance": {"absolute": spec["atol"], "relative": spec["rtol"]},
             "parity": parity,
         }
-
-    label_source = REPO_ROOT / "public/models/autoflip_ssdlite/ssdlite_object_detection_labelmap.txt"
-    label_destination = output_dir / label_source.name
-    shutil.copyfile(label_source, label_destination)
-    manifest["labelMap"] = {
-        "file": label_destination.name,
-        "sha256": sha256(label_destination),
-    }
 
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -42,26 +42,6 @@ fn verify_clipper_vision_models() {
             );
         }
     }
-    let label = &manifest["labelMap"];
-    let label_file = label["file"]
-        .as_str()
-        .expect("manifest labelMap.file missing");
-    let label_hash = label["sha256"]
-        .as_str()
-        .expect("manifest labelMap.sha256 missing");
-    let label_path = root.join(label_file);
-    println!("cargo:rerun-if-changed={}", label_path.display());
-    let label_bytes = fs::read(&label_path).unwrap_or_else(|error| {
-        panic!(
-            "Cannot read bundled label map {}: {error}",
-            label_path.display()
-        )
-    });
-    assert_eq!(
-        format!("{:x}", Sha256::digest(label_bytes)),
-        label_hash,
-        "bundled label map SHA-256 mismatch"
-    );
 }
 
 fn verify_sherpa_directml_libs() {

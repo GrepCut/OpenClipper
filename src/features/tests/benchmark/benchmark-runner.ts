@@ -3,6 +3,8 @@ import { benchmarkPersistenceService, testDataService } from "../test-data.servi
 import type { BenchmarkRun, TestClip, TestKeyframe } from "../types";
 import { TEST_ASPECTS } from "../types";
 import { computeBenchmarkColumnStats } from "./column-stats";
+import { computeCohortStats } from "./cohort-stats";
+import { resolveClipCohorts } from "./cohort-tags";
 import { runTestBenchmarkAnalysis } from "./run-analysis";
 
 export interface BenchmarkRunnerProgress {
@@ -86,6 +88,8 @@ export async function executeBenchmarkRun(input: {
         });
         const clipManifest = {
           clipId: clip.id,
+          clipName: clip.name,
+          cohorts: resolveClipCohorts(clip),
           sha256: clip.sha256,
           annotationRevision: clip.annotationRevision,
           engine: output.engine,
@@ -143,7 +147,6 @@ export async function executeBenchmarkRun(input: {
               selected: aspect.metrics,
               baseline: aspect.baselineMetrics,
               semanticCandidate: aspect.semanticCandidateMetrics,
-              detectorCandidate: aspect.detectorCandidateMetrics ?? null,
               iteration10Candidate: aspect.iteration10CandidateMetrics ?? null,
             }, null, 2),
           );
@@ -159,14 +162,6 @@ export async function executeBenchmarkRun(input: {
             `clips/${clip.id}/${aspect.aspectId}-semantic-candidate.jsonl`,
             aspect.semanticCandidateDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
           );
-          if (aspect.detectorCandidateDetails) {
-            await benchmarkPersistenceService.writeArtifact(
-              input.datasetId,
-              run.id,
-              `clips/${clip.id}/${aspect.aspectId}-detector-candidate.jsonl`,
-              aspect.detectorCandidateDetails.map((detail) => JSON.stringify(detail)).join("\n") + "\n",
-            );
-          }
           if (aspect.iteration10CandidateDetails) {
             await benchmarkPersistenceService.writeArtifact(
               input.datasetId,
@@ -203,6 +198,10 @@ export async function executeBenchmarkRun(input: {
       }
     }
     const columnStats = computeBenchmarkColumnStats(await benchmarkPersistenceService.listResults(run.id));
+    const cohortStats = computeCohortStats(
+      await benchmarkPersistenceService.listResults(run.id),
+      input.clips,
+    );
     const processedClips = (manifest.clips as Array<{ processingMs?: number }>).filter((clip) => clip.processingMs != null);
     const meanProcessingMs = processedClips.length
       ? processedClips.reduce((sum, clip) => sum + clip.processingMs!, 0) / processedClips.length
@@ -234,7 +233,7 @@ export async function executeBenchmarkRun(input: {
       input.datasetId,
       run.id,
       "manifest.json",
-      JSON.stringify({ ...manifest, completedClips, failedClips, catastrophicRegressions, columnStats, gateEvaluation }, null, 2),
+      JSON.stringify({ ...manifest, completedClips, failedClips, catastrophicRegressions, columnStats, cohortStats, gateEvaluation }, null, 2),
     );
     return benchmarkPersistenceService.finishRun(
       run.id,

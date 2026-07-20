@@ -4,8 +4,6 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-pub const SSD_INPUT_SIZE: usize = 320;
-pub const SSD_ANCHOR_COUNT: usize = 2034;
 pub const BLAZE_INPUT_SIZE: usize = 192;
 pub const BLAZE_ANCHOR_COUNT: usize = 2304;
 pub const MOVENET_INPUT_SIZE: usize = 512;
@@ -297,117 +295,6 @@ pub fn box_iou(a: NormalizedBox, b: NormalizedBox) -> f32 {
     } else {
         intersection / union
     }
-}
-
-pub fn generate_ssd_anchors() -> Vec<Anchor> {
-    let strides = [16usize, 32, 64, 128, 256, 512];
-    let aspect_ratios = [1.0f32, 2.0, 0.5, 3.0, 0.3333];
-    let scale_for = |layer: usize| 0.2 + (0.95 - 0.2) * layer as f32 / (strides.len() - 1) as f32;
-    let mut anchors = Vec::with_capacity(SSD_ANCHOR_COUNT);
-    for (layer, stride) in strides.into_iter().enumerate() {
-        let scale = scale_for(layer);
-        let mut shapes: Vec<(f32, f32)> = if layer == 0 {
-            vec![(0.1, 1.0), (scale, 2.0), (scale, 0.5)]
-        } else {
-            aspect_ratios.iter().map(|ratio| (scale, *ratio)).collect()
-        };
-        if layer > 0 {
-            let next = if layer + 1 == strides.len() {
-                1.0
-            } else {
-                scale_for(layer + 1)
-            };
-            shapes.push(((scale * next).sqrt(), 1.0));
-        }
-        let feature_size = SSD_INPUT_SIZE.div_ceil(stride);
-        for y in 0..feature_size {
-            for x in 0..feature_size {
-                for (shape_scale, ratio) in &shapes {
-                    let sqrt_ratio = ratio.sqrt();
-                    anchors.push(Anchor {
-                        x_center: (x as f32 + 0.5) / feature_size as f32,
-                        y_center: (y as f32 + 0.5) / feature_size as f32,
-                        width: shape_scale * sqrt_ratio,
-                        height: shape_scale / sqrt_ratio,
-                    });
-                }
-            }
-        }
-    }
-    debug_assert_eq!(anchors.len(), SSD_ANCHOR_COUNT);
-    anchors
-}
-
-pub fn decode_ssd(
-    boxes: &[f32],
-    scores: &[f32],
-    labels: &[String],
-    score_threshold: f32,
-) -> Result<Vec<SubjectDetection>, String> {
-    if boxes.len() != SSD_ANCHOR_COUNT * 4 || scores.len() != SSD_ANCHOR_COUNT * 91 {
-        return Err("tensor_contract_mismatch: invalid SSD output length".into());
-    }
-    let anchors = generate_ssd_anchors();
-    let mut candidates = Vec::new();
-    for (index, anchor) in anchors.iter().enumerate() {
-        let mut label_index = 0usize;
-        let mut score = 0.0f32;
-        for class_index in 1..91 {
-            let value = stable_sigmoid(scores[index * 91 + class_index]);
-            if value > score {
-                score = value;
-                label_index = class_index;
-            }
-        }
-        if score < score_threshold {
-            continue;
-        }
-        let offset = index * 4;
-        let y_center = boxes[offset] / 10.0 * anchor.height + anchor.y_center;
-        let x_center = boxes[offset + 1] / 10.0 * anchor.width + anchor.x_center;
-        let height = (boxes[offset + 2] / 5.0).exp() * anchor.height;
-        let width = (boxes[offset + 3] / 5.0).exp() * anchor.width;
-        let left = (x_center - width / 2.0).clamp(0.0, 1.0);
-        let top = (y_center - height / 2.0).clamp(0.0, 1.0);
-        let right = (x_center + width / 2.0).clamp(0.0, 1.0);
-        let bottom = (y_center + height / 2.0).clamp(0.0, 1.0);
-        if right <= left || bottom <= top {
-            continue;
-        }
-        candidates.push(SubjectDetection {
-            box_: NormalizedBox {
-                x: left,
-                y: top,
-                width: right - left,
-                height: bottom - top,
-            },
-            label: labels
-                .get(label_index)
-                .cloned()
-                .unwrap_or_else(|| format!("class-{label_index}")),
-            score,
-            track_id: None,
-            predicted: None,
-            detector_source: Some("ssd"),
-        });
-    }
-    candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
-    // ByteTrack needs low-confidence candidates too. Suppress only within the
-    // same class, otherwise overlapping COCO categories can erase each other.
-    let mut selected: Vec<SubjectDetection> = Vec::with_capacity(30);
-    for candidate in candidates {
-        if selected
-            .iter()
-            .any(|item| item.label == candidate.label && box_iou(item.box_, candidate.box_) >= 0.4)
-        {
-            continue;
-        }
-        selected.push(candidate);
-        if selected.len() == 30 {
-            break;
-        }
-    }
-    Ok(selected)
 }
 
 pub fn generate_blaze_anchors() -> Vec<Anchor> {
@@ -836,37 +723,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ssd_anchor_contract_matches_worker() {
-        let anchors = generate_ssd_anchors();
-        assert_eq!(anchors.len(), 2034);
-        assert_eq!(anchors[0].x_center, 0.025);
-        assert!((anchors[0].width - 0.1).abs() < 1e-6);
-        assert!((anchors[1].width - 0.2 * 2f32.sqrt()).abs() < 1e-6);
-    }
-
-    #[test]
     fn sigmoid_is_stable() {
         assert_eq!(stable_sigmoid(1000.0), 1.0);
         assert_eq!(stable_sigmoid(-1000.0), 0.0);
         assert_eq!(stable_sigmoid(0.0), 0.5);
-    }
-
-    #[test]
-    fn ssd_filters_classes_and_suppresses_overlap() {
-        let anchors = generate_ssd_anchors();
-        let mut boxes = vec![0.0f32; SSD_ANCHOR_COUNT * 4];
-        let mut scores = vec![-100.0f32; SSD_ANCHOR_COUNT * 91];
-        scores[1] = 10.0;
-        scores[91 + 1] = 9.0;
-        // Make anchor 1 decode to anchor 0's 0.1 square.
-        boxes[4 + 2] = 5.0 * (0.1 / anchors[1].height).ln();
-        boxes[4 + 3] = 5.0 * (0.1 / anchors[1].width).ln();
-        let labels = (0..91)
-            .map(|index| format!("label-{index}"))
-            .collect::<Vec<_>>();
-        let detections = decode_ssd(&boxes, &scores, &labels, 0.6).expect("SSD contract");
-        assert_eq!(detections.len(), 1);
-        assert_eq!(detections[0].label, "label-1");
     }
 
     #[test]

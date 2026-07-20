@@ -111,6 +111,7 @@ impl TestRepository {
             id: Set(id),
             name: Set(name.to_owned()),
             description: Set(description.filter(|value| !value.trim().is_empty())),
+            dataset_role: Set("tuning".into()),
             created_at: Set(now.clone()),
             updated_at: Set(now),
         };
@@ -130,6 +131,37 @@ impl TestRepository {
         let mut active: test_dataset::ActiveModel = existing.into();
         active.name = Set(name.trim().to_owned());
         active.description = Set(description.filter(|value| !value.trim().is_empty()));
+        active.updated_at = Set(Utc::now().to_rfc3339());
+        Ok(active.update(db).await?)
+    }
+
+    pub async fn update_dataset_role(
+        db: &DatabaseConnection,
+        id: String,
+        dataset_role: String,
+    ) -> DbResult<test_dataset::Model> {
+        let role = if dataset_role == "holdout" { "holdout" } else { "tuning" };
+        let existing = test_dataset::Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Test dataset was not found."))?;
+        let mut active: test_dataset::ActiveModel = existing.into();
+        active.dataset_role = Set(role.to_owned());
+        active.updated_at = Set(Utc::now().to_rfc3339());
+        Ok(active.update(db).await?)
+    }
+
+    pub async fn update_clip_cohorts(
+        db: &DatabaseConnection,
+        id: String,
+        cohort_tags_json: String,
+    ) -> DbResult<test_clip::Model> {
+        let existing = test_clip::Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Test clip was not found."))?;
+        let mut active: test_clip::ActiveModel = existing.into();
+        active.cohort_tags_json = Set(cohort_tags_json);
         active.updated_at = Set(Utc::now().to_rfc3339());
         Ok(active.update(db).await?)
     }

@@ -21,6 +21,10 @@ export const testDataService = {
     }),
   updateDataset: (id: string, name: string, description?: string) =>
     invoke<TestDataset>("test_dataset_update", { id, name, description: description || null }),
+  updateDatasetRole: (id: string, datasetRole: "tuning" | "holdout") =>
+    invoke<TestDataset>("test_dataset_update_role", { id, datasetRole }),
+  updateClipCohorts: (id: string, cohortTagsJson: string) =>
+    invoke<TestClip>("test_clip_update_cohorts", { id, cohortTagsJson }),
   deleteDataset: (id: string) => invoke<void>("test_dataset_delete", { id }),
   listClips: (datasetId: string) => invoke<TestClip[]>("test_clip_list", { datasetId }),
   getClip: (id: string) => invoke<TestClip | null>("test_clip_get", { id }),

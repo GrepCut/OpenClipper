@@ -1,21 +1,15 @@
-import { invoke } from "@tauri-apps/api/core";
-import { ToolFaceDetectorService } from "../../clipper/lib/media/face-detector";
 import { pathBackedFile } from "../../clipper/platform/native-source";
 import {
-  CLIPPER_FACE_DETECTOR_OPTIONS,
   FACE_SAMPLE_INTERVAL_SEC,
   FaceSampleCache,
   prefillFaceSampleCache,
   cropRectForCentroid,
 } from "../../clipper/engine/reframe";
-import { SubjectDetectorWorkerClient } from "../../clipper/workers/subject-detect/client";
-import type { SubjectDetectionSample } from "../../clipper/shared/smart-crop";
 import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-autoflip-track";
 import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/canonical-person";
-import { buildDetectorHypothesisBank } from "../../clipper/engine/autoflip/detector-hypotheses";
 import { RUN10_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout-arbiter";
-import { DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS } from "../../clipper/engine/autoflip/segment-detector-router";
-import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS, ITERATION11_DETECTOR_VISIBILITY_PARAMS } from "../../clipper/engine/autoflip/visibility-controller";
+import { resolveClipCohorts } from "./cohort-tags";
+import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "../../clipper/engine/autoflip/visibility-controller";
 import {
   augmentFaceSamplesWithDetectedHeads,
   buildCollageTracksForRegions,
@@ -32,6 +26,7 @@ import type { TestClip, TestKeyframe } from "../types";
 import { TEST_ASPECTS } from "../types";
 import { calculateBenchmarkMetrics, type NormalizedViewport } from "./metrics";
 import { calculateLayoutOracle } from "./oracle";
+import { REPLAY_METRIC_TOLERANCE } from "./replay/replay-tolerance";
 import { interpolateLayoutSample, resolveLayoutTrack } from "../../clipper/engine/autoflip/layout-planner";
 
 export interface TestBenchmarkProgress {
@@ -47,8 +42,6 @@ export interface TestBenchmarkAspectOutput {
   baselineDetails: ReturnType<typeof calculateBenchmarkMetrics>["details"];
   semanticCandidateMetrics: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
   semanticCandidateDetails: ReturnType<typeof calculateBenchmarkMetrics>["details"];
-  detectorCandidateMetrics?: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
-  detectorCandidateDetails?: ReturnType<typeof calculateBenchmarkMetrics>["details"];
   iteration10CandidateMetrics?: ReturnType<typeof calculateBenchmarkMetrics>["metrics"];
   iteration10CandidateDetails?: ReturnType<typeof calculateBenchmarkMetrics>["details"];
   oracle: ReturnType<typeof calculateLayoutOracle>;
@@ -56,7 +49,7 @@ export interface TestBenchmarkAspectOutput {
 
 export interface TestBenchmarkAnalysisOutput {
   aspects: TestBenchmarkAspectOutput[];
-  engine: "winml" | "wasm";
+  engine: "winml";
   modelVersion: string;
   trackerVersion: string | null;
   sourceFrameRate: number;
@@ -96,53 +89,20 @@ export async function runTestBenchmarkAnalysis(input: {
   const started = performance.now();
   const file = pathBackedFile(input.clipPath, "test-clip.mp4");
   const cache = new FaceSampleCache(FACE_SAMPLE_INTERVAL_SEC, () => {});
-  const detectionTasks: Promise<SubjectDetectionSample>[] = [];
-  let subjectDetector: SubjectDetectorWorkerClient | null = new SubjectDetectorWorkerClient();
   input.onProgress?.({ phase: "Detecting faces and tracking action", ratio: 0 });
 
-  const summary = await prefillFaceSampleCache(
-    file,
-    cache,
-    ToolFaceDetectorService.getInstance(),
-    {
-      signal: input.signal,
-      nativeSource: { filePath: input.clipPath, startTime: 0, endTime: input.clip.duration },
-      onPhase: (phase) => input.onProgress?.({ phase, ratio: 0 }),
-      onProgress: (ratio) => input.onProgress?.({ phase: "Detecting faces and tracking action", ratio: ratio * 0.9 }),
-      subjectExtraction: {
-        targetWidth: 480,
-        onSubjectFrame: (frame, timestampSec) => {
-          const task = subjectDetector!.detect(frame.frameUrl, timestampSec);
-          detectionTasks.push(task);
-          void task.catch(() => {});
-        },
-      },
-    },
-  );
-  if (!summary) throw new Error("Video analysis did not return a result.");
+  const summary = await prefillFaceSampleCache(file, cache, {
+    signal: input.signal,
+    nativeSource: { filePath: input.clipPath, startTime: 0, endTime: input.clip.duration },
+    onPhase: (phase) => input.onProgress?.({ phase, ratio: 0 }),
+    onProgress: (ratio) => input.onProgress?.({ phase: "Detecting faces and tracking action", ratio: ratio * 0.9 }),
+  });
   if (input.signal.aborted) throw new DOMException("Benchmark cancelled", "AbortError");
 
-  let detections: SubjectDetectionSample[];
-  let engine: "winml" | "wasm";
-  let trackerVersion: string | null = null;
-  let degradedReason: string | null = null;
-  if (summary.engine === "winml") {
-    subjectDetector.dispose();
-    subjectDetector = null;
-    detections = summary.subjectSamples;
-    engine = "winml";
-    trackerVersion = summary.trackerVersion ?? null;
-  } else {
-    const settled = await Promise.allSettled(detectionTasks);
-    detections = settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
-    degradedReason = settled.some((result) => result.status === "rejected")
-      ? "Some compatible WASM subject samples failed."
-      : null;
-    subjectDetector.dispose();
-    subjectDetector = null;
-    if (summary.jobId) await invoke("cleanup_clipper_frames", { jobId: summary.jobId }).catch(() => {});
-    engine = "wasm";
-  }
+  const detections = summary.subjectSamples;
+  const engine = "winml" as const;
+  const trackerVersion = summary.trackerVersion ?? null;
+  const degradedReason = detections.find((sample) => sample.degradedReason)?.degradedReason ?? null;
 
   const faceSamples = cache.sortedSamples();
   const aspectRatios = Object.fromEntries(TEST_ASPECTS.map((aspect) => [aspect.formatId, aspect.ratio]));
@@ -159,7 +119,7 @@ export async function runTestBenchmarkAnalysis(input: {
     contentRect: summary.contentRect,
     targetAspectRatios: aspectRatios,
     sourceFrameRate: summary.sourceFrameRate,
-    trackerVersion: summary.engine === "winml" ? summary.trackerVersion : undefined,
+    trackerVersion: summary.trackerVersion,
     frameWidth: input.clip.width,
     frameHeight: input.clip.height,
     smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
@@ -167,7 +127,6 @@ export async function runTestBenchmarkAnalysis(input: {
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
     iteration10: true,
-    iteration11: true,
   });
   blob.engine = engine;
   const iteration10CandidateBlob = buildAutoFlipTrack({
@@ -182,7 +141,7 @@ export async function runTestBenchmarkAnalysis(input: {
     contentRect: summary.contentRect,
     targetAspectRatios: aspectRatios,
     sourceFrameRate: summary.sourceFrameRate,
-    trackerVersion: summary.engine === "winml" ? summary.trackerVersion : undefined,
+    trackerVersion: summary.trackerVersion,
     frameWidth: input.clip.width,
     frameHeight: input.clip.height,
     smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
@@ -192,32 +151,6 @@ export async function runTestBenchmarkAnalysis(input: {
     iteration10: true,
   });
   iteration10CandidateBlob.engine = engine;
-  const hasDetectorShadow = detections.some((sample) => sample.shadowDetections?.length);
-  const detectorCandidateBlob = hasDetectorShadow ? buildAutoFlipTrack({
-    clipStart: 0,
-    clipEnd: input.clip.duration,
-    detections: detections.map((sample) => ({
-      ...sample,
-      detections: sample.shadowDetections?.length ? sample.shadowDetections : sample.detections,
-      shadowDetections: undefined,
-      modelId: "yolox-tiny-shadow",
-    })),
-    faces: faceSamples,
-    sceneCuts: summary.sceneCutTimestamps,
-    hasSolidColorBackground: summary.hasSolidColorBackground,
-    solidBackgroundColor: summary.solidBackgroundColor ?? undefined,
-    staticFeatureSamples: summary.staticFeatureSamples,
-    contentRect: summary.contentRect,
-    targetAspectRatios: aspectRatios,
-    sourceFrameRate: summary.sourceFrameRate,
-    trackerVersion: summary.engine === "winml" ? summary.trackerVersion : undefined,
-    frameWidth: input.clip.width,
-    frameHeight: input.clip.height,
-    smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
-    headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
-    degradedReason: degradedReason ?? undefined,
-    collectDebug: true,
-  }) : null;
 
   const collageFaceSamples = augmentFaceSamplesWithDetectedHeads(faceSamples, detections);
   const regions = deriveTwoSpeakerRegions(collageFaceSamples);
@@ -307,22 +240,6 @@ export async function runTestBenchmarkAnalysis(input: {
       sourceWidth: source.width,
       sourceHeight: source.height,
     });
-    const detectorCandidateEvaluated = detectorCandidateBlob ? calculateBenchmarkMetrics({
-      keyframes: input.keyframes,
-      frames: timestamps.map((timestamp, index) => {
-        const render = resolveClipperLayoutRender(detectorCandidateBlob, aspect.formatId, source, timestamp);
-        return render ? {
-          timestampUs: Math.round(timestamp * 1_000_000),
-          layoutMode: render.mode,
-          viewports: render.viewports.map((viewport) => normalizedViewport(viewport, source.width, source.height)),
-          reasonCodes: render.reasonCodes,
-          requiredRegionIds: render.requiredRegionIds,
-          subjectDisplayHeightFractions: render.subjectDisplayHeightFractions,
-        } : baselineFrames[index]!;
-      }),
-      sourceWidth: source.width,
-      sourceHeight: source.height,
-    }) : null;
     const iteration10CandidateEvaluated = calculateBenchmarkMetrics({
       keyframes: input.keyframes,
       frames: timestamps.map((timestamp, index) => {
@@ -357,8 +274,6 @@ export async function runTestBenchmarkAnalysis(input: {
       baselineDetails: baselineEvaluated.details,
       semanticCandidateMetrics: semanticEvaluated.metrics,
       semanticCandidateDetails: semanticEvaluated.details,
-      detectorCandidateMetrics: detectorCandidateEvaluated?.metrics,
-      detectorCandidateDetails: detectorCandidateEvaluated?.details,
       iteration10CandidateMetrics: iteration10CandidateEvaluated.metrics,
       iteration10CandidateDetails: iteration10CandidateEvaluated.details,
       oracle,
@@ -370,7 +285,6 @@ export async function runTestBenchmarkAnalysis(input: {
     aspect.metrics.realtimeFactor = input.clip.duration / Math.max(0.001, processingMs / 1000);
     aspect.baselineMetrics.processingMs = processingMs;
     aspect.semanticCandidateMetrics.processingMs = processingMs;
-    if (aspect.detectorCandidateMetrics) aspect.detectorCandidateMetrics.processingMs = processingMs;
     if (aspect.iteration10CandidateMetrics) aspect.iteration10CandidateMetrics.processingMs = processingMs;
   }
   const canonicalSamples = buildCanonicalPersonTracks(detections).samples;
@@ -383,29 +297,23 @@ export async function runTestBenchmarkAnalysis(input: {
     processingMs,
     degradedReason,
     autoflipDebug: {
-      schemaVersion: 5,
+      schemaVersion: 6,
       replayConfig: {
-        productionPolicy: "iteration11",
+        productionPolicy: "iteration10",
+        replayMetricTolerance: REPLAY_METRIC_TOLERANCE,
         arbiterParams: { ...RUN10_ARBITER_PARAMS },
         visibilityControllerParams: { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS },
-        detectorRouterParams: { ...DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS },
-        detectorVisibilityParams: { ...ITERATION11_DETECTOR_VISIBILITY_PARAMS },
       },
       semanticFramingParams: null,
       scenes: blob.debug ?? [],
       importanceSamples: blob.importanceSamples ?? [],
       layoutTracks: blob.layoutTracks ?? {},
-      routerDecisions: blob.routerDecisions ?? [],
-      detectorSpliceTracks: blob.detectorSpliceTracks,
       subjectSamples: canonicalSamples,
-      detectorHypothesisSamples: buildDetectorHypothesisBank(canonicalSamples),
       canonicalIdentityTelemetry: blob.canonicalIdentityTelemetry,
       activeSpeakerTelemetry: blob.activeSpeakerTelemetry,
+      shadowDiagnostics: summary.shadowDiagnostics,
+      cohortTags: resolveClipCohorts(input.clip),
       candidates: {
-        ...(detectorCandidateBlob ? { yolox: {
-          importanceSamples: detectorCandidateBlob.importanceSamples ?? [],
-          layoutTracks: detectorCandidateBlob.layoutTracks ?? {},
-        } } : {}),
         iteration10: {
           importanceSamples: iteration10CandidateBlob.importanceSamples ?? [],
           layoutTracks: iteration10CandidateBlob.layoutTracks ?? {},
@@ -414,8 +322,6 @@ export async function runTestBenchmarkAnalysis(input: {
         },
       },
     },
-    nativeMetrics: summary.engine === "winml"
-      ? summary.metrics as unknown as Record<string, unknown>
-      : null,
+    nativeMetrics: summary.metrics as unknown as Record<string, unknown>,
   };
 }

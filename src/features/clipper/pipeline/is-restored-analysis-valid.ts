@@ -6,6 +6,12 @@ export interface RestoredClipAnalysisBlob {
   samples: unknown[];
 }
 
+export interface RestoredSmartCropAnalysisBlob {
+  clipStart: number;
+  clipEnd: number;
+  aspectTracks?: Record<string, { samples: unknown[] }>;
+}
+
 export function isRestoredClipAnalysisValid(
   blob: RestoredClipAnalysisBlob | null | undefined,
   options: {
@@ -22,6 +28,32 @@ export function isRestoredClipAnalysisValid(
 
   const minSamples = options.minSamples ?? 1;
   if (blob.samples.length < minSamples) {
+    return false;
+  }
+
+  return (
+    Math.abs(blob.clipStart - options.start) < CLIP_RANGE_TOLERANCE_SEC &&
+    Math.abs(blob.clipEnd - options.end) < CLIP_RANGE_TOLERANCE_SEC
+  );
+}
+
+export function isRestoredSmartCropAnalysisValid(
+  blob: RestoredSmartCropAnalysisBlob | null | undefined,
+  options: {
+    start: number;
+    end: number;
+    version: string;
+    blobVersion: string | undefined;
+    minSamples?: number;
+  },
+): boolean {
+  if (!blob || options.blobVersion !== options.version) {
+    return false;
+  }
+
+  const minSamples = options.minSamples ?? 1;
+  const trackSamples = Object.values(blob.aspectTracks ?? {}).map((track) => track.samples.length);
+  if (!trackSamples.some((count) => count >= minSamples)) {
     return false;
   }
 

@@ -50,7 +50,6 @@ interface Candidate {
   source: ImportanceRegionSource;
   trackId?: number;
   predicted?: boolean;
-  recoveryOnly?: boolean;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
 }
@@ -88,9 +87,6 @@ function signalCandidate(region: SalientRegion): Candidate {
   const confidence = clamp01(region.score);
   let evidence = policy.prior * 0.68 + confidence * 0.32;
   if (region.predicted) evidence *= 0.42;
-  // A YOLOX recovery can restore a missing trajectory or become a secondary
-  // target, but by itself must not outrank a stable SSD/face/pose primary.
-  if (region.recoveryOnly) evidence *= 0.82;
   const centerX = region.box.x + region.box.width / 2;
   const centerDistance = Math.abs(centerX - 0.5) * 2;
   evidence *= 1 - Math.min(0.05, centerDistance * 0.05);
@@ -102,7 +98,6 @@ function signalCandidate(region: SalientRegion): Candidate {
     source: policy.source,
     trackId: region.trackId,
     predicted: region.predicted,
-    recoveryOnly: region.recoveryOnly,
     associationConfidence: region.associationConfidence,
     identityAmbiguous: region.identityAmbiguous,
   };
@@ -197,14 +192,12 @@ function matchPreviousId(
   return best?.id ?? stableUntrackedId(region);
 }
 
-function rankFrame(regions: SalientRegion[], previous: ImportanceRegion[]): ImportanceRegion[] {
+function rankFrame(
+  regions: SalientRegion[],
+  previous: ImportanceRegion[],
+): ImportanceRegion[] {
   const ranked = clusterCandidates(regions)
     .filter((cluster) => cluster.candidates.some((candidate) => candidate.source !== "motion"))
-    // A recovery-only person box is not enough identity evidence to create a
-    // target. It must attach geometrically to face/head/pose evidence first.
-    .filter((cluster) => !cluster.candidates.some((candidate) => candidate.recoveryOnly)
-      || cluster.candidates.some((candidate) =>
-        !candidate.recoveryOnly && (candidate.source === "face" || candidate.source === "head" || candidate.source === "pose")))
     .filter((cluster) => !cluster.candidates.some((candidate) => candidate.identityAmbiguous))
     .map<ImportanceRegion>((cluster) => {
     const region = clusterRegion(cluster);
@@ -285,7 +278,9 @@ export function attachImportanceSignals(
 }
 
 /** Converts raw proposal regions into stable, explicit editing targets. */
-export function buildImportanceTimeline(keyframes: KeyFrameSalientInput[]): ImportanceRegionSample[] {
+export function buildImportanceTimeline(
+  keyframes: KeyFrameSalientInput[],
+): ImportanceRegionSample[] {
   let previous: ImportanceRegion[] = [];
   let previousObservedTime = Number.NEGATIVE_INFINITY;
   return keyframes.map((keyframe) => {

@@ -114,6 +114,28 @@ pub async fn test_dataset_update(
 }
 
 #[tauri::command]
+pub async fn test_dataset_update_role(
+    db: State<'_, LocalDb>,
+    id: String,
+    dataset_role: String,
+) -> Result<test_dataset::Model, String> {
+    TestRepository::update_dataset_role(&db.database, id, dataset_role)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn test_clip_update_cohorts(
+    db: State<'_, LocalDb>,
+    id: String,
+    cohort_tags_json: String,
+) -> Result<test_clip::Model, String> {
+    TestRepository::update_clip_cohorts(&db.database, id, cohort_tags_json)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn test_dataset_delete(
     app: AppHandle,
     db: State<'_, LocalDb>,
@@ -207,6 +229,7 @@ pub async fn test_clip_create(
         frame_rate: Set(frame_rate),
         sha256: Set(sha256),
         annotation_revision: Set(0),
+        cohort_tags_json: Set("[]".into()),
         created_at: Set(now.clone()),
         updated_at: Set(now.clone()),
     };
@@ -599,6 +622,7 @@ async fn import_staged_dataset(
         id: Set(dataset_id.clone()),
         name: Set(manifest.dataset.name.clone()),
         description: Set(manifest.dataset.description.clone()),
+        dataset_role: Set(manifest.dataset.dataset_role.clone()),
         created_at: Set(now.clone()),
         updated_at: Set(now.clone()),
     }.insert(&transaction).await.map_err(|error| error.to_string())?;
@@ -616,6 +640,7 @@ async fn import_staged_dataset(
             frame_rate: Set(clip.frame_rate),
             sha256: Set(clip.sha256.clone()),
             annotation_revision: Set(clip.annotation_revision),
+            cohort_tags_json: Set(clip.cohort_tags_json.clone()),
             created_at: Set(now.clone()),
             updated_at: Set(now.clone()),
         }.insert(&transaction).await.map_err(|error| error.to_string())?;

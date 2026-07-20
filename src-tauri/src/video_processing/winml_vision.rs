@@ -23,11 +23,13 @@ pub const BATCH_BOUND: usize = 8;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum VisionModel {
     Face,
-    Object,
     YoloX,
     #[cfg_attr(not(test), allow(dead_code))]
     ActiveSpeaker,
     Pose,
+    TransNet,
+    ReId,
+    ViNet,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -578,24 +580,26 @@ impl Drop for WinMlModel {
 
 pub struct VisionResourcePaths {
     pub face: PathBuf,
-    pub ssd: PathBuf,
     pub pose: PathBuf,
-    pub ssd_labels: PathBuf,
     pub yolox: PathBuf,
     pub yolox_labels: PathBuf,
     pub active_speaker: PathBuf,
+    pub transnet: PathBuf,
+    pub osnet: PathBuf,
+    pub vinet: PathBuf,
 }
 
 pub fn resource_paths(resource_dir: &Path) -> VisionResourcePaths {
     let root = resource_dir.join("resources/models/clipper-vision");
     VisionResourcePaths {
         face: root.join("blaze_face_full_range.onnx"),
-        ssd: root.join("ssdlite_object_detection.onnx"),
         pose: root.join("movenet_multipose_lightning.onnx"),
-        ssd_labels: root.join("ssdlite_object_detection_labelmap.txt"),
         yolox: root.join("yolox_tiny.onnx"),
         yolox_labels: root.join("coco80.txt"),
         active_speaker: root.join("lr_asd_ava.onnx"),
+        transnet: root.join("transnetv2.onnx"),
+        osnet: root.join("osnet_x0_25_msmt17.onnx"),
+        vinet: root.join("vinet-s-saliency.onnx"),
     }
 }
 
@@ -677,26 +681,6 @@ mod tests {
         let _ = face_model.Close();
         drop(face);
 
-        let object_input = vec![0.0f32; BATCH_BOUND * 320 * 320 * 3];
-        eprintln!("loading object");
-        let object_model =
-            load_model(&root.join("ssdlite_object_detection.onnx")).expect("load object");
-        let object = WinMlModel::make_session(&object_model, CPU_FP32).expect("object CPU session");
-        eprintln!("evaluating object");
-        let object_outputs = WinMlModel::evaluate_session(
-            &object.value,
-            &HSTRING::from("normalized_input_image_tensor"),
-            &[
-                HSTRING::from("raw_outputs/box_encodings"),
-                HSTRING::from("raw_outputs/class_predictions"),
-            ],
-            &[BATCH_BOUND as i64, 320, 320, 3],
-            &object_input,
-        )
-        .expect("SSD Lite must evaluate with WinML");
-        assert_eq!(object_outputs[0].len(), BATCH_BOUND * 2034 * 4);
-        assert_eq!(object_outputs[1].len(), BATCH_BOUND * 2034 * 91);
-
         let pose_input = vec![0.0f32; 512 * 512 * 3];
         eprintln!("loading pose");
         let pose_model =
@@ -717,10 +701,7 @@ mod tests {
     fn bundled_fp16_models_load_with_winml() {
         let _apartment = MtaApartment::initialize().expect("MTA");
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/models/clipper-vision");
-        for name in [
-            "blaze_face_full_range.onnx",
-            "ssdlite_object_detection.onnx",
-        ] {
+        for name in ["blaze_face_full_range.onnx"] {
             let path = fp16_variant_path(&root.join(name));
             assert!(path.is_file(), "missing fp16 variant {}", path.display());
             let model = load_model(&path).expect("fp16 model must load");
@@ -783,22 +764,13 @@ mod tests {
         // Keeps the MTA (and WinML's cached activation factories) alive
         // across the per-model threads; in the app the webview holds COM.
         let _apartment = MtaApartment::initialize().expect("MTA");
-        let cases = [
-            (
-                "blaze",
-                "blaze_face_full_range.onnx",
-                "input",
-                ["reshaped_regressor_face_4", "reshaped_classifier_face_4"],
-                192usize,
-            ),
-            (
-                "ssd",
-                "ssdlite_object_detection.onnx",
-                "normalized_input_image_tensor",
-                ["raw_outputs/box_encodings", "raw_outputs/class_predictions"],
-                320usize,
-            ),
-        ];
+        let cases = [(
+            "blaze",
+            "blaze_face_full_range.onnx",
+            "input",
+            ["reshaped_regressor_face_4", "reshaped_classifier_face_4"],
+            192usize,
+        )];
         // Each model gets its own thread, mirroring the worker threads in
         // production (COM apartments are per-thread).
         fn run_case(
@@ -817,13 +789,8 @@ mod tests {
             let batched = vec![0.5f32; BATCH_BOUND * elements];
             let fp32 = root.join(file);
             let fp16 = fp16_variant_path(&fp32);
-            let kind = if label == "blaze" {
-                VisionModel::Face
-            } else {
-                VisionModel::Object
-            };
             let (mut model, _) = WinMlModel::create(
-                kind,
+                VisionModel::Face,
                 &fp32,
                 Some(&fp16),
                 input_name,

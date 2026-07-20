@@ -1,11 +1,10 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, HStack, Progress, Text, VStack, useDisclosure } from "@chakra-ui/react";
-import { ArrowRight, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, Pencil } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/OutlinedActionButton";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 import { colors, useTheme } from "../../../theme";
-import { testDataService } from "../test-data.service";
 import type { TestDatasetSummary } from "../types";
 import { EditTestDatasetModal } from "./EditTestDatasetModal";
 
@@ -32,13 +31,11 @@ function datasetStatusLabel(dataset: TestDatasetSummary): string {
 interface TestDatasetListRowProps {
   dataset: TestDatasetSummary;
   onUpdated: () => void;
-  onDeleted: () => void;
 }
 
 export function TestDatasetListRow({
   dataset,
   onUpdated,
-  onDeleted,
 }: TestDatasetListRowProps) {
   const navigate = useNavigate();
   const { theme, mode } = useTheme();
@@ -50,12 +47,6 @@ export function TestDatasetListRow({
   const handleOpen = useCallback(() => {
     navigate(`/clipper/tests/${dataset.id}`);
   }, [dataset.id, navigate]);
-
-  const handleDelete = useCallback(async () => {
-    if (!window.confirm(`Delete dataset “${dataset.name}” and all stored videos and runs?`)) return;
-    await testDataService.deleteDataset(dataset.id);
-    onDeleted();
-  }, [dataset.id, dataset.name, onDeleted]);
 
   return (
     <>
@@ -130,15 +121,6 @@ export function TestDatasetListRow({
                 onClick={editModal.onOpen}
               >
                 Edit
-              </OutlinedActionButton>
-              <OutlinedActionButton
-                width="100%"
-                justifyContent="flex-start"
-                tone="danger"
-                startIcon={<Trash2 size={16} />}
-                onClick={() => void handleDelete()}
-              >
-                Delete
               </OutlinedActionButton>
             </VStack>
           </VStack>

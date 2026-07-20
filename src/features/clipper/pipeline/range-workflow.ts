@@ -1,6 +1,4 @@
-import { ToolFaceDetectorService } from "../lib/media/face-detector";
 import { segmentRangeFromTrimmedFile } from "../engine/clip-segmentation";
-import { CLIPPER_FACE_DETECTOR_OPTIONS } from "../engine/reframe";
 import { clipperLog, clipperTimer } from "../shared/logger";
 import { snapToKeyframe } from "../platform/native-source";
 import { markClipperStepCompleted } from "../persistence/pipeline-api";
@@ -146,7 +144,6 @@ export async function runConfirmRangePipeline(
   options: { signal: AbortSignal },
 ): Promise<ConfirmRangeResult> {
   session.faceCache = createFaceCache(session, reporter);
-  ToolFaceDetectorService.getInstance().warm(CLIPPER_FACE_DETECTOR_OPTIONS);
 
   const snappedStart = await snapToKeyframe(session.sourceFile, input.start);
   reporter.stageProgress(0.1);

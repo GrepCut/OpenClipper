@@ -46,9 +46,8 @@ describe("canonical person fusion", () => {
     expect(result.telemetry.successfulReacquisitions).toBeGreaterThan(0);
   });
 
-  it("does not create a third identity from duplicate recovery or pose evidence", () => {
+  it("does not create a third identity from duplicate pose evidence", () => {
     const sample = twoPeople(0, 0.1, 0.7);
-    sample.detections.push({ box: box(0.11), label: "person", score: 0.8, trackId: 99, detectorSource: "yolox" });
     sample.poseSubjects = [{ box: box(0.1), score: 0.9, trackId: 999 }];
     const result = buildCanonicalPersonTracks([sample]);
     expect(result.samples[0]!.canonicalPersons).toHaveLength(2);

@@ -11,7 +11,7 @@ pub struct Model {
     pub clip_id: String,
     #[sea_orm(indexed)]
     pub timestamp_us: i64,
-    #[sea_orm(column_type = "Text")]
+    #[sea_orm(default_value = "crop", column_type = "Text")]
     pub layout_intent: String,
     #[sea_orm(column_type = "Text")]
     pub created_at: String,

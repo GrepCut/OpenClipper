@@ -12,7 +12,6 @@ import {
   VideoSampleSource,
 } from "mediabunny";
 import { createMediabunnyInput } from "../lib/media/mediabunny-file-source";
-import { ToolFaceDetectorService, type FaceRotationDegrees } from "../lib/media/face-detector";
 import {
   createAudioSource,
   AAC_BITRATE,
@@ -29,12 +28,10 @@ import { EncodeBackpressure } from "../lib/media/encode-backpressure";
 import { clipperError } from "../shared/logger";
 import type { ClipperFormatDef, ClipperPlatform } from "../shared/formats";
 import type { ClipperQualityPreset } from "../settings/settings";
-import type { FaceDetectFrameSource } from "./reframe";
 import type { ClipperClipSegmentWindow } from "./clip-segmentation";
 import { segmentsTotalDuration } from "./clip-segment-time";
 import {
   drawClipperFrame,
-  formatNeedsFaceTracking,
   resolveClipperOutputSize,
   type ClipperFrameContext,
 } from "./frame-draw";
@@ -63,17 +60,6 @@ export type RenderClipperResult =
 function resolveEncodeBitrate(output: FrameEffectSize, quality: ClipperQualityPreset): number {
   const base = highQualityVideoBitrate(output.width, output.height);
   return Math.ceil((base * QUALITY_BITRATE_MULTIPLIER[quality]) / 1000) * 1000;
-}
-
-/** Wraps an already-decoded render-loop VideoFrame for detection — does NOT close `frame`. */
-async function makeRenderFrameSource(sample: VideoSample, frame: VideoFrame): Promise<FaceDetectFrameSource> {
-  const bitmap = await createImageBitmap(frame);
-  return {
-    frame,
-    bitmap,
-    rotationDegrees: (sample.rotation as FaceRotationDegrees) ?? 0,
-    release: () => bitmap.close(),
-  };
 }
 
 /**
@@ -203,8 +189,6 @@ export async function renderClipperFormat(
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    const needsTracking = formatNeedsFaceTracking(formatDef, render.settings);
-    const detector = ToolFaceDetectorService.getInstance();
     const canvasCache = new FrameCanvasCache();
     const encodeBackpressure = new EncodeBackpressure();
 
@@ -216,16 +200,6 @@ export async function renderClipperFormat(
     ): Promise<void> => {
       const frame = sample.toVideoFrame();
       try {
-        if (needsTracking && render.faceCache && !render.faceCache.hasBucket(sourceTimestamp)) {
-          try {
-            await render.faceCache.ensure(sourceTimestamp, detector, () =>
-              makeRenderFrameSource(sample, frame),
-            );
-          } catch (error) {
-            clipperError("face-cache: detection failed for frame", error);
-          }
-        }
-
         const base = renderSizedEffectFrame(
           frame,
           outputSize,

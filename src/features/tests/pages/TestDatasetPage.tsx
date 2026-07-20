@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, HStack, Progress, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { Archive, FolderOpen, Play, Plus, StopCircle, Trash2 } from "lucide-react";
+import { Archive, FolderOpen, Play, Plus, StopCircle } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppLoader } from "../../../shared/components/AppLoader";
 import { OutlinedActionButton } from "../../../shared/components/buttons/OutlinedActionButton";
@@ -9,6 +9,7 @@ import { appToast } from "../../../shared/utils/toast.service";
 import { useTheme } from "../../../theme";
 import { ClipperLayout } from "../../clipper/components/ClipperLayout";
 import { executeBenchmarkRun, type BenchmarkRunnerProgress } from "../benchmark/benchmark-runner";
+import { BENCHMARK_COHORTS } from "../benchmark/cohort-tags";
 import { CreateTestClipModal } from "../components/CreateTestClipModal";
 import { BenchmarkRunsPanel } from "../components/BenchmarkRunsPanel";
 import { TestClipListRow } from "../components/TestClipListRow";
@@ -74,9 +75,21 @@ export function TestDatasetPage() {
         signal: controller.signal,
         onProgress: setProgress,
       });
-      appToast.success("Benchmark finished", run.status);
+      if (run.status === "failed") {
+        appToast.error("Benchmark failed", run.error ?? run.status);
+      } else if (run.error) {
+        appToast.warning("Benchmark finished with errors", run.error);
+      } else {
+        appToast.success("Benchmark finished", run.status);
+      }
       setSelectedRunId(run.id);
       await load();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        appToast.info("Benchmark cancelled");
+      } else {
+        appToast.error("Benchmark failed", String(error));
+      }
     } finally {
       abortRef.current = null;
       setProgress(null);
@@ -104,6 +117,19 @@ export function TestDatasetPage() {
           <VStack align="start" gap={1}>
             <Text fontSize="3xl" fontWeight="bold">{dataset.name}</Text>
             <Text color={theme.text.muted}>{dataset.description || "Manual framing reference dataset"}</Text>
+            <HStack gap={2} flexWrap="wrap">
+              <Text fontSize="sm" color={theme.text.muted}>Role:</Text>
+              <select
+                value={dataset.datasetRole ?? "tuning"}
+                onChange={(event) => {
+                  const datasetRole = event.target.value as "tuning" | "holdout";
+                  void testDataService.updateDatasetRole(datasetId, datasetRole).then(load);
+                }}
+              >
+                <option value="tuning">tuning</option>
+                <option value="holdout">holdout</option>
+              </select>
+            </HStack>
           </VStack>
           <HStack gap={2} flexWrap="wrap">
             <OutlinedActionButton startIcon={<FolderOpen size={16} />} onClick={() => void testDataService.openDatasetDir(datasetId)}>Open folder</OutlinedActionButton>
@@ -145,6 +171,12 @@ export function TestDatasetPage() {
                 await testDataService.deleteClip(clip.id);
                 await load();
               }}
+              onEditCohorts={() => {
+                const hint = `Valid: ${BENCHMARK_COHORTS.join(", ")}`;
+                const next = window.prompt(`Cohort tags JSON array.\n${hint}`, clip.cohortTagsJson ?? "[]");
+                if (next == null) return;
+                void testDataService.updateClipCohorts(clip.id, next).then(load);
+              }}
             />
           ))}
         </VStack>
@@ -156,14 +188,6 @@ export function TestDatasetPage() {
           results={results}
           clips={clips}
         />
-
-        <Box pt={5} borderTop="1px solid" borderColor={theme.dashboard.border}>
-          <OutlinedActionButton tone="danger" startIcon={<Trash2 size={16} />} onClick={async () => {
-            if (!window.confirm(`Delete dataset “${dataset.name}” and all stored videos and runs?`)) return;
-            await testDataService.deleteDataset(dataset.id);
-            navigate("/clipper?tab=tests");
-          }}>Delete dataset</OutlinedActionButton>
-        </Box>
       </VStack>
 
       <CreateTestClipModal

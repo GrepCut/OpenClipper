@@ -88,7 +88,6 @@ export function TestsHomeView() {
               key={dataset.id}
               dataset={dataset}
               onUpdated={() => void load()}
-              onDeleted={() => void load()}
             />
           ))}
         </VStack>

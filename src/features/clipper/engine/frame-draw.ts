@@ -293,9 +293,7 @@ export interface ClipperFrameContext {
     collageRegions: CollageRegion[];
     collageEligibility: CollageAspectEligibility;
   };
-  /** Precomputed object/motion target timeline used only by Smart Follow. */
-  smartFocusTrack?: CentroidSample[];
-  /** v2 AutoFlip paths, kept as rectangles to preserve the chosen crop scale. */
+  /** AutoFlip analysis blob with aspect/layout tracks for Smart Follow. */
   smartCropAnalysis?: ClipperSmartCropBlob | null;
   /** Ids of auto-detected two-speaker regions the user turned split-screen off for. */
   disabledCollageRegionIds: string[];
@@ -432,20 +430,17 @@ export function drawClipperFrame(
       true,
     );
   } else {
-    const focusTrack = needsTracking
-      ? (render.settings.reframe.cropMode === "smart-follow" && render.smartFocusTrack?.length
-        ? render.smartFocusTrack
-        : (render.faceRender?.focusTrack
-          ?? deriveSingleFocusTrack(samples, render.settings.reframe.facePickStrategy, render.settings.reframe.smoothing)))
+    const isSmartFollow = render.settings.reframe.cropMode === "smart-follow";
+    const focusTrack = needsTracking && !isSmartFollow
+      ? (render.faceRender?.focusTrack
+        ?? deriveSingleFocusTrack(samples, render.settings.reframe.facePickStrategy, render.settings.reframe.smoothing))
       : null;
-    const autoFlipRender = render.settings.reframe.cropMode === "smart-follow"
+    const autoFlipRender = isSmartFollow
       ? resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t)
       : undefined;
-    const cropRect =
-      render.settings.reframe.cropMode === "smart-follow"
-        ? (autoFlipRender?.cropRect
-          ?? resolveCropRect(formatDef, source, output, t, render.settings, focusTrack))
-        : resolveCropRect(formatDef, source, output, t, render.settings, focusTrack);
+    const cropRect = isSmartFollow
+      ? autoFlipRender?.cropRect
+      : resolveCropRect(formatDef, source, output, t, render.settings, focusTrack);
     drawClipperPlatformFrame(
       formatDef,
       ctx,
@@ -453,11 +448,14 @@ export function drawClipperFrame(
       source,
       output,
       cropRect,
-      render.settings.reframe.cropMode === "smart-follow" ? autoFlipRender?.solidBackgroundColor : undefined,
+      isSmartFollow ? autoFlipRender?.solidBackgroundColor : undefined,
     );
 
-    if (showDebug && cropRect && focusTrack && focusTrack.length > 0) {
-      const centroid = interpolateCentroid(focusTrack, t);
+    if (showDebug && cropRect) {
+      const centroid = {
+        x: (cropRect.sx + cropRect.sw / 2) / source.width,
+        y: (cropRect.sy + cropRect.sh / 2) / source.height,
+      };
       drawDebugFocusMarker(ctx, output, cropRect, source, centroid);
     }
   }

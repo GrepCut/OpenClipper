@@ -16,7 +16,7 @@ import {
 } from "./reframe";
 import type { ClipperHeadroom } from "../settings/settings";
 import type { FrameEffectSize } from "../lib/media/video-frame-effect";
-import type { FaceBox } from "../lib/media/face-detector";
+import type { FaceBox } from "../shared/face-samples";
 
 export interface CollageTracks {
   top: CentroidSample[];

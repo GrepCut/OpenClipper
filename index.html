@@ -1,9 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="./clipper/clipper-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#010409" />
+    <meta name="description" content="Open Clipper – AI-powered video clipping and editing tool by GrepCut" />
     <title>Open Clipper</title>
     <!-- Tło zgodne z backgroundColor okna Tauri — zapobiega jasnemu flashowi
          zanim załaduje się CSS aplikacji. -->
@@ -55,6 +57,6 @@
       </div>
     </div>
     <div id="root"></div>
-    <script type="module" src="/src/bootstrap.ts"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

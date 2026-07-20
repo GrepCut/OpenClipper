@@ -1,5 +1,5 @@
 import type { WordCue } from "../lib/media/transcription-export";
-import type { ClipperSettings, ClipperSmoothingStrength } from "../settings/settings";
+import type { ClipperSettings } from "../settings/settings";
 import {
   buildCollageTracksForRegions,
   deriveCollageAspectEligibility,
@@ -24,33 +24,21 @@ import type { FaceBoxSample } from "../shared/face-samples";
 import { groupCaptionWords } from "../engine/transcript";
 import type { ClipSourceMode } from "../persistence/project-metadata";
 import type { PipelineReporter } from "./reporter";
-import { resolveAutoFlipDisplayTrack } from "../engine/autoflip/build-autoflip-track";
 import type { RmsEnvelope } from "../engine/audio-envelope";
 import type { FaceActionBenchmark } from "../shared/face-action-benchmark";
 
 /**
- * Handoff from the faces stage (which now owns the single native decode
- * pass shared with subject/motion extraction) to the subjects stage: the
- * face stage kicks off ML detection on each streamed subject frame as it
- * arrives, and the subjects stage awaits those already-in-flight tasks
- * instead of invoking a second, independent decode.
+ * Handoff from the faces stage to the subjects stage: WinML returns completed
+ * subject detections atomically alongside face samples.
  */
 export interface PendingSubjectExtraction {
-  /** Legacy shared frame-cache job id; native WinML jobs intentionally omit it. */
-  jobId: string;
-  detectionTasks: Promise<SubjectDetectionSample>[];
-  /** Releases the legacy worker after all queued tasks settle. */
-  dispose?: () => void;
-  /** Completed atomic WinML result set; mutually compatible with legacy tasks. */
-  detections?: SubjectDetectionSample[];
-  engine?: "winml" | "wasm";
+  detections: SubjectDetectionSample[];
   trackerVersion?: "bytetrack-v1";
   sceneCutTimestamps: number[];
   sourceFrameRate?: number;
   hasSolidColorBackground?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number } | null;
   staticFeatureSamples?: AutoFlipStaticFeatureSample[];
-  /** Optional sparse outputs from head/saliency/active-speaker analyzers. */
   importanceSignals?: ImportanceSignalSample[];
   contentRect?: { x: number; y: number; width: number; height: number };
   degradedReason?: string;
@@ -88,12 +76,6 @@ export interface ClipperSession {
   /** Face samples augmented with person-detector head estimates; consumed only by the collage derivations. */
   collageFaceSamples?: FaceBoxSample[] | null;
   smartCropAnalysis?: ClipperSmartCropBlob | null;
-  smartFollowTrackCache?: {
-    smoothing: ClipperSmoothingStrength;
-    aspectRatio: number;
-    blob: ClipperSmartCropBlob;
-    track: CentroidSample[];
-  } | null;
   /** Set by the faces stage when it also ran subject/motion extraction (see `PendingSubjectExtraction`); consumed and cleared by the subjects stage. */
   pendingSubjectExtraction?: PendingSubjectExtraction | null;
   /** Wall-clock phase timings for "Detect faces & track action"; finalized in the subjects stage. */
@@ -186,27 +168,6 @@ export function resolveFaceRender(
   };
 }
 
-/** Resolves the display-ready smart-follow path (AutoFlip-smoothed samples). */
-export function resolveSmartFollowTrack(
-  session: ClipperSession,
-  smoothing: ClipperSmoothingStrength,
-): CentroidSample[] {
-  const blob = session.smartCropAnalysis;
-  if (!blob) return [];
-  const aspectRatio = blob.targetAspectRatio ?? 9 / 16;
-  let cached = session.smartFollowTrackCache;
-  if (!cached || cached.blob !== blob || cached.smoothing !== smoothing || cached.aspectRatio !== aspectRatio) {
-    cached = {
-      blob,
-      smoothing,
-      aspectRatio,
-      track: resolveAutoFlipDisplayTrack(blob, smoothing),
-    };
-    session.smartFollowTrackCache = cached;
-  }
-  return cached.track;
-}
-
 /** Builds frame draw context for a specific generated clip within the trimmed range. */
 export function buildFrameContext(
   session: ClipperSession,
@@ -238,7 +199,6 @@ export function buildFrameContext(
     captionGroups: cached.groups,
     faceCache: session.faceCache,
     faceRender: resolveFaceRender(session, settings),
-    smartFocusTrack: resolveSmartFollowTrack(session, settings.reframe.smoothing),
     smartCropAnalysis: session.smartCropAnalysis,
     disabledCollageRegionIds: session.disabledCollageRegionIds ?? [],
     segments: clip.segments,

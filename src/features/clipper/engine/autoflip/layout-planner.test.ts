@@ -6,6 +6,7 @@ import {
   buildLayoutTracks,
   layoutGeometry,
 } from "./layout-planner";
+import { RUN9_VISIBILITY_CONTROLLER_PARAMS } from "./visibility-controller";
 
 function importance(
   id: string,
@@ -95,8 +96,21 @@ describe("layout planner", () => {
     expect((viewport.width * 1920) / (viewport.height * 1080)).toBeCloseTo(9 / 16, 6);
   });
 
-  it("recenters the stable legacy zoom on the selected primary target", () => {
-    const track = build([{ time: 0, regions: [importance("primary", 0.72, 0.12, "primary", "face")] }]);
+  it("recenters the selected viewport on the primary target once the visibility controller decides", () => {
+    // Mode/viewport selection lives in the visibility controller now (Krok 3
+    // in decideLayoutStrategy's docs) — a stable region alone no longer wins
+    // arbitration without a controller decision to honor.
+    const samples = Array.from({ length: 6 }, (_, index) => ({
+      time: index * 0.12,
+      regions: [importance("primary", 0.72, 0.12, "primary", "face")],
+    }));
+    const track = buildLayoutTracks({
+      aspectTracks: { tiktok: aspectTrack() },
+      importanceSamples: samples,
+      frameWidth: 1920,
+      frameHeight: 1080,
+      visibilityControllerParams: RUN9_VISIBILITY_CONTROLLER_PARAMS,
+    }).tiktok!;
     const viewport = track.samples.at(-1)!.viewports[0]!;
     const targetCenter = 0.72 + 0.12 / 2;
     expect(viewport.x + viewport.width / 2).toBeCloseTo(targetCenter, 6);

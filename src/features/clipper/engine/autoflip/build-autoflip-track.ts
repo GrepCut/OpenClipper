@@ -1,23 +1,19 @@
 import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings";
 import type { FaceBoxSample } from "../../shared/face-samples";
-import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperLayoutTrack, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SmartCropSample, SubjectDetectionSample } from "../../shared/smart-crop";
-import type { CentroidSample } from "../reframe";
-import { cropRectToCentroid } from "./frame-crop-region";
+import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SubjectDetectionSample } from "../../shared/smart-crop";
 import { analyzeSceneMotion } from "./scene-camera-motion";
 import { buildSceneTimeline, cropScenePath } from "./scene-cropper";
 import { buildSalientKeyframes } from "./salient-region";
 import { attachImportanceSignals, buildImportanceTimeline } from "./importance-ranker";
-import { buildLayoutTracks, DEFAULT_SEMANTIC_FRAMING_PARAMS } from "./layout-planner";
-import type { ArbiterSceneMotion } from "./layout-arbiter";
+import { buildLayoutTracks } from "./layout-planner";
 import { kinematicOptionsForSmoothing } from "./kinematic-options";
 import { applyActiveSpeakerPolicy } from "./active-speaker";
 import { buildCanonicalPersonTracks } from "./canonical-person";
-import { buildDetectorHypothesisBank } from "./detector-hypotheses";
-import { DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS, routeDetectorSegments, type DetectorSegmentRouterParams } from "./segment-detector-router";
-import { spliceDetectorSegments } from "./segment-detector-splice";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID } from "./types";
 import { RUN10_ARBITER_PARAMS } from "./layout-arbiter";
-import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS, ITERATION11_DETECTOR_VISIBILITY_PARAMS } from "./visibility-controller";
+import { groupUnionCropEnabled, shotCropSmoothingEnabled } from "./generalization-flags";
+import { smoothShotCropSamples } from "./shot-crop-smoothing";
+import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "./visibility-controller";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./types";
 
 export interface BuildAutoFlipTrackInput {
@@ -51,13 +47,6 @@ export interface BuildAutoFlipTrackInput {
   collectDebug?: boolean;
   /** Build the Iteration 10 candidate. Omit for the bit-for-bit Run 8 production path. */
   iteration10?: boolean;
-  /**
-   * Iteration 11: route eligible segments to the detector candidate via the
-   * segment router. Omit for the bit-for-bit Iteration 10 path.
-   */
-  iteration11?: boolean;
-  /** Router thresholds; omit for the frozen run-4 defaults. Benchmark replay only. */
-  detectorRouterParams?: DetectorSegmentRouterParams;
 }
 
 const FULL_FRAME: NormalizedBox = { x: 0, y: 0, width: 1, height: 1 };
@@ -225,21 +214,6 @@ function splitScenes(
   return chunked;
 }
 
-function rectToSample(time: number, rect: { x: number; y: number; width: number; height: number }, cut: boolean): SmartCropSample {
-  const centroid = cropRectToCentroid(rect);
-  return {
-    t: time,
-    x: centroid.x,
-    y: centroid.y,
-    extent: centroid.extent,
-    targetId: "autoflip",
-    kind: "person",
-    score: 1,
-    box: rect,
-    cut: cut || undefined,
-  };
-}
-
 export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmartCropBlob {
   const sourceFrameWidth = input.frameWidth ?? 1920;
   const sourceFrameHeight = input.frameHeight ?? 1080;
@@ -283,7 +257,6 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     : { default: input.targetAspectRatio ?? 9 / 16 };
   const aspectTracks: Record<string, AutoFlipAspectTrack> = {};
   const debugScenes: AutoFlipSceneDebug[] | undefined = input.collectDebug ? [] : undefined;
-  const sceneMotion: ArbiterSceneMotion[] = [];
 
   for (const [formatId, targetAspectRatio] of Object.entries(targets)) {
     const samples: AutoFlipCropSample[] = [];
@@ -323,7 +296,6 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
             solidBackgroundColor: sceneBackground.color,
           });
         });
-        sceneMotion.push({ formatId, start: scene.start, end: scene.end, motionType: "padding" });
         debugScenes?.push({
           formatId,
           start: scene.start,
@@ -365,7 +337,6 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         samples.push({ t: timeline.timestampsUs[index]! / 1_000_000, crop: intoSourceRect(crop, contentRect), cut: index === 0 && scene.cut });
       });
       continuationFocus = motion.focusPointFrames.slice(-30);
-      sceneMotion.push({ formatId, start: scene.start, end: scene.end, motionType: motion.summary.motionType });
       debugScenes?.push({
         formatId,
         start: scene.start,
@@ -392,9 +363,12 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
       }
     }
     const sourceAspect = sourceFrameWidth / Math.max(1, sourceFrameHeight);
+    const smoothedSamples = shotCropSmoothingEnabled()
+      ? smoothShotCropSamples(samples, input.sceneCuts)
+      : samples;
     aspectTracks[formatId] = {
       targetAspectRatio,
-      samples: samples.map((sample) => ({
+      samples: smoothedSamples.map((sample) => ({
         ...sample,
         crop: expandCropAcrossBars(sample.crop, contentRect, sourceAspect, targetAspectRatio),
       })),
@@ -402,61 +376,19 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
   }
 
   const primaryTrack = aspectTracks[Object.keys(aspectTracks)[0]!]!;
-  const samples: SmartCropSample[] = primaryTrack.samples.map((sample) => rectToSample(sample.t, sample.crop, Boolean(sample.cut)));
-  let layoutTracks = buildLayoutTracks({
+  const layoutTracks = buildLayoutTracks({
     aspectTracks,
     importanceSamples,
     frameWidth: sourceFrameWidth,
     frameHeight: sourceFrameHeight,
-    sceneMotion,
-    arbiterParams: input.iteration10 ? { ...RUN10_ARBITER_PARAMS } : undefined,
+    arbiterParams: {
+      ...(input.iteration10 ? { ...RUN10_ARBITER_PARAMS } : {}),
+      allowGroupUnion: groupUnionCropEnabled(),
+    },
     visibilityControllerParams: input.iteration10
       ? { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS }
       : undefined,
   });
-
-  let routerDecisions: ReturnType<typeof routeDetectorSegments> | undefined;
-  let detectorSpliceTracks: Record<string, ClipperLayoutTrack> | undefined;
-  if (input.iteration11) {
-    const routerParams = input.detectorRouterParams ?? DEFAULT_DETECTOR_SEGMENT_ROUTER_PARAMS;
-    routerDecisions = routeDetectorSegments(buildDetectorHypothesisBank(canonicalFusion.samples), routerParams);
-    const hasDetectorShadow = input.detections.some((sample) => sample.shadowDetections?.length);
-    if (hasDetectorShadow && routerDecisions.some((decision) => decision.useDetector)) {
-      // Mirrors the benchmark's detector-candidate blob (run-analysis.ts) and
-      // the replay's candidate geometry: Run 8 track over the shadow
-      // detections, re-decided with the RUN10 arbiter, semantic framing and
-      // the stricter detector visibility regime, over the PRODUCTION scene
-      // motion — the exact configuration the run-4 shadow experiment scored.
-      const detectorBlob = buildAutoFlipTrack({
-        ...input,
-        detections: input.detections.map((sample) => ({
-          ...sample,
-          detections: sample.shadowDetections?.length ? sample.shadowDetections : sample.detections,
-          shadowDetections: undefined,
-          modelId: "yolox-tiny-shadow",
-        })),
-        collectDebug: false,
-        iteration10: false,
-        iteration11: false,
-      });
-      const detectorLayoutTracks = buildLayoutTracks({
-        aspectTracks: detectorBlob.aspectTracks ?? {},
-        importanceSamples: detectorBlob.importanceSamples ?? [],
-        frameWidth: sourceFrameWidth,
-        frameHeight: sourceFrameHeight,
-        sceneMotion,
-        arbiterParams: { ...RUN10_ARBITER_PARAMS },
-        semanticFramingParams: DEFAULT_SEMANTIC_FRAMING_PARAMS,
-        visibilityControllerParams: { ...ITERATION11_DETECTOR_VISIBILITY_PARAMS },
-      });
-      layoutTracks = spliceDetectorSegments({
-        layoutTracks,
-        detectorLayoutTracks,
-        decisions: routerDecisions,
-      }).layoutTracks;
-      if (input.collectDebug) detectorSpliceTracks = detectorLayoutTracks;
-    }
-  }
 
   return {
     analyzerVersion: AUTOFLIP_ANALYZER_VERSION,
@@ -468,14 +400,11 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     contentRect,
     solidBackgroundColor: input.hasSolidColorBackground ? input.solidBackgroundColor : undefined,
     degradedReason: input.degradedReason,
-    samples,
     aspectTracks,
     importanceSamples,
     layoutTracks,
     canonicalIdentityTelemetry: canonicalFusion.telemetry,
     activeSpeakerTelemetry: activeSpeaker.telemetry,
-    routerDecisions,
-    detectorSpliceTracks,
     debug: debugScenes,
   };
 }
@@ -509,11 +438,12 @@ export function resolveAutoFlipCropTrack(blob: ClipperSmartCropBlob, formatId: s
   return blob.aspectTracks?.[formatId] ?? blob.aspectTracks?.default ?? null;
 }
 
-export function resolveAutoFlipDisplayTrack(
-  blob: ClipperSmartCropBlob,
-  _smoothing: ClipperSmoothingStrength,
-): CentroidSample[] {
-  return blob.samples.map(({ t, x, y, extent, cut }) => ({ t, x, y, extent, cut }));
+/** Sample count from the first aspect track — used for pipeline metadata. */
+export function primaryAspectTrackSampleCount(blob: ClipperSmartCropBlob): number {
+  const tracks = blob.aspectTracks;
+  if (!tracks) return 0;
+  const first = Object.values(tracks)[0];
+  return first?.samples.length ?? 0;
 }
 
 export { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MODEL_ID } from "./types";

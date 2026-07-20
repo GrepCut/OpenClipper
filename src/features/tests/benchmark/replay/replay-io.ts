@@ -5,12 +5,9 @@ import type {
   ActiveSpeakerTelemetry,
   CanonicalIdentityTelemetry,
   ClipperLayoutTrack,
-  DetectorHypothesisSample,
-  DetectorSegmentDecision,
   ImportanceRegionSample,
   SubjectDetectionSample,
 } from "../../../clipper/shared/smart-crop";
-import type { DetectorSegmentRouterParams } from "../../../clipper/engine/autoflip/segment-detector-router";
 import {
   DEFAULT_ARBITER_PARAMS,
   RUN10_ARBITER_PARAMS,
@@ -18,7 +15,6 @@ import {
 } from "../../../clipper/engine/autoflip/layout-arbiter";
 import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout-planner";
 import type { VisibilityControllerParams } from "../../../clipper/engine/autoflip/visibility-controller";
-import { buildDetectorHypothesisBank } from "../../../clipper/engine/autoflip/detector-hypotheses";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
 import { TEST_ASPECTS } from "../../types";
 import type { BenchmarkFrameDetail } from "../metrics";
@@ -30,10 +26,6 @@ export interface RecordedAutoflipDebug {
     productionPolicy: string;
     arbiterParams: ArbiterParams;
     visibilityControllerParams?: VisibilityControllerParams;
-    /** Schema v5: frozen router thresholds active during the run. */
-    detectorRouterParams?: DetectorSegmentRouterParams;
-    /** Schema v5: visibility regime paired with detector-candidate geometry. */
-    detectorVisibilityParams?: VisibilityControllerParams;
   };
   semanticFramingParams?: SemanticFramingParams | null;
   scenes: Array<{
@@ -44,22 +36,12 @@ export interface RecordedAutoflipDebug {
   }>;
   importanceSamples: ImportanceRegionSample[];
   layoutTracks: Record<string, ClipperLayoutTrack>;
-  /** Schema v5: per-segment router verdicts the production splice acted on. */
-  routerDecisions?: DetectorSegmentDecision[];
-  /** Schema v5: detector-candidate tracks the splice consulted, for exact replay. */
-  detectorSpliceTracks?: Record<string, ClipperLayoutTrack>;
   /** Benchmark-only raw evidence; never consumed by the production arbiter. */
   subjectSamples?: SubjectDetectionSample[];
-  /** Source-preserving evidence and legal router features; never production input. */
-  detectorHypothesisSamples?: DetectorHypothesisSample[];
   canonicalIdentityTelemetry?: CanonicalIdentityTelemetry;
   activeSpeakerTelemetry?: ActiveSpeakerTelemetry;
   candidates?: {
     iteration10?: {
-      importanceSamples: ImportanceRegionSample[];
-      layoutTracks: Record<string, ClipperLayoutTrack>;
-    };
-    yolox?: {
       importanceSamples: ImportanceRegionSample[];
       layoutTracks: Record<string, ClipperLayoutTrack>;
     };
@@ -75,23 +57,6 @@ export function recordedArbiterParams(
   if ((debug.schemaVersion ?? 0) >= 3 && debug.candidates?.iteration10)
     return { ...RUN10_ARBITER_PARAMS };
   return { ...DEFAULT_ARBITER_PARAMS };
-}
-
-/** Allows schema-v3 runs to participate in shadow-router analysis immediately. */
-const detectorHypothesisCache = new WeakMap<
-  RecordedAutoflipDebug,
-  DetectorHypothesisSample[]
->();
-
-export function detectorHypothesisSamplesForDebug(
-  debug: RecordedAutoflipDebug,
-): DetectorHypothesisSample[] {
-  if (debug.detectorHypothesisSamples) return debug.detectorHypothesisSamples;
-  const cached = detectorHypothesisCache.get(debug);
-  if (cached) return cached;
-  const samples = buildDetectorHypothesisBank(debug.subjectSamples ?? []);
-  detectorHypothesisCache.set(debug, samples);
-  return samples;
 }
 
 export interface RecordedStrategyComparison {

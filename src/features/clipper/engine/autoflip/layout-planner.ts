@@ -13,13 +13,12 @@ import {
   decideLayoutStrategy,
   importanceAtTime,
   interpolateBox,
-  motionTypeAt,
   precedingIndex,
   proposalScore,
   requiredRegions,
   type ArbiterParams,
-  type ArbiterSceneMotion,
 } from "./layout-arbiter";
+import { smoothShotCropSamples, viewportArea } from "./shot-crop-smoothing";
 import {
   createVisibilityControllerState,
   planVisibilityRescue,
@@ -389,6 +388,135 @@ function modeAtTime(decisions: ModeDecision[], time: number): ClipperLayoutMode 
   return decisions[precedingIndex(decisions, time)]!.mode;
 }
 
+function minSubjectDisplayHeight(
+  viewport: NormalizedBox,
+  required: ReturnType<typeof requiredRegions>,
+): number {
+  if (!required.length) return 0;
+  return Math.min(
+    ...required.map((region) => {
+      const top = Math.max(viewport.y, region.contentBox.y);
+      const bottom = Math.min(viewport.y + viewport.height, region.contentBox.y + region.contentBox.height);
+      const visible = Math.max(0, bottom - top);
+      return visible / Math.max(EPSILON, region.contentBox.height);
+    }),
+  );
+}
+
+/** group-union must beat contain on area AND subject display height (handoff §3.4). */
+export function groupUnionLexicographicOk(
+  groupViewport: NormalizedBox,
+  fallbackViewport: NormalizedBox,
+  required: ReturnType<typeof requiredRegions>,
+): boolean {
+  const groupArea = viewportArea(groupViewport);
+  const fallbackArea = viewportArea(fallbackViewport);
+  if (groupArea > fallbackArea + EPSILON) return false;
+  const groupHeight = minSubjectDisplayHeight(groupViewport, required);
+  const fallbackHeight = minSubjectDisplayHeight(fallbackViewport, required);
+  return groupHeight + EPSILON >= fallbackHeight;
+}
+
+interface GroupUnionLayout {
+  mode: ClipperLayoutMode;
+  viewports: NormalizedBox[];
+  reasonCode: "group-union-crop" | "group-stable-split";
+}
+
+function unionBoxesForGroup(boxes: NormalizedBox[]): NormalizedBox {
+  const left = Math.min(...boxes.map((box) => box.x));
+  const top = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.width));
+  const bottom = Math.max(...boxes.map((box) => box.y + box.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function fitAspectViewport(
+  box: NormalizedBox,
+  sourceAspect: number,
+  targetAspect: number,
+  minimumScale: number,
+  margin: number,
+): NormalizedBox | null {
+  const left = Math.max(0, box.x - box.width * margin);
+  const top = Math.max(0, box.y - box.height * margin);
+  const right = Math.min(1, box.x + box.width * (1 + margin));
+  const bottom = Math.min(1, box.y + box.height * (1 + margin));
+  const expanded = {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+  const normalizedAspect = targetAspect / Math.max(1e-9, sourceAspect);
+  const nominal =
+    normalizedAspect <= 1
+      ? { width: normalizedAspect, height: 1 }
+      : { width: 1, height: 1 / normalizedAspect };
+  const scale = Math.max(
+    minimumScale,
+    expanded.width / Math.max(1e-9, nominal.width),
+    expanded.height / Math.max(1e-9, nominal.height),
+  );
+  if (scale > 1 + 1e-9) return null;
+  const width = nominal.width * scale;
+  const height = nominal.height * scale;
+  const minimumX = Math.max(0, expanded.x + expanded.width - width);
+  const maximumX = Math.min(1 - width, expanded.x);
+  const minimumY = Math.max(0, expanded.y + expanded.height - height);
+  const maximumY = Math.min(1 - height, expanded.y);
+  if (minimumX > maximumX + 1e-9 || minimumY > maximumY + 1e-9) return null;
+  const centerX = expanded.x + expanded.width / 2;
+  const centerY = expanded.y + expanded.height * 0.44;
+  return {
+    x: Math.max(minimumX, Math.min(maximumX, centerX - width / 2)),
+    y: Math.max(minimumY, Math.min(maximumY, centerY - height / 2)),
+    width,
+    height,
+  };
+}
+
+/** Minimal group crop; impossible 3+ geometry falls back instead of contain. */
+function buildGroupUnionLayout(
+  boxes: NormalizedBox[],
+  sourceAspect: number,
+  targetAspect: number,
+  options: { minimumScale?: number; margin?: number } = {},
+): GroupUnionLayout | null {
+  if (boxes.length < 2) return null;
+  const minimumScale = options.minimumScale ?? 0.55;
+  const margin = options.margin ?? 0.08;
+  const common = fitAspectViewport(
+    unionBoxesForGroup(boxes),
+    sourceAspect,
+    targetAspect,
+    minimumScale,
+    margin,
+  );
+  if (common) {
+    return {
+      mode: "single-crop",
+      viewports: [common],
+      reasonCode: "group-union-crop",
+    };
+  }
+  if (boxes.length !== 2) return null;
+  const panels = [...boxes]
+    .sort((a, b) => a.x + a.width / 2 - (b.x + b.width / 2))
+    .map((box) =>
+      fitAspectViewport(
+        box,
+        sourceAspect,
+        targetAspect * 2,
+        minimumScale,
+        margin,
+      ),
+    );
+  if (!panels.every((panel): panel is NormalizedBox => panel != null))
+    return null;
+  return { mode: "split", viewports: panels, reasonCode: "group-stable-split" };
+}
+
 export function buildViewports(
   mode: ClipperLayoutMode,
   importance: ImportanceRegionSample,
@@ -398,9 +526,27 @@ export function buildViewports(
   framing?: SemanticFramingParams,
   visibilityState?: VisibilityFramingState,
   cut = false,
+  allowGroupUnion = false,
+  groupUnionMeta?: { used: boolean },
 ): NormalizedBox[] {
   const required = requiredRegions(importance);
   if (mode === "contain" && !required.length) return [fallbackCrop];
+  if (
+    allowGroupUnion
+    && mode === "single-crop"
+    && required.length >= 3
+    && required[0]?.kind === "action"
+  ) {
+    const groupUnion = buildGroupUnionLayout(
+      required.map((region) => region.contentBox),
+      sourceAspect,
+      targetAspect,
+    );
+    if (groupUnion?.reasonCode === "group-union-crop") {
+      if (groupUnionMeta) groupUnionMeta.used = true;
+      return groupUnion.viewports;
+    }
+  }
   if (mode === "single-crop" || !required.length) {
     const primary = required.find((region) => region.role === "primary") ?? required[0];
     const legacyViewport = strictAspectViewport(fallbackCrop, sourceAspect, targetAspect);
@@ -446,8 +592,6 @@ export interface BuildLayoutTracksInput {
   frameHeight: number;
   /** Arbiter thresholds; omit for the calibrated production defaults. */
   arbiterParams?: ArbiterParams;
-  /** Per-scene camera-motion classification, for motion-aware arbitration. */
-  sceneMotion?: ArbiterSceneMotion[];
   /** Global semantic single-crop geometry; exposed for offline replay calibration. */
   semanticFramingParams?: SemanticFramingParams;
   /** Run 9 visibility-first rescue ladder. Omit to reproduce Run 8 exactly. */
@@ -474,6 +618,7 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
       const baselineViewports = [cropSample.crop];
       const importanceIndex = precedingIndex(input.importanceSamples, cropSample.t);
       let desiredMode = rawMode(importance, sourceAspect, aspectTrack.targetAspectRatio);
+      const groupUnionMeta = { used: false };
       let semanticViewports = buildViewports(
         desiredMode,
         importance,
@@ -483,7 +628,25 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         input.semanticFramingParams,
         visibilityState,
         Boolean(cropSample.cut),
+        Boolean(arbiterParams.allowGroupUnion),
+        groupUnionMeta,
       );
+      if (groupUnionMeta.used) {
+        const fallbackViewports = buildViewports(
+          desiredMode,
+          importance,
+          cropSample.crop,
+          sourceAspect,
+          aspectTrack.targetAspectRatio,
+          input.semanticFramingParams,
+          visibilityState,
+          Boolean(cropSample.cut),
+          false,
+        );
+        if (!groupUnionLexicographicOk(semanticViewports[0]!, fallbackViewports[0]!, required)) {
+          semanticViewports = fallbackViewports;
+        }
+      }
       const visibilityDecision = input.visibilityControllerParams?.enabled
         ? planVisibilityRescue({
             samples: input.importanceSamples,
@@ -503,21 +666,10 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
       const baselineScore = proposalScore(baselineViewports, coverageRegions);
       const semanticScore = proposalScore(semanticViewports, coverageRegions);
       const decision = decideLayoutStrategy({
-        t: cropSample.t,
-        cut: Boolean(cropSample.cut),
-        explicitPadding,
         desiredMode,
-        required,
         baselineScore,
         semanticScore,
-        semanticViewports,
-        baselineViewports,
-        coverageRegions,
         controllerReasonCodes: visibilityDecision?.reasonCodes,
-        visibilityRisk: visibilityDecision?.visibilityRisk,
-        importanceSamples: input.importanceSamples,
-        importanceIndex,
-        motionType: motionTypeAt(input.sceneMotion, formatId, cropSample.t),
       }, arbiterParams);
       return {
         t: cropSample.t,

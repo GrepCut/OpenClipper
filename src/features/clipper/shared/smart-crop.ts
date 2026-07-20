@@ -1,5 +1,3 @@
-import type { CentroidSample } from "../engine/reframe";
-
 export interface NormalizedBox {
   x: number;
   y: number;
@@ -11,17 +9,16 @@ export interface SubjectDetection {
   box: NormalizedBox;
   label: string;
   score: number;
-  /** Native ByteTrack identity; absent for the compatible WASM path. */
+  /** Native ByteTrack identity. */
   trackId?: number;
   /** A short-lived Kalman prediction emitted while the target is occluded. */
   predicted?: boolean;
   /** Detector that last observed this ByteTrack trajectory. */
-  detectorSource?: "ssd" | "yolox" | "pose";
+  detectorSource?: "yolox" | "pose";
   /** Scene-local identity shared by person, face and pose evidence. */
   canonicalId?: number;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
-  recoveryOnly?: boolean;
 }
 
 /** Full-range face detector output used only for AutoFlip's landmark signals. */
@@ -52,8 +49,6 @@ export interface PoseSubject {
 export interface SubjectDetectionSample {
   time: number;
   detections: SubjectDetection[];
-  /** Alternative detector output retained for benchmark attribution only. */
-  shadowDetections?: SubjectDetection[];
   /** LR-ASD probabilities keyed to existing native face tracks. */
   activeSpeakerScores?: Array<{ trackId: number; confidence: number }>;
   autoflipFaces?: AutoFlipFaceDetection[];
@@ -64,6 +59,10 @@ export interface SubjectDetectionSample {
   modelId?: string;
   /** Scene boundary marker; pending recovery/ASD state must not cross it. */
   sceneCut?: boolean;
+  /** Global camera motion residual from ByteTrack GMC (normalized displacement). */
+  cameraMotionResidual?: number;
+  /** OSNet appearance embedding when multiple people are present (multi-person scenes). */
+  reidEmbedding?: number[];
   /** Present when the exact AutoFlip model could not be initialized. */
   degradedReason?: string;
   /** Scene-local fused identities. Predicted-only snapshots are diagnostic and cannot create layout targets. */
@@ -81,14 +80,14 @@ export interface ActiveSpeakerTelemetry {
   runtimeMs?: number;
 }
 
-export type CanonicalTrackState = "observed" | "predicted" | "recovered";
+export type CanonicalTrackState = "observed" | "predicted";
 
 export interface CanonicalPersonTrack {
   canonicalId: number;
   personBox?: NormalizedBox;
   faceBox?: NormalizedBox;
   poseBox?: NormalizedBox;
-  sources: Array<"person" | "face" | "pose" | "yolox">;
+  sources: Array<"person" | "face" | "pose">;
   confidence: number;
   associationConfidence: number;
   velocity: { x: number; y: number };
@@ -106,86 +105,6 @@ export interface CanonicalIdentityTelemetry {
   dropoutDurationsSec: number[];
   successfulReacquisitions: number;
   associationConfidences: number[];
-  acceptedRecoveries: Record<string, number>;
-  rejectedRecoveries: Record<string, number>;
-}
-
-export type DetectorHypothesisSource = "ssd" | "yolox" | "pose" | "face";
-
-/** One detector observation retained without collapsing competing sources. */
-export interface DetectorHypothesisObservation {
-  source: DetectorHypothesisSource;
-  box: NormalizedBox;
-  confidence: number;
-  trackId?: number;
-  predicted: boolean;
-}
-
-/** Runtime-legal signals available to a future shadow/segment router. */
-export interface DetectorRouterFeatures {
-  detectorAgreementIou: number;
-  detectorCenterDistance: number;
-  detectorAreaRatio: number;
-  trackAgeSec: number;
-  trackPersistenceSamples: number;
-  timeSinceObservedSec: number;
-  faceSupport: number;
-  poseSupport: number;
-  activeSpeakerSupport: number;
-  associationConfidence: number;
-  identityAmbiguous: boolean;
-  velocityX: number;
-  velocityY: number;
-  speed: number;
-  acceleration: number;
-  scaleChangeRate: number;
-  saliencyOverlap: number;
-  personCount: number;
-  groupSpread: number;
-  secondsSinceCut: number;
-}
-
-/** A source-preserving hypothesis. Diagnostic only until a router passes LOCO. */
-export interface DetectorHypothesis {
-  id: string;
-  source: DetectorHypothesisSource;
-  canonicalId?: number;
-  observations: DetectorHypothesisObservation[];
-  features: DetectorRouterFeatures;
-}
-
-export interface DetectorHypothesisSample {
-  time: number;
-  sceneCut: boolean;
-  hypotheses: DetectorHypothesis[];
-}
-
-export interface DetectorSegmentFeatures {
-  sampleCount: number;
-  yoloxPresence: number;
-  ssdPresence: number;
-  yoloxConfidence: number;
-  ssdConfidence: number;
-  yoloxFaceSupport: number;
-  yoloxPoseSupport: number;
-  yoloxPersistence: number;
-  ssdPersistence: number;
-  agreement: number;
-  personExcess: number;
-  groupSpread: number;
-  ambiguity: number;
-  motionPenalty: number;
-  saliencySupport: number;
-}
-
-/** One aspect-independent routing verdict for a short scene segment. */
-export interface DetectorSegmentDecision {
-  start: number;
-  end: number;
-  useDetector: boolean;
-  score: number;
-  features: DetectorSegmentFeatures;
-  reasonCodes: string[];
 }
 
 export interface MotionRegion extends NormalizedBox {
@@ -306,8 +225,6 @@ export interface ClipperLayoutSample {
   };
   /** Required boxes used to validate intermediate interpolation frames. */
   coverageBoxes?: NormalizedBox[];
-  /** Iteration 11: geometry came from the detector candidate via the segment router. */
-  routerSwapped?: boolean;
   cut?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
 }
@@ -324,21 +241,9 @@ export interface AutoFlipStaticFeatureSample {
   solidBackgroundColor?: { r: number; g: number; b: number };
 }
 
-export type SmartTargetKind = "person" | "object" | "motion" | "face-fallback" | "center";
-
-export interface SmartCropSample extends CentroidSample {
-  targetId: string | null;
-  kind: SmartTargetKind;
-  label?: string;
-  score: number;
-  box?: NormalizedBox;
-}
-
 /**
  * A render instruction emitted by AutoFlip for one output aspect ratio.
- * `crop` is expressed in normalized source coordinates.  Keeping it alongside
- * the legacy centroid samples is intentional: centroids lose the crop size and
- * therefore cannot faithfully reproduce AutoFlip's camera decisions.
+ * `crop` is expressed in normalized source coordinates.
  */
 export interface AutoFlipCropSample {
   t: number;
@@ -377,8 +282,8 @@ export interface AutoFlipSceneDebug {
 export interface ClipperSmartCropBlob {
   analyzerVersion: string;
   modelId: string;
-  /** Runtime provenance; the model id remains stable across native/WASM. */
-  engine?: "winml" | "wasm";
+  /** Runtime provenance. */
+  engine?: "winml";
   /** Present when the native analysis used temporal ByteTrack stabilization. */
   trackerVersion?: "bytetrack-v1";
   clipStart: number;
@@ -390,8 +295,7 @@ export interface ClipperSmartCropBlob {
   /** Stable background colour used by AutoFlip's padding path when available. */
   solidBackgroundColor?: { r: number; g: number; b: number };
   degradedReason?: string;
-  samples: SmartCropSample[];
-  /** v2: independent, lossless AutoFlip paths for every enabled crop format. */
+  /** Independent, lossless AutoFlip paths for every enabled crop format. */
   aspectTracks?: Record<string, AutoFlipAspectTrack>;
   /** v3: human-importance targets retained for diagnostics and future reranking. */
   importanceSamples?: ImportanceRegionSample[];
@@ -399,14 +303,6 @@ export interface ClipperSmartCropBlob {
   layoutTracks?: Record<string, ClipperLayoutTrack>;
   canonicalIdentityTelemetry?: CanonicalIdentityTelemetry;
   activeSpeakerTelemetry?: ActiveSpeakerTelemetry;
-  /** Iteration 11: per-segment router verdicts; absent when the router flag is off. */
-  routerDecisions?: DetectorSegmentDecision[];
-  /**
-   * Iteration 11 diagnostics: the detector-candidate layout tracks the splice
-   * consulted. Recorded only under collectDebug so offline replay can
-   * reproduce the splice deterministically; never persisted by production.
-   */
-  detectorSpliceTracks?: Record<string, ClipperLayoutTrack>;
   /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
   debug?: AutoFlipSceneDebug[];
 }

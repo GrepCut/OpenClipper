@@ -47,17 +47,6 @@ VARIANTS = {
         "input": {"name": "input", "shape": [192, 192, 3], "range": [-1.0, 1.0]},
         "fp16_atol": {"reshaped_regressor_face_4": 1.0, "reshaped_classifier_face_4": 0.25},
     },
-    "autoflip_ssdlite": {
-        "input": {
-            "name": "normalized_input_image_tensor",
-            "shape": [320, 320, 3],
-            "range": [0.0, 255.0],
-        },
-        "fp16_atol": {
-            "raw_outputs/box_encodings": 0.25,
-            "raw_outputs/class_predictions": 0.25,
-        },
-    },
 }
 
 

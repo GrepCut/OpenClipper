@@ -35,6 +35,12 @@ function build(detections: SubjectDetectionSample[]) {
 }
 
 describe("buildAutoFlipTrack solid-background policy", () => {
+  it("does not emit the removed legacy centroid track layer", () => {
+    const track = build(personSamples());
+    expect(track).not.toHaveProperty("samples");
+    expect(track.aspectTracks!.portrait!.samples.length).toBeGreaterThan(0);
+  });
+
   it("uses salience-driven cropping when a foreground subject is detected", () => {
     const track = build(personSamples());
     const samples = track.aspectTracks!.portrait!.samples;

@@ -1,9 +1,7 @@
 import type { NormalizedBox } from "../../shared/smart-crop";
 
-// v17 promotes the detector segment router (Iteration 11): eligible segments
-// take the shadow-detector candidate geometry with frozen run-4 parameters.
-// The Iteration 10 path remains the per-segment fallback.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v17-iteration11";
+// v19 drops the legacy centroid track layer; aspectTracks are authoritative.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v19-no-centroid-track";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v2";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;
@@ -49,8 +47,6 @@ export interface SalientRegion {
   isRequired: boolean;
   trackId?: number;
   predicted?: boolean;
-  /** Recovery detector evidence may fill a dropout but must not displace stable primary evidence. */
-  recoveryOnly?: boolean;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
 }
