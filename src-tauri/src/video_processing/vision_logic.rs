@@ -2,7 +2,6 @@
 //! workers. Keep this module free of WinRT types so it is testable everywhere.
 
 use serde::Serialize;
-use std::collections::BTreeMap;
 
 pub const BLAZE_INPUT_SIZE: usize = 192;
 pub const BLAZE_ANCHOR_COUNT: usize = 2304;
@@ -167,8 +166,8 @@ pub struct Letterbox {
     pub source_height: u32,
 }
 
-fn inverse_movenet_point(x: f32, y: f32, letterbox: Letterbox) -> Keypoint {
-    let size = MOVENET_INPUT_SIZE as f32;
+fn inverse_letterbox_point(x: f32, y: f32, letterbox: Letterbox, input_size: usize) -> Keypoint {
+    let size = input_size as f32;
     Keypoint {
         x: ((x * size - letterbox.pad_x) / letterbox.scale / letterbox.source_width as f32)
             .clamp(0.0, 1.0),
@@ -221,14 +220,22 @@ pub fn decode_movenet(output: &[f32], letterbox: Letterbox) -> Result<Vec<PoseSu
             let base = index * 3;
             keypoints.push(
                 (instance[base + 2] >= keypoint_threshold)
-                    .then(|| inverse_movenet_point(instance[base + 1], instance[base], letterbox)),
+                    .then(|| {
+                        inverse_letterbox_point(
+                            instance[base + 1],
+                            instance[base],
+                            letterbox,
+                            MOVENET_INPUT_SIZE,
+                        )
+                    }),
             );
         }
         if keypoints.iter().filter(|point| point.is_some()).count() < 4 {
             continue;
         }
-        let top_left = inverse_movenet_point(instance[52], instance[51], letterbox);
-        let bottom_right = inverse_movenet_point(instance[54], instance[53], letterbox);
+        let top_left = inverse_letterbox_point(instance[52], instance[51], letterbox, MOVENET_INPUT_SIZE);
+        let bottom_right =
+            inverse_letterbox_point(instance[54], instance[53], letterbox, MOVENET_INPUT_SIZE);
         let box_ = NormalizedBox {
             x: top_left.x,
             y: top_left.y,
@@ -313,16 +320,6 @@ pub fn generate_blaze_anchors() -> Vec<Anchor> {
     anchors
 }
 
-fn inverse_letterbox_point(point: Keypoint, letterbox: Letterbox) -> Keypoint {
-    let size = BLAZE_INPUT_SIZE as f32;
-    Keypoint {
-        x: ((point.x * size - letterbox.pad_x) / letterbox.scale / letterbox.source_width as f32)
-            .clamp(0.0, 1.0),
-        y: ((point.y * size - letterbox.pad_y) / letterbox.scale / letterbox.source_height as f32)
-            .clamp(0.0, 1.0),
-    }
-}
-
 pub fn decode_blaze(
     regressors: &[f32],
     logits: &[f32],
@@ -349,27 +346,24 @@ pub fn decode_blaze(
         let width = raw[3] / 192.0;
         let height = raw[2] / 192.0;
         let top_left = inverse_letterbox_point(
-            Keypoint {
-                x: center.x - width / 2.0,
-                y: center.y - height / 2.0,
-            },
+            center.x - width / 2.0,
+            center.y - height / 2.0,
             letterbox,
+            BLAZE_INPUT_SIZE,
         );
         let bottom_right = inverse_letterbox_point(
-            Keypoint {
-                x: center.x + width / 2.0,
-                y: center.y + height / 2.0,
-            },
+            center.x + width / 2.0,
+            center.y + height / 2.0,
             letterbox,
+            BLAZE_INPUT_SIZE,
         );
         let mut keypoints = Vec::with_capacity(6);
         for keypoint in 0..6 {
             keypoints.push(inverse_letterbox_point(
-                Keypoint {
-                    x: raw[5 + keypoint * 2] / 192.0 + anchor.x_center,
-                    y: raw[4 + keypoint * 2] / 192.0 + anchor.y_center,
-                },
+                raw[5 + keypoint * 2] / 192.0 + anchor.x_center,
+                raw[4 + keypoint * 2] / 192.0 + anchor.y_center,
                 letterbox,
+                BLAZE_INPUT_SIZE,
             ));
         }
         candidates.push(AutoFlipFaceDetection {
@@ -457,53 +451,6 @@ pub enum Rotation {
     R270,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn rotate_point(point: Keypoint, rotation: Rotation) -> Keypoint {
-    match rotation {
-        Rotation::R0 => point,
-        Rotation::R90 => Keypoint {
-            x: 1.0 - point.y,
-            y: point.x,
-        },
-        Rotation::R180 => Keypoint {
-            x: 1.0 - point.x,
-            y: 1.0 - point.y,
-        },
-        Rotation::R270 => Keypoint {
-            x: point.y,
-            y: 1.0 - point.x,
-        },
-    }
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn rotate_box(box_: NormalizedBox, rotation: Rotation) -> NormalizedBox {
-    let corners = [
-        rotate_point(
-            Keypoint {
-                x: box_.x,
-                y: box_.y,
-            },
-            rotation,
-        ),
-        rotate_point(
-            Keypoint {
-                x: box_.x + box_.width,
-                y: box_.y + box_.height,
-            },
-            rotation,
-        ),
-    ];
-    let left = corners[0].x.min(corners[1].x);
-    let top = corners[0].y.min(corners[1].y);
-    NormalizedBox {
-        x: left,
-        y: top,
-        width: (corners[0].x - corners[1].x).abs(),
-        height: (corners[0].y - corners[1].y).abs(),
-    }
-}
-
 #[derive(Default, Debug)]
 pub struct RecoveryPolicy {
     consecutive_track_misses: u8,
@@ -561,15 +508,6 @@ impl RecoveryPolicy {
             false
         }
     }
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn order_joined<T>(items: impl IntoIterator<Item = (usize, T)>) -> Vec<T> {
-    items
-        .into_iter()
-        .collect::<BTreeMap<_, _>>()
-        .into_values()
-        .collect()
 }
 
 /// Cheap scene-local motion proposal used when a learned video-saliency model
@@ -721,6 +659,60 @@ pub fn detect_motion_saliency(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
+    fn rotate_point(point: Keypoint, rotation: Rotation) -> Keypoint {
+        match rotation {
+            Rotation::R0 => point,
+            Rotation::R90 => Keypoint {
+                x: 1.0 - point.y,
+                y: point.x,
+            },
+            Rotation::R180 => Keypoint {
+                x: 1.0 - point.x,
+                y: 1.0 - point.y,
+            },
+            Rotation::R270 => Keypoint {
+                x: point.y,
+                y: 1.0 - point.x,
+            },
+        }
+    }
+
+    fn rotate_box(box_: NormalizedBox, rotation: Rotation) -> NormalizedBox {
+        let corners = [
+            rotate_point(
+                Keypoint {
+                    x: box_.x,
+                    y: box_.y,
+                },
+                rotation,
+            ),
+            rotate_point(
+                Keypoint {
+                    x: box_.x + box_.width,
+                    y: box_.y + box_.height,
+                },
+                rotation,
+            ),
+        ];
+        let left = corners[0].x.min(corners[1].x);
+        let top = corners[0].y.min(corners[1].y);
+        NormalizedBox {
+            x: left,
+            y: top,
+            width: (corners[0].x - corners[1].x).abs(),
+            height: (corners[0].y - corners[1].y).abs(),
+        }
+    }
+
+    fn order_joined<T>(items: impl IntoIterator<Item = (usize, T)>) -> Vec<T> {
+        items
+            .into_iter()
+            .collect::<BTreeMap<_, _>>()
+            .into_values()
+            .collect()
+    }
 
     #[test]
     fn sigmoid_is_stable() {
@@ -812,13 +804,7 @@ mod tests {
             source_width: 1920,
             source_height: 1080,
         };
-        let point = inverse_letterbox_point(
-            Keypoint {
-                x: 1.0,
-                y: 150.0 / 192.0,
-            },
-            letterbox,
-        );
+        let point = inverse_letterbox_point(1.0, 150.0 / 192.0, letterbox, BLAZE_INPUT_SIZE);
         assert!((point.x - 1.0).abs() < 1e-6);
         assert!((point.y - 1.0).abs() < 1e-6);
     }

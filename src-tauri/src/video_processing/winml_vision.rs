@@ -24,6 +24,7 @@ pub const BATCH_BOUND: usize = 8;
 pub enum VisionModel {
     Face,
     YoloX,
+    /// Planned: active speaker detection (lr_asd_ava.onnx); not wired into production pipeline yet.
     #[cfg_attr(not(test), allow(dead_code))]
     ActiveSpeaker,
     Pose,

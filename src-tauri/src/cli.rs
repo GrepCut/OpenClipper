@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 
-use crate::commands::test_benchmark::benchmark_miss_export::{
+use crate::commands::benchmark_miss_export::{
     export_benchmark_run_miss_frames_inner, ExportBenchmarkRunMissFramesResult,
 };
 

@@ -1,8 +1,7 @@
 use super::types::{ParakeetModelStatus, TranscriptionError};
 use crate::model_cache::download_model_file_to_cache;
-use crate::model_download::download_url_to_file;
+use crate::model_download::{download_url_to_file, sha256_file};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -339,14 +338,12 @@ fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
                 TranscriptionError::ModelLoad(format!("Manifest nie zawiera SHA dla {file}"))
             })?;
         let path = model_dir.join(file);
-        let actual = fs::read(&path)
-            .map_err(|error| {
-                TranscriptionError::ModelLoad(format!(
-                    "Nie można odczytać {}: {error}",
-                    path.display()
-                ))
-            })
-            .map(|bytes| format!("{:x}", Sha256::digest(bytes)))?;
+        let actual = sha256_file(&path).map_err(|error| {
+            TranscriptionError::ModelLoad(format!(
+                "Nie można odczytać {}: {error}",
+                path.display()
+            ))
+        })?;
         if actual != expected {
             return Err(TranscriptionError::ModelLoad(format!(
                 "SHA-256 niezgodny dla {file}"
@@ -365,9 +362,8 @@ fn verify_file_hash(path: &Path, file_name: &str) -> Result<bool, TranscriptionE
     let expected = manifest["files"][file_name]["sha256"]
         .as_str()
         .ok_or_else(|| TranscriptionError::ModelLoad(format!("Brak SHA dla {file_name}")))?;
-    let actual =
-        fs::read(path).map_err(|error| TranscriptionError::ModelLoad(error.to_string()))?;
-    Ok(format!("{:x}", Sha256::digest(actual)) == expected)
+    let actual = sha256_file(path).map_err(|error| TranscriptionError::ModelLoad(error))?;
+    Ok(actual == expected)
 }
 
 fn download_archive_fallback(
@@ -443,8 +439,7 @@ mod tests {
     fn write_manifest_for_dir(model_dir: &Path) {
         let mut files = serde_json::Map::new();
         for file in REQUIRED_FILES {
-            let bytes = fs::read(model_dir.join(file)).expect("model file");
-            let sha256 = format!("{:x}", Sha256::digest(bytes));
+            let sha256 = sha256_file(&model_dir.join(file)).expect("model file");
             files.insert(file.to_string(), serde_json::json!({ "sha256": sha256 }));
         }
         let manifest = serde_json::json!({

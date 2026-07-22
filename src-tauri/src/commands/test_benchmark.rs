@@ -1,6 +1,5 @@
 use std::fs;
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 use bzip2::{read::BzDecoder, write::BzEncoder, Compression};
@@ -11,16 +10,16 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
 
 use crate::database::LocalDb;
+use crate::model_download::sha256_file;
 use crate::entity::{benchmark_result, benchmark_run, test_clip, test_dataset, test_keyframe, test_target};
 use crate::repository::test_repository::{TestDatasetSummary, TestKeyframeDto};
 use crate::repository::TestRepository;
-use crate::video_processing::extract_clipper_segment_to_path_blocking;
+use crate::video_processing::{extract_clipper_segment_to_path_blocking, probe_video_metadata};
 
 const TEST_ARCHIVE_SCHEMA_VERSION: u32 = 1;
 const MIN_CLIP_SECONDS: f64 = 3.0;
@@ -207,7 +206,7 @@ pub async fn test_clip_create(
         let _ = fs::remove_dir_all(&clip_dir);
         return Err(error);
     }
-    let (actual_duration, width, height, frame_rate) = probe_video(&output_path)?;
+    let (actual_duration, width, height, frame_rate) = probe_video_metadata(&output_path)?;
     if actual_duration < MIN_CLIP_SECONDS - 0.05 {
         let _ = fs::remove_dir_all(&clip_dir);
         return Err(format!(
@@ -490,7 +489,7 @@ fn test_run_dir(app: &AppHandle, dataset_id: &str, run_id: &str) -> Result<PathB
     Ok(test_dataset_root(app, dataset_id)?.join("runs").join(run_id))
 }
 
-fn validate_id(id: &str) -> Result<(), String> {
+pub(crate) fn validate_id(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len() > 128 || !id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
         return Err("Invalid local test identifier.".into());
     }
@@ -503,35 +502,6 @@ fn validate_relative_path(path: &str) -> Result<(), String> {
         return Err("Invalid relative artifact path.".into());
     }
     Ok(())
-}
-
-fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 1024 * 1024];
-    loop {
-        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
-        if read == 0 { break; }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
-fn probe_video(path: &Path) -> Result<(f64, u32, u32, f64), String> {
-    ffmpeg_next::init().map_err(|error| error.to_string())?;
-    let input = ffmpeg_next::format::input(path).map_err(|error| error.to_string())?;
-    let stream = input.streams().best(ffmpeg_next::media::Type::Video).ok_or("No video stream found.")?;
-    let rate = stream.avg_frame_rate();
-    let frame_rate = if rate.denominator() != 0 { rate.numerator() as f64 / rate.denominator() as f64 } else { 30.0 };
-    let context = ffmpeg_next::codec::context::Context::from_parameters(stream.parameters()).map_err(|error| error.to_string())?;
-    let decoder = context.decoder().video().map_err(|error| error.to_string())?;
-    let duration = if input.duration() > 0 {
-        input.duration() as f64 / ffmpeg_next::ffi::AV_TIME_BASE as f64
-    } else if stream.duration() > 0 {
-        let tb = stream.time_base();
-        stream.duration() as f64 * tb.numerator() as f64 / tb.denominator() as f64
-    } else { 0.0 };
-    Ok((duration, decoder.width(), decoder.height(), frame_rate.max(1.0)))
 }
 
 async fn delete_clip_rows<C: ConnectionTrait>(db: &C, clip_id: &str) -> Result<(), String> {
@@ -594,7 +564,7 @@ async fn import_staged_dataset(
         if !source.is_file() || sha256_file(&source)? != clip.sha256 {
             return Err(format!("Clip {} is missing or has an invalid checksum.", clip.name));
         }
-        let (duration, _, _, _) = probe_video(&source)?;
+        let (duration, _, _, _) = probe_video_metadata(&source)?;
         if duration < MIN_CLIP_SECONDS - 0.05 {
             return Err(format!(
                 "Imported clip {} is shorter than {MIN_CLIP_SECONDS:.0} seconds.",
@@ -736,9 +706,6 @@ fn copy_dir_all(source: &Path, target: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-
-#[path = "benchmark_miss_export.rs"]
-pub mod benchmark_miss_export;
 
 #[cfg(test)]
 mod tests {

@@ -4,6 +4,10 @@ use ffmpeg_next::{format::Pixel, media::Type};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub(crate) fn ensure_ffmpeg_init() -> Result<(), String> {
+    ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))
+}
+
 /// Streaming form used by the unified decoder: AutoFlip evaluates a shot
 /// boundary on every decoded frame, while ML detection remains sparse.
 pub(crate) struct AutoFlipShotBoundaryDetector {
@@ -166,6 +170,34 @@ pub(crate) struct ExtractedVideoFrame {
     pub height: u32,
 }
 
+pub(crate) fn probe_video_metadata(path: &Path) -> Result<(f64, u32, u32, f64), String> {
+    ensure_ffmpeg_init()?;
+    let input = ffmpeg::format::input(path).map_err(|e| format!("Cannot open video: {e}"))?;
+    let stream = input
+        .streams()
+        .best(Type::Video)
+        .ok_or("No video stream found")?;
+    let rate = stream.avg_frame_rate();
+    let frame_rate = if rate.denominator() != 0 {
+        rate.numerator() as f64 / rate.denominator() as f64
+    } else {
+        30.0
+    };
+    let context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
+        .map_err(|e| format!("Decoder context error: {e}"))?;
+    let decoder = context
+        .decoder()
+        .video()
+        .map_err(|e| format!("Video decoder error: {e}"))?;
+    let duration = probe_video_duration_sec(&input).unwrap_or(0.0);
+    Ok((
+        duration,
+        decoder.width(),
+        decoder.height(),
+        frame_rate.max(1.0),
+    ))
+}
+
 pub(crate) fn probe_video_duration_sec(input: &ffmpeg::format::context::Input) -> Option<f64> {
     if input.duration() > 0 {
         return Some(input.duration() as f64 / ffmpeg::ffi::AV_TIME_BASE as f64);
@@ -185,7 +217,7 @@ pub(crate) fn extract_frame_rgb_at_timestamp(
     video_path: &Path,
     timestamp_sec: f64,
 ) -> Result<ExtractedVideoFrame, String> {
-    ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))?;
+    ensure_ffmpeg_init()?;
     let mut input = ffmpeg::format::input(video_path).map_err(|e| format!("Cannot open video: {e}"))?;
     let timestamp_sec = match probe_video_duration_sec(&input) {
         Some(duration) if duration > 0.05 => timestamp_sec.min(duration - 0.05),
@@ -284,7 +316,7 @@ pub(crate) fn snap_to_keyframe_blocking(file_path: String, start_time: f64) -> R
     if start_time <= 0.0 {
         return Ok(0.0);
     }
-    ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))?;
+    ensure_ffmpeg_init()?;
     let mut input =
         ffmpeg::format::input(&file_path).map_err(|e| format!("Cannot open video: {e}"))?;
     let stream = input
@@ -321,7 +353,7 @@ pub(crate) fn extract_clipper_segment_to_path_blocking(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Output dir error: {e}"))?;
     }
-    ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))?;
+    ensure_ffmpeg_init()?;
     let mut input =
         ffmpeg::format::input(&file_path).map_err(|e| format!("Cannot open video: {e}"))?;
     let mut output =

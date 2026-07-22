@@ -15,7 +15,7 @@ use crate::repository::test_repository::{TestKeyframeDto, TestTargetDto};
 use crate::repository::TestRepository;
 use crate::video_processing::extract_frame_rgb_at_timestamp;
 
-use super::{test_dataset_root, validate_id};
+use crate::commands::test_benchmark::{test_dataset_root, validate_id};
 
 const VISIBILITY_MISS_BASE: f64 = 10_000.0;
 const CROP_VIEWPORT_RGB: [u8; 3] = [255, 68, 68];
@@ -311,16 +311,27 @@ fn layout_intent_at(frame: &TestKeyframeDto) -> &str {
     }
 }
 
-fn evaluate_layout_intent(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> &str {
+enum KeyframeBracket<'a> {
+    BeforeFirst(&'a TestKeyframeDto),
+    AfterLast(&'a TestKeyframeDto),
+    Exact(&'a TestKeyframeDto),
+    Between {
+        previous: &'a TestKeyframeDto,
+        next: &'a TestKeyframeDto,
+        factor: f64,
+    },
+}
+
+fn keyframe_bracket(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> Option<KeyframeBracket<'_>> {
     if keyframes.is_empty() {
-        return "crop";
+        return None;
     }
     if timestamp_us <= keyframes[0].timestamp_us {
-        return layout_intent_at(&keyframes[0]);
+        return Some(KeyframeBracket::BeforeFirst(&keyframes[0]));
     }
     let last = keyframes.last().expect("keyframes checked");
     if timestamp_us >= last.timestamp_us {
-        return layout_intent_at(last);
+        return Some(KeyframeBracket::AfterLast(last));
     }
     let mut next_index = 1usize;
     while next_index < keyframes.len() && keyframes[next_index].timestamp_us < timestamp_us {
@@ -328,9 +339,26 @@ fn evaluate_layout_intent(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> &
     }
     let next = &keyframes[next_index];
     if next.timestamp_us == timestamp_us {
-        return layout_intent_at(next);
+        return Some(KeyframeBracket::Exact(next));
     }
-    layout_intent_at(&keyframes[next_index - 1])
+    let previous = &keyframes[next_index - 1];
+    let factor = (timestamp_us - previous.timestamp_us) as f64
+        / (next.timestamp_us - previous.timestamp_us).max(1) as f64;
+    Some(KeyframeBracket::Between {
+        previous,
+        next,
+        factor,
+    })
+}
+
+fn evaluate_layout_intent(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> &str {
+    match keyframe_bracket(keyframes, timestamp_us) {
+        None => "crop",
+        Some(KeyframeBracket::BeforeFirst(frame))
+        | Some(KeyframeBracket::AfterLast(frame))
+        | Some(KeyframeBracket::Exact(frame)) => layout_intent_at(frame),
+        Some(KeyframeBracket::Between { previous, .. }) => layout_intent_at(previous),
+    }
 }
 
 fn clamp_target_rect(target: &TestTargetDto) -> TestTargetDto {
@@ -401,31 +429,24 @@ fn interpolate_crop_targets(
 }
 
 fn evaluate_ground_truth(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> Vec<TestTargetDto> {
-    if keyframes.is_empty() {
-        return Vec::new();
+    match keyframe_bracket(keyframes, timestamp_us) {
+        None => Vec::new(),
+        Some(KeyframeBracket::BeforeFirst(frame) | KeyframeBracket::Exact(frame)) => {
+            frame.targets.iter().map(clone_target).collect()
+        }
+        Some(KeyframeBracket::AfterLast(frame)) => frame.targets.iter().map(clone_target).collect(),
+        Some(KeyframeBracket::Between {
+            previous,
+            next,
+            factor,
+        }) => {
+            if evaluate_layout_intent(keyframes, timestamp_us) == "contain" {
+                interpolate_contain_targets(previous, next, factor)
+            } else {
+                interpolate_crop_targets(previous, next, factor)
+            }
+        }
     }
-    if timestamp_us <= keyframes[0].timestamp_us {
-        return keyframes[0].targets.iter().map(clone_target).collect();
-    }
-    let last = keyframes.last().expect("keyframes checked");
-    if timestamp_us >= last.timestamp_us {
-        return last.targets.iter().map(clone_target).collect();
-    }
-    let mut next_index = 1usize;
-    while next_index < keyframes.len() && keyframes[next_index].timestamp_us < timestamp_us {
-        next_index += 1;
-    }
-    let next = &keyframes[next_index];
-    if next.timestamp_us == timestamp_us {
-        return next.targets.iter().map(clone_target).collect();
-    }
-    let previous = &keyframes[next_index - 1];
-    let factor = (timestamp_us - previous.timestamp_us) as f64
-        / (next.timestamp_us - previous.timestamp_us).max(1) as f64;
-    if evaluate_layout_intent(keyframes, timestamp_us) == "contain" {
-        return interpolate_contain_targets(previous, next, factor);
-    }
-    interpolate_crop_targets(previous, next, factor)
 }
 
 fn set_pixel(rgb: &mut [u8], width: u32, height: u32, x: i32, y: i32, color: [u8; 3]) {

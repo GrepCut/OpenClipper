@@ -6,6 +6,16 @@ mod histogram;
 mod native_jobs;
 mod vision_logic;
 #[cfg(windows)]
+mod winml_decode;
+#[cfg(windows)]
+mod winml_internal;
+#[cfg(windows)]
+mod winml_preprocess;
+#[cfg(windows)]
+mod winml_tracking;
+#[cfg(windows)]
+mod winml_workers;
+#[cfg(windows)]
 mod winml_pipeline;
 #[cfg(windows)]
 mod winml_vision;
@@ -13,6 +23,7 @@ mod winml_vision;
 
 pub(crate) use clipper_frames::{
     extract_clipper_segment_to_path_blocking, extract_frame_rgb_at_timestamp,
+    probe_video_metadata,
 };
 use clipper_frames::{extract_clipper_segment_blocking, snap_to_keyframe_blocking};
 pub use native_jobs::{NativeJobEmitter, NativeJobRegistry};
