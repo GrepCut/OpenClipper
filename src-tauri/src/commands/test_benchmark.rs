@@ -2,7 +2,7 @@ use std::fs;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-use bzip2::{read::BzDecoder, write::BzEncoder, Compression};
+use bzip2::{write::BzEncoder, Compression};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
@@ -15,7 +15,7 @@ use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
 
 use crate::database::LocalDb;
-use crate::model_download::sha256_file;
+use crate::model_download::{extract_tar_bz2_safe, sha256_file};
 use crate::entity::{benchmark_result, benchmark_run, test_clip, test_dataset, test_keyframe, test_target};
 use crate::repository::test_repository::{TestDatasetSummary, TestKeyframeDto};
 use crate::repository::TestRepository;
@@ -445,21 +445,8 @@ pub async fn test_dataset_import(
     fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
     let archive_path = PathBuf::from(source_path);
     let extract_root = staging.clone();
-    let extract_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let file = fs::File::open(archive_path).map_err(|error| error.to_string())?;
-        let decoder = BzDecoder::new(file);
-        let mut archive = tar::Archive::new(decoder);
-        for entry in archive.entries().map_err(|error| error.to_string())? {
-            let mut entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path().map_err(|error| error.to_string())?;
-            if path.is_absolute() || path.components().any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))) {
-                return Err("Archive contains an unsafe path.".into());
-            }
-            if !entry.unpack_in(&extract_root).map_err(|error| error.to_string())? {
-                return Err("Archive entry escaped the import directory.".into());
-            }
-        }
-        Ok(())
+    let extract_result = tokio::task::spawn_blocking(move || {
+        extract_tar_bz2_safe(&archive_path, &extract_root)
     }).await.map_err(|error| error.to_string())?;
     if let Err(error) = extract_result {
         let _ = fs::remove_dir_all(&staging);

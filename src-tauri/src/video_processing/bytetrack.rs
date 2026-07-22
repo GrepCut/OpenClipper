@@ -473,14 +473,16 @@ fn associate(
 
 /// Minimum-cost perfect assignment for a square matrix (lapjv).
 fn hungarian(cost: &[Vec<f32>]) -> Vec<(usize, usize)> {
-    use lapjv::lapjv;
-    use ndarray::Array2;
+    use lapjv::{lapjv, Matrix};
 
     let size = cost.len();
     if size == 0 {
         return Vec::new();
     }
-    let matrix = Array2::from_shape_fn((size, size), |(row, col)| cost[row][col]);
+    let flat: Vec<f32> = cost.iter().flat_map(|row| row.iter().copied()).collect();
+    let Ok(matrix) = Matrix::from_shape_vec((size, size), flat) else {
+        return Vec::new();
+    };
     let Ok((row_solution, _)) = lapjv(&matrix) else {
         return Vec::new();
     };

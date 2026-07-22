@@ -1,6 +1,7 @@
 //! FFmpeg frame decode helpers for the WinML pipeline.
 
 use ffmpeg_next as ffmpeg;
+use image::{imageops, ImageBuffer, Rgb};
 
 use super::vision_logic::Rotation;
 
@@ -59,25 +60,18 @@ pub(crate) fn rotate_rgb(data: Vec<u8>, width: u32, height: u32, rotation: Rotat
     if rotation == Rotation::R0 {
         return (data, width, height);
     }
-    let (out_width, out_height) = match rotation {
-        Rotation::R90 | Rotation::R270 => (height, width),
-        _ => (width, height),
+    let Some(image) = ImageBuffer::<Rgb<u8>, Vec<u8>>::from_raw(width, height, data) else {
+        return (Vec::new(), width, height);
     };
-    let mut output = vec![0u8; out_width as usize * out_height as usize * 3];
-    for y in 0..height {
-        for x in 0..width {
-            let (out_x, out_y) = match rotation {
-                Rotation::R0 => (x, y),
-                Rotation::R90 => (height - 1 - y, x),
-                Rotation::R180 => (width - 1 - x, height - 1 - y),
-                Rotation::R270 => (y, width - 1 - x),
-            };
-            let source = (y as usize * width as usize + x as usize) * 3;
-            let destination = (out_y as usize * out_width as usize + out_x as usize) * 3;
-            output[destination..destination + 3].copy_from_slice(&data[source..source + 3]);
-        }
-    }
-    (output, out_width, out_height)
+    let rotated = match rotation {
+        Rotation::R90 => imageops::rotate90(&image),
+        Rotation::R180 => imageops::rotate180(&image),
+        Rotation::R270 => imageops::rotate270(&image),
+        Rotation::R0 => return (image.into_raw(), width, height),
+    };
+    let out_width = rotated.width();
+    let out_height = rotated.height();
+    (rotated.into_raw(), out_width, out_height)
 }
 
 pub(crate) fn scaler_dimensions(

@@ -1,11 +1,9 @@
 //! Model input preprocessing for WinML workers.
 
-use fast_image_resize::images::Image;
-use fast_image_resize::{FilterType as FirFilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
 
+use super::rgb_resize::resize_rgb_u8;
 use super::vision_logic::{
     decode_yolox, AutoFlipFaceDetection, Letterbox, SubjectDetection, BLAZE_INPUT_SIZE,
     MOVENET_INPUT_SIZE, YOLOX_INPUT_SIZE,
@@ -13,29 +11,8 @@ use super::vision_logic::{
 use super::winml_internal::{AnalysisFrame, MAX_BATCH};
 use super::winml_vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
 
-thread_local! {
-    static RGB_RESIZER: std::cell::RefCell<Resizer> = std::cell::RefCell::new(Resizer::new());
-}
-
-/// SIMD resize of an RGB frame buffer. `fast_image_resize` requires `&mut`
-/// source slices but only reads them during resize.
 fn resize_rgb(frame: &AnalysisFrame, width: u32, height: u32) -> Vec<u8> {
-    let src_len = frame.rgb.len();
-    // SAFETY: resize only reads source pixels; the API requires a mutable borrow.
-    let src_mut = unsafe {
-        std::slice::from_raw_parts_mut(frame.rgb.as_ptr() as *mut u8, src_len)
-    };
-    let src_image = Image::from_slice_u8(frame.width, frame.height, src_mut, PixelType::U8x3)
-        .expect("validated RGB frame");
-    let mut dst_image = Image::new(width, height, PixelType::U8x3);
-    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FirFilterType::Bilinear));
-    RGB_RESIZER.with(|resizer| {
-        resizer
-            .borrow_mut()
-            .resize(&src_image, &mut dst_image, Some(&options))
-            .expect("RGB resize");
-    });
-    dst_image.into_vec()
+    resize_rgb_u8(&frame.rgb, frame.width, frame.height, width, height)
 }
 
 pub(crate) fn prepare_yolox_into(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {

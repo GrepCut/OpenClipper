@@ -1,4 +1,5 @@
 use serde::Serialize;
+use http_range_header::parse_range_header;
 use std::{
     collections::hash_map::DefaultHasher,
     collections::HashMap,
@@ -240,36 +241,12 @@ fn parse_range(value: &str, file_len: u64) -> Result<(u64, u64), ()> {
     if file_len == 0 {
         return Err(());
     }
-
-    let spec = value.strip_prefix("bytes=").ok_or(())?;
-    let first_range = spec.split(',').next().ok_or(())?.trim();
-    let (start_raw, end_raw) = first_range.split_once('-').ok_or(())?;
-
-    if start_raw.is_empty() {
-        let suffix_len = end_raw.parse::<u64>().map_err(|_| ())?;
-        if suffix_len == 0 {
-            return Err(());
-        }
-        let start = file_len.saturating_sub(suffix_len);
-        return Ok((start, file_len - 1));
-    }
-
-    let start = start_raw.parse::<u64>().map_err(|_| ())?;
-    if start >= file_len {
-        return Err(());
-    }
-
-    let end = if end_raw.is_empty() {
-        file_len - 1
-    } else {
-        end_raw.parse::<u64>().map_err(|_| ())?.min(file_len - 1)
-    };
-
-    if end < start {
-        return Err(());
-    }
-
-    Ok((start, end))
+    let validated = parse_range_header(value)
+        .map_err(|_| ())?
+        .validate(file_len)
+        .map_err(|_| ())?;
+    let range = validated.first().ok_or(())?;
+    Ok((*range.start(), *range.end()))
 }
 
 fn make_token(path: &Path) -> Result<String, String> {

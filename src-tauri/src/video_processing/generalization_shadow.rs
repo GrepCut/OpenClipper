@@ -8,6 +8,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
+use crate::video_processing::rgb_resize::resize_rgb_u8;
 use crate::video_processing::vision_logic::NormalizedBox;
 
 #[cfg(windows)]
@@ -638,13 +639,42 @@ fn resize_rgb_crop_to_reid(
     let bottom = ((box_.y + box_.height) * height as f32).clamp(0.0, height as f32) as usize;
     let crop_w = (right - left).max(1);
     let crop_h = (bottom - top).max(1);
-    let plane = REID_HEIGHT * REID_WIDTH;
-    for y in 0..REID_HEIGHT {
-        let src_y = top + y * crop_h / REID_HEIGHT;
-        for x in 0..REID_WIDTH {
-            let src_x = left + x * crop_w / REID_WIDTH;
-            let src_index = (src_y * width + src_x) * 3;
-            let dst_index = y * REID_WIDTH + x;
+    let row_bytes = crop_w * 3;
+    let mut crop = vec![0u8; row_bytes * crop_h];
+    for row in 0..crop_h {
+        let source_start = ((top + row) * width + left) * 3;
+        let dest_start = row * row_bytes;
+        crop[dest_start..dest_start + row_bytes]
+            .copy_from_slice(&rgb[source_start..source_start + row_bytes]);
+    }
+    let resized = resize_rgb_u8(
+        &crop,
+        crop_w as u32,
+        crop_h as u32,
+        REID_WIDTH as u32,
+        REID_HEIGHT as u32,
+    );
+    write_rgb_nchw_f32(&resized, REID_WIDTH, REID_HEIGHT, output);
+}
+
+fn resize_rgb_to_vinet_frame(rgb: &[u8], width: usize, height: usize, output: &mut [f32]) {
+    debug_assert_eq!(output.len(), VINET_PLANE);
+    let resized = resize_rgb_u8(
+        rgb,
+        width as u32,
+        height as u32,
+        VINET_WIDTH as u32,
+        VINET_HEIGHT as u32,
+    );
+    write_rgb_nchw_f32(&resized, VINET_WIDTH, VINET_HEIGHT, output);
+}
+
+fn write_rgb_nchw_f32(rgb: &[u8], width: usize, height: usize, output: &mut [f32]) {
+    let plane = width * height;
+    for y in 0..height {
+        for x in 0..width {
+            let src_index = (y * width + x) * 3;
+            let dst_index = y * width + x;
             if src_index + 2 < rgb.len() && dst_index + plane * 2 < output.len() {
                 output[dst_index] = rgb[src_index] as f32 / 255.0;
                 output[plane + dst_index] = rgb[src_index + 1] as f32 / 255.0;
@@ -652,27 +682,6 @@ fn resize_rgb_crop_to_reid(
             }
         }
     }
-}
-
-fn resize_rgb_to_vinet_frame(rgb: &[u8], width: usize, height: usize, output: &mut [f32]) {
-    debug_assert_eq!(output.len(), VINET_PLANE);
-    for y in 0..VINET_HEIGHT {
-        let src_y = y * height / VINET_HEIGHT;
-        for x in 0..VINET_WIDTH {
-            let src_x = x * width / VINET_WIDTH;
-            let src_index = (src_y * width + src_x) * 3;
-            let dst_index = y * VINET_WIDTH + x;
-            if src_index + 2 < rgb.len() {
-                output[dst_index] = rgb[src_index] as f32 / 255.0;
-                output[plane_offset(1) + dst_index] = rgb[src_index + 1] as f32 / 255.0;
-                output[plane_offset(2) + dst_index] = rgb[src_index + 2] as f32 / 255.0;
-            }
-        }
-    }
-}
-
-fn plane_offset(channel: usize) -> usize {
-    channel * VINET_HEIGHT * VINET_WIDTH
 }
 
 fn saliency_map_to_box(map: &[f32], width: usize, height: usize) -> (NormalizedBox, f32) {
@@ -762,18 +771,18 @@ fn resize_rgb_to_transnet(rgb: &[u8], width: usize, height: usize, output: &mut 
     let start = output.len();
     output.resize(start + TRANSNET_HEIGHT * TRANSNET_WIDTH * 3, 0.0);
     let slice = &mut output[start..];
-    for y in 0..TRANSNET_HEIGHT {
-        let src_y = y * height / TRANSNET_HEIGHT;
-        for x in 0..TRANSNET_WIDTH {
-            let src_x = x * width / TRANSNET_WIDTH;
-            let src_index = (src_y * width + src_x) * 3;
-            let dst_index = (y * TRANSNET_WIDTH + x) * 3;
-            if src_index + 2 < rgb.len() {
-                slice[dst_index] = rgb[src_index] as f32 / 255.0;
-                slice[dst_index + 1] = rgb[src_index + 1] as f32 / 255.0;
-                slice[dst_index + 2] = rgb[src_index + 2] as f32 / 255.0;
-            }
-        }
+    let resized = resize_rgb_u8(
+        rgb,
+        width as u32,
+        height as u32,
+        TRANSNET_WIDTH as u32,
+        TRANSNET_HEIGHT as u32,
+    );
+    for (dst_index, chunk) in resized.chunks_exact(3).enumerate() {
+        let base = dst_index * 3;
+        slice[base] = chunk[0] as f32 / 255.0;
+        slice[base + 1] = chunk[1] as f32 / 255.0;
+        slice[base + 2] = chunk[2] as f32 / 255.0;
     }
 }
 

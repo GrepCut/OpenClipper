@@ -1,3 +1,4 @@
+use clap::{CommandFactory, Parser};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -39,27 +40,28 @@ macro_rules! eprintln {
 
 static BENCHMARK_CLI_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-const HELP: &str = "\
-Open Clipper benchmark CLI
-
-Usage:
-  open-clipper --benchmark-run <dataset-id-or-path> [--json] [--extract-miss-frames]
-  open-clipper --extract-miss-frames <run-id> [--output <dir>] [--json]
-
-Options:
-  --benchmark-run <id-or-path>  Run annotated clips in a test dataset headlessly
-  --extract-miss-frames <run-id>  Export worst keyframe JPEGs for a completed run
-  --extract-miss-frames           With --benchmark-run: export after the run finishes
-  --output <dir>                  Custom flat export directory (extract mode only)
-  --json                          Print machine-readable JSON summary to stdout
-  --help, -h                      Show this help
-
-Examples:
-  open-clipper --benchmark-run cd986c2a-d998-4a96-afec-218d052d8c78
-  open-clipper --benchmark-run cd986c2a-... --extract-miss-frames
-  open-clipper --extract-miss-frames a1b2c3d4-e5f6-7890-abcd-ef1234567890
-  open-clipper --extract-miss-frames a1b2c3d4-... --output C:\\temp\\miss-frames
-";
+#[derive(Parser, Debug)]
+#[command(
+    name = "open-clipper",
+    about = "Open Clipper benchmark CLI",
+    disable_help_flag = true
+)]
+struct CliArgs {
+    #[arg(long, short = 'h', help = "Show this help")]
+    help: bool,
+    #[arg(long, help = "Run annotated clips in a test dataset headlessly")]
+    benchmark_run: Option<String>,
+    #[arg(
+        long,
+        num_args = 0..=1,
+        help = "Export worst keyframe JPEGs for a completed run, or after --benchmark-run when no run id is given"
+    )]
+    extract_miss_frames: Option<Option<String>>,
+    #[arg(long, help = "Custom flat export directory (extract mode only)")]
+    output: Option<PathBuf>,
+    #[arg(long, help = "Print machine-readable JSON summary to stdout")]
+    json: bool,
+}
 
 #[derive(Clone, Debug)]
 pub enum CliRequest {
@@ -132,53 +134,29 @@ pub struct ExtractMissFramesCliSummary {
 }
 
 pub fn parse_args() -> Option<CliRequest> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.is_empty() {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.is_empty() {
         return None;
     }
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+
+    let args = match CliArgs::try_parse_from(std::env::args()) {
+        Ok(args) => args,
+        Err(error) => {
+            if error.kind() == clap::error::ErrorKind::DisplayHelp {
+                print!("{error}");
+                std::process::exit(0);
+            }
+            exit_with_error(2, &error.to_string());
+        }
+    };
+
+    if args.help {
         print_help();
         std::process::exit(0);
     }
 
-    let mut dataset_id: Option<String> = None;
-    let mut extract_run_id: Option<String> = None;
-    let mut extract_after_benchmark = false;
-    let mut output_dir: Option<PathBuf> = None;
-    let mut json_output = false;
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--benchmark-run" => {
-                index += 1;
-                let Some(value) = args.get(index) else {
-                    exit_with_error(2, "--benchmark-run requires a dataset id or path");
-                };
-                dataset_id = Some(normalize_dataset_arg(value));
-            }
-            "--extract-miss-frames" => {
-                if let Some(next) = args.get(index + 1).filter(|value| !value.starts_with('-')) {
-                    extract_run_id = Some(next.clone());
-                    index += 1;
-                } else {
-                    extract_after_benchmark = true;
-                }
-            }
-            "--output" => {
-                index += 1;
-                let Some(value) = args.get(index) else {
-                    exit_with_error(2, "--output requires a directory path");
-                };
-                output_dir = Some(PathBuf::from(value));
-            }
-            "--json" => json_output = true,
-            unknown => exit_with_error(2, &format!("Unknown argument: {unknown}")),
-        }
-        index += 1;
-    }
-
-    if let Some(run_id) = extract_run_id {
-        if dataset_id.is_some() {
+    if let Some(Some(run_id)) = &args.extract_miss_frames {
+        if args.benchmark_run.is_some() {
             exit_with_error(
                 2,
                 "Use either --benchmark-run or --extract-miss-frames <run-id>, not both.",
@@ -186,21 +164,21 @@ pub fn parse_args() -> Option<CliRequest> {
         }
         BENCHMARK_CLI_ACTIVE.store(true, Ordering::SeqCst);
         return Some(CliRequest::ExtractMissFrames(ExtractMissFramesCliRequest {
-            run_id,
-            output_dir,
-            json_output,
+            run_id: run_id.clone(),
+            output_dir: args.output,
+            json_output: args.json,
         }));
     }
 
-    let Some(dataset_id) = dataset_id else {
+    let Some(dataset_id) = args.benchmark_run else {
         return None;
     };
 
     BENCHMARK_CLI_ACTIVE.store(true, Ordering::SeqCst);
     Some(CliRequest::BenchmarkRun(BenchmarkCliRequest {
-        dataset_id,
-        json_output,
-        extract_miss_frames: extract_after_benchmark,
+        dataset_id: normalize_dataset_arg(&dataset_id),
+        json_output: args.json,
+        extract_miss_frames: args.extract_miss_frames.is_some(),
     }))
 }
 
@@ -273,7 +251,8 @@ pub async fn run_extract_miss_frames_cli(
 }
 
 pub fn print_help() {
-    println!("{HELP}");
+    let _ = CliArgs::command().print_help();
+    println!();
 }
 
 pub fn exit_with_error(code: u8, message: &str) -> ! {

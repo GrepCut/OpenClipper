@@ -4,6 +4,7 @@ mod clipper_frames;
 mod generalization_shadow;
 mod histogram;
 mod native_jobs;
+mod rgb_resize;
 mod vision_logic;
 #[cfg(windows)]
 mod winml_decode;

@@ -1,11 +1,12 @@
 use super::types::{ParakeetModelStatus, TranscriptionError};
 use crate::model_cache::download_model_file_to_cache;
-use crate::model_download::{download_url_to_file, sha256_file};
-use serde::Serialize;
-use std::fs::{self, File};
+use crate::model_download::{
+    download_url_to_file, emit_model_download_event, extract_tar_bz2, sha256_file,
+};
+use std::fs::{self};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 pub const MODEL_DIR_NAME: &str = "nemo-parakeet-tdt-0.6b-v3-int8";
 pub const LEGACY_MODEL_DIR_NAME: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
@@ -24,16 +25,6 @@ const REQUIRED_FILES: [&str; 4] = [
 ];
 
 static DOWNLOAD_LOCK: Mutex<()> = Mutex::new(());
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ModelDownloadEvent {
-    path: String,
-    received: u64,
-    total: Option<u64>,
-    done: bool,
-    error: Option<String>,
-}
 
 pub fn model_dir_for_app(app: &AppHandle) -> Result<PathBuf, String> {
     model_subdir_for_app(app, MODEL_DIR_NAME)
@@ -394,27 +385,10 @@ fn extract_archive(
     archive_path: &Path,
     models_root: &Path,
 ) -> Result<(), TranscriptionError> {
-    let file = File::open(archive_path).map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Nie udało się otworzyć archiwum: {error}"))
-    })?;
-    let decompressor = bzip2::read::BzDecoder::new(file);
-    let mut archive = tar::Archive::new(decompressor);
-
-    archive.unpack(models_root).map_err(|error| {
+    extract_tar_bz2(archive_path, models_root).map_err(|error| {
         TranscriptionError::ModelLoad(format!("Rozpakowywanie archiwum nie powiodło się: {error}"))
     })?;
-
-    let _ = app.emit(
-        "model-download",
-        ModelDownloadEvent {
-            path: MODEL_DIR_NAME.to_string(),
-            received: 1,
-            total: Some(1),
-            done: true,
-            error: None,
-        },
-    );
-
+    emit_model_download_event(app, MODEL_DIR_NAME, 1, Some(1), true, None);
     Ok(())
 }
 

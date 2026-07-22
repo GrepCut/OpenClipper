@@ -2,9 +2,12 @@
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Component, Path};
 use tauri::{AppHandle, Emitter};
+
+use bzip2::read::BzDecoder;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +34,70 @@ pub fn sha256_file(path: &Path) -> Result<String, String> {
         digest.update(&buffer[..count]);
     }
     Ok(format!("{:x}", digest.finalize()))
+}
+
+pub fn emit_model_download_event(
+    app: &AppHandle,
+    event_path: &str,
+    received: u64,
+    total: Option<u64>,
+    done: bool,
+    error: Option<String>,
+) {
+    let _ = app.emit(
+        "model-download",
+        ModelDownloadEvent {
+            path: event_path.to_string(),
+            received,
+            total,
+            done,
+            error,
+        },
+    );
+}
+
+/// Extract a `.tar.bz2` archive into `dest`.
+pub fn extract_tar_bz2(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    extract_tar_bz2_inner(archive_path, dest, false)
+}
+
+/// Extract a `.tar.bz2` archive, rejecting path traversal entries.
+pub fn extract_tar_bz2_safe(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    extract_tar_bz2_inner(archive_path, dest, true)
+}
+
+fn extract_tar_bz2_inner(
+    archive_path: &Path,
+    dest: &Path,
+    reject_unsafe_paths: bool,
+) -> Result<(), String> {
+    let file = File::open(archive_path).map_err(|error| format!("Cannot open archive: {error}"))?;
+    let decoder = BzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+    if reject_unsafe_paths {
+        for entry in archive.entries().map_err(|error| error.to_string())? {
+            let mut entry = entry.map_err(|error| error.to_string())?;
+            let path = entry.path().map_err(|error| error.to_string())?;
+            if path.is_absolute()
+                || path.components().any(|component| {
+                    matches!(
+                        component,
+                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                    )
+                })
+            {
+                return Err("Archive contains an unsafe path.".into());
+            }
+            if !entry.unpack_in(dest).map_err(|error| error.to_string())? {
+                return Err("Archive entry escaped the import directory.".into());
+            }
+        }
+    } else {
+        archive
+            .unpack(dest)
+            .map_err(|error| format!("Archive extract failed: {error}"))?;
+    }
+    Ok(())
 }
 
 pub fn download_url_to_file(

@@ -5,6 +5,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::{HashMap, HashSet};
 
 use crate::entity::{
     benchmark_result, benchmark_run, test_clip, test_dataset, test_keyframe, test_target,
@@ -63,37 +64,63 @@ impl TestRepository {
             .order_by_desc(test_dataset::Column::UpdatedAt)
             .all(db)
             .await?;
-        let mut output = Vec::with_capacity(datasets.len());
-        for dataset in datasets {
-            let clips = test_clip::Entity::find()
-                .filter(test_clip::Column::DatasetId.eq(dataset.id.clone()))
-                .all(db)
-                .await?;
-            let mut annotated = 0;
-            for clip in &clips {
-                if test_keyframe::Entity::find()
-                    .filter(test_keyframe::Column::ClipId.eq(clip.id.clone()))
-                    .one(db)
-                    .await?
-                    .is_some()
-                {
-                    annotated += 1;
-                }
-            }
-            let latest_run = benchmark_run::Entity::find()
-                .filter(benchmark_run::Column::DatasetId.eq(dataset.id.clone()))
-                .order_by_desc(benchmark_run::Column::CreatedAt)
-                .one(db)
-                .await?;
-            output.push(TestDatasetSummary {
-                total_duration: clips.iter().map(|clip| clip.duration).sum(),
-                clip_count: clips.len(),
-                annotated_clip_count: annotated,
-                dataset,
-                latest_run,
-            });
+        if datasets.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(output)
+
+        let dataset_ids: Vec<String> = datasets.iter().map(|dataset| dataset.id.clone()).collect();
+        let clips = test_clip::Entity::find()
+            .filter(test_clip::Column::DatasetId.is_in(dataset_ids.clone()))
+            .all(db)
+            .await?;
+        let clip_ids: Vec<String> = clips.iter().map(|clip| clip.id.clone()).collect();
+        let annotated_clip_ids: HashSet<String> = if clip_ids.is_empty() {
+            HashSet::new()
+        } else {
+            test_keyframe::Entity::find()
+                .filter(test_keyframe::Column::ClipId.is_in(clip_ids))
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|frame| frame.clip_id)
+                .collect()
+        };
+        let runs = benchmark_run::Entity::find()
+            .filter(benchmark_run::Column::DatasetId.is_in(dataset_ids))
+            .order_by_desc(benchmark_run::Column::CreatedAt)
+            .all(db)
+            .await?;
+        let mut latest_runs = HashMap::new();
+        for run in runs {
+            latest_runs.entry(run.dataset_id.clone()).or_insert(run);
+        }
+        let mut clips_by_dataset: HashMap<String, Vec<&test_clip::Model>> = HashMap::new();
+        for clip in &clips {
+            clips_by_dataset
+                .entry(clip.dataset_id.clone())
+                .or_default()
+                .push(clip);
+        }
+
+        Ok(datasets
+            .into_iter()
+            .map(|dataset| {
+                let dataset_clips = clips_by_dataset
+                    .get(&dataset.id)
+                    .map(|clips| clips.as_slice())
+                    .unwrap_or(&[]);
+                TestDatasetSummary {
+                    total_duration: dataset_clips.iter().map(|clip| clip.duration).sum(),
+                    clip_count: dataset_clips.len(),
+                    annotated_clip_count: dataset_clips
+                        .iter()
+                        .filter(|clip| annotated_clip_ids.contains(&clip.id))
+                        .count(),
+                    latest_run: latest_runs.remove(&dataset.id),
+                    dataset,
+                }
+            })
+            .collect())
     }
 
     pub async fn create_dataset(
