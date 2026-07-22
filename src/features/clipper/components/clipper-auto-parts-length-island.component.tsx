@@ -1,0 +1,165 @@
+import React from "react";
+import { Box, Flex, HStack, IconButton, Text } from "@chakra-ui/react";
+import { RotateCcw } from "lucide-react";
+import {
+  AUTO_PARTS_SEGMENT_LENGTH_OPTIONS,
+  formatAutoPartsSegmentLengthLabel,
+  isPresetAutoPartsSegmentLength,
+} from "../engine/segmentation";
+import type { AutoPartsSegmentLengthSec } from "../persistence/project-metadata.util";
+import { clipperTheme } from "../shared/theme.util";
+import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import { ClipperCustomSegmentLengthModal } from "./clipper-custom-segment-length-modal.component";
+
+const AUTO_PARTS_LENGTH_OPTIONS = AUTO_PARTS_SEGMENT_LENGTH_OPTIONS.map((value) => ({
+  value,
+  label: formatAutoPartsSegmentLengthLabel(value),
+}));
+
+export function ClipperAutoPartsLengthIsland({
+  value,
+  onChange,
+  onReset,
+  disabled = false,
+}: {
+  value: AutoPartsSegmentLengthSec;
+  onChange: (lengthSec: AutoPartsSegmentLengthSec) => void;
+  onReset?: () => void;
+  disabled?: boolean;
+}) {
+  const { theme } = useClipperUi();
+  const accent = clipperTheme.accent;
+  const [customModalOpen, setCustomModalOpen] = React.useState(false);
+  const isCustom = !isPresetAutoPartsSegmentLength(value);
+
+  const pillButtonProps = (isActive: boolean) => ({
+    borderRadius: "full" as const,
+    px: 2.5,
+    py: 1.5,
+    minW: "36px",
+    fontSize: "12px",
+    fontWeight: isActive ? "700" : "500",
+    letterSpacing: "-0.01em" as const,
+    color: isActive ? "white" : theme.text.muted,
+    bg: isActive ? accent : "transparent",
+    border: "1px solid",
+    borderColor: isActive ? accent : "transparent",
+    cursor: disabled ? "not-allowed" : "pointer",
+    transition: "all 0.2s ease",
+    _hover:
+      !isActive && !disabled
+        ? { bg: theme.surface.hover, color: theme.text.primary }
+        : undefined,
+    _active: disabled ? undefined : { transform: "scale(0.97)" },
+  });
+
+  return (
+    <>
+      <HStack
+        justify="center"
+        align="center"
+        gap={2}
+        px={2}
+        pb={2}
+        pointerEvents="none"
+      >
+        <Box
+          pointerEvents={disabled ? "none" : "auto"}
+          opacity={disabled ? 0.6 : 1}
+          w="fit-content"
+          maxW="100%"
+          borderRadius="28px"
+          border="1px solid"
+          borderColor={theme.border.primary}
+          bg={theme.background.tertiary}
+          boxShadow={theme.shadow.panel}
+          px={3}
+          py={2}
+          display="flex"
+          alignItems="center"
+          gap={2.5}
+          transition="opacity 0.2s ease"
+        >
+          <Text
+            fontSize="10px"
+            fontWeight="700"
+            color={theme.text.muted}
+            letterSpacing="0.02em"
+            userSelect="none"
+            flexShrink={0}
+          >
+            Clip length
+          </Text>
+
+          <Flex gap={1} flexShrink={0} alignItems="center">
+            {AUTO_PARTS_LENGTH_OPTIONS.map((option) => {
+              const isActive = option.value === value;
+              return (
+                <Box
+                  key={option.value}
+                  as="button"
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onChange(option.value)}
+                  aria-pressed={isActive}
+                  {...pillButtonProps(isActive)}
+                >
+                  {option.label}
+                </Box>
+              );
+            })}
+          </Flex>
+
+          <Box w="1px" h="18px" bg={theme.border.primary} flexShrink={0} opacity={0.8} />
+
+          <Box
+            as="button"
+            type="button"
+            disabled={disabled}
+            onClick={() => setCustomModalOpen(true)}
+            aria-pressed={isCustom}
+            {...pillButtonProps(isCustom)}
+            minW={isCustom ? "44px" : undefined}
+          >
+            {isCustom ? formatAutoPartsSegmentLengthLabel(value) : "Custom"}
+          </Box>
+        </Box>
+
+        {onReset ? (
+          <IconButton
+            aria-label="Reset clips"
+            title="Reset clips"
+            size="xs"
+            variant="ghost"
+            pointerEvents={disabled ? "none" : "auto"}
+            opacity={disabled ? 0.6 : 1}
+            borderRadius="full"
+            border="1px solid"
+            borderColor={theme.border.primary}
+            bg={theme.background.tertiary}
+            boxShadow={theme.shadow.panel}
+            color={theme.text.muted}
+            flexShrink={0}
+            minW="32px"
+            h="32px"
+            disabled={disabled}
+            _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onReset();
+            }}
+          >
+            <RotateCcw size={14} strokeWidth={1.75} />
+          </IconButton>
+        ) : null}
+      </HStack>
+
+      <ClipperCustomSegmentLengthModal
+        isOpen={customModalOpen}
+        value={value}
+        onClose={() => setCustomModalOpen(false)}
+        onApply={onChange}
+      />
+    </>
+  );
+}

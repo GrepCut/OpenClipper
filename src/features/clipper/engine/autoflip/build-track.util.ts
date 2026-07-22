@@ -5,14 +5,14 @@ import { analyzeSceneMotion } from "./camera/scene-motion.util";
 import { buildSceneTimeline, cropScenePath } from "./camera/scene-path.util";
 import { buildSalientKeyframes } from "./salience/salient-region.util";
 import { attachImportanceSignals, buildImportanceTimeline } from "./salience/importance-ranker.util";
-import { buildLayoutTracks } from "./layout/layout-planner.util";
+import { buildLayoutTracks } from "./layout";
 import { kinematicOptionsForSmoothing } from "./config/kinematic-options.util";
 import { applyActiveSpeakerPolicy } from "./identity/active-speaker.util";
 import { buildCanonicalPersonTracks } from "./identity/canonical-person.util";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID } from "./config/config.constants";
-import { DEFAULT_ARBITER_PARAMS, LEGACY_ARBITER_PARAMS } from "./layout/arbiter.util";
+import { DEFAULT_ARBITER_PARAMS, LEGACY_ARBITER_PARAMS } from "./layout";
 import { smoothShotCropSamples } from "./camera/shot-smoothing.util";
-import { DEFAULT_VISIBILITY_PARAMS } from "./layout/visibility-controller.util";
+import { DEFAULT_VISIBILITY_PARAMS } from "./layout";
 import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "../types/autoflip.types";
 import type { BuildAutoFlipTrackInput } from "../types/autoflip.types";
 

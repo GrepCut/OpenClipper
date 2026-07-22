@@ -13,6 +13,7 @@ export {
 export {
   DEFAULT_VISIBILITY_PARAMS,
   LEGACY_VISIBILITY_PARAMS,
+  RUN9_VISIBILITY_CONTROLLER_PARAMS,
   ITERATION10_VISIBILITY_CONTROLLER_PARAMS,
   buildVisibilityEnvelopes,
   createVisibilityControllerState,
@@ -20,12 +21,25 @@ export {
 } from "./visibility-controller.util";
 export {
   DEFAULT_SEMANTIC_FRAMING_PARAMS,
-  buildLayoutTracks,
-  buildViewports,
+  VISIBILITY_CONSTRAINED_FRAMING_PARAMS,
+} from "./layout-planner.constants";
+export {
+  layoutGeometry,
+  cropAroundBox,
+  nominalCropSize,
+  strictAspectViewport,
+} from "./viewport-geometry.util";
+export { rawMode } from "./layout-mode.util";
+export {
   createVisibilityFramingState,
+  visibilityConstrainedViewport,
+} from "./visibility-framing.util";
+export {
   groupUnionLexicographicOk,
-  rawMode,
-} from "./layout-planner.util";
+  buildGroupUnionLayout,
+} from "./group-union-layout.util";
+export { buildViewports } from "./viewport-builder.util";
+export { buildLayoutTracks } from "./layout-planner.util";
 export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation.util";
 export type {
   ArbiterDecision,

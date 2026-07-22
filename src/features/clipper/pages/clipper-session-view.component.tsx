@@ -1,9 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React from "react";
 import { Box, Center, Text } from "@chakra-ui/react";
-import type { Project } from "../../../services/projects.service";
-import { ClipperLayout, type ClipperLayoutStep } from "../components/clipper-layout.component";
+import { ClipperLayout } from "../components/clipper-layout.component";
 import { ClipperExportsView } from "../components/clipper-exports-view.component";
-import { ClipperPreview } from "../components/clipper-preview.component";
 import { ClipperRenderQueue } from "../components/clipper-render-queue.component";
 import { ClipperRenderQueueSetup } from "../components/clipper-render-queue-setup.component";
 import { ClipperProcessing } from "../components/clipper-processing.component";
@@ -11,401 +9,41 @@ import { ClipperProjectLoadingPanel } from "../components/clipper-project-loadin
 import { ClipperTrimSelect } from "../components/clipper-trim-select.component";
 import { ClipperUpload } from "../components/clipper-upload.component";
 import { ClipperSocialPublishDialog } from "../components/clipper-youtube-publish-dialog.component";
-import type { ClipperPublishTarget } from "../components/clipper-export-format-row.component";
-import { useClipperPipeline } from "../hooks/use-clipper-pipeline.hook";
-import { CLIPPER_FORMAT_DEFS } from "../shared/formats.util";
-import { getSessionExportResults } from "../shared/export-results.util";
-import { resumeStepsForStage } from "../shared/loading-status.util";
+import { ClipperSessionPreviewPanel } from "../components/session/clipper-session-preview-panel.component";
+import { useClipperSessionView } from "../hooks/use-clipper-session-view.hook";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import type { ClipperFormatResult } from "../shared/state.util";
-import { isClipperActivelyRendering } from "../shared/stages.util";
-import {
-  buildRenderQueueSnapshot,
-  resolveClipFormatIds,
-  sanitizeRenderQueueSelections,
-} from "../shared/render-queue-utils.util";
-import { scheduleRenderQueueSave } from "../persistence/render-queue-autosave.util";
-import { openClipperExportsDir } from "../persistence/export-files.util";
-import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
-import { useSocialStore } from "../../../stores/use-social-store.store";
-import { youtubeAuthService } from "../../../services/youtube-auth.service";
-import {
-  socialAuthService,
-  oauthFlowForPlatform,
-  type SocialPublishablePlatform,
-} from "../../../services/social-auth.service";
-import { logYoutubeDebug } from "../shared/youtube-debug.util";
-import type { ClipperLoadedProject } from "../hooks/use-clipper-project-loader.hook";
-import { useAuth } from "../../../shared/hooks/use-auth.hook";
-import { useLocation, useNavigate } from "react-router-dom";
-import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
-import { appToast } from "../../../shared/utils/toast.service";
+import type { ClipperSessionViewProps } from "../shared/clipper-session-view.types";
 
-interface ClipperSessionViewProps {
-  project: Project;
-  token: string | null;
-  loaded: ClipperLoadedProject | null;
-}
-
-type QueuePhase = "setup" | "progress" | "complete";
+export type { ClipperSessionViewProps } from "../shared/clipper-session-view.types";
 
 export function ClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
   const { theme, errorPanel } = useClipperUi();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const auth = useAuth();
-  const canUseAccountFeatures = Boolean(
-    auth.user && auth.token && auth.isAuthenticated && auth.sessionMode === "online",
-  );
-  const [view, setView] = useState<"preview" | "queue" | "exports">("preview");
-  const [queuePhase, setQueuePhase] = useState<QueuePhase>("setup");
-  const [queuePublishTarget, setQueuePublishTarget] = useState<ClipperFormatResult | null>(null);
-  const [queuePublishTargetPlatform, setQueuePublishTargetPlatform] = useState<ClipperPublishTarget>("youtube");
-  /** Per-clip render format overrides; clips absent here fall back to the global settings selection. */
-  const [clipFormatSelections, setClipFormatSelections] = useState<Record<number, string[]>>({});
-  const skipRenderQueueSaveRef = useRef(true);
-  const renderQueueHydratedRef = useRef(false);
-  const clipsReadyForQueueRef = useRef(false);
-  const pipeline = useClipperPipeline({ project, token, loaded });
+  const session = useClipperSessionView({ project, token, loaded });
   const {
     state,
-    settings,
-    exportCount,
-    updateSettings,
-    selectFile,
     confirmRange,
-    renderExports,
     rerenderFormat,
     refreshExportHistory,
     reset,
-    getFrameContext,
-    setActiveClipIndex,
-    setClipSourceMode,
-    resegmentAutoParts,
-    autoPartsSegmentLengthSec,
-    autoPartsResegmenting,
-    loadAiChatHistory,
-    sendAiClipChatMessage,
-    startNewAiChat,
-    deleteAiClip,
-    deleteAutoPartsClip,
-    editClipTranscript,
-    undoClipEdit,
-    redoClipEdit,
-    canUndoClipEdit,
-    canRedoClipEdit,
-    lastEditedTranscriptRange,
-    aiCurrentClipsJsonChars,
-    aiChatMessages,
-    aiChatLoading,
-    aiChatError,
-    aiChatThinking,
-    aiChatProgressChars,
-    aiChatModel,
-    setAiChatModel,
     sourceUrl,
     rangeLocked,
-    disabledCollageRegionIds,
-    toggleCollageRegion,
-  } = pipeline;
-
-  const {
-    isConnected: isYoutubeConnected,
-    channelTitle: youtubeChannelTitle,
-    refreshStatus: refreshYoutubeStatus,
-  } = useYoutubeStore();
-  const socialPlatforms = useSocialStore((s) => s.platforms);
-  const refreshSocial = useSocialStore((s) => s.refreshAll);
-
-  const handleFile = useCallback(
-    (file: File) => {
-      void selectFile(file);
-    },
-    [selectFile],
-  );
-
-  const isPreparing =
-    state.stage === "uploading" || state.stage === "transcribing" || state.stage === "analyzing-faces" || state.stage === "analyzing-subjects";
-
-  const isRendering = isClipperActivelyRendering(state.clipPreviews, state.stage);
-
-  const sessionResults = useMemo(
-    () => getSessionExportResults(state.clipPreviews),
-    [state.clipPreviews],
-  );
-
-  const clipIndices = useMemo(
-    () => state.clipPreviews.map((preview) => preview.clip.index),
-    [state.clipPreviews],
-  );
-
-  useEffect(() => {
-    renderQueueHydratedRef.current = false;
-    clipsReadyForQueueRef.current = false;
-    skipRenderQueueSaveRef.current = true;
-    setQueuePhase("setup");
-  }, [project.id]);
-
-  useEffect(() => {
-    if (queuePhase === "progress" && !isRendering && sessionResults.length > 0) {
-      setQueuePhase("complete");
-    }
-  }, [isRendering, queuePhase, sessionResults.length]);
-
-  useEffect(() => {
-    if (view === "queue" && isRendering) {
-      setQueuePhase("progress");
-    }
-  }, [isRendering, view]);
-
-  useEffect(() => {
-    if (!loaded) return;
-
-    const clipsReady = clipIndices.length > 0;
-    const shouldHydrate =
-      !renderQueueHydratedRef.current || (!clipsReadyForQueueRef.current && clipsReady);
-
-    if (!shouldHydrate) return;
-
-    skipRenderQueueSaveRef.current = true;
-    setClipFormatSelections(
-      sanitizeRenderQueueSelections(
-        loaded.renderQueueFormats,
-        clipsReady ? clipIndices : undefined,
-      ),
-    );
-    renderQueueHydratedRef.current = true;
-    if (clipsReady) clipsReadyForQueueRef.current = true;
-  }, [clipIndices, loaded, project.id]);
-
-  useEffect(() => {
-    if (!loaded || skipRenderQueueSaveRef.current) {
-      skipRenderQueueSaveRef.current = false;
-      return;
-    }
-    if (clipIndices.length === 0) return;
-
-    const snapshot = buildRenderQueueSnapshot(
-      clipIndices,
-      clipFormatSelections,
-      settings.formats.enabledFormatIds,
-    );
-    scheduleRenderQueueSave(project.id, snapshot);
-  }, [clipFormatSelections, clipIndices, loaded, project.id, settings.formats.enabledFormatIds]);
-
-  const getClipFormatIds = useCallback(
-    (clipIndex: number): string[] =>
-      resolveClipFormatIds(clipIndex, clipFormatSelections, settings.formats.enabledFormatIds),
-    [clipFormatSelections, settings.formats.enabledFormatIds],
-  );
-
-  const toggleClipFormat = useCallback(
-    (clipIndex: number, formatId: string) => {
-      setClipFormatSelections((prev) => {
-        const current = resolveClipFormatIds(
-          clipIndex,
-          prev,
-          settings.formats.enabledFormatIds,
-        );
-        const next = current.includes(formatId)
-          ? current.filter((id) => id !== formatId)
-          : [...current, formatId];
-        return { ...prev, [clipIndex]: next };
-      });
-    },
-    [settings.formats.enabledFormatIds],
-  );
-
-  const setFormatForAllClips = useCallback(
-    (formatId: string, enabled: boolean) => {
-      setClipFormatSelections((prev) => {
-        const next: Record<number, string[]> = { ...prev };
-        for (const p of state.clipPreviews) {
-          const clipIndex = p.clip.index;
-          const current = resolveClipFormatIds(
-            clipIndex,
-            prev,
-            settings.formats.enabledFormatIds,
-          );
-          next[clipIndex] = enabled
-            ? current.includes(formatId)
-              ? current
-              : [...current, formatId]
-            : current.filter((id) => id !== formatId);
-        }
-        return next;
-      });
-    },
-    [settings.formats.enabledFormatIds, state.clipPreviews],
-  );
-
-  const setAllFormatsForClip = useCallback((clipIndex: number, enabled: boolean) => {
-    setClipFormatSelections((prev) => ({
-      ...prev,
-      [clipIndex]: enabled ? CLIPPER_FORMAT_DEFS.map((def) => def.id) : [],
-    }));
-  }, []);
-
-  const formatIdsByClip = useMemo(
-    () =>
-      Object.fromEntries(
-        state.clipPreviews.map((p) => [p.clip.index, getClipFormatIds(p.clip.index)]),
-      ) as Record<number, string[]>,
-    [state.clipPreviews, getClipFormatIds],
-  );
-
-  const openRenderQueue = useCallback(() => {
-    setQueuePhase("setup");
-    setView("queue");
-  }, []);
-
-  const startQueuedRender = useCallback(() => {
-    setQueuePhase("progress");
-    setView("queue");
-    void renderExports(formatIdsByClip);
-  }, [formatIdsByClip, renderExports]);
-
-  const handleOpenExportsFolder = useCallback(() => {
-    void openClipperExportsDir(project.id).catch(() => {});
-  }, [project.id]);
-
-  const handleRequestConnect = useCallback(
-    (platform: SocialPublishablePlatform) => {
-      if (!canUseAccountFeatures) return;
-      const returnPath = `${window.location.pathname}${window.location.search}`;
-      const flow = oauthFlowForPlatform(platform);
-      if (flow === "youtube") {
-        logYoutubeDebug("ClipperSessionView: initiating YouTube connect", {
-          returnPath,
-          projectId: project.id,
-        });
-        void youtubeAuthService.redirectToYoutubeConnect(returnPath).catch((error) => {
-          console.error(
-            "[Clipper/YouTube] ClipperSessionView: redirectToYoutubeConnect failed",
-            error,
-          );
-        });
-        return;
-      }
-      void socialAuthService.redirectToConnect(flow, returnPath);
-    },
-    [canUseAccountFeatures, project.id],
-  );
-
-  const requestAccount = useCallback(() => {
-    if (auth.user && auth.isAuthenticated) {
-      appToast.error("Account offline", "Connect to the internet to use this feature.");
-      return false;
-    }
-    rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
-    navigate("/auth");
-    return false;
-  }, [auth.isAuthenticated, auth.user, location.hash, location.pathname, location.search, navigate]);
-
-  const queuePublishPlatform: SocialPublishablePlatform = useMemo(() => {
-    if (!queuePublishTarget) return "youtube";
-    return queuePublishTargetPlatform;
-  }, [queuePublishTarget, queuePublishTargetPlatform]);
-
-  const queuePublishConnection = useMemo(() => {
-    if (queuePublishPlatform === "youtube") {
-      return {
-        connected: isYoutubeConnected,
-        accountLabel: youtubeChannelTitle,
-      };
-    }
-    const state = socialPlatforms[queuePublishPlatform];
-    return {
-      connected: state?.connected ?? false,
-      accountLabel: state?.displayName ?? null,
-    };
-  }, [
-    queuePublishPlatform,
-    isYoutubeConnected,
-    youtubeChannelTitle,
-    socialPlatforms,
-  ]);
-
-  useEffect(() => {
-    if (!canUseAccountFeatures) return;
-    void refreshYoutubeStatus();
-    void refreshSocial();
-  }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
-
-  const step: ClipperLayoutStep | undefined = (() => {
-    switch (state.stage) {
-      case "trimming":
-        return { current: 1, total: 3, title: "Choose your source range" };
-      case "uploading":
-      case "transcribing":
-      case "analyzing-faces":
-      case "analyzing-subjects":
-        return { current: 2, total: 3, title: "Transcribing & preparing clips" };
-      case "preview":
-      case "rendering":
-      case "done":
-        return view === "exports"
-          ? { title: "Your exports" }
-          : view === "queue"
-            ? {
-                current: 3,
-                total: 3,
-                title:
-                  queuePhase === "progress"
-                    ? "Rendering…"
-                    : queuePhase === "complete"
-                      ? "Render complete"
-                      : "Render queue",
-              }
-            : { current: 3, total: 3, title: "Preview & customize" };
-      case "error":
-        return { title: "Something went wrong" };
-      default:
-        return undefined;
-    }
-  })();
-
-  const hasPreview =
-    state.rangeTrimmedVideoUrl != null &&
-    (state.autoPartsClipPreviews?.length ?? state.clipPreviews.length) > 0;
-  const isRestoringSession =
-    loaded?.resumePlan.target === "restoring" &&
-    !hasPreview &&
-    state.stage !== "error";
-  const showUpload = state.stage === "idle" && !isRestoringSession;
-  const showRestoreLoader = isRestoringSession;
-  const showFreshProcessing = isPreparing && !hasPreview && !isRestoringSession;
-  const showLoadingUi = showRestoreLoader || showFreshProcessing;
-  const canShowExports = hasPreview && exportCount > 0;
-  const showPreview =
-    hasPreview &&
-    view === "preview" &&
-    (state.stage === "preview" || state.stage === "rendering" || state.stage === "done");
-  const showQueue =
-    hasPreview &&
-    view === "queue" &&
-    (state.stage === "preview" || state.stage === "rendering" || state.stage === "done");
-  const showExports = canShowExports && view === "exports";
-  const showQueueSetup = showQueue && queuePhase === "setup";
-  const showQueueProgress =
-    showQueue && (queuePhase === "progress" || queuePhase === "complete");
-
-  const layoutBackLink =
-    showExports || showQueue
-      ? {
-          label: "Back to preview",
-          onClick: () => setView("preview"),
-        }
-      : undefined;
-
-  const resumeLoadingStatus = useMemo(
-    () => resumeStepsForStage(state.stage, state.stageMessage),
-    [state.stage, state.stageMessage],
-  );
+    handleFile,
+    handleOpenExportsFolder,
+    step,
+    visibility,
+    resumeLoadingStatus,
+    isRendering,
+    sessionResults,
+    renderQueue,
+    publish,
+  } = session;
 
   return (
-    <ClipperLayout step={showLoadingUi ? undefined : step} backLink={layoutBackLink}>
-      {showUpload && <ClipperUpload onFile={handleFile} />}
+    <ClipperLayout
+      step={visibility.showLoadingUi ? undefined : step}
+      backLink={visibility.layoutBackLink}
+    >
+      {visibility.showUpload && <ClipperUpload onFile={handleFile} />}
 
       {state.stage === "trimming" && sourceUrl && !rangeLocked && (
         <ClipperTrimSelect
@@ -421,13 +59,13 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
         />
       )}
 
-      {showRestoreLoader && (
+      {visibility.showRestoreLoader && (
         <Center py={12}>
           <ClipperProjectLoadingPanel status={resumeLoadingStatus} />
         </Center>
       )}
 
-      {showFreshProcessing && (
+      {visibility.showFreshProcessing && (
         <Center py={12}>
           <Box maxW="560px" w="full">
             <ClipperProcessing state={state} />
@@ -435,127 +73,35 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
         </Center>
       )}
 
-      {showPreview && (
-        <>
-          {state.error && (
-            <Box
-              mb={4}
-              p={4}
-              borderRadius="xl"
-              {...errorPanel}
-            >
-              <Text color={theme.status.danger} fontSize="sm">
-                {state.error}
-              </Text>
-            </Box>
-          )}
-          <ClipperPreview
-            state={state}
-            rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl!}
-            clipPreviews={state.clipPreviews}
-            autoPartsClipPreviews={state.autoPartsClipPreviews ?? state.clipPreviews}
-            aiClipPreviews={state.aiClipPreviews ?? []}
-            clipSourceMode={state.clipSourceMode ?? "auto-parts"}
-            activeClipIndex={state.activeClipIndex}
-            onSelectClip={setActiveClipIndex}
-            onClipSourceModeChange={(mode) => {
-              if (mode === "ai" && !canUseAccountFeatures) {
-                requestAccount();
-                return;
-              }
-              setClipSourceMode(mode);
-            }}
-            aiChatMessages={aiChatMessages}
-            aiChatLoading={aiChatLoading}
-            aiChatError={aiChatError}
-            aiChatThinking={aiChatThinking}
-            aiChatProgressChars={aiChatProgressChars}
-            aiChatModel={aiChatModel}
-            onAiChatModelChange={setAiChatModel}
-            onSendAiChatMessage={(message, preset) => {
-              if (!canUseAccountFeatures) {
-                requestAccount();
-                return;
-              }
-              void sendAiClipChatMessage(message, { preset });
-            }}
-            onLoadAiChatHistory={() => {
-              if (!canUseAccountFeatures) return;
-              void loadAiChatHistory();
-            }}
-            onNewAiChat={() => {
-              if (!canUseAccountFeatures) {
-                requestAccount();
-                return;
-              }
-              void startNewAiChat();
-            }}
-            onDeleteAiClip={deleteAiClip}
-            onDeleteAutoPartsClip={deleteAutoPartsClip}
-            onEditClipTranscript={editClipTranscript}
-            onUndoClipEdit={undoClipEdit}
-            onRedoClipEdit={redoClipEdit}
-            canUndoClipEdit={canUndoClipEdit}
-            canRedoClipEdit={canRedoClipEdit}
-            lastEditedTranscriptRange={lastEditedTranscriptRange}
-            aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
-            settings={settings}
-            onUpdateSettings={updateSettings}
-            getFrameContext={getFrameContext}
-            sourceFileName={state.sourceFileName}
-            isRendering={isRendering}
-            exportCount={exportCount}
-            onViewExports={() => setView("exports")}
-            onOpenRenderQueue={openRenderQueue}
-            disabledCollageRegionIds={disabledCollageRegionIds}
-            onToggleCollageRegion={toggleCollageRegion}
-            autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}
-            onAutoPartsSegmentLengthChange={(lengthSec) => {
-              void resegmentAutoParts(lengthSec);
-            }}
-            onResetAutoParts={() => {
-              void resegmentAutoParts(autoPartsSegmentLengthSec, { force: true });
-            }}
-            autoPartsResegmenting={autoPartsResegmenting}
-          />
-        </>
-      )}
+      {visibility.showPreview && <ClipperSessionPreviewPanel session={session} />}
 
-      {showQueueSetup && (
+      {visibility.showQueueSetup && (
         <ClipperRenderQueueSetup
           clipPreviews={state.clipPreviews}
           rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl!}
-          getClipFormatIds={getClipFormatIds}
-          onToggleClipFormat={toggleClipFormat}
-          onSetFormatForAll={setFormatForAllClips}
-          onSetAllFormatsForClip={setAllFormatsForClip}
+          getClipFormatIds={renderQueue.getClipFormatIds}
+          onToggleClipFormat={renderQueue.toggleClipFormat}
+          onSetFormatForAll={renderQueue.setFormatForAllClips}
+          onSetAllFormatsForClip={renderQueue.setAllFormatsForClip}
           isRendering={isRendering}
-          onRender={startQueuedRender}
+          onRender={renderQueue.startQueuedRender}
         />
       )}
 
-      {showQueueProgress && (
+      {visibility.showQueueProgress && (
         <ClipperRenderQueue
           state={state}
           clipPreviews={state.clipPreviews}
-          formatIdsByClip={formatIdsByClip}
+          formatIdsByClip={renderQueue.formatIdsByClip}
           results={sessionResults}
           isRendering={isRendering}
           onOpenFolder={handleOpenExportsFolder}
-          onPublish={(result, target) => {
-            if (result.isMissing) return;
-            if (!canUseAccountFeatures) {
-              requestAccount();
-              return;
-            }
-            setQueuePublishTargetPlatform(target);
-            setQueuePublishTarget(result);
-          }}
+          onPublish={publish.openPublishDialog}
           onRerenderFormat={(formatId, clipIndex) => void rerenderFormat(formatId, clipIndex)}
         />
       )}
 
-      {showExports && (
+      {visibility.showExports && (
         <ClipperExportsView
           exportHistory={state.exportHistory}
           sourceFileName={state.sourceFileName}
@@ -565,23 +111,19 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
       )}
 
       <ClipperSocialPublishDialog
-        isOpen={queuePublishTarget != null}
-        onClose={() => setQueuePublishTarget(null)}
+        isOpen={publish.queuePublishTarget != null}
+        onClose={publish.closePublishDialog}
         projectId={project.id}
-        result={queuePublishTarget}
+        result={publish.queuePublishTarget}
         sourceFileName={state.sourceFileName}
-        defaultConnected={queuePublishConnection.connected}
-        accountLabel={queuePublishConnection.accountLabel}
-        publishPlatform={queuePublishPlatform}
-        onRequestConnect={handleRequestConnect}
+        defaultConnected={publish.queuePublishConnection.connected}
+        accountLabel={publish.queuePublishConnection.accountLabel}
+        publishPlatform={publish.queuePublishPlatform}
+        onRequestConnect={publish.handleRequestConnect}
       />
 
       {state.stage === "error" && (
-        <Box
-          p={6}
-          borderRadius="2xl"
-          {...errorPanel}
-        >
+        <Box p={6} borderRadius="2xl" {...errorPanel}>
           <Text color={theme.status.danger} fontWeight="semibold" mb={2}>
             Something went wrong
           </Text>
