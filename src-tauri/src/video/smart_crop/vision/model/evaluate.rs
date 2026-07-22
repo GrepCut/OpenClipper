@@ -133,7 +133,6 @@ impl WinMlModel {
         }
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn evaluate_named(
         &mut self,
         inputs: &[(&str, &[i64], &[f32])],

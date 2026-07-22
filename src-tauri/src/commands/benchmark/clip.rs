@@ -10,7 +10,7 @@ use crate::storage::entity::{test_clip, test_dataset};
 use crate::infra::model_download::sha256_file;
 use crate::storage::repository::test_repository::TestKeyframeDto;
 use crate::storage::repository::TestRepository;
-use crate::video::{extract_clipper_segment_to_path_blocking, probe_video_metadata};
+use crate::video::ffmpeg::frames::{extract_clipper_segment_to_path_blocking, probe_video_metadata};
 
 use super::archive::delete_clip_rows;
 use super::paths::{test_clip_dir, test_dataset_root, validate_id};

@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::AppHandle;
 
 use crate::commands::benchmark::test_dataset_root;
-use crate::video::extract_frame_rgb_at_timestamp;
+use crate::video::ffmpeg::frames::extract_frame_rgb_at_timestamp;
 
 use super::annotate::{annotate_frame, encode_rgb_jpeg};
 use super::ground_truth::evaluate_ground_truth;

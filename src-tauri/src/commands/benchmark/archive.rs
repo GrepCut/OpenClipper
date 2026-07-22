@@ -16,7 +16,7 @@ use crate::storage::entity::{
 };
 use crate::infra::model_download::sha256_file;
 use crate::storage::repository::TestRepository;
-use crate::video::probe_video_metadata;
+use crate::video::ffmpeg::frames::probe_video_metadata;
 
 use super::paths::{test_dataset_root, validate_relative_path};
 use super::types::{

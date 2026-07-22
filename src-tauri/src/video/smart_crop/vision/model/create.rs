@@ -11,7 +11,6 @@ use super::super::types::{
 use super::WinMlModel;
 
 impl WinMlModel {
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn create_multi(
         kind: VisionModel,
         path: &Path,

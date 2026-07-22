@@ -7,13 +7,12 @@ use serde::Serialize;
 /// must pad their tensors to this bound.
 pub const BATCH_BOUND: usize = 8;
 
+/// ONNX vision models used by the smart-crop pipeline.
+/// Planned: active speaker detection (`lr_asd_ava.onnx`) — not wired yet.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum VisionModel {
     Face,
     YoloX,
-    /// Planned: active speaker detection (lr_asd_ava.onnx); not wired into production pipeline yet.
-    #[cfg_attr(not(test), allow(dead_code))]
-    ActiveSpeaker,
     Pose,
     TransNet,
     ReId,
