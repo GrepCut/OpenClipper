@@ -3875,7 +3875,6 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "url",

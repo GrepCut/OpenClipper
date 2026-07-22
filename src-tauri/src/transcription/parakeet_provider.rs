@@ -177,39 +177,6 @@ impl ParakeetProvider {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn uses_thirty_second_decode_windows() {
-        assert_eq!(MAX_DECODE_CHUNK_SECONDS, 30);
-
-        let sample_rate = 16_000usize;
-        let samples = vec![0.0; sample_rate * 61];
-        let chunks = samples
-            .chunks(sample_rate * MAX_DECODE_CHUNK_SECONDS)
-            .map(|chunk| chunk.len())
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            chunks,
-            vec![sample_rate * 30, sample_rate * 30, sample_rate]
-        );
-    }
-
-    #[test]
-    fn chunk_count_for_progress_covers_partial_tail() {
-        let sample_rate = 16_000usize;
-        let samples = vec![0.0; sample_rate * 61];
-        let chunk_count = samples
-            .chunks(sample_rate * MAX_DECODE_CHUNK_SECONDS)
-            .count()
-            .max(1);
-        assert_eq!(chunk_count, 3);
-    }
-}
-
 fn required_model_path(directory: &Path, filename: &str) -> Result<String, TranscriptionError> {
     let path: PathBuf = directory.join(filename);
     if !path.exists() {

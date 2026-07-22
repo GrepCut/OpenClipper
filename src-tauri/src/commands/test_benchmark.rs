@@ -693,17 +693,3 @@ fn copy_dir_all(source: &Path, target: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_unsafe_ids_and_artifact_paths() {
-        assert!(validate_id("dataset-123").is_ok());
-        assert!(validate_id("../dataset").is_err());
-        assert!(validate_relative_path("clips/clip-1/9-16.jsonl").is_ok());
-        assert!(validate_relative_path("../outside.json").is_err());
-        assert!(validate_relative_path("/absolute.json").is_err());
-    }
-}

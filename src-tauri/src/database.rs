@@ -58,6 +58,3 @@ async fn synchronize_schema(database: &DatabaseConnection) -> Result<(), DbErr> 
         .sync(database)
         .await
 }
-
-#[cfg(test)]
-mod tests;

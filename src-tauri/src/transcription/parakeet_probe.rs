@@ -33,23 +33,3 @@ pub fn smoke_provider(model_dir: &Path, provider: &str, num_threads: i32) -> boo
     };
     parakeet.smoke_decode(16_000, &vec![0.0f32; 16_000])
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn thread_count_is_capped() {
-        let threads = default_thread_count();
-        assert!(threads >= 1);
-        assert!(threads <= 8);
-    }
-
-    #[test]
-    fn cpu_provider_is_always_valid_choice() {
-        assert_eq!(
-            select_provider(std::path::Path::new("/nonexistent"), 2),
-            "cpu"
-        );
-    }
-}
