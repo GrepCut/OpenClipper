@@ -1,7 +1,7 @@
-export * from "./cues";
-export * from "./edit";
-export * from "./word-boundaries";
-export * from "./ai-clip-builder";
+export * from "./cues.util";
+export * from "./edit.util";
+export * from "./word-boundaries.util";
+export * from "./ai-clip-builder.util";
 export type {
   AiClipPickInput,
   AiClipSegmentRange,
@@ -10,4 +10,4 @@ export type {
   ClipTranscriptEditResult,
   WordMarginOptions,
   WordSelection,
-} from "../types/transcript";
+} from "../types/transcript.types";

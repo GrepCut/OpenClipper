@@ -3,6 +3,6 @@ export {
   getStoredThemeMode,
   syncThemeToDocument,
   useTheme,
-} from "./theme-context";
-export { colors, getThemeColors } from "./colors";
-export type { Theme, ThemeMode } from "./colors";
+} from "./theme-context.component";
+export { colors, getThemeColors } from "./colors.util";
+export type { Theme, ThemeMode } from "./colors.util";

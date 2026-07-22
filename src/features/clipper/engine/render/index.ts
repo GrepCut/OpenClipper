@@ -2,10 +2,10 @@ export {
   drawClipperFrame,
   drawClipperPreviewFrame,
   resolveClipperOutputSize,
-} from "./frame-draw";
-export { renderClipperFormat } from "./format";
-export { resolveAutoFlipCropRect, resolveAutoFlipCropRender } from "./crop-resolvers";
-export { resolveClipperLayoutRender } from "./layout-resolvers";
+} from "./frame-draw.util";
+export { renderClipperFormat } from "./format.util";
+export { resolveAutoFlipCropRect, resolveAutoFlipCropRender } from "./crop-resolvers.util";
+export { resolveClipperLayoutRender } from "./layout-resolvers.util";
 export type {
   ClipperClipWindow,
   ClipperFrameContext,
@@ -13,5 +13,5 @@ export type {
   RebasingVideoSample,
   RenderClipperResult,
   ResolvedClipperLayout,
-} from "../types/render";
-export type { ClipperPlatform } from "../../shared/formats";
+} from "../types/render.types";
+export type { ClipperPlatform } from "../../shared/formats.util";

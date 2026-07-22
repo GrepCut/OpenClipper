@@ -5,9 +5,9 @@ import {
   localProjectList,
   localProjectPut,
   localRecordGet,
-} from "../shared/persistence/local-database";
+} from "../shared/persistence/local-database.util";
 import { StorageLocation } from "../shared/types/storage.types";
-import { LOCAL_WORKSPACE_OWNER_ID } from "../shared/persistence/local-workspace";
+import { LOCAL_WORKSPACE_OWNER_ID } from "../shared/persistence/local-workspace.util";
 export * from "./types/projects.types";
 import type {
   Project,

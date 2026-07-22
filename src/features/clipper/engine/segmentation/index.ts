@@ -1,12 +1,12 @@
-export * from "./types";
+export * from "./segmentation.types";
 export {
   findGapJumpTarget,
   localTimeToSourceTime,
   sourceTimeToLocalTime,
-} from "./clip-time";
+} from "./clip-time.util";
 export {
   autoPartsBoundariesEqual,
   rebuildClipsFromGeneratedMetadata,
   repairAutoPartsBoundaries,
-} from "./boundaries";
-export { segmentRangeFromTrimmedFile } from "./file-io";
+} from "./boundaries.util";
+export { segmentRangeFromTrimmedFile } from "./file-io.util";

@@ -17,8 +17,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DEFAULT_ARBITER_PARAMS, LEGACY_ARBITER_PARAMS, RUN9_ARBITER_PARAMS, RUN10_ARBITER_PARAMS, type ArbiterParams } from "../src/features/clipper/engine/autoflip/layout";
-import { aggregate, replayClip, selfCheck, SELF_CHECK_METRIC_TOLERANCE } from "../src/features/tests/benchmark/replay/replay-engine";
-import { detectorHypothesisSamplesForDebug, loadRun, recordedArbiterParams } from "../src/features/tests/benchmark/replay/replay-io";
+import { aggregate, replayClip, selfCheck, SELF_CHECK_METRIC_TOLERANCE } from "../src/features/tests/benchmark/replay/replay-engine.util";
+import { detectorHypothesisSamplesForDebug, loadRun, recordedArbiterParams } from "../src/features/tests/benchmark/replay/replay-io.util";
 import {
   RUN5_PORTRAIT_FLOOR,
   RUN8_PORTRAIT_FLOOR,
@@ -30,7 +30,7 @@ import {
   sweep,
   sweepFraming,
   type ParamGrid,
-} from "../src/features/tests/benchmark/replay/replay-sweep";
+} from "../src/features/tests/benchmark/replay/replay-sweep.util";
 
 const DEFAULT_DATASET = "cd986c2a-d998-4a96-afec-218d052d8c78";
 const DEFAULT_RUN = "9062956a-ee2a-4aaa-a574-1bc07047fd56";

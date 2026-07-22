@@ -1,5 +1,5 @@
-import { toaster } from "../components/ui/toaster";
-import { TOAST_DEFAULTS } from "./toast.messages";
+import { toaster } from "../components/ui/toaster.component";
+import { TOAST_DEFAULTS } from "./toast.messages.util";
 
 type ToastType = "success" | "error" | "loading" | "info" | "warning";
 

@@ -1,5 +1,5 @@
-export * from "./track";
-export { drawPodcastCollageFrame, resolvePodcastCollageLayout } from "./draw";
+export * from "./track.util";
+export { drawPodcastCollageFrame, resolvePodcastCollageLayout } from "./draw.util";
 export type {
   CollageAspectEligibility,
   CollageEligibilityWindow,
@@ -7,4 +7,4 @@ export type {
   CollageTracks,
   FacePair,
   PodcastCollageLayout,
-} from "../../types/collage";
+} from "../../types/collage.types";

@@ -10,6 +10,7 @@
     "build:web": "vite build && node scripts/prune-web-models.mjs",
     "build:tauri": "cross-env VITE_APP_PLATFORM=tauri vite build && node scripts/prune-tauri-dist.mjs",
     "test": "vitest run",
+    "lint": "eslint src",
     "benchmark:run": "src-tauri\\target\\release\\open-clipper.exe --benchmark-run",
     "benchmark:run:dev": "tauri dev -- -- --benchmark-run",
     "benchmark:extract-miss-frames": "src-tauri\\target\\release\\open-clipper.exe --extract-miss-frames",
@@ -58,13 +59,17 @@
     "zustand": "^5.0.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.10.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "cross-env": "^7.0.3",
+    "eslint": "^10.7.0",
+    "eslint-plugin-unicorn": "^72.0.0",
     "tsx": "^4.23.1",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.65.0",
     "vite": "^7.0.4",
     "vitest": "^4.1.10"
   }

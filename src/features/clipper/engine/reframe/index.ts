@@ -6,22 +6,22 @@ export {
   hasAnyFaces,
   hydrateFaceSampleCache,
   serializeFaceSampleCache,
-} from "./cache";
+} from "./cache.util";
 export {
   prefillFaceSampleCache,
-} from "./analysis";
+} from "./analysis.util";
 export {
   deriveSingleFocusTrack,
   interpolateCentroid,
   pickPrimaryFace,
   SMOOTHING_ALPHA,
   blendCentroid,
-} from "./tracking";
+} from "./tracking.util";
 export {
   cropRectForCentroid,
   faceToCentroid,
   normalizedBoxToCropRect,
-} from "./crop";
+} from "./crop.util";
 export type {
   CentroidSample,
   ClipperCropRect,
@@ -33,4 +33,4 @@ export type {
   NativeVisionDevice,
   NativeVisionMetrics,
   PrefillFaceSampleCacheOptions,
-} from "../types/reframe";
+} from "../types/reframe.types";

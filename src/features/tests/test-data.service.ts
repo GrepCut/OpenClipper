@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { pathBackedFile } from "../clipper/platform/native-source";
-import { resolveFilePlayableUrl } from "../clipper/persistence/tauri-media";
+import { pathBackedFile } from "../clipper/platform/native-source.util";
+import { resolveFilePlayableUrl } from "../clipper/persistence/tauri-media.util";
 import type {
   BenchmarkResult,
   BenchmarkRun,
@@ -8,7 +8,7 @@ import type {
   TestDataset,
   TestDatasetSummary,
   TestKeyframe,
-} from "./types";
+} from "./test.types";
 
 export const testDataService = {
   listDatasets: () => invoke<TestDatasetSummary[]>("test_dataset_list"),

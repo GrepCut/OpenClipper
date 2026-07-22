@@ -10,7 +10,7 @@ export {
   precedingIndex,
   proposalScore,
   requiredRegions,
-} from "./arbiter";
+} from "./arbiter.util";
 export {
   DEFAULT_VISIBILITY_PARAMS,
   LEGACY_VISIBILITY_PARAMS,
@@ -19,7 +19,7 @@ export {
   buildVisibilityEnvelopes,
   createVisibilityControllerState,
   planVisibilityRescue,
-} from "./visibility-controller";
+} from "./visibility-controller.util";
 export {
   DEFAULT_SEMANTIC_FRAMING_PARAMS,
   VISIBILITY_CONSTRAINED_FRAMING_PARAMS,
@@ -29,8 +29,8 @@ export {
   groupUnionLexicographicOk,
   layoutGeometry,
   rawMode,
-} from "./layout-planner";
-export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation";
+} from "./layout-planner.util";
+export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation.util";
 export type {
   ArbiterDecision,
   ArbiterParams,
@@ -43,4 +43,4 @@ export type {
   VisibilityFramingState,
   VisibilityMachineState,
   VisibilityVariant,
-} from "../../types/autoflip-layout";
+} from "../../types/autoflip-layout.types";

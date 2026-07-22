@@ -3,12 +3,12 @@ import {
   API_BASE_URL,
   AUTH_REQUEST_TIMEOUT_MS,
   type ApiRequestConfig,
-} from "../shared/utils/apiClient";
+} from "../shared/utils/api-client.util";
 import type { User } from "../shared/types/auth.types";
 export * from "./types/auth.types";
 import type { LoginResponse, RefreshResponse } from "./types/auth.types";
-import { getAuthClient } from "../shared/utils/auth-client";
-import { openExternalAuthUrl } from "../shared/utils/desktopAuth";
+import { getAuthClient } from "../shared/utils/auth-client.util";
+import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
 
 export const authService = {
   logout: (options?: { disconnectGoogleDrive?: boolean }) =>

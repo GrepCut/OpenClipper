@@ -1,8 +1,8 @@
-import { apiClient } from "../shared/utils/apiClient";
+import { apiClient } from "../shared/utils/api-client.util";
 import {
   localRecordGet,
   localRecordPut,
-} from "../shared/persistence/local-database";
+} from "../shared/persistence/local-database.util";
 export * from "./types/transcription.types";
 import type {
   ParakeetCapability,
@@ -12,15 +12,15 @@ import type {
   Transcription,
   TranscriptionEngine,
 } from "./types/transcription.types";
-import { debugLogger } from "../shared/utils/noop-logger";
+import { debugLogger } from "../shared/utils/noop-logger.util";
 import { invoke } from "@tauri-apps/api/core";
-import { isTauri } from "../shared/utils/platform";
-import { encodeMono16kWav } from "../features/clipper/lib/media/write-mono16k-wav";
-import { ensureClipperProjectDataDir } from "../features/clipper/persistence/project-data-files";
+import { isTauri } from "../shared/utils/platform.util";
+import { encodeMono16kWav } from "../features/clipper/lib/media/write-mono16k-wav.util";
+import { ensureClipperProjectDataDir } from "../features/clipper/persistence/project-data-files.util";
 import {
   createTauriNativeJobId,
   runTauriNativeJob,
-} from "../shared/utils/tauri-native-jobs";
+} from "../shared/utils/tauri-native-jobs.util";
 
 const NAMESPACE = "transcription";
 const TRANSCRIBE_AUDIO_WAV = "transcribe-audio.wav";
