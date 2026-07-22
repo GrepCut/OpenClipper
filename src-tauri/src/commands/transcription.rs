@@ -3,7 +3,7 @@ use crate::transcription::{
     ParakeetCapability, ParakeetModelStatus, ParakeetService, ParakeetTranscribeRequest,
     ParakeetTranscriptionProgress, ParakeetTranscriptionResult, TranscriptionError,
 };
-use crate::video_processing::{NativeJobEmitter, NativeJobRegistry};
+use crate::video::{NativeJobEmitter, NativeJobRegistry};
 use crossbeam_channel;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;

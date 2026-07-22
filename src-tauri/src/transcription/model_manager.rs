@@ -1,6 +1,6 @@
 use super::types::{ParakeetModelStatus, TranscriptionError};
-use crate::model_cache::download_model_file_to_cache;
-use crate::model_download::{
+use crate::infra::model_cache::download_model_file_to_cache;
+use crate::infra::model_download::{
     download_url_to_file, emit_model_download_event, extract_tar_bz2, sha256_file,
 };
 use std::fs::{self};
