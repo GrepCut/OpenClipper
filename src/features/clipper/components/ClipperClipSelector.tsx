@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
 import { AlertCircle, CheckCircle2, Loader2, Pencil, Trash2 } from "lucide-react";
-import type { CollageRegion } from "../engine/collage";
-import type { ClipperGeneratedClip } from "../engine/clip-segmentation";
-import type { ClipTranscriptEditOp } from "../engine/clip-transcript-edit";
-import { globalWordsInClip } from "../engine/clip-transcript-edit";
+import type { CollageRegion } from "../engine/reframe/collage";
+import type { ClipperGeneratedClip } from "../engine/segmentation";
+import type { ClipTranscriptEditOp } from "../engine/transcript";
+import { globalWordsInClip } from "../engine/transcript";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
 import type { ClipperClipPreview, WordCue } from "../shared/state";

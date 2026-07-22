@@ -10,7 +10,7 @@ const { extractAudioMock, getTranscriptionMock, transcribeMock } = vi.hoisted(
   }),
 );
 
-vi.mock("../../engine/audio-extract", () => ({
+vi.mock("../../engine/audio", () => ({
   extractClipAudioForTranscription: extractAudioMock,
 }));
 

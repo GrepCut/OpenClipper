@@ -16,7 +16,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DEFAULT_ARBITER_PARAMS, RUN9_ARBITER_PARAMS, RUN10_ARBITER_PARAMS, type ArbiterParams } from "../src/features/clipper/engine/autoflip/layout-arbiter";
+import { DEFAULT_ARBITER_PARAMS, LEGACY_ARBITER_PARAMS, RUN9_ARBITER_PARAMS, RUN10_ARBITER_PARAMS, type ArbiterParams } from "../src/features/clipper/engine/autoflip/layout";
 import { aggregate, replayClip, selfCheck, SELF_CHECK_METRIC_TOLERANCE } from "../src/features/tests/benchmark/replay/replay-engine";
 import { detectorHypothesisSamplesForDebug, loadRun, recordedArbiterParams } from "../src/features/tests/benchmark/replay/replay-io";
 import {

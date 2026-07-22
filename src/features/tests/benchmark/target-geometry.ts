@@ -1,4 +1,4 @@
-import { coveredFraction } from "../../clipper/engine/autoflip/layout-arbiter";
+import { coveredFraction } from "../../clipper/engine/autoflip/layout";
 import type { TestTarget } from "../types";
 import type { NormalizedViewport } from "./metrics";
 
@@ -14,11 +14,17 @@ export function targetCenter(target: TestTarget): { x: number; y: number } {
   return { x: target.x + target.width / 2, y: target.y + target.height / 2 };
 }
 
+export function nominalSizeForAspects(
+  sourceAspect: number,
+  targetAspect: number,
+): { width: number; height: number } {
+  return sourceAspect >= targetAspect
+    ? { width: targetAspect / sourceAspect, height: 1 }
+    : { width: 1, height: sourceAspect / targetAspect };
+}
+
 export function nominalSize(sourceWidth: number, sourceHeight: number): { width: number; height: number } {
-  const sourceAspect = sourceWidth / sourceHeight;
-  return sourceAspect >= TARGET_ASPECT
-    ? { width: TARGET_ASPECT / sourceAspect, height: 1 }
-    : { width: 1, height: sourceAspect / TARGET_ASPECT };
+  return nominalSizeForAspects(sourceWidth / sourceHeight, TARGET_ASPECT);
 }
 
 export function defaultContainRect(

@@ -8,9 +8,9 @@ import {
   type CollageAspectEligibility,
   type CollageRegion,
   type CollageTracks,
-} from "../engine/collage";
-import type { ClipperGeneratedClip } from "../engine/clip-segmentation";
-import { findClipByIndex } from "../engine/clip-segmentation";
+} from "../engine/reframe/collage";
+import type { ClipperGeneratedClip } from "../engine/segmentation";
+import { findClipByIndex } from "../engine/segmentation";
 import {
   FACE_SAMPLE_INTERVAL_SEC,
   FaceSampleCache,
@@ -18,13 +18,13 @@ import {
   hasAnyFaces,
   type CentroidSample,
 } from "../engine/reframe";
-import type { ClipperFrameContext } from "../engine/frame-draw";
+import type { ClipperFrameContext } from "../engine/render";
 import type { AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, SubjectDetectionSample } from "../shared/smart-crop";
 import type { FaceBoxSample } from "../shared/face-samples";
 import { groupCaptionWords } from "../engine/transcript";
 import type { ClipSourceMode } from "../persistence/project-metadata";
 import type { PipelineReporter } from "./reporter";
-import type { RmsEnvelope } from "../engine/audio-envelope";
+import type { RmsEnvelope } from "../engine/audio";
 import type { FaceActionBenchmark } from "../shared/face-action-benchmark";
 
 /**

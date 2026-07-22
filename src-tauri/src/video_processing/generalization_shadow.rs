@@ -34,10 +34,13 @@ pub struct GeneralizationShadowConfig {
 
 impl GeneralizationShadowConfig {
     pub fn resolve() -> Self {
+        let enable_shadow = std::env::var("CLIPPER_ENABLE_SHADOW")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
         Self {
-            transnet: true,
-            osnet: true,
-            vinet: true,
+            transnet: enable_shadow,
+            osnet: enable_shadow,
+            vinet: enable_shadow,
         }
     }
 
@@ -814,9 +817,9 @@ mod tests {
     }
 
     #[test]
-    fn shadow_config_resolve_defaults_all_on() {
+    fn shadow_config_resolve_defaults_all_off() {
         let config = GeneralizationShadowConfig::resolve();
-        assert!(config.transnet && config.osnet && config.vinet);
+        assert!(!config.transnet && !config.osnet && !config.vinet);
     }
 
     #[test]

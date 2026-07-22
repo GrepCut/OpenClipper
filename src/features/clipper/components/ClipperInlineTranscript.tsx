@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { Box, IconButton, Text } from "@chakra-ui/react";
 import { Columns2 } from "lucide-react";
-import type { CollageRegion } from "../engine/collage";
+import type { CollageRegion } from "../engine/reframe/collage";
 import type { WordCue } from "../lib/media/transcription-export";
 import { useClipperUi } from "../shared/use-clipper-ui";
 import { clipperTheme } from "../shared/theme";

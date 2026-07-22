@@ -2,8 +2,8 @@ import {
   AUTOFLIP_ANALYZER_VERSION,
   buildAutoFlipTrack,
   primaryAspectTrackSampleCount,
-} from "../../engine/autoflip/build-autoflip-track";
-import { augmentFaceSamplesWithDetectedHeads } from "../../engine/collage";
+} from "../../engine/autoflip";
+import { augmentFaceSamplesWithDetectedHeads } from "../../engine/reframe/collage";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats";
 import { aspectRatioFromId } from "../../lib/media/video-draw";
 import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings";
@@ -129,7 +129,7 @@ export async function runAnalyzeSubjectsStage(
     smoothing: input.smoothing ?? "balanced",
     headroom: input.headroom,
     degradedReason,
-    iteration10: true,
+    enhancedIdentityFusion: true,
   });
   blob.engine = "winml";
   session.smartCropAnalysis = blob;

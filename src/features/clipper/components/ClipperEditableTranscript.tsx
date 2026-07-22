@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text } from "@chakra-ui/react";
 import type { WordCue } from "../lib/media/transcription-export";
-import type { ClipTranscriptEditOp, WordSelection } from "../engine/clip-transcript-edit";
+import type { ClipTranscriptEditOp, WordSelection } from "../engine/transcript";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
 import { ClipperTranscriptEmpty } from "./ClipperTranscriptEmpty";

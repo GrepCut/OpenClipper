@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ClipperLayoutTrack } from "../../../clipper/shared/smart-crop";
-import { interpolateLayoutSample } from "../../../clipper/engine/autoflip/layout-planner";
+import { interpolateLayoutSample } from "../../../clipper/engine/autoflip/layout";
 import type { BenchmarkFrameDetail } from "../metrics";
 import { composeFrames, type ReplayedSample } from "./replay-engine";
 

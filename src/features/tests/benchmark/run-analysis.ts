@@ -5,11 +5,11 @@ import {
   prefillFaceSampleCache,
   cropRectForCentroid,
 } from "../../clipper/engine/reframe";
-import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-autoflip-track";
-import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/canonical-person";
-import { RUN10_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout-arbiter";
+import { buildAutoFlipTrack } from "../../clipper/engine/autoflip";
+import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/identity/canonical-person";
+import { DEFAULT_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout";
 import { resolveClipCohorts } from "./cohort-tags";
-import { ITERATION10_VISIBILITY_CONTROLLER_PARAMS } from "../../clipper/engine/autoflip/visibility-controller";
+import { DEFAULT_VISIBILITY_PARAMS } from "../../clipper/engine/autoflip/layout";
 import {
   augmentFaceSamplesWithDetectedHeads,
   buildCollageTracksForRegions,
@@ -18,8 +18,8 @@ import {
   findActiveRegion,
   isCollageAspectEligible,
   resolvePodcastCollageLayout,
-} from "../../clipper/engine/collage";
-import { resolveAutoFlipCropRect, resolveClipperLayoutRender } from "../../clipper/engine/frame-draw";
+} from "../../clipper/engine/reframe/collage";
+import { resolveAutoFlipCropRect, resolveClipperLayoutRender } from "../../clipper/engine/render";
 import { canonicalFormatDims, getClipperFormatDef } from "../../clipper/shared/formats";
 import { DEFAULT_CLIPPER_SETTINGS } from "../../clipper/settings/settings";
 import type { TestClip, TestKeyframe } from "../types";
@@ -27,7 +27,7 @@ import { TEST_ASPECTS } from "../types";
 import { calculateBenchmarkMetrics, type NormalizedViewport } from "./metrics";
 import { calculateLayoutOracle } from "./oracle";
 import { REPLAY_METRIC_TOLERANCE } from "./replay/replay-tolerance";
-import { interpolateLayoutSample, resolveLayoutTrack } from "../../clipper/engine/autoflip/layout-planner";
+import { interpolateLayoutSample, resolveLayoutTrack } from "../../clipper/engine/autoflip/layout";
 
 export interface TestBenchmarkProgress {
   phase: string;
@@ -126,7 +126,7 @@ export async function runTestBenchmarkAnalysis(input: {
     headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
-    iteration10: true,
+    enhancedIdentityFusion: true,
   });
   blob.engine = engine;
   const iteration10CandidateBlob = buildAutoFlipTrack({
@@ -148,7 +148,7 @@ export async function runTestBenchmarkAnalysis(input: {
     headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
-    iteration10: true,
+    enhancedIdentityFusion: true,
   });
   iteration10CandidateBlob.engine = engine;
 
@@ -301,8 +301,8 @@ export async function runTestBenchmarkAnalysis(input: {
       replayConfig: {
         productionPolicy: "iteration10",
         replayMetricTolerance: REPLAY_METRIC_TOLERANCE,
-        arbiterParams: { ...RUN10_ARBITER_PARAMS },
-        visibilityControllerParams: { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS },
+        arbiterParams: { ...DEFAULT_ARBITER_PARAMS },
+        visibilityControllerParams: { ...DEFAULT_VISIBILITY_PARAMS },
       },
       semanticFramingParams: null,
       scenes: blob.debug ?? [],
@@ -311,7 +311,6 @@ export async function runTestBenchmarkAnalysis(input: {
       subjectSamples: canonicalSamples,
       canonicalIdentityTelemetry: blob.canonicalIdentityTelemetry,
       activeSpeakerTelemetry: blob.activeSpeakerTelemetry,
-      shadowDiagnostics: summary.shadowDiagnostics,
       cohortTags: resolveClipCohorts(input.clip),
       candidates: {
         iteration10: {

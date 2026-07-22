@@ -1,19 +1,17 @@
 import { canonicalFormatDims, CLIPPER_FORMAT_DEFS, getClipperFormatDef, type ClipperFormatDef } from "../../shared/formats";
 import type { ClipperFormatResult } from "../../shared/state";
-import { renderClipperFormat } from "../../engine/render-format";
-import type { ClipperFrameContext } from "../../engine/frame-draw";
+import { renderClipperFormat, type ClipperClipWindow } from "../../engine/render";
+import type { ClipperFrameContext } from "../../engine/render";
 import { clipperError, clipperTimer, clipperWarn } from "../../shared/logger";
 import type { PipelineReporter } from "../reporter";
 import type { ClipperSession } from "../session";
-import { findClipByIndex } from "../../engine/clip-segmentation";
+import { findClipByIndex } from "../../engine/segmentation";
 import {
   appendClipperExportManifestEntry,
   buildClipperExportFileName,
   createClipperExportId,
   createClipperExportSink,
 } from "../../persistence/export-files";
-import type { ClipperClipWindow } from "../../engine/render-format";
-
 export interface RenderStageInput {
   projectId: string;
   enabledFormatIds: string[];
@@ -181,54 +179,6 @@ export async function runRenderClipJob(
         {
           signal: options.signal,
           onProgress: (ratio) => reporter.renderProgress(progressKey, ratio),
-        },
-        previewUrls,
-      );
-      endFormat();
-      return result;
-    }),
-  );
-
-  if (options.signal.aborted) throw new DOMException("Conversion aborted", "AbortError");
-  endRun();
-  return results;
-}
-
-/** Renders all enabled export formats in parallel (legacy single-clip path). */
-export async function runRenderStage(
-  session: ClipperSession,
-  frameContext: ClipperFrameContext,
-  input: RenderStageInput & { filenameStem: string; filenameTemplate: string },
-  reporter: PipelineReporter,
-  options: { signal: AbortSignal; previewUrls?: string[] },
-): Promise<ClipperFormatResult[]> {
-  const formats = CLIPPER_FORMAT_DEFS.filter((f) => input.enabledFormatIds.includes(f.id));
-  if (formats.length === 0) {
-    throw new Error("Select at least one export format.");
-  }
-
-  const runId = `render-${Date.now()}`;
-  const endRun = clipperTimer(`pipeline[${runId}]: render total`);
-  const previewUrls = options.previewUrls ?? [];
-
-  const results = await Promise.all(
-    formats.map(async (formatDef): Promise<ClipperFormatResult> => {
-      const endFormat = clipperTimer(`pipeline[${runId}]: render ${formatDef.id}`);
-      const result = await renderFormatToResult(
-        session.trimmedFile!,
-        formatDef,
-        frameContext,
-        { segments: [{ startSec: session.clipStart, endSec: session.clipEnd }] },
-        { startSec: session.clipStart, endSec: session.clipEnd },
-        {
-          projectId: input.projectId,
-          clipIndex: session.activeClipIndex,
-          filenameStem: input.filenameStem,
-          filenameTemplate: input.filenameTemplate,
-        },
-        {
-          signal: options.signal,
-          onProgress: (ratio) => reporter.renderProgress(formatDef.id, ratio),
         },
         previewUrls,
       );

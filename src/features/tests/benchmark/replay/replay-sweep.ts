@@ -1,5 +1,5 @@
-import { DEFAULT_ARBITER_PARAMS, type ArbiterParams } from "../../../clipper/engine/autoflip/layout-arbiter";
-import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout-planner";
+import { DEFAULT_ARBITER_PARAMS, type ArbiterParams } from "../../../clipper/engine/autoflip/layout";
+import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout";
 import { aggregate, replayClip, type AggregateMetrics, type ClipReplayResult } from "./replay-engine";
 import type { ClipArtifacts } from "./replay-io";
 

@@ -1,5 +1,5 @@
 import type { ClipperStage } from "../shared/stages";
-import { normalizeAutoPartsSegmentLengthSec } from "../engine/clip-segmentation";
+import { normalizeAutoPartsSegmentLengthSec } from "../engine/segmentation";
 import {
   DEFAULT_CLIPPER_SETTINGS,
   mergeClipperSettings,

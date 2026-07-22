@@ -2,18 +2,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Box, Button, HStack, Slider, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { ListOrdered, Pause, Play } from "lucide-react";
 import { OutlinedActionButton, getOutlinedActionSurfaceProps, OUTLINED_ACTION_BUTTON_SIZE_PROPS } from "../../../shared/components/buttons/OutlinedActionButton";
-import { drawClipperPreviewFrame, type ClipperFrameContext } from "../engine/frame-draw";
+import { drawClipperPreviewFrame, type ClipperFrameContext } from "../engine/render";
 import {
   deriveCollageAspectEligibility,
   deriveTwoSpeakerRegions,
   filterRegionsWithEligibleAspects,
-} from "../engine/collage";
-import type { ClipperClipSegmentWindow } from "../engine/clip-segmentation";
+} from "../engine/reframe/collage";
+import type { ClipperClipSegmentWindow } from "../engine/segmentation";
 import {
   findGapJumpTarget,
   localTimeToSourceTime,
   sourceTimeToLocalTime,
-} from "../engine/clip-segment-time";
+} from "../engine/segmentation";
 import { FrameCanvasCache } from "../lib/media/video-frame-effect";
 import { clipperError, clipperLog } from "../shared/logger";
 import { clipperTheme } from "../shared/theme";
@@ -21,7 +21,7 @@ import { useClipperUi } from "../shared/use-clipper-ui";
 import type { ClipperSettings } from "../settings/settings";
 import { CLIPPER_CARD_FRAME_HEIGHT, CLIPPER_FORMAT_DEFS, CLIPPER_HERO_PREVIEW_HEIGHT } from "../shared/formats";
 import type { ClipperClipPreview, ClipperPipelineState, ClipSourceMode } from "../shared/state";
-import type { ClipTranscriptEditOp } from "../engine/clip-transcript-edit";
+import type { ClipTranscriptEditOp } from "../engine/transcript";
 import type {
   ClipperAiChatMessage,
   ClipperAiClipPickerModel,

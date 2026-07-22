@@ -2,7 +2,7 @@ import type { CaptionGroup, WordCue } from "../lib/media/transcription-export";
 import type { ClipperSettings } from "../settings/settings";
 import type { ClipperPlatform } from "./formats";
 import type { ClipperStage } from "./stages";
-import type { ClipperGeneratedClip } from "../engine/clip-segmentation";
+import type { ClipperGeneratedClip } from "../engine/segmentation";
 import type { ClipSourceMode } from "../persistence/project-metadata";
 
 export type ClipperClipRenderStatus = "idle" | "queued" | "rendering" | "done" | "error";

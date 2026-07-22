@@ -1,11 +1,11 @@
-import { segmentRangeFromTrimmedFile } from "../engine/clip-segmentation";
+import { segmentRangeFromTrimmedFile } from "../engine/segmentation";
 import { clipperLog, clipperTimer } from "../shared/logger";
 import { snapToKeyframe } from "../platform/native-source";
 import { markClipperStepCompleted } from "../persistence/pipeline-api";
 import type { ClipperTranscriptionEngine } from "../settings/settings";
 import type { ClipperProjectMetadata } from "../persistence/project-metadata";
 import type { WordCue } from "../lib/media/transcription-export";
-import type { ClipperGeneratedClip } from "../engine/clip-segmentation";
+import type { ClipperGeneratedClip } from "../engine/segmentation";
 import type { PipelineReporter } from "./reporter";
 import { createFaceCache, syncSessionActiveClips, type ClipperSession } from "./session";
 import { runAnalyzeFacesStage } from "./stages/analyze-faces";

@@ -8,21 +8,21 @@ import {
   requiredRegions,
   coveredFraction,
   type ArbiterParams,
-} from "../../../clipper/engine/autoflip/layout-arbiter";
+} from "../../../clipper/engine/autoflip/layout";
 import {
   buildViewports,
   createVisibilityFramingState,
   DEFAULT_SEMANTIC_FRAMING_PARAMS,
   rawMode,
   type SemanticFramingParams,
-} from "../../../clipper/engine/autoflip/layout-planner";
+} from "../../../clipper/engine/autoflip/layout";
 import {
   createVisibilityControllerState,
   planVisibilityRescue,
-  ITERATION10_VISIBILITY_CONTROLLER_PARAMS,
+  DEFAULT_VISIBILITY_PARAMS,
   type VisibilityControllerParams,
   type VisibilityVariant,
-} from "../../../clipper/engine/autoflip/visibility-controller";
+} from "../../../clipper/engine/autoflip/layout";
 import { REPLAY_METRIC_TOLERANCE } from "./replay-tolerance";
 import { calculateBenchmarkMetrics, type BenchmarkFrameDetail, type BenchmarkFrameInput } from "../metrics";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
@@ -233,7 +233,7 @@ export function replayClip(
   // this mirrors production, which always pairs it with the Iteration 10
   // visibility controller.
   const controller = visibilityController ?? (params.allowSplit === true && params.allowContain === true
-    ? { ...ITERATION10_VISIBILITY_CONTROLLER_PARAMS }
+    ? { ...DEFAULT_VISIBILITY_PARAMS }
     : undefined);
   const samples = replayTrack(clip.debug, clip.formatId, params, framing || controller ? {
     frameWidth: clip.dims.width,

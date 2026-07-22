@@ -55,15 +55,15 @@ import {
   segmentRangeFromTrimmedFile,
   sortClipsByIndex,
   type AutoPartsSegmentLengthSec,
-} from "../engine/clip-segmentation";
-import { aiClipPicksToWordRanges, buildClipsFromWordRanges, type AiClipSegmentRange } from "../engine/ai-clip-builder";
+} from "../engine/segmentation";
+import { aiClipPicksToWordRanges, buildClipsFromWordRanges, type AiClipSegmentRange } from "../engine/transcript";
 import {
   applyClipTranscriptEdit,
   clipPayloadFromWordRanges,
   deriveWordRangesFromClip,
   rebuildClipFromWordRanges,
   type ClipTranscriptEditOp,
-} from "../engine/clip-transcript-edit";
+} from "../engine/transcript";
 import {
   clipperAiClipService,
   type ClipperAiChatMessage,
@@ -90,8 +90,8 @@ const METADATA_IMMEDIATE_FLUSH_STAGES: ClipperStage[] = ["preview", "done", "err
 
 interface ClipEditSnapshot {
   mode: ClipSourceMode;
-  autoPartsClips: import("../engine/clip-segmentation").ClipperGeneratedClip[];
-  aiClips: import("../engine/clip-segmentation").ClipperGeneratedClip[];
+  autoPartsClips: import("../engine/segmentation").ClipperGeneratedClip[];
+  aiClips: import("../engine/segmentation").ClipperGeneratedClip[];
   aiMeta: ClipperClipPayload[];
   lastEditedRange: { clipIndex: number; startIdx: number; endIdx: number } | null;
 }
@@ -124,7 +124,7 @@ function applyFilenameTemplate(
 }
 
 function buildClipPreviews(
-  clips: import("../engine/clip-segmentation").ClipperGeneratedClip[],
+  clips: import("../engine/segmentation").ClipperGeneratedClip[],
 ): ClipperClipPreview[] {
   return sortClipsByIndex(clips).map((clip) => ({
     clip,
@@ -135,10 +135,10 @@ function buildClipPreviews(
 }
 
 function clipsToPayload(
-  clips: import("../engine/clip-segmentation").ClipperGeneratedClip[],
+  clips: import("../engine/segmentation").ClipperGeneratedClip[],
   rangeWords?: import("../../lib/media/transcription-export").WordCue[],
   rangeDurationSec = Infinity,
-  envelope?: import("../engine/audio-envelope").RmsEnvelope,
+  envelope?: import("../engine/audio").RmsEnvelope,
 ): ClipperClipPayload[] {
   return clips.map((clip) => {
     if (rangeWords?.length) {
@@ -163,7 +163,7 @@ function clipsToPayload(
 function resolveAutoPartsClips(
   session: ClipperSession,
   prev: ClipperPipelineState,
-): import("../engine/clip-segmentation").ClipperGeneratedClip[] {
+): import("../engine/segmentation").ClipperGeneratedClip[] {
   if (session.autoPartsClips.length > 0) return session.autoPartsClips;
 
   const fromPreviews = (
@@ -194,8 +194,8 @@ function rebuildClipsFromDbPayload(
   rangeWords: import("../../lib/media/transcription-export").WordCue[],
   wordsPerGroup: number,
   rangeDurationSec = Infinity,
-  envelope?: import("../engine/audio-envelope").RmsEnvelope,
-): import("../engine/clip-segmentation").ClipperGeneratedClip[] {
+  envelope?: import("../engine/audio").RmsEnvelope,
+): import("../engine/segmentation").ClipperGeneratedClip[] {
   if (!dbClips.length || !rangeWords.length) return [];
 
   const hasWordIndices = dbClips.every((clip) => payloadClipToWordSegments(clip).length > 0);

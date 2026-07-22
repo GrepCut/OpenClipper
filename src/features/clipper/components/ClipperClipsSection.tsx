@@ -2,19 +2,19 @@ import React, { useEffect } from "react";
 import { Box, Flex, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
 import { MdAutoAwesome } from "react-icons/md";
 import { RotateCcw } from "lucide-react";
-import type { CollageRegion } from "../engine/collage";
+import type { CollageRegion } from "../engine/reframe/collage";
 import type {
   ClipperAiChatMessage,
   ClipperAiClipPickerModel,
 } from "../persistence/ai-clip-api";
 import type { ClipperClipPreview, ClipSourceMode, WordCue } from "../shared/state";
-import type { ClipTranscriptEditOp } from "../engine/clip-transcript-edit";
+import type { ClipTranscriptEditOp } from "../engine/transcript";
 import type { AutoPartsSegmentLengthSec } from "../persistence/project-metadata";
 import {
   AUTO_PARTS_SEGMENT_LENGTH_OPTIONS,
   formatAutoPartsSegmentLengthLabel,
   isPresetAutoPartsSegmentLength,
-} from "../engine/clip-segmentation";
+} from "../engine/segmentation";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
 import { ClipperAiClipChat } from "./ClipperAiClipChat";

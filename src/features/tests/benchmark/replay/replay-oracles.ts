@@ -1,6 +1,6 @@
 import type { ImportanceRegion, ImportanceRegionSample, NormalizedBox, SubjectDetectionSample } from "../../../clipper/shared/smart-crop";
 import { COVERAGE_HIT_THRESHOLD, coverageOfTarget, targetBox } from "../target-geometry";
-import { coveredFraction } from "../../../clipper/engine/autoflip/layout-arbiter";
+import { coveredFraction } from "../../../clipper/engine/autoflip/layout";
 import type { TestKeyframe, TestTarget } from "../../types";
 import { evaluateGroundTruth } from "../ground-truth";
 import type { BenchmarkFrameInput } from "../metrics";

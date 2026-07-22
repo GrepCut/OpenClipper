@@ -4,7 +4,7 @@ import {
   AUTO_PARTS_SEGMENT_LENGTH_MAX_SEC,
   AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC,
   normalizeAutoPartsSegmentLengthSec,
-} from "../engine/clip-segmentation";
+} from "../engine/segmentation";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";
 import {

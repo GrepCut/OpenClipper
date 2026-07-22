@@ -1,4 +1,4 @@
-import { rebuildClipsFromGeneratedMetadata } from "../engine/clip-segmentation";
+import { rebuildClipsFromGeneratedMetadata } from "../engine/segmentation";
 import type { ClipperClipPayload } from "../persistence/clipper-clips-api";
 import { clipperLog, clipperMeasureSync, clipperTimer } from "../shared/logger";
 import type { PipelineReporter } from "./reporter";

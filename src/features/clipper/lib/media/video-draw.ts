@@ -117,3 +117,41 @@ export function roundRectPath(
   ctx.arcTo(x, y, x + r, y, r);
   ctx.closePath();
 }
+
+export interface SplitCropRect {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+}
+
+/** Draws a top/bottom split frame with an optional center divider. */
+export function drawVerticalSplitFrame(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  frame: CanvasImageSource,
+  output: VideoSize,
+  topCrop: SplitCropRect,
+  bottomCrop: SplitCropRect,
+  dividerPx = 3,
+): void {
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, output.width, output.height);
+  const topHeight = evenInt(output.height / 2);
+  const bottomHeight = output.height - topHeight;
+  ctx.drawImage(frame, topCrop.sx, topCrop.sy, topCrop.sw, topCrop.sh, 0, 0, output.width, topHeight);
+  ctx.drawImage(
+    frame,
+    bottomCrop.sx,
+    bottomCrop.sy,
+    bottomCrop.sw,
+    bottomCrop.sh,
+    0,
+    topHeight,
+    output.width,
+    bottomHeight,
+  );
+  if (dividerPx > 0) {
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    ctx.fillRect(0, topHeight - dividerPx / 2, output.width, dividerPx);
+  }
+}

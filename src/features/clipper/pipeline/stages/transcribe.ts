@@ -3,10 +3,10 @@ import type { TranscriptionEngine } from "../../../../services/types/transcripti
 import {
   extractClipAudioForTranscription,
   type PreparedTranscriptionAudio,
-} from "../../engine/audio-extract";
+} from "../../engine/audio";
 import { buildWordCuesForTranscription } from "../../engine/transcript";
 import { clipperLog } from "../../shared/logger";
-import { computeRmsEnvelope } from "../../engine/audio-envelope";
+import { computeRmsEnvelope } from "../../engine/audio";
 import type { WordCue } from "../../lib/media/transcription-export";
 import type { PipelineReporter } from "../reporter";
 import type { ClipperSession } from "../session";

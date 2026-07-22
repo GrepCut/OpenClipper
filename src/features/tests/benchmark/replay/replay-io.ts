@@ -12,9 +12,9 @@ import {
   DEFAULT_ARBITER_PARAMS,
   RUN10_ARBITER_PARAMS,
   type ArbiterParams,
-} from "../../../clipper/engine/autoflip/layout-arbiter";
-import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout-planner";
-import type { VisibilityControllerParams } from "../../../clipper/engine/autoflip/visibility-controller";
+} from "../../../clipper/engine/autoflip/layout";
+import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout";
+import type { VisibilityControllerParams } from "../../../clipper/engine/autoflip/layout";
 import type { BenchmarkMetrics, TestKeyframe } from "../../types";
 import { TEST_ASPECTS } from "../../types";
 import type { BenchmarkFrameDetail } from "../metrics";

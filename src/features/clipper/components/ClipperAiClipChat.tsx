@@ -11,7 +11,7 @@ import { ArrowRight } from "lucide-react";
 import TextareaAutosize from "react-textarea-autosize";
 import { ThinkingDots } from "./ThinkingDots";
 import type { ClipperAiChatMessage, ClipperAiClipPickerModel } from "../persistence/ai-clip-api";
-import { clipperAiContextUsage } from "../engine/ai-context-estimate";
+import { clipperAiContextUsage } from "../engine/ai/context-estimate";
 import type { WordCue } from "../shared/state";
 import { clipperTheme } from "../shared/theme";
 import { useClipperUi } from "../shared/use-clipper-ui";

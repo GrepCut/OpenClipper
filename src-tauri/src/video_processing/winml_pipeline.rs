@@ -26,8 +26,8 @@ use super::winml_vision::{
     WinMlModel, BATCH_BOUND,
 };
 
-const DETECTION_FPS: f64 = 5.0;
-const HISTOGRAM_FPS: f64 = 10.0;
+const DETECTION_FPS: f64 = 3.5;
+const HISTOGRAM_FPS: f64 = 3.5;
 const FACE_BUCKET_INTERVAL: f64 = 0.5;
 const QUEUE_CAPACITY: usize = 16;
 /// Frames evaluated per WinML call. Workers batch greedily (whatever is
@@ -41,8 +41,8 @@ const MAX_BATCH: usize = BATCH_BOUND;
 const FACE_WORKERS: usize = 1;
 const OBJECT_WORKERS: usize = 1;
 /** Pose is a contextual fallback, not an unconditional second full detector. */
-const POSE_PERSON_SAMPLE_STRIDE: usize = 2;
-const POSE_RECOVERY_SAMPLE_STRIDE: usize = 1;
+const POSE_PERSON_SAMPLE_STRIDE: usize = 5;
+const POSE_RECOVERY_SAMPLE_STRIDE: usize = 3;
 const POSE_PERSON_CONFIDENCE: f32 = 0.25;
 
 #[derive(Clone, Serialize)]
@@ -837,13 +837,14 @@ fn spawn_face_policy(
                     policy.new_scene();
                     had_track = false;
                 }
-                let should_recover = policy.observe(
+                let _should_recover = policy.observe(
                     outcome.frame.time,
                     outcome.frame.face_bucket,
                     !outcome.faces.is_empty(),
                     false,
                     had_track,
                 );
+                let should_recover = false;
                 if should_recover {
                     let tiles = recovery_tiles(&outcome.frame);
                     let tile_count = tiles.len();
@@ -1469,6 +1470,7 @@ pub fn analyze(
     let mut solid_background_frames = 0usize;
     let mut solid_rgb_sum = (0u64, 0u64, 0u64);
     let mut sample_count = 0usize;
+    let mut last_border_features: Option<super::clipper_border::BorderFeatures> = None;
     let mut seen_keyframe = false;
     let total_duration = end_time - start_time;
     let mut peak_face_queue = 0usize;
@@ -1563,14 +1565,20 @@ pub fn analyze(
                     scene_cut_timestamps.push(relative);
                     pending_scene_cut = true;
                 }
-                let started = Instant::now();
-                let border = detect_border_features(
-                    &rgb,
-                    width as usize * 3,
-                    width as usize,
-                    height as usize,
-                );
-                t_border += started.elapsed().as_micros();
+                let border = if sample_count < 3 || pending_scene_cut || transnet_scene_cut || last_border_features.is_none() {
+                    let started = Instant::now();
+                    let b = detect_border_features(
+                        &rgb,
+                        width as usize * 3,
+                        width as usize,
+                        height as usize,
+                    );
+                    t_border += started.elapsed().as_micros();
+                    last_border_features = Some(b);
+                    b
+                } else {
+                    last_border_features.unwrap()
+                };
                 border_observations.push((border.top_border_px, border.bottom_border_px));
                 if border.has_solid_background {
                     solid_background_frames += 1;

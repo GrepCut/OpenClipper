@@ -1,17 +1,8 @@
 import type { TestKeyframe, TestTarget } from "../types";
-import { targetCenter, targetBox } from "./target-geometry";
+import { nominalSizeForAspects, targetCenter, targetBox } from "./target-geometry";
 import { evaluateGroundTruth } from "./ground-truth";
 import { calculateBenchmarkMetrics, type BenchmarkFrameInput, type NormalizedViewport } from "./metrics";
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function nominalSize(sourceAspect: number, targetAspect: number): { width: number; height: number } {
-  return sourceAspect >= targetAspect
-    ? { width: targetAspect / sourceAspect, height: 1 }
-    : { width: 1, height: sourceAspect / targetAspect };
-}
+import { clamp } from "../../clipper/lib/math";
 
 function centeredViewport(
   targets: TestTarget[],
@@ -19,7 +10,7 @@ function centeredViewport(
   targetAspect: number,
   scale = 1,
 ): NormalizedViewport {
-  const nominal = nominalSize(sourceAspect, targetAspect);
+  const nominal = nominalSizeForAspects(sourceAspect, targetAspect);
   const size = { width: nominal.width * scale, height: nominal.height * scale };
   const centerX = targets.reduce((sum, target) => sum + targetCenter(target).x, 0) / Math.max(1, targets.length);
   const centerY = targets.reduce((sum, target) => sum + targetCenter(target).y, 0) / Math.max(1, targets.length);
