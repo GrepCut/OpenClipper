@@ -4,8 +4,6 @@ mod clipper_frames;
 mod generalization_shadow;
 mod histogram;
 mod native_jobs;
-mod scene_detection;
-mod types;
 mod vision_logic;
 #[cfg(windows)]
 mod winml_pipeline;

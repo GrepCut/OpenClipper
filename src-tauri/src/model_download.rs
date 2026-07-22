@@ -3,7 +3,7 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Serialize)]

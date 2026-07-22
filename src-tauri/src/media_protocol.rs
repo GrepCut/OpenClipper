@@ -55,35 +55,6 @@ pub fn register_media_source(path: String) -> Result<RegisteredMediaSource, Stri
     register_canonical(Path::new(&path))
 }
 
-/// Rejestruje katalog pod jednym tokenem — pliki wewnątrz są serwowane jako
-/// `<base_url>/<nazwa_pliku>` (patrz `resolve_request_path`). Zwraca
-/// `(token, base_url)`; token służy później do `unregister_media_token`.
-pub(crate) fn register_media_dir(path: &Path) -> Result<(String, String), String> {
-    let canonical = std::fs::canonicalize(path)
-        .map_err(|error| format!("Cannot resolve media dir '{}': {}", path.display(), error))?;
-
-    if !canonical.is_dir() {
-        return Err(format!(
-            "Media path is not a directory: {}",
-            canonical.display()
-        ));
-    }
-
-    let token = make_token(&canonical)?;
-    registry()
-        .lock()
-        .map_err(|error| error.to_string())?
-        .insert(token.clone(), canonical);
-
-    Ok((token.clone(), media_url(&token)))
-}
-
-pub(crate) fn unregister_media_token(token: &str) {
-    if let Ok(mut map) = registry().lock() {
-        map.remove(token);
-    }
-}
-
 pub fn media_protocol_handler(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     if request.method() == Method::OPTIONS {
         return response_builder(StatusCode::NO_CONTENT, "application/octet-stream", 0)
