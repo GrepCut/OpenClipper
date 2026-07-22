@@ -10,9 +10,6 @@ export {
   precedingIndex,
   proposalScore,
   requiredRegions,
-  type ArbiterDecision,
-  type ArbiterParams,
-  type ArbiterSampleContext,
 } from "./arbiter";
 export {
   DEFAULT_VISIBILITY_PARAMS,
@@ -22,11 +19,6 @@ export {
   buildVisibilityEnvelopes,
   createVisibilityControllerState,
   planVisibilityRescue,
-  type VisibilityControllerDecision,
-  type VisibilityControllerParams,
-  type VisibilityControllerState,
-  type VisibilityMachineState,
-  type VisibilityVariant,
 } from "./visibility-controller";
 export {
   DEFAULT_SEMANTIC_FRAMING_PARAMS,
@@ -37,8 +29,18 @@ export {
   groupUnionLexicographicOk,
   layoutGeometry,
   rawMode,
-  type BuildLayoutTracksInput,
-  type SemanticFramingParams,
-  type VisibilityFramingState,
 } from "./layout-planner";
 export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation";
+export type {
+  ArbiterDecision,
+  ArbiterParams,
+  ArbiterSampleContext,
+  BuildLayoutTracksInput,
+  SemanticFramingParams,
+  VisibilityControllerDecision,
+  VisibilityControllerParams,
+  VisibilityControllerState,
+  VisibilityFramingState,
+  VisibilityMachineState,
+  VisibilityVariant,
+} from "../../types/autoflip-layout";

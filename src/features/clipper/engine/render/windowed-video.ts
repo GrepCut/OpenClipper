@@ -1,7 +1,4 @@
-export interface RebasingVideoSample {
-  timestamp: number;
-  duration: number;
-}
+import type { RebasingMediaTimestamp, RebasingVideoSample } from "../types/render";
 
 /**
  * Rebases a source video sample into clip-local timestamps for windowed export.
@@ -32,11 +29,6 @@ export function rebaseVideoSampleForWindow(
 
   if (duration <= 0) return null;
   return { timestamp, duration };
-}
-
-export interface RebasingMediaTimestamp {
-  timestamp: number;
-  timeOffset: number;
 }
 
 /**

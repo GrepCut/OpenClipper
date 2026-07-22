@@ -2,16 +2,11 @@ import { Mp3OutputFormat } from "mediabunny";
 import { convertWithMediabunnyBuffer } from "../../lib/convert/mediabunny-convert";
 import { ensureMp3Encoder } from "../../lib/convert/mp3-encoder";
 import { clipperLog, formatBytes } from "../../shared/logger";
+import type { PreparedTranscriptionAudio } from "../types/audio";
 
 /** Mono speech MP3 — compact for API upload (Whisper accepts MP3; WAV PCM is far larger). */
 const TRANSCRIBE_MP3_BITRATE = 64_000;
 const TRANSCRIBE_SAMPLE_RATE = 16_000;
-
-export interface PreparedTranscriptionAudio {
-  file: File;
-  /** Mono PCM captured after Mediabunny's 16 kHz remix/resample transform. */
-  pcm16k: Float32Array;
-}
 
 function concatenatePcmChunks(
   chunks: Float32Array[],

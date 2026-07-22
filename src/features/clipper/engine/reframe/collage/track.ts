@@ -4,43 +4,21 @@ import type { NormalizedBox, SubjectDetectionSample } from "../../../shared/smar
 import { computeTargetCropSize } from "../../autoflip/geometry/frame-crop-region";
 import {
   blendCentroid,
-  type CentroidSample,
   cropRectForCentroid,
   FACE_SAMPLE_INTERVAL_SEC,
   faceToCentroid,
-  type FaceCentroid,
   SMOOTHING_ALPHA,
 } from "../index";
 import type { ClipperHeadroom } from "../../../settings/settings";
 import type { FaceBox, FaceBoxSample } from "../../../shared/face-samples";
-
-export interface CollageTracks {
-  top: CentroidSample[];
-  bottom: CentroidSample[];
-  hasTwoSpeakers: boolean;
-}
-
-export interface CollageEligibilityWindow {
-  regionId: string;
-  start: number;
-  end: number;
-}
-
-export type CollageAspectEligibility = Record<ClipperAspectPresetId, CollageEligibilityWindow[]>;
-
-export interface FacePair {
-  left: FaceBox;
-  right: FaceBox;
-}
-
-/** A contiguous time window where two speakers were stably detected side by side. */
-export interface CollageRegion {
-  id: string;
-  start: number;
-  end: number;
-  /** true = the left half of frame is the dominant (top) speaker for this region's whole span. */
-  topIsLeft: boolean;
-}
+import type {
+  CollageAspectEligibility,
+  CollageEligibilityWindow,
+  CollageRegion,
+  CollageTracks,
+  FacePair,
+} from "../../types/collage";
+import type { CentroidSample, FaceCentroid } from "../../types/reframe";
 
 /** Confirm quickly, but tolerate brief detector dropouts once split-screen is active. */
 const REGION_ENTER_SAMPLES = 2;

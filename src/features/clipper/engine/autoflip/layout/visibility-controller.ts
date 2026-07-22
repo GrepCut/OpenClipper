@@ -7,29 +7,15 @@ import type {
 import { coveredFraction, requiredRegions } from "./arbiter";
 import { clamp } from "../../../lib/math";
 import { importanceGeometry } from "../salience/importance-ranker";
+import type {
+  VisibilityControllerDecision,
+  VisibilityControllerParams,
+  VisibilityControllerState,
+  VisibilityMachineState,
+  VisibilityVariant,
+} from "../../types/autoflip-layout";
 
 const EPSILON = 1e-9;
-
-export interface VisibilityControllerParams {
-  enabled: boolean;
-  lookaheadSec: number;
-  envelopeMargin: number;
-  velocityMarginSec: number;
-  edgeRiskFraction: number;
-  widerHoldSec: number;
-  splitStableSamples: number;
-  splitMinDurationSec: number;
-  splitExitStableSec: number;
-  containMinDurationSec: number;
-  containMaxDurationSec: number;
-  splitPendingSec?: number;
-  mergePendingSec?: number;
-  splitVariant?: "v2" | "v3";
-  minimumAssociationConfidence?: number;
-  maxSwitchesPerMinute?: number;
-  riskMergeGapSec?: number;
-  identityHoldSec?: number;
-}
 
 export const LEGACY_VISIBILITY_PARAMS: Readonly<VisibilityControllerParams> = Object.freeze({
   enabled: true,
@@ -65,24 +51,6 @@ export const RUN9_VISIBILITY_CONTROLLER_PARAMS = LEGACY_VISIBILITY_PARAMS;
 /** @deprecated Use `DEFAULT_VISIBILITY_PARAMS` */
 export const ITERATION10_VISIBILITY_CONTROLLER_PARAMS = DEFAULT_VISIBILITY_PARAMS;
 
-export type VisibilityMachineState = "common" | "split-pending" | "split-active" | "merge-pending" | "contain-failsafe";
-
-export interface VisibilityControllerState {
-  scene: number;
-  activeMode: ClipperLayoutMode;
-  modeSince: number;
-  riskClearedAt: number | null;
-  lastRiskAt: number | null;
-  panelOrder: string[];
-  previousViewport: NormalizedBox | null;
-  machineState: VisibilityMachineState;
-  pendingSince: number | null;
-  lastSplitViewports: NormalizedBox[];
-  identityLostAt: number | null;
-  modeSwitchTimestamps: number[];
-  sceneStartedAt: number;
-}
-
 export function createVisibilityControllerState(): VisibilityControllerState {
   return {
     scene: 0,
@@ -99,24 +67,6 @@ export function createVisibilityControllerState(): VisibilityControllerState {
     modeSwitchTimestamps: [],
     sceneStartedAt: 0,
   };
-}
-
-export interface VisibilityVariant {
-  kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "contain-fail-safe";
-  mode: ClipperLayoutMode;
-  viewports: NormalizedBox[];
-  requiredCoverage: number[];
-}
-
-export interface VisibilityControllerDecision {
-  mode: ClipperLayoutMode;
-  viewports: NormalizedBox[];
-  envelopes: ImportanceRegion[];
-  variants: VisibilityVariant[];
-  baselineCoverage: number[];
-  selectedCoverage: number[];
-  reasonCodes: string[];
-  visibilityRisk: boolean;
 }
 
 function nominalCropSize(sourceAspect: number, targetAspect: number): { width: number; height: number } {

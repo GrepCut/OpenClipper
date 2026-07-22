@@ -28,13 +28,13 @@ import { EncodeBackpressure } from "../../lib/media/encode-backpressure";
 import { clipperError } from "../../shared/logger";
 import type { ClipperFormatDef, ClipperPlatform } from "../../shared/formats";
 import type { ClipperQualityPreset } from "../../settings/settings";
-import type { ClipperClipSegmentWindow } from "../segmentation/types";
+import type { ClipperClipWindow, RenderClipperResult } from "../types/render";
 import { segmentsTotalDuration } from "../segmentation/clip-time";
 import {
   drawClipperFrame,
   resolveClipperOutputSize,
-  type ClipperFrameContext,
 } from "./frame-draw";
+import type { ClipperFrameContext } from "../types/render";
 import { rebaseVideoSampleForWindow } from "./windowed-video";
 import { applySeamFades, trimAudioSampleToWindow } from "../audio/windowed-samples";
 
@@ -43,19 +43,6 @@ const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
   standard: 1,
   high: 1.6,
 };
-
-export interface ClipperClipWindow {
-  /**
-   * Source-video time windows to encode, concatenated in order into one
-   * continuous output (video + audio). A plain contiguous export has one
-   * segment; an AI "supercut" clip may have several disjoint ones.
-   */
-  segments: ClipperClipSegmentWindow[];
-}
-
-export type RenderClipperResult =
-  | { kind: "memory"; blob: Blob }
-  | { kind: "disk-encoded" };
 
 function resolveEncodeBitrate(output: FrameEffectSize, quality: ClipperQualityPreset): number {
   const base = highQualityVideoBitrate(output.width, output.height);
@@ -315,5 +302,3 @@ export async function renderClipperFormat(
     input.dispose();
   }
 }
-
-export type { ClipperPlatform };

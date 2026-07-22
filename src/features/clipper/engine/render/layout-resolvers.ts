@@ -1,16 +1,8 @@
 import type { ClipperLayoutMode, ClipperSmartCropBlob } from "../../shared/smart-crop";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect";
 import { interpolateLayoutSample, resolveLayoutTrack } from "../autoflip/layout";
-import { normalizedBoxToCropRect, type ClipperCropRect } from "../reframe";
-
-export interface ResolvedClipperLayout {
-  mode: ClipperLayoutMode;
-  viewports: ClipperCropRect[];
-  solidBackgroundColor?: { r: number; g: number; b: number };
-  reasonCodes?: string[];
-  requiredRegionIds?: string[];
-  subjectDisplayHeightFractions?: number[];
-}
+import { normalizedBoxToCropRect } from "../reframe";
+import type { ResolvedClipperLayout } from "../types/render";
 
 /** Resolves a v3 editing decision; absent on persisted legacy analyses. */
 export function resolveClipperLayoutRender(

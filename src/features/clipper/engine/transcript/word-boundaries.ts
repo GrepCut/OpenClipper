@@ -1,11 +1,7 @@
 import type { WordCue } from "../../lib/media/transcription-export";
-import { refineBoundaryToSilence, type RmsEnvelope } from "../audio/envelope";
-
-export interface WordMarginOptions {
-  preRollSec?: number;
-  postRollSec?: number;
-  minGapSec?: number;
-}
+import { refineBoundaryToSilence } from "../audio/envelope";
+import type { RmsEnvelope } from "../types/audio";
+import type { WordMarginOptions } from "../types/transcript";
 
 export const DEFAULT_WORD_MARGINS: Required<WordMarginOptions> = {
   preRollSec: 0.12,

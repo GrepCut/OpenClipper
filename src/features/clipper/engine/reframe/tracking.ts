@@ -1,6 +1,7 @@
 import type { FaceBox, FaceBoxSample } from "../../shared/face-samples";
 import type { ClipperFacePickStrategy, ClipperSmoothingStrength } from "../../settings/settings";
-import { faceToCentroid, type FaceCentroid } from "./crop";
+import { faceToCentroid } from "./crop";
+import type { CentroidSample, FaceCentroid } from "../types/reframe";
 
 /** Lower alpha = slower/smoother EMA response to new detections. */
 export const SMOOTHING_ALPHA: Record<ClipperSmoothingStrength, number> = {
@@ -34,14 +35,6 @@ export function blendCentroid(prev: FaceCentroid, next: FaceCentroid, alpha: num
     y: alpha * next.y + (1 - alpha) * prev.y,
     extent: alpha * next.extent + (1 - alpha) * prev.extent,
   };
-}
-
-export interface CentroidSample {
-  t: number;
-  x: number;
-  y: number;
-  extent: number;
-  cut?: boolean;
 }
 
 /** Reduces whole-clip face samples to a single smoothed focus track (Face Follow mode). */

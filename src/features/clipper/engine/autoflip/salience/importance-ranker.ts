@@ -7,7 +7,7 @@ import type {
   ImportanceSignalSample,
   NormalizedBox,
 } from "../../../shared/smart-crop";
-import type { KeyFrameSalientInput, SalientRegion, SalientSignalType } from "../config/constants";
+import type { KeyFrameSalientInput, SalientRegion, SalientSignalType } from "../../types/autoflip";
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 

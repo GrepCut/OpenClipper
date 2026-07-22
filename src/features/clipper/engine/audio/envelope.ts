@@ -1,8 +1,4 @@
-export interface RmsEnvelope {
-  hopSec: number;
-  startSec: number;
-  values: Float32Array;
-}
+import type { RmsEnvelope } from "../types/audio";
 
 export function computeRmsEnvelope(
   pcm: Float32Array,

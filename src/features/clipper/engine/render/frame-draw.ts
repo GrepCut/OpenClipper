@@ -7,22 +7,16 @@ import {
 import type { ClipperFormatDef } from "../../shared/formats";
 import { canonicalFormatDims } from "../../shared/formats";
 import type { ClipperResolutionCap, ClipperSettings } from "../../settings/settings";
-import type { ClipperClipSegmentWindow } from "../segmentation/types";
-import type { ClipperSmartCropBlob } from "../../shared/smart-crop";
-import type { CaptionGroup } from "../../lib/media/transcription-export";
+import type { ClipperFrameContext } from "../types/render";
 import {
   buildCollageTracksForRegions,
-  type CollageAspectEligibility,
-  type CollageRegion,
   deriveCollageAspectEligibility,
   deriveTwoSpeakerRegions,
   drawPodcastCollageFrame,
   findActiveRegion,
   isCollageAspectEligible,
-  type CollageTracks,
 } from "../reframe/collage";
 import {
-  type CentroidSample,
   deriveSingleFocusTrack,
   FaceSampleCache,
 } from "../reframe";
@@ -52,22 +46,6 @@ export function resolveClipperOutputSize(
   resolutionCap: ClipperResolutionCap,
 ): FrameEffectSize {
   return applyResolutionCap(canonicalFormatDims(formatDef), resolutionCap);
-}
-
-/** Everything needed to render one frame's crop + captions for a given settings snapshot. */
-export interface ClipperFrameContext {
-  settings: ClipperSettings;
-  captionGroups: CaptionGroup[];
-  faceCache: FaceSampleCache | null;
-  faceRender?: {
-    focusTrack: CentroidSample[];
-    collageTracks: CollageTracks;
-    collageRegions: CollageRegion[];
-    collageEligibility: CollageAspectEligibility;
-  };
-  smartCropAnalysis?: ClipperSmartCropBlob | null;
-  disabledCollageRegionIds: string[];
-  segments?: ClipperClipSegmentWindow[];
 }
 
 export function formatNeedsFaceTracking(formatDef: ClipperFormatDef, settings: ClipperSettings): boolean {

@@ -7,24 +7,9 @@ import type {
   NormalizedBox,
 } from "../../../shared/smart-crop";
 import { importanceGeometry } from "../salience/importance-ranker";
+import type { ArbiterDecision, ArbiterParams, ArbiterSampleContext } from "../../types/autoflip-layout";
 
 const EPSILON = 1e-9;
-
-/**
- * The layout arbiter's only remaining job is to gate which layout modes the
- * visibility controller may choose and to score decision confidence for
- * telemetry. Mode/viewport selection itself lives in `visibility-controller.ts`.
- */
-export interface ArbiterParams {
-  /** Divisor mapping proposal-score improvement to decisionConfidence. */
-  decisionConfidenceScale: number;
-  /** Allow split proposals to win arbitration. */
-  allowSplit?: boolean;
-  /** Allow contain proposals to win arbitration. */
-  allowContain?: boolean;
-  /** Minimal union crop for 3+ person groups (handoff §3.4). */
-  allowGroupUnion?: boolean;
-}
 
 export const LEGACY_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
   decisionConfidenceScale: 0.3,
@@ -47,22 +32,6 @@ export const DEFAULT_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
 export const RUN9_ARBITER_PARAMS = LEGACY_ARBITER_PARAMS;
 /** @deprecated Use `DEFAULT_ARBITER_PARAMS` */
 export const RUN10_ARBITER_PARAMS = DEFAULT_ARBITER_PARAMS;
-
-/** Everything the arbiter needs for one layout sample. */
-export interface ArbiterSampleContext {
-  desiredMode: ClipperLayoutMode;
-  baselineScore: number;
-  semanticScore: number;
-  /** The visibility controller's decision, if it ran. Absence means fall back to baseline. */
-  controllerReasonCodes?: string[];
-}
-
-export interface ArbiterDecision {
-  selectSemantic: boolean;
-  strategy: ClipperLayoutStrategy;
-  reasonCodes: string[];
-  decisionConfidence: number;
-}
 
 export function requiredRegions(sample: ImportanceRegionSample): ImportanceRegion[] {
   return sample.regions.filter((region) => region.required).slice(0, 2);

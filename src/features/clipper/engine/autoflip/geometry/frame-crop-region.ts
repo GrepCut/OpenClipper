@@ -1,4 +1,5 @@
-import type { NormalizedRect, SalientRegion } from "../config/constants";
+import type { NormalizedRect, SalientRegion } from "../../types/autoflip";
+import type { FrameCropRegionInput, FrameCropRegionResult } from "../../types/autoflip";
 
 type CoverType = "fully" | "partially" | "none";
 
@@ -60,28 +61,6 @@ function expandRect(
     },
     cover: horizontal.cover === "fully" && vertical.cover === "fully" ? "fully" : "partially",
   };
-}
-
-export interface FrameCropRegionInput {
-  frameWidth: number;
-  frameHeight: number;
-  targetAspectRatio: number;
-  regions: SalientRegion[];
-}
-
-/** Equivalent to AutoFlip's KeyFrameCropResult, in normalized coordinates. */
-export interface FrameCropRegionResult {
-  region: NormalizedRect;
-  regionIsEmpty: boolean;
-  requiredRegionIsEmpty: boolean;
-  requiredRegion?: NormalizedRect;
-  areRequiredRegionsCoveredInTargetSize: boolean;
-  fractionNonRequiredCovered: number;
-  regionScore: number;
-  /** Weighted centre of the highest-priority signal band (faces before bodies before objects). */
-  focusCenter?: { x: number; y: number };
-  /** Union of the highest-priority signal band; the crop window must keep covering it when zooming. */
-  focusBox?: NormalizedRect;
 }
 
 function unionRect(a: NormalizedRect, b: NormalizedRect): NormalizedRect {

@@ -17,32 +17,22 @@ import {
   precedingIndex,
   proposalScore,
   requiredRegions,
-  type ArbiterParams,
 } from "./arbiter";
 import { smoothShotCropSamples, viewportArea } from "../camera/shot-smoothing";
 import {
   createVisibilityControllerState,
   planVisibilityRescue,
-  type VisibilityControllerParams,
 } from "./visibility-controller";
+import type {
+  ArbiterParams,
+  BuildLayoutTracksInput,
+  SemanticFramingParams,
+  VisibilityControllerParams,
+  VisibilityFramingState,
+} from "../../types/autoflip-layout";
 export { resolveLayoutTrack, interpolateLayoutSample } from "./interpolation";
 
 const EPSILON = 1e-9;
-
-export interface SemanticFramingParams {
-  targetBoxSource: "box" | "contentBox";
-  centerYFraction: number;
-  padding: number;
-  minimumScale: number;
-  /** Iteration 8C: reject zoom candidates that do not fully cover required content. */
-  visibilityConstrained?: boolean;
-  visibilityGuardMargin?: number;
-  stablePrimaryKeyframes?: number;
-  allowedScales?: number[];
-  scaleHysteresis?: number;
-  maxCenterStep?: number;
-  maxScaleStep?: number;
-}
 
 /** Promoted framing geometry. Values are global and clip-agnostic. */
 export const DEFAULT_SEMANTIC_FRAMING_PARAMS: SemanticFramingParams = {
@@ -66,12 +56,6 @@ export const VISIBILITY_CONSTRAINED_FRAMING_PARAMS: SemanticFramingParams = {
   maxCenterStep: 0.08,
   maxScaleStep: 0.05,
 };
-
-export interface VisibilityFramingState {
-  primaryId: string | null;
-  observedKeyframes: number;
-  previousViewport: NormalizedBox | null;
-}
 
 export function createVisibilityFramingState(): VisibilityFramingState {
   return { primaryId: null, observedKeyframes: 0, previousViewport: null };
@@ -581,19 +565,6 @@ export function buildViewports(
   }
   const union = unionAll(required.map((region) => region.contentBox)) ?? required[0]!.contentBox;
   return [expandBox(union, 0.12)];
-}
-
-export interface BuildLayoutTracksInput {
-  aspectTracks: Record<string, AutoFlipAspectTrack>;
-  importanceSamples: ImportanceRegionSample[];
-  frameWidth: number;
-  frameHeight: number;
-  /** Arbiter thresholds; omit for the calibrated production defaults. */
-  arbiterParams?: ArbiterParams;
-  /** Global semantic single-crop geometry; exposed for offline replay calibration. */
-  semanticFramingParams?: SemanticFramingParams;
-  /** Run 9 visibility-first rescue ladder. Omit to reproduce Run 8 exactly. */
-  visibilityControllerParams?: VisibilityControllerParams;
 }
 
 /** Builds stable format-aware render decisions over the smooth legacy camera path. */

@@ -1,17 +1,31 @@
-import type { CaptionGroup, WordCue } from "../../lib/media/transcription-export";
+import type {
+  AutoPartsPresetSegmentLengthSec,
+  AutoPartsSegmentLengthSec,
+  ClipperGeneratedClip,
+} from "../types/segmentation";
+export type {
+  AutoPartsPresetSegmentLengthSec,
+  AutoPartsSegmentLengthSec,
+  ClipperClipSegmentTranscript,
+  ClipperClipSegmentWindow,
+  ClipperGeneratedClip,
+} from "../types/segmentation";
+export {
+  AUTO_PARTS_SEGMENT_LENGTH_MAX_SEC,
+  AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC,
+  AUTO_PARTS_SEGMENT_LENGTH_OPTIONS,
+  CLIPPER_SEGMENT_LENGTH_SEC,
+  CLIPPER_SEGMENT_MAX_SEC,
+  CLIPPER_SEGMENT_MIN_SEC,
+} from "./constants";
 
-export const CLIPPER_SEGMENT_LENGTH_SEC = 60;
-/** Soft lower bound when snapping clip ends to keyframes (~45s). */
-export const CLIPPER_SEGMENT_MIN_SEC = 45;
-/** Soft upper bound when snapping clip ends to keyframes (~90s). */
-export const CLIPPER_SEGMENT_MAX_SEC = 90;
-
-export const AUTO_PARTS_SEGMENT_LENGTH_OPTIONS = [15, 30, 45, 60] as const;
-export type AutoPartsPresetSegmentLengthSec = (typeof AUTO_PARTS_SEGMENT_LENGTH_OPTIONS)[number];
-export type AutoPartsSegmentLengthSec = number;
-
-export const AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC = 5;
-export const AUTO_PARTS_SEGMENT_LENGTH_MAX_SEC = 180;
+import {
+  AUTO_PARTS_SEGMENT_LENGTH_MAX_SEC,
+  AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC,
+  AUTO_PARTS_SEGMENT_LENGTH_OPTIONS,
+  CLIPPER_SEGMENT_LENGTH_SEC,
+  CLIPPER_SEGMENT_MIN_SEC,
+} from "./constants";
 
 export function isPresetAutoPartsSegmentLength(
   value: number,
@@ -42,37 +56,6 @@ export function normalizeAutoPartsSegmentLengthSec(
       Math.max(AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC, value),
     ),
   );
-}
-
-export interface ClipperClipSegmentWindow {
-  startSec: number;
-  endSec: number;
-}
-
-/** Display-only per-segment text, in the same order as `segments`. */
-export interface ClipperClipSegmentTranscript {
-  startSec: number;
-  endSec: number;
-  text: string;
-}
-
-export interface ClipperGeneratedClip {
-  index: number;
-  /** Overall envelope (min start, max end) across all segments. */
-  startSec: number;
-  endSec: number;
-  durationSec: number;
-  words: WordCue[];
-  captionGroups: CaptionGroup[];
-  /**
-   * Source-video time windows that make up this clip, in playback/output
-   * order. A plain contiguous clip has exactly one segment matching
-   * [startSec, endSec]; an AI "supercut" clip may have several disjoint
-   * windows that get concatenated into one continuous output.
-   */
-  segments: ClipperClipSegmentWindow[];
-  /** One entry per segment: its source time range + the words spoken in it. */
-  segmentTranscripts: ClipperClipSegmentTranscript[];
 }
 
 /** Stable display order — matches DB `clipIndex ASC`. */

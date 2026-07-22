@@ -13,40 +13,8 @@ import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID
 import { DEFAULT_ARBITER_PARAMS, LEGACY_ARBITER_PARAMS } from "./layout/arbiter";
 import { smoothShotCropSamples } from "./camera/shot-smoothing";
 import { DEFAULT_VISIBILITY_PARAMS } from "./layout/visibility-controller";
-import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "./config/constants";
-
-export interface BuildAutoFlipTrackInput {
-  clipStart: number;
-  clipEnd: number;
-  detections: SubjectDetectionSample[];
-  faces: FaceBoxSample[];
-  sceneCuts: number[];
-  /** Legacy primary target.  New callers should supply `targetAspectRatios`. */
-  targetAspectRatio?: number;
-  /** Every enabled crop output gets its own camera path. */
-  targetAspectRatios?: Record<string, number>;
-  frameWidth?: number;
-  frameHeight?: number;
-  smoothing?: ClipperSmoothingStrength;
-  /** Reserved for framing margins; the crop window itself never zooms below nominal. */
-  headroom?: ClipperHeadroom;
-  degradedReason?: string;
-  hasSolidColorBackground?: boolean;
-  solidBackgroundColor?: { r: number; g: number; b: number };
-  /** MediaPipe evaluates solid background independently for each scene. */
-  staticFeatureSamples?: AutoFlipStaticFeatureSample[];
-  /** Source-space active image area after static letterbox borders are removed. */
-  contentRect?: NormalizedBox;
-  /** Native decoded frame rate; used for graph-equivalent scene boundaries and paths. */
-  sourceFrameRate?: number;
-  trackerVersion?: "bytetrack-v1";
-  /** Sparse outputs from optional head, saliency, motion or active-speaker analyzers. */
-  importanceSignals?: ImportanceSignalSample[];
-  /** Attach per-scene diagnostics to the returned blob (benchmark tooling only). */
-  collectDebug?: boolean;
-  /** Fuse canonical person tracks and active-speaker policy. Omit for legacy identity path. */
-  enhancedIdentityFusion?: boolean;
-}
+import type { FocusPointFrame, KeyFrameSalientInput, SalientSignalType } from "../types/autoflip";
+import type { BuildAutoFlipTrackInput } from "../types/autoflip";
 
 import {
   expandCropAcrossBars,

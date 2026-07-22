@@ -8,9 +8,8 @@ import { drawFrameContain, drawVerticalSplitFrame } from "../../lib/media/video-
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect";
 import type { ClipperFormatDef } from "../../shared/formats";
 import { cropRectForCentroid } from "../reframe";
-import type { ClipperCropRect } from "../reframe";
-import type { ResolvedClipperLayout } from "./layout-resolvers";
-import type { ClipperFrameContext } from "./frame-draw";
+import type { ClipperCropRect } from "../types/reframe";
+import type { ClipperFrameContext, ResolvedClipperLayout } from "../types/render";
 import { sourceTimeToLocalTime } from "../segmentation/clip-time";
 
 /** Draws an explicit v3 crop/split/contain decision. */

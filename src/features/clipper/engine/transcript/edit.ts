@@ -1,28 +1,12 @@
 import type { WordCue } from "../../lib/media/transcription-export";
 import type { ClipperClipPayload } from "../../persistence/clipper-clips-api";
-import type { AiClipSegmentRange } from "./ai-clip-builder";
 import { buildClipsFromWordRanges } from "./ai-clip-builder";
-import type { ClipperGeneratedClip } from "../segmentation/types";
-import type { RmsEnvelope } from "../audio/envelope";
-import { padSegmentWindows, type WordMarginOptions } from "./word-boundaries";
-
-export interface WordSelection {
-  startIdx: number;
-  endIdx: number;
-}
-
-export type ClipTranscriptEditOp =
-  | { type: "delete"; selection: WordSelection }
-  | { type: "cut"; selection: WordSelection }
-  | { type: "copy"; selection: WordSelection }
-  | { type: "paste"; selection: WordSelection; clipboard?: AiClipSegmentRange[] };
-
-export interface ClipTranscriptEditResult {
-  ranges: AiClipSegmentRange[];
-  editedRange: WordSelection | null;
-  isEmpty: boolean;
-  clipboard?: AiClipSegmentRange[];
-}
+import type { AiClipSegmentRange } from "../types/transcript";
+import type { ClipperGeneratedClip } from "../types/segmentation";
+import type { RmsEnvelope } from "../types/audio";
+import { padSegmentWindows } from "./word-boundaries";
+import type { WordMarginOptions } from "../types/transcript";
+import type { ClipTranscriptEditOp, ClipTranscriptEditResult, WordSelection } from "../types/transcript";
 
 /** Groups sorted global word indices into contiguous inclusive ranges. */
 export function groupContiguousWordIndices(indices: number[]): AiClipSegmentRange[] {

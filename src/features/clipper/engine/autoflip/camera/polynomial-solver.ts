@@ -1,4 +1,4 @@
-import type { FocusPointFrame } from "../config/constants";
+import type { FocusPointFrame } from "../../types/autoflip";
 
 type Coefficients = [number, number, number, number, number];
 

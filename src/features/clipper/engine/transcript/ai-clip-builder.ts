@@ -4,20 +4,10 @@ import type {
   ClipperClipSegmentTranscript,
   ClipperClipSegmentWindow,
   ClipperGeneratedClip,
-} from "../segmentation/types";
-import type { RmsEnvelope } from "../audio/envelope";
-import { padSegmentWindows, type WordMarginOptions } from "./word-boundaries";
-
-export interface AiClipSegmentRange {
-  wordStartIdx: number;
-  wordEndIdx: number;
-}
-
-export interface AiClipWordRange {
-  segments: AiClipSegmentRange[];
-  label?: string;
-  index?: number;
-}
+} from "../types/segmentation";
+import type { RmsEnvelope } from "../types/audio";
+import { padSegmentWindows } from "./word-boundaries";
+import type { AiClipPickInput, AiClipSegmentRange, AiClipWordRange, WordMarginOptions } from "../types/transcript";
 
 function sliceWordsByIndexRange(
   words: WordCue[],
@@ -108,15 +98,6 @@ export function buildClipsFromWordRanges(
   }
 
   return clips;
-}
-
-export interface AiClipPickInput {
-  index: number;
-  segments: AiClipSegmentRange[];
-  startSec: number;
-  endSec: number;
-  durationSec: number;
-  label?: string;
 }
 
 /** Maps API clip picks into word ranges for local clip building. */

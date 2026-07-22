@@ -2,16 +2,10 @@ import { drawVerticalSplitFrame, evenInt } from "../../../lib/media/video-draw";
 import type { ClipperHeadroom } from "../../../settings/settings";
 import type { FrameEffectSize } from "../../../lib/media/video-frame-effect";
 import { cropRectForCentroid, interpolateCentroid } from "../index";
-import type { CollageTracks } from "./track";
+import type { CollageTracks } from "../../types/collage";
+import type { PodcastCollageLayout } from "../../types/collage";
 
 const COLLAGE_DIVIDER_PX = 3;
-
-export interface PodcastCollageLayout {
-  halfH: number;
-  bottomH: number;
-  topCrop: ReturnType<typeof cropRectForCentroid>;
-  bottomCrop: ReturnType<typeof cropRectForCentroid>;
-}
 
 /** Pure source-space layout shared by rendering and the manual benchmark. */
 export function resolvePodcastCollageLayout(

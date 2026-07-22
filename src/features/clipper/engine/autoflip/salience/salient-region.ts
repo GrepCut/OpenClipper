@@ -1,5 +1,6 @@
 import type { AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection, SubjectDetectionSample } from "../../../shared/smart-crop";
-import type { KeyFrameSalientInput, SalientRegion, SalientSignalType } from "../config/constants";
+import type { KeyFrameSalientInput, SalientRegion, SalientSignalType } from "../../types/autoflip";
+import type { BuildSalientKeyframesInput } from "../../types/autoflip";
 import { AUTOFLIP_KEYFRAME_INTERVAL_SEC } from "../config/constants";
 import { OneEuroFilter } from "../filters/one-euro-filter";
 
@@ -235,14 +236,6 @@ function nearest<T extends { time: number }>(items: T[], time: number, maxDelta:
     }
   }
   return best;
-}
-
-export interface BuildSalientKeyframesInput {
-  detections: SubjectDetectionSample[];
-  sceneCuts: number[];
-  clipStart: number;
-  clipEnd: number;
-  keyframeIntervalSec?: number;
 }
 
 export function buildSalientKeyframes(input: BuildSalientKeyframesInput): KeyFrameSalientInput[] {

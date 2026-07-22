@@ -1,5 +1,5 @@
 import { clamp } from "../../../lib/math";
-import type { KinematicOptions } from "../config/constants";
+import type { KinematicOptions } from "../../types/autoflip";
 import { DEFAULT_KINEMATIC_OPTIONS } from "../config/constants";
 
 const MIN_VELOCITY = 0.5;

@@ -1,32 +1,9 @@
-import type { FocusPointFrame, KeyFrameSalientInput, NormalizedRect, SceneCameraMotionType, SceneKeyFrameCropSummary } from "../config/constants";
+import type { FocusPointFrame, KeyFrameSalientInput, NormalizedRect, SceneCameraMotionType, SceneKeyFrameCropSummary } from "../../types/autoflip";
+import type { SceneMotionInput, SceneMotionResult, SceneZoomInput } from "../../types/autoflip";
 import { computeFrameCropRegionResult, computeTargetCropSize, cropRectToCentroid, focusBandRegions } from "../geometry/frame-crop-region";
 
 const STEADY_MOTION_THRESHOLD = 0.5;
 const STEADY_CENTER_DEADBAND = 0.08;
-
-export interface SceneMotionInput {
-  keyframes: KeyFrameSalientInput[];
-  frameWidth: number;
-  frameHeight: number;
-  targetAspectRatio: number;
-  /** MediaPipe's proto default is true. */
-  allowSweeping?: boolean;
-  hasSolidColorBackground?: boolean;
-  /** Every decoded scene-frame timestamp, matching AutoFlip's focus stream. */
-  sceneTimestampsUs?: number[];
-  /**
-   * Window scale (≤1) shared by every chunk of one original scene, letting the
-   * crop window shrink toward the focus band so its centre can track subjects
-   * vertically as well as horizontally.  1 keeps the classic cover crop.
-   */
-  cropScale?: number;
-}
-
-export interface SceneMotionResult {
-  summary: SceneKeyFrameCropSummary;
-  keyframeCrops: Array<{ time: number; rect: NormalizedRect }>;
-  focusPointFrames: FocusPointFrame[];
-}
 
 function rectCenter(rect: NormalizedRect): { x: number; y: number } {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -283,16 +260,6 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
     keyframeCrops,
     focusPointFrames,
   };
-}
-
-export interface SceneZoomInput {
-  keyframes: KeyFrameSalientInput[];
-  frameWidth: number;
-  frameHeight: number;
-  targetAspectRatio: number;
-  /** Focus-band diagonal → desired window diagonal multiplier. */
-  margin: number;
-  minScale: number;
 }
 
 /**

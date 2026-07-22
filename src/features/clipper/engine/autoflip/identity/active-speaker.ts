@@ -1,13 +1,5 @@
+import type { ActiveSpeakerPolicy } from "../../types/autoflip";
 import type { ActiveSpeakerTelemetry, SubjectDetectionSample } from "../../../shared/smart-crop";
-
-export interface ActiveSpeakerPolicy {
-  threshold: number;
-  runnerUpMargin: number;
-  stableMultiFaceSamples: number;
-  maximumSampleGapSec: number;
-  minimumMultiFaceDurationSec: number;
-  minimumHoldSec: number;
-}
 
 export const DEFAULT_ACTIVE_SPEAKER_POLICY: ActiveSpeakerPolicy = {
   threshold: 0.6,

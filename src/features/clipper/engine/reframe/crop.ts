@@ -2,19 +2,7 @@ import { clamp } from "../../lib/math";
 import type { FaceBox } from "../../shared/face-samples";
 import type { NormalizedBox } from "../../shared/smart-crop";
 import type { ClipperHeadroom } from "../../settings/settings";
-
-export interface ClipperCropRect {
-  sx: number;
-  sy: number;
-  sw: number;
-  sh: number;
-}
-
-export interface FaceCentroid {
-  x: number;
-  y: number;
-  extent: number;
-}
+import type { ClipperCropRect, FaceCentroid } from "../types/reframe";
 
 const HEADROOM_ZOOM_FACTOR: Record<ClipperHeadroom, number> = {
   tight: 2.4,

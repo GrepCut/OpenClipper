@@ -1,5 +1,3 @@
-import type { NormalizedBox } from "../../../shared/smart-crop";
-
 // v19 drops the legacy centroid track layer; aspectTracks are authoritative.
 export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v19-no-centroid-track";
 /** The graph-compatible object model identity. */
@@ -24,87 +22,19 @@ export const AUTOFLIP_ZOOM_MARGIN: Record<"tight" | "normal" | "wide", number> =
   wide: 4.8,
 };
 
-export type SalientSignalType =
-  | "face_core"
-  | "face_all"
-  | "face_full"
-  | "pose_head"
-  | "pose_torso"
-  | "human"
-  | "pet"
-  | "car"
-  | "object"
-  | "head"
-  | "screen"
-  | "motion"
-  | "video_saliency"
-  | "active_speaker";
+export type {
+  FocusPoint,
+  FocusPointFrame,
+  KeyFrameSalientInput,
+  KinematicOptions,
+  NormalizedRect,
+  SalientRegion,
+  SalientSignalType,
+  SceneCameraMotionType,
+  SceneKeyFrameCropSummary,
+} from "../../types/autoflip";
 
-export interface SalientRegion {
-  box: NormalizedBox;
-  score: number;
-  signalType: SalientSignalType;
-  isRequired: boolean;
-  trackId?: number;
-  predicted?: boolean;
-  associationConfidence?: number;
-  identityAmbiguous?: boolean;
-}
-
-export interface KeyFrameSalientInput {
-  time: number;
-  regions: SalientRegion[];
-  isShotChange: boolean;
-}
-
-export interface NormalizedRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface FocusPoint {
-  x: number;
-  y: number;
-  weight: number;
-}
-
-export interface FocusPointFrame {
-  timeUs: number;
-  points: FocusPoint[];
-}
-
-export type SceneCameraMotionType = "steady" | "tracking" | "sweeping";
-
-export interface SceneKeyFrameCropSummary {
-  sceneFrameWidth: number;
-  sceneFrameHeight: number;
-  cropWindowWidth: number;
-  cropWindowHeight: number;
-  motionType: SceneCameraMotionType;
-  lookAtCenterX: number;
-  lookAtCenterY: number;
-  frameSuccessRate?: number;
-  horizontalMotionAmount?: number;
-  verticalMotionAmount?: number;
-  hasSalientRegion?: boolean;
-}
-
-export interface KinematicOptions {
-  maxVelocity?: number;
-  maxVelocityScale?: number;
-  maxVelocityShift?: number;
-  minMotionToReframe?: number;
-  minMotionToReframeLower?: number;
-  minMotionToReframeUpper?: number;
-  reframeWindow?: number;
-  updateRateSeconds?: number;
-  maxUpdateRate?: number;
-  filteringTimeWindowUs?: number;
-  meanPeriodUpdateRate?: number;
-  maxDeltaTimeSec?: number;
-}
+import type { KinematicOptions } from "../../types/autoflip";
 
 export const DEFAULT_KINEMATIC_OPTIONS: Required<
   Pick<

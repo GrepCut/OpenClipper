@@ -1,3 +1,4 @@
+import type { CanonicalFusionResult } from "../../types/autoflip";
 import type {
   AutoFlipFaceDetection,
   CanonicalIdentityTelemetry,
@@ -44,11 +45,6 @@ interface Evidence<T> {
   sourceId?: number;
   predicted: boolean;
   confidence: number;
-}
-
-export interface CanonicalFusionResult {
-  samples: SubjectDetectionSample[];
-  telemetry: CanonicalIdentityTelemetry;
 }
 
 function center(box: NormalizedBox): { x: number; y: number } {
