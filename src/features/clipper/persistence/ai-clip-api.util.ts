@@ -1,3 +1,5 @@
+import { createParser } from "eventsource-parser";
+
 import { apiClient } from "../../../shared/utils/api-client.util";
 import {
   localRecordDelete,
@@ -171,36 +173,25 @@ export const clipperAiClipService = {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    const parser = createParser((event) => {
+      if (event.type !== "event" || !event.data) return;
+      const parsed = JSON.parse(event.data) as ClipperAiChatStreamEvent;
+      if (parsed.type === "done") {
+        void Promise.all([
+          localRecordPut("clipper-ai-chat", projectId, projectId, [
+            ...historyWithUser,
+            parsed.assistantMessage,
+          ]),
+          localRecordPut("clipper-ai-clips", projectId, projectId, parsed.clips),
+        ]);
+      }
+      dispatchClipperAiChatStreamEvent(parsed, events);
+    });
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? "";
-
-      for (const frame of frames) {
-        const line = frame.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        const event = JSON.parse(line.slice(6)) as ClipperAiChatStreamEvent;
-        if (event.type === "done") {
-          await Promise.all([
-            localRecordPut("clipper-ai-chat", projectId, projectId, [
-              ...historyWithUser,
-              event.assistantMessage,
-            ]),
-            localRecordPut(
-              "clipper-ai-clips",
-              projectId,
-              projectId,
-              event.clips,
-            ),
-          ]);
-        }
-        dispatchClipperAiChatStreamEvent(event, events);
-      }
+      parser.feed(decoder.decode(value, { stream: true }));
     }
   },
 };

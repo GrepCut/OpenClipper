@@ -7,19 +7,7 @@ import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.f
 import { colors, useTheme } from "../../../theme";
 import type { TestDatasetSummary } from "../test.types";
 import { EditTestDatasetModal } from "./edit-test-dataset-modal.component";
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${Math.round(seconds % 60)}s`;
-}
+import { formatHumanDuration, formatShortDate } from "../../../shared/utils/time.util";
 
 function datasetStatusLabel(dataset: TestDatasetSummary): string {
   if (dataset.clipCount === 0) return "Empty";
@@ -79,7 +67,7 @@ export function TestDatasetListRow({
                 {datasetStatusLabel(dataset)}
               </Box>
               <Text fontSize="xs" color={theme.text.muted}>
-                {dataset.annotatedClipCount}/{dataset.clipCount} annotated · {formatDuration(dataset.totalDuration)}
+                {dataset.annotatedClipCount}/{dataset.clipCount} annotated · {formatHumanDuration(dataset.totalDuration)}
               </Text>
             </HStack>
 
@@ -102,7 +90,7 @@ export function TestDatasetListRow({
             w={{ base: "full", md: "148px" }}
           >
             <Text fontSize="sm" color={theme.text.muted} whiteSpace="nowrap" textAlign="right">
-              {formatDate(dataset.updatedAt)}
+              {formatShortDate(dataset.updatedAt)}
             </Text>
 
             <VStack align="stretch" gap={2}>

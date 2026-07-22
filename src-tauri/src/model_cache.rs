@@ -2,16 +2,15 @@
 //! Brakujące pliki są pobierane z CDN Open Clipper i weryfikowane względem
 //! manifestu SHA-256 wygenerowanego przez `models_automation`.
 
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use serde::Deserialize;
 use std::collections::HashSet;
-use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::http::{header, Method, Request, Response, StatusCode};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 use crate::media_protocol::{is_safe_path_segment, serve_file};
+use crate::model_download::{download_url_to_file, sha256_file};
 
 const FALLBACK_MODELS_CDN_BASE: &str = "https://models.openclipper.grepcut.com/v1";
 
@@ -30,16 +29,6 @@ struct ModelManifestFile {
     path: String,
     size: u64,
     sha256: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ModelDownloadEvent {
-    path: String,
-    received: u64,
-    total: Option<u64>,
-    done: bool,
-    error: Option<String>,
 }
 
 enum CacheState {
@@ -100,23 +89,6 @@ fn expected_model(remote_path: &str) -> Result<ModelManifestFile, String> {
         .into_iter()
         .find(|file| file.path == path)
         .ok_or_else(|| format!("Model is not published in CDN manifest: {remote_path}"))
-}
-
-fn sha256_file(path: &PathBuf) -> Result<String, String> {
-    let mut file =
-        std::fs::File::open(path).map_err(|error| format!("Cannot read model cache: {error}"))?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|error| format!("Cannot hash model cache: {error}"))?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
 }
 
 fn file_matches_manifest(path: &PathBuf, expected: &ModelManifestFile) -> Result<bool, String> {
@@ -210,100 +182,15 @@ fn download_to_cache(
     expected: &ModelManifestFile,
 ) -> Result<(), String> {
     let url = format!("{}{}", models_cdn_base(), remote_path);
-    if let Some(parent) = local.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("Cannot create model cache dir: {error}"))?;
-    }
-
-    let client = reqwest::blocking::Client::builder()
-        .build()
-        .map_err(|error| format!("HTTP client error: {error}"))?;
-    let mut response = client
-        .get(&url)
-        .send()
-        .map_err(|error| format!("Model download failed ({url}): {error}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "Model download failed ({url}): HTTP {}",
-            response.status()
-        ));
-    }
-
-    let part_path = local.with_extension(format!(
-        "{}.part",
-        local
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or("")
-    ));
-    let mut file = std::fs::File::create(&part_path)
-        .map_err(|error| format!("Cannot create model file: {error}"))?;
-    let mut received = 0_u64;
-    let mut last_emit = 0_u64;
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut digest = Sha256::new();
-    let emit = |received: u64, done: bool, error: Option<String>| {
-        let _ = app.emit(
-            "model-download",
-            ModelDownloadEvent {
-                path: remote_path.to_string(),
-                received,
-                total: Some(expected.size),
-                done,
-                error,
-            },
-        );
-    };
-    emit(0, false, None);
-
-    loop {
-        let read = match response.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(count) => count,
-            Err(error) => {
-                let _ = std::fs::remove_file(&part_path);
-                let message = format!("Model download interrupted ({url}): {error}");
-                emit(received, true, Some(message.clone()));
-                return Err(message);
-            }
-        };
-        if let Err(error) = file.write_all(&buffer[..read]) {
-            let _ = std::fs::remove_file(&part_path);
-            let message = format!("Model write failed: {error}");
-            emit(received, true, Some(message.clone()));
-            return Err(message);
-        }
-        received += read as u64;
-        digest.update(&buffer[..read]);
-        if received - last_emit >= 512 * 1024 {
-            last_emit = received;
-            emit(received, false, None);
-        }
-    }
-    drop(file);
-
-    if received != expected.size {
-        let _ = std::fs::remove_file(&part_path);
-        let message = format!(
-            "Model download incomplete ({url}): {received}/{} bytes",
-            expected.size
-        );
-        emit(received, true, Some(message.clone()));
-        return Err(message);
-    }
-    if !format!("{:x}", digest.finalize()).eq_ignore_ascii_case(&expected.sha256) {
-        let _ = std::fs::remove_file(&part_path);
-        let message = format!("Model download checksum mismatch ({url})");
-        emit(received, true, Some(message.clone()));
-        return Err(message);
-    }
-
-    std::fs::rename(&part_path, local).map_err(|error| {
-        let _ = std::fs::remove_file(&part_path);
-        format!("Model cache rename failed: {error}")
-    })?;
+    download_url_to_file(
+        app,
+        &url,
+        local,
+        remote_path,
+        Some(expected.size),
+        Some(&expected.sha256),
+    )?;
     mark_file_verified(local);
-    emit(received, true, None);
     Ok(())
 }
 

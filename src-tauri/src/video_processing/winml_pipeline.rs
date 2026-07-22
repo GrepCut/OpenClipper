@@ -1,7 +1,8 @@
 use ffmpeg_next as ffmpeg;
 use ffmpeg_next::software::scaling::{context::Context as Scaler, flag::Flags};
 use ffmpeg_next::{format::Pixel, media::Type};
-use image::{imageops::FilterType, ImageBuffer, Rgb};
+use fast_image_resize::images::Image;
+use fast_image_resize::{FilterType as FirFilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -337,11 +338,29 @@ fn sample_due(timestamp: f64, next_sample: &mut f64, samples_per_second: f64) ->
     true
 }
 
-/// Borrowing view over a frame's RGB pixels, so preprocessing never clones
-/// the full sample buffer.
-fn rgb_view(frame: &AnalysisFrame) -> ImageBuffer<Rgb<u8>, &[u8]> {
-    ImageBuffer::from_raw(frame.width, frame.height, frame.rgb.as_slice())
-        .expect("validated RGB frame")
+thread_local! {
+    static RGB_RESIZER: std::cell::RefCell<Resizer> = std::cell::RefCell::new(Resizer::new());
+}
+
+/// SIMD resize of an RGB frame buffer. `fast_image_resize` requires `&mut`
+/// source slices but only reads them during resize.
+fn resize_rgb(frame: &AnalysisFrame, width: u32, height: u32) -> Vec<u8> {
+    let src_len = frame.rgb.len();
+    // SAFETY: resize only reads source pixels; the API requires a mutable borrow.
+    let src_mut = unsafe {
+        std::slice::from_raw_parts_mut(frame.rgb.as_ptr() as *mut u8, src_len)
+    };
+    let src_image = Image::from_slice_u8(frame.width, frame.height, src_mut, PixelType::U8x3)
+        .expect("validated RGB frame");
+    let mut dst_image = Image::new(width, height, PixelType::U8x3);
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FirFilterType::Bilinear));
+    RGB_RESIZER.with(|resizer| {
+        resizer
+            .borrow_mut()
+            .resize(&src_image, &mut dst_image, Some(&options))
+            .expect("RGB resize");
+    });
+    dst_image.into_vec()
 }
 
 fn prepare_yolox_into(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {
@@ -349,7 +368,7 @@ fn prepare_yolox_into(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {
     let scale = (size as f32 / frame.width as f32).min(size as f32 / frame.height as f32);
     let width = (frame.width as f32 * scale).round().clamp(1.0, size as f32) as u32;
     let height = (frame.height as f32 * scale).round().clamp(1.0, size as f32) as u32;
-    let resized = image::imageops::resize(&rgb_view(frame), width, height, FilterType::Triangle);
+    let resized = resize_rgb(frame, width, height);
     let plane = YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
     debug_assert_eq!(output.len(), plane * 3);
     output.fill(114.0);
@@ -357,9 +376,9 @@ fn prepare_yolox_into(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {
         for x in 0..width as usize {
             let source = (y * width as usize + x) * 3;
             let destination = y * YOLOX_INPUT_SIZE + x;
-            output[destination] = resized.as_raw()[source + 2] as f32;
-            output[plane + destination] = resized.as_raw()[source + 1] as f32;
-            output[plane * 2 + destination] = resized.as_raw()[source] as f32;
+            output[destination] = resized[source + 2] as f32;
+            output[plane + destination] = resized[source + 1] as f32;
+            output[plane * 2 + destination] = resized[source] as f32;
         }
     }
     Letterbox {
@@ -426,13 +445,13 @@ fn prepare_blaze_into(frame: &AnalysisFrame, input: &mut [f32]) -> Letterbox {
         .clamp(1.0, size as f32) as u32;
     let pad_x = (size - width) / 2;
     let pad_y = (size - height) / 2;
-    let resized = image::imageops::resize(&rgb_view(frame), width, height, FilterType::Triangle);
+    let resized = resize_rgb(frame, width, height);
     // Letterbox padding stays zero-valued (-1.0 after normalization), exactly
     // like the previous zeroed-canvas overlay.
     input.fill(-1.0);
     let row_len = width as usize * 3;
     for y in 0..height as usize {
-        let source_row = &resized.as_raw()[y * row_len..(y + 1) * row_len];
+        let source_row = &resized[y * row_len..(y + 1) * row_len];
         let destination = ((y + pad_y as usize) * size as usize + pad_x as usize) * 3;
         for (target, &value) in input[destination..destination + row_len]
             .iter_mut()
@@ -459,11 +478,11 @@ fn prepare_movenet_into(frame: &AnalysisFrame, input: &mut [f32]) -> Letterbox {
         .clamp(1.0, size as f32) as u32;
     let pad_x = (size - width) / 2;
     let pad_y = (size - height) / 2;
-    let resized = image::imageops::resize(&rgb_view(frame), width, height, FilterType::Triangle);
+    let resized = resize_rgb(frame, width, height);
     input.fill(0.0);
     let row_len = width as usize * 3;
     for y in 0..height as usize {
-        let source_row = &resized.as_raw()[y * row_len..(y + 1) * row_len];
+        let source_row = &resized[y * row_len..(y + 1) * row_len];
         let destination = ((y + pad_y as usize) * size as usize + pad_x as usize) * 3;
         for (target, &value) in input[destination..destination + row_len]
             .iter_mut()

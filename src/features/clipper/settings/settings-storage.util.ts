@@ -1,4 +1,5 @@
 import { DEFAULT_CLIPPER_SETTINGS, mergeClipperSettings, type ClipperSettings } from "./settings.util";
+import { parseStoredClipperSettings } from "../persistence/clipper-persistence-schemas.util";
 
 export const STORAGE_KEY = "clipper:settings:v1";
 
@@ -7,8 +8,8 @@ export function loadClipperSettings(): ClipperSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_CLIPPER_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<ClipperSettings>;
-    return mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, parsed);
+    const parsed = parseStoredClipperSettings(JSON.parse(raw));
+    return mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, parsed ?? undefined);
   } catch {
     return DEFAULT_CLIPPER_SETTINGS;
   }

@@ -1,32 +1,48 @@
 import type { PipelineReporter } from "../../pipeline/reporter.util";
 import type { ClipperPipelineState } from "../../shared/state.util";
+import { patchPipelineState } from "./clipper-pipeline-state.util";
 
 export function createReporter(
   setState: React.Dispatch<React.SetStateAction<ClipperPipelineState>>,
 ): PipelineReporter {
   return {
     stage: (stage, message) =>
-      setState((prev) => ({
-        ...prev,
-        stage,
-        ...(message !== undefined ? { stageMessage: message } : {}),
-      })),
-    stageProgress: (ratio) => setState((prev) => ({ ...prev, stageProgress: ratio })),
-    faceProgress: (ratio) => setState((prev) => ({ ...prev, faceAnalysisProgress: ratio })),
-    subjectProgress: (ratio) => setState((prev) => ({ ...prev, subjectAnalysisProgress: ratio })),
-    eta: (seconds) => setState((prev) => ({ ...prev, analysisEtaSeconds: seconds })),
+      patchPipelineState(setState, (draft) => {
+        draft.stage = stage;
+        if (message !== undefined) draft.stageMessage = message;
+      }),
+    stageProgress: (ratio) =>
+      patchPipelineState(setState, (draft) => {
+        draft.stageProgress = ratio;
+      }),
+    faceProgress: (ratio) =>
+      patchPipelineState(setState, (draft) => {
+        draft.faceAnalysisProgress = ratio;
+      }),
+    subjectProgress: (ratio) =>
+      patchPipelineState(setState, (draft) => {
+        draft.subjectAnalysisProgress = ratio;
+      }),
+    eta: (seconds) =>
+      patchPipelineState(setState, (draft) => {
+        draft.analysisEtaSeconds = seconds;
+      }),
     faces: (hasDetectedFaces, hasTwoSpeakers, sampleRevision) =>
       setState((prev) =>
         prev.hasDetectedFaces === hasDetectedFaces &&
         prev.hasTwoSpeakers === hasTwoSpeakers &&
         prev.faceSampleRevision === sampleRevision
           ? prev
-          : { ...prev, hasDetectedFaces, hasTwoSpeakers, faceSampleRevision: sampleRevision },
+          : {
+              ...prev,
+              hasDetectedFaces,
+              hasTwoSpeakers,
+              faceSampleRevision: sampleRevision,
+            },
       ),
     renderProgress: (key, ratio) =>
-      setState((prev) => ({
-        ...prev,
-        renderProgress: { ...prev.renderProgress, [key]: ratio },
-      })),
+      patchPipelineState(setState, (draft) => {
+        draft.renderProgress[key] = ratio;
+      }),
   };
 }

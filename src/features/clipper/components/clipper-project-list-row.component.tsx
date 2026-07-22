@@ -10,13 +10,7 @@ import { EditClipperProjectModal } from "../pages/edit-clipper-project-modal.com
 import { DeleteClipperProjectModal } from "../pages/delete-clipper-project-modal.component";
 import { clipperStageLabel } from "../shared/stages.util";
 import { getClipperMetadataFromProject } from "../persistence/metadata-autosave.util";
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+import { formatShortDate } from "../../../shared/utils/time.util";
 
 interface ClipperProjectListRowProps {
   project: Project;
@@ -112,7 +106,7 @@ export function ClipperProjectListRow({
             w={{ base: "full", md: "148px" }}
           >
             <Text fontSize="sm" color={theme.text.muted} whiteSpace="nowrap" textAlign="right">
-              {formatDate(project.updatedAt)}
+              {formatShortDate(project.updatedAt)}
             </Text>
 
             <VStack align="stretch" gap={2}>

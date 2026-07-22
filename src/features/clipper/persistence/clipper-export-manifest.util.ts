@@ -13,6 +13,8 @@ import {
   sanitizeExportFileName,
   webDisplayPath,
 } from "./clipper-export-sink.util";
+import { formatExportTimestamp } from "../../../shared/utils/time.util";
+import { parseClipperExportManifestRaw } from "./clipper-persistence-schemas.util";
 import {
   CLIPPER_EXPORT_MANIFEST_VERSION,
   CLIPPER_EXPORTS_MANIFEST,
@@ -21,7 +23,6 @@ import {
   MANIFEST_RELATIVE_PATH,
   type ClipperExportManifest,
   type ClipperExportManifestEntry,
-  type ClipperExportManifestV1Entry,
 } from "./export-files.types";
 
 const LEGACY_EXPORT_NAMESPACE = "a3f2c8e1-4b5d-4e6f-9a0b-1c2d3e4f5a6b";
@@ -38,37 +39,26 @@ export function legacyClipperExportId(
   return uuidv5(`${projectId}:${clipIndex}:${formatId}`, LEGACY_EXPORT_NAMESPACE);
 }
 
-function formatExportTimestamp(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}-` +
-    `${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`
-  );
-}
-
 function migrateManifestToV2(
   projectId: string,
-  raw: { version?: number; exports: unknown[] },
+  raw: { version: number; exports: ClipperExportManifestEntry[] },
 ): ClipperExportManifest {
   if (raw.version === CLIPPER_EXPORT_MANIFEST_VERSION) {
-    return raw as ClipperExportManifest;
+    return {
+      version: CLIPPER_EXPORT_MANIFEST_VERSION,
+      exports: raw.exports.map((entry) => ({
+        ...entry,
+        id: entry.id || legacyClipperExportId(projectId, entry.clipIndex, entry.formatId),
+      })),
+    };
   }
-
-  const exports = (raw.exports as ClipperExportManifestV1Entry[]).map((entry) => ({
-    id: legacyClipperExportId(projectId, entry.clipIndex, entry.formatId),
-    clipIndex: entry.clipIndex,
-    formatId: entry.formatId,
-    fileName: entry.fileName,
-    relativePath: entry.relativePath,
-    width: entry.width,
-    height: entry.height,
-    fileSize: entry.fileSize,
-    exportedAt: entry.updatedAt ?? new Date().toISOString(),
-  }));
 
   return {
     version: CLIPPER_EXPORT_MANIFEST_VERSION,
-    exports,
+    exports: raw.exports.map((entry) => ({
+      ...entry,
+      id: entry.id || legacyClipperExportId(projectId, entry.clipIndex, entry.formatId),
+    })),
   };
 }
 
@@ -100,7 +90,7 @@ async function writeClipperExportManifest(
 
 export async function readClipperExportManifest(projectId: string): Promise<ClipperExportManifest | null> {
   try {
-    let raw: { version?: number; exports: unknown[] };
+    let raw: unknown;
 
     if (isTauri()) {
       await ensureClipperProjectDataDir(projectId);
@@ -120,8 +110,11 @@ export async function readClipperExportManifest(projectId: string): Promise<Clip
       raw = JSON.parse(await file.text());
     }
 
-    const manifest = migrateManifestToV2(projectId, raw);
-    if (raw.version !== CLIPPER_EXPORT_MANIFEST_VERSION) {
+    const parsed = parseClipperExportManifestRaw(raw);
+    if (!parsed) return null;
+
+    const manifest = migrateManifestToV2(projectId, parsed);
+    if (parsed.version !== CLIPPER_EXPORT_MANIFEST_VERSION) {
       await writeClipperExportManifest(projectId, manifest);
     }
     return manifest;

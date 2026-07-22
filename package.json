@@ -56,6 +56,9 @@
     "react-router-dom": "^7.18.1",
     "react-textarea-autosize": "^8.5.9",
     "uuid": "^11.1.0",
+    "zod": "^3.25.76",
+    "eventsource-parser": "^3.0.6",
+    "p-limit": "^6.2.0",
     "zustand": "^5.0.7"
   },
   "devDependencies": {

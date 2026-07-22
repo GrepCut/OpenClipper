@@ -7,6 +7,7 @@ import { clipperError } from "../../shared/logger.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
 import { buildFrameContext, getActiveClips, syncSessionActiveClips } from "../../pipeline/session.util";
 import { runRenderClipJob, runRerenderFormat, getClipperFormatDef } from "../../pipeline/stages/render.util";
+import { patchPipelineState } from "./clipper-pipeline-state.util";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
 
 export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
@@ -38,7 +39,9 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
 
       const clipsToRender = activeClips.filter((clip) => formatsForClip(clip.index).length > 0);
       if (clipsToRender.length === 0) {
-        setState((prev) => ({ ...prev, error: "Select at least one export format." }));
+        patchPipelineState(setState, (draft) => {
+          draft.error = "Select at least one export format.";
+        });
         return;
       }
       const renderedClipIndices = new Set(clipsToRender.map((clip) => clip.index));
@@ -56,18 +59,18 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
       const filenameTemplate = settings.formats.filenameTemplate;
 
       persistMetadata({}, "preview");
-      setState((prev) => ({
-        ...prev,
-        stage: "preview",
-        stageMessage: `Rendering ${clipsToRender.length} clip${clipsToRender.length > 1 ? "s" : ""}…`,
-        renderProgress: initialProgress,
-        error: null,
-        clipPreviews: prev.clipPreviews.map((p) =>
-          renderedClipIndices.has(p.clip.index)
-            ? { ...p, renderStatus: "queued", renderProgress: null, results: [] }
-            : p,
-        ),
-      }));
+      patchPipelineState(setState, (draft) => {
+        draft.stage = "preview";
+        draft.stageMessage = `Rendering ${clipsToRender.length} clip${clipsToRender.length > 1 ? "s" : ""}…`;
+        draft.renderProgress = initialProgress;
+        draft.error = null;
+        for (const preview of draft.clipPreviews) {
+          if (!renderedClipIndices.has(preview.clip.index)) continue;
+          preview.renderStatus = "queued";
+          preview.renderProgress = null;
+          preview.results = [];
+        }
+      });
 
       let failedClipIndex: number | null = null;
 
@@ -78,17 +81,16 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           const frameContext = buildFrameContext(session, settings, clip.index);
           if (!frameContext) continue;
 
-          setState((prev) => ({
-            ...prev,
-            stage: "preview",
-            stageMessage: `Rendering clip ${queuePosition + 1} of ${clipsToRender.length}…`,
-            stageProgress: null,
-            clipPreviews: prev.clipPreviews.map((p) =>
-              p.clip.index === clip.index
-                ? { ...p, renderStatus: "rendering", renderProgress: 0 }
-                : p,
-            ),
-          }));
+          patchPipelineState(setState, (draft) => {
+            draft.stage = "preview";
+            draft.stageMessage = `Rendering clip ${queuePosition + 1} of ${clipsToRender.length}…`;
+            draft.stageProgress = null;
+            const preview = draft.clipPreviews.find((p) => p.clip.index === clip.index);
+            if (preview) {
+              preview.renderStatus = "rendering";
+              preview.renderProgress = 0;
+            }
+          });
 
           failedClipIndex = clip.index;
 
@@ -112,60 +114,50 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
             }
           }
 
-          setState((prev) => ({
-            ...prev,
-            exportHistory: appendUniqueExportResults(prev.exportHistory, clipResults),
-            clipPreviews: prev.clipPreviews.map((p) =>
-              p.clip.index === clip.index
-                ? {
-                    ...p,
-                    renderStatus: "done",
-                    renderProgress: 1,
-                    results: clipResults,
-                  }
-                : p,
-            ),
-            renderProgress: {
-              ...prev.renderProgress,
-              ...Object.fromEntries(
-                formatsForClip(clip.index).map((f) => [`${clip.index}:${f.id}`, 1]),
-              ),
-            },
-          }));
+          patchPipelineState(setState, (draft) => {
+            draft.exportHistory = appendUniqueExportResults(draft.exportHistory, clipResults);
+            const preview = draft.clipPreviews.find((p) => p.clip.index === clip.index);
+            if (preview) {
+              preview.renderStatus = "done";
+              preview.renderProgress = 1;
+              preview.results = clipResults;
+            }
+            for (const format of formatsForClip(clip.index)) {
+              draft.renderProgress[`${clip.index}:${format.id}`] = 1;
+            }
+          });
         }
 
         if (controller.signal.aborted) return;
 
         persistMetadata({}, "done");
-        setState((prev) => ({
-          ...prev,
-          stage: "done",
-          stageMessage: "Your clips are ready!",
-          error: null,
-        }));
+        patchPipelineState(setState, (draft) => {
+          draft.stage = "done";
+          draft.stageMessage = "Your clips are ready!";
+          draft.error = null;
+        });
       } catch (error) {
         if (controller.signal.aborted) return;
         clipperError("pipeline: render failed", error);
         persistMetadata({}, "preview");
-        setState((prev) => ({
-          ...prev,
-          stage: "preview",
-          stageMessage: "Render failed — adjust preview and try again",
-          stageProgress: null,
-          error: error instanceof Error ? error.message : "Render failed.",
-          clipPreviews: prev.clipPreviews.map((p) => {
-            if (failedClipIndex != null && p.clip.index === failedClipIndex) {
-              return { ...p, renderStatus: "error" as const };
+        patchPipelineState(setState, (draft) => {
+          draft.stage = "preview";
+          draft.stageMessage = "Render failed — adjust preview and try again";
+          draft.stageProgress = null;
+          draft.error = error instanceof Error ? error.message : "Render failed.";
+          for (const preview of draft.clipPreviews) {
+            if (failedClipIndex != null && preview.clip.index === failedClipIndex) {
+              preview.renderStatus = "error";
+              continue;
             }
-            if (p.renderStatus === "rendering") {
-              return { ...p, renderStatus: "idle" as const, renderProgress: null };
+            if (preview.renderStatus === "rendering") {
+              preview.renderStatus = "idle";
+              preview.renderProgress = null;
+            } else if (preview.renderStatus === "queued") {
+              preview.renderStatus = "idle";
             }
-            if (p.renderStatus === "queued") {
-              return { ...p, renderStatus: "idle" as const };
-            }
-            return p;
-          }),
-        }));
+          }
+        });
       }
     },
     [
@@ -192,10 +184,9 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
       if (!frameContext) return;
 
       const progressKey = `${clipIndex}:${formatId}`;
-      setState((prev) => ({
-        ...prev,
-        renderProgress: { ...prev.renderProgress, [progressKey]: null },
-      }));
+      patchPipelineState(setState, (draft) => {
+        draft.renderProgress[progressKey] = null;
+      });
 
       const stem = baseName(state.sourceFileName ?? "clip");
       try {
@@ -216,24 +207,18 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           previewUrlsRef.current.push(result.previewUrl);
         }
 
-        setState((prev) => ({
-          ...prev,
-          renderProgress: { ...prev.renderProgress, [progressKey]: 1 },
-          exportHistory: appendUniqueExportResults(prev.exportHistory, [result]),
-          clipPreviews: prev.clipPreviews.map((p) =>
-            p.clip.index === clipIndex
-              ? {
-                  ...p,
-                  results: appendUniqueExportResults(p.results, [result]),
-                }
-              : p,
-          ),
-        }));
+        patchPipelineState(setState, (draft) => {
+          draft.renderProgress[progressKey] = 1;
+          draft.exportHistory = appendUniqueExportResults(draft.exportHistory, [result]);
+          const preview = draft.clipPreviews.find((p) => p.clip.index === clipIndex);
+          if (preview) {
+            preview.results = appendUniqueExportResults(preview.results, [result]);
+          }
+        });
       } catch (error) {
-        setState((prev) => ({
-          ...prev,
-          error: error instanceof Error ? error.message : "Re-render failed.",
-        }));
+        patchPipelineState(setState, (draft) => {
+          draft.error = error instanceof Error ? error.message : "Re-render failed.";
+        });
       }
     },
     [

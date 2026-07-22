@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { produce } from "immer";
 
 import {
   resolveActiveClipIndexAfterDelete,
@@ -194,13 +195,12 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         void persistMetadata({ activeClipIndex: nextActive });
 
         const autoPartsClipPreviews = buildClipPreviews(remaining);
-        return {
-          ...prev,
-          autoPartsClipPreviews,
-          clipPreviews:
-            prev.clipSourceMode !== "ai" ? autoPartsClipPreviews : prev.clipPreviews,
-          activeClipIndex: nextActive,
-        };
+        return produce(prev, (draft) => {
+          draft.autoPartsClipPreviews = autoPartsClipPreviews;
+          draft.clipPreviews =
+            draft.clipSourceMode === "ai" ? draft.clipPreviews : autoPartsClipPreviews;
+          draft.activeClipIndex = nextActive;
+        });
       });
     },
     [activeClipIndexRef, persistMetadata, projectId, sessionRef, setState],

@@ -471,67 +471,23 @@ fn associate(
         .collect()
 }
 
-/// Minimum-cost perfect assignment for a square matrix (Kuhn-Munkres).
+/// Minimum-cost perfect assignment for a square matrix (lapjv).
 fn hungarian(cost: &[Vec<f32>]) -> Vec<(usize, usize)> {
+    use lapjv::lapjv;
+    use ndarray::Array2;
+
     let size = cost.len();
-    let mut u = vec![0.0f32; size + 1];
-    let mut v = vec![0.0f32; size + 1];
-    let mut p = vec![0usize; size + 1];
-    let mut way = vec![0usize; size + 1];
-    for row in 1..=size {
-        p[0] = row;
-        let mut column0 = 0usize;
-        let mut min_value = vec![f32::INFINITY; size + 1];
-        let mut used = vec![false; size + 1];
-        loop {
-            used[column0] = true;
-            let row0 = p[column0];
-            let mut delta = f32::INFINITY;
-            let mut column1 = 0usize;
-            for column in 1..=size {
-                if used[column] {
-                    continue;
-                }
-                let current = cost[row0 - 1][column - 1] - u[row0] - v[column];
-                if current < min_value[column] {
-                    min_value[column] = current;
-                    way[column] = column0;
-                }
-                if min_value[column] < delta {
-                    delta = min_value[column];
-                    column1 = column;
-                }
-            }
-            for column in 0..=size {
-                if used[column] {
-                    u[p[column]] += delta;
-                    v[column] -= delta;
-                } else {
-                    min_value[column] -= delta;
-                }
-            }
-            column0 = column1;
-            if p[column0] == 0 {
-                break;
-            }
-        }
-        loop {
-            let column1 = way[column0];
-            p[column0] = p[column1];
-            column0 = column1;
-            if column0 == 0 {
-                break;
-            }
-        }
+    if size == 0 {
+        return Vec::new();
     }
-    (1..=size)
-        .filter_map(|column| {
-            if p[column] > 0 {
-                Some((p[column] - 1, column - 1))
-            } else {
-                None
-            }
-        })
+    let matrix = Array2::from_shape_fn((size, size), |(row, col)| cost[row][col]);
+    let Ok((row_solution, _)) = lapjv(&matrix) else {
+        return Vec::new();
+    };
+    row_solution
+        .into_iter()
+        .enumerate()
+        .map(|(row, col)| (row, col))
         .collect()
 }
 

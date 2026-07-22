@@ -23,6 +23,7 @@ import type { ClipperStage } from "../../shared/stages.util";
 import type { ClipperLoadedProject } from "../use-clipper-project-loader.hook";
 import type { Project } from "../../../../services/projects.service";
 import { deriveAutoPartsSegmentLengthSec, deriveRangeLocked, usePipelineRefs } from "./clipper-pipeline-context";
+import { patchPipelineState } from "./clipper-pipeline-state.util";
 import {
   INITIAL_PIPELINE_STATE,
   METADATA_IMMEDIATE_FLUSH_STAGES,
@@ -94,15 +95,14 @@ export function useClipperPipelineCore(
     }
 
     const metadataStage = metadataRef.current.stage;
-    setState((prev) => ({
-      ...prev,
-      exportHistory: restored,
-      ...(metadataStage === "rendering"
-        ? { stage: "preview" as const }
-        : metadataStage === "done"
-          ? { stage: "done" as const }
-          : {}),
-    }));
+    patchPipelineState(setState, (draft) => {
+      draft.exportHistory = restored;
+      if (metadataStage === "rendering") {
+        draft.stage = "preview";
+      } else if (metadataStage === "done") {
+        draft.stage = "done";
+      }
+    });
 
     setPersistedExportCount(restored.length);
     return restored;

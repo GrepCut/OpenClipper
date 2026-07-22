@@ -3,6 +3,7 @@ import { Box, Button, HStack, Slider, Text, VStack } from "@chakra-ui/react";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { CLIPPER_MIN_CLIP_SECONDS } from "../settings/settings.util";
+import { formatDurationMmSs } from "../../../shared/utils/time.util";
 
 interface ClipperTrimSelectProps {
   sourceUrl: string;
@@ -15,10 +16,7 @@ interface ClipperTrimSelectProps {
 }
 
 function formatTime(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
+  return formatDurationMmSs(seconds);
 }
 
 export const ClipperTrimSelect: React.FC<ClipperTrimSelectProps> = ({

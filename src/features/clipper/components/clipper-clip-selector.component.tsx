@@ -15,6 +15,7 @@ import {
   sliceWordsForTimeWindow,
 } from "./clipper-inline-transcript.component";
 import { ClipperDeleteClipConfirm } from "./clipper-delete-clip-confirm.component";
+import { formatDurationMmSs } from "../../../shared/utils/time.util";
 
 interface ClipperClipSelectorProps {
   clipPreviews: ClipperClipPreview[];
@@ -36,16 +37,9 @@ interface ClipperClipSelectorProps {
   lastEditedTranscriptRange?: { clipIndex: number; startIdx: number; endIdx: number } | null;
 }
 
-function formatTime(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
 function clipTimeLabel(preview: ClipperClipPreview): string {
   const { clip } = preview;
-  return `${formatTime(clip.startSec)}–${formatTime(clip.endSec)}`;
+  return `${formatDurationMmSs(clip.startSec)}–${formatDurationMmSs(clip.endSec)}`;
 }
 
 interface ClipTranscriptBlock {

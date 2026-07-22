@@ -6,6 +6,7 @@ import { clipperError } from "../shared/logger.util";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperClipPreview } from "../shared/state.util";
+import { formatDurationMmSs } from "../../../shared/utils/time.util";
 
 const THUMB_WIDTH = 101;
 const THUMB_HEIGHT = 180; // 9:16
@@ -151,10 +152,7 @@ function useClipThumbnails(
 }
 
 function formatTime(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
+  return formatDurationMmSs(seconds);
 }
 
 function clipTranscript(preview: ClipperClipPreview): string {

@@ -4,14 +4,7 @@ import { OutlinedActionButton } from "../../../shared/components/buttons/outline
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 import { colors, useTheme } from "../../../theme";
 import { resolveClipCohorts } from "../benchmark/cohort-tags.util";
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+import { formatShortDate } from "../../../shared/utils/time.util";
 
 interface TestClipListRowProps {
   clip: TestClip;
@@ -85,7 +78,7 @@ export function TestClipListRow({
           w={{ base: "full", md: "148px" }}
         >
           <Text fontSize="sm" color={theme.text.muted} whiteSpace="nowrap" textAlign="right">
-            {formatDate(clip.updatedAt)}
+            {formatShortDate(clip.updatedAt)}
           </Text>
 
           <VStack align="stretch" gap={2}>

@@ -14,6 +14,7 @@ import type { ClipperClipPreview, ClipperFormatResult, ClipperPipelineState } fr
 import { ClipperExportFormatRow, type ClipperPublishTarget } from "./clipper-export-format-row.component";
 import { ClipperProgressBar } from "./clipper-progress-bar.component";
 import { ClipperRenderFormatProgressRow } from "./clipper-render-format-progress-row.component";
+import { formatDurationMmSs } from "../../../shared/utils/time.util";
 
 interface ClipperRenderQueueProps {
   state: ClipperPipelineState;
@@ -26,16 +27,9 @@ interface ClipperRenderQueueProps {
   onRerenderFormat: (formatId: string, clipIndex: number) => void;
 }
 
-function formatTime(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
 function clipTimeLabel(preview: ClipperClipPreview): string {
   const { clip } = preview;
-  return `${formatTime(clip.startSec)}–${formatTime(clip.endSec)}`;
+  return `${formatDurationMmSs(clip.startSec)}–${formatDurationMmSs(clip.endSec)}`;
 }
 
 function orderedFormatIdsForClip(formatIds: string[]): string[] {

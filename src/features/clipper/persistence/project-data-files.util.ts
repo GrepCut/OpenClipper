@@ -4,6 +4,7 @@ import { resolveFilePlayableUrl } from '../persistence/tauri-media.util';
 import type { ClipperFaceSamplesBlob } from "../shared/face-samples.util";
 import type { ClipperSmartCropBlob } from "../shared/smart-crop.util";
 export type { ClipperFaceSamplesBlob };
+import { parseClipperTrimMetadata, parseRestoredSmartCropBlob } from "./clipper-persistence-schemas.util";
 import { clipperLog, clipperMeasureSync, formatBytes } from "../shared/logger.util";
 import { CLIPPER_FACE_ACTION_BENCHMARK_FILE } from "../shared/face-action-benchmark.util";
 import { yieldToMain } from "../shared/yield-to-main.util";
@@ -65,7 +66,7 @@ export async function readClipperSmartCropAnalysis(projectId: string): Promise<C
       fileName: CLIPPER_SMART_CROP_FILE,
     });
     await yieldToMain();
-    return JSON.parse(contents) as ClipperSmartCropBlob;
+    return parseRestoredSmartCropBlob(JSON.parse(contents));
   } catch {
     return null;
   }
@@ -202,8 +203,8 @@ export async function readClipperTrimmedSegment(
       fileName: CLIPPER_TRIM_METADATA_FILE,
     });
     await yieldToMain();
-    const metadata = JSON.parse(metadataContents) as ClipperTrimMetadata;
-    if (!trimRangeMatches(metadata, clipStart, clipEnd)) {
+    const metadata = parseClipperTrimMetadata(JSON.parse(metadataContents));
+    if (!metadata || !trimRangeMatches(metadata, clipStart, clipEnd)) {
       return null;
     }
 

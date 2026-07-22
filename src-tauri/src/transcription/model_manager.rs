@@ -1,9 +1,9 @@
 use super::types::{ParakeetModelStatus, TranscriptionError};
 use crate::model_cache::download_model_file_to_cache;
+use crate::model_download::download_url_to_file;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
@@ -382,76 +382,15 @@ fn download_archive_fallback(
 }
 
 fn download_archive(app: &AppHandle, archive_path: &Path) -> Result<(), TranscriptionError> {
-    let client = reqwest::blocking::Client::builder()
-        .build()
-        .map_err(|error| TranscriptionError::ModelLoad(format!("HTTP client error: {error}")))?;
-
-    let mut response = client.get(MODEL_DOWNLOAD_URL).send().map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Pobieranie modelu nie powiodło się: {error}"))
-    })?;
-    if !response.status().is_success() {
-        return Err(TranscriptionError::ModelLoad(format!(
-            "Pobieranie modelu nie powiodło się: HTTP {}",
-            response.status()
-        )));
-    }
-
-    let total = response.content_length();
-    let part_path = archive_path.with_extension("tar.bz2.part");
-    let mut file = File::create(&part_path).map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Nie udało się utworzyć pliku archiwum: {error}"))
-    })?;
-
-    let mut received: u64 = 0;
-    let mut last_emit: u64 = 0;
-    let mut buffer = [0u8; 64 * 1024];
-    let emit = |received: u64, done: bool, error: Option<String>| {
-        let _ = app.emit(
-            "model-download",
-            ModelDownloadEvent {
-                path: MODEL_ARCHIVE_NAME.to_string(),
-                received,
-                total,
-                done,
-                error,
-            },
-        );
-    };
-    emit(0, false, None);
-
-    loop {
-        let read = match response.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(error) => {
-                let _ = fs::remove_file(&part_path);
-                let message = format!("Pobieranie przerwane: {error}");
-                emit(received, true, Some(message.clone()));
-                return Err(TranscriptionError::ModelLoad(message));
-            }
-        };
-        file.write_all(&buffer[..read]).map_err(|error| {
-            let _ = fs::remove_file(&part_path);
-            let message = format!("Zapis archiwum nie powiódł się: {error}");
-            emit(received, true, Some(message.clone()));
-            TranscriptionError::ModelLoad(message)
-        })?;
-        received += read as u64;
-        if received - last_emit >= 512 * 1024 {
-            last_emit = received;
-            emit(received, false, None);
-        }
-    }
-    drop(file);
-
-    fs::rename(&part_path, archive_path).map_err(|error| {
-        let _ = fs::remove_file(&part_path);
-        let message = format!("Nie udało się zakończyć pobierania: {error}");
-        emit(received, true, Some(message.clone()));
-        TranscriptionError::ModelLoad(message)
-    })?;
-    emit(received, true, None);
-    Ok(())
+    download_url_to_file(
+        app,
+        MODEL_DOWNLOAD_URL,
+        archive_path,
+        MODEL_ARCHIVE_NAME,
+        None,
+        None,
+    )
+    .map_err(|error| TranscriptionError::ModelLoad(error))
 }
 
 fn extract_archive(

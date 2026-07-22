@@ -7,6 +7,7 @@ mod error;
 mod media_protocol;
 mod migrator;
 mod model_cache;
+mod model_download;
 mod repository;
 mod startup_log;
 pub mod transcription;

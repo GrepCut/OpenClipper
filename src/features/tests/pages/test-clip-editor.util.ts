@@ -3,13 +3,14 @@ import {
   defaultTargetRect,
 } from "../benchmark/target-geometry.util";
 import type { TestClip, TestKeyframe, TestLayoutIntent, TestTarget } from "../test.types";
+import { formatDurationMmSsDecimal } from "../../../shared/utils/time.util";
 
 export const TARGET_COLORS = ["#22D3EE", "#F472B6"];
 export const CONTAIN_COLOR = "#FBBF24";
 export const KEYFRAME_TIME_TOLERANCE_US = 1_000;
 
 export function formatTime(time: number): string {
-  return `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}.${Math.floor((time % 1) * 10)}`;
+  return formatDurationMmSsDecimal(time);
 }
 
 export function freshTarget(slot: 0 | 1, clip: TestClip, x = 0.5, y = 0.5): TestTarget {
