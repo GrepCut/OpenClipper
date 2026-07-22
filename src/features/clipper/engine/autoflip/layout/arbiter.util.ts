@@ -28,9 +28,6 @@ export const DEFAULT_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
   allowContain: true,
 });
 
-/** @deprecated Use `LEGACY_ARBITER_PARAMS` */
-export const RUN9_ARBITER_PARAMS = LEGACY_ARBITER_PARAMS;
-/** @deprecated Use `DEFAULT_ARBITER_PARAMS` */
 export const RUN10_ARBITER_PARAMS = DEFAULT_ARBITER_PARAMS;
 
 export function requiredRegions(sample: ImportanceRegionSample): ImportanceRegion[] {

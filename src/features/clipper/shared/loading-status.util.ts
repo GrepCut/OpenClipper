@@ -72,15 +72,6 @@ export const CLIPPER_SESSION_BOOT_STEPS: ClipperLoadingStepDef[] = [
   { id: "preview", label: "Open preview workspace" },
 ];
 
-/** @deprecated Use CLIPPER_SESSION_BOOT_STEPS */
-export const CLIPPER_PROJECT_LOADER_STEPS: ClipperLoadingStepDef[] = CLIPPER_SESSION_BOOT_STEPS;
-
-/** @deprecated Use CLIPPER_SESSION_BOOT_STEPS */
-export const CLIPPER_SESSION_FETCH_STEPS: ClipperLoadingStepDef[] = CLIPPER_SESSION_BOOT_STEPS;
-
-/** @deprecated Use CLIPPER_SESSION_BOOT_STEPS */
-export const CLIPPER_RESUME_STEPS: ClipperLoadingStepDef[] = CLIPPER_SESSION_BOOT_STEPS;
-
 /** Marks every step through `throughId` as done; later steps stay pending. */
 export function markStepsThroughDone(
   steps: ClipperLoadingStepDef[],

@@ -506,6 +506,3 @@ export const ClipperSocialPublishDialog: React.FC<
     </StyledModal>
   );
 };
-
-/** @deprecated Prefer ClipperSocialPublishDialog */
-export const ClipperYoutubePublishDialog = ClipperSocialPublishDialog;

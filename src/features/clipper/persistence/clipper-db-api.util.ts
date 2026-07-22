@@ -70,37 +70,6 @@ export async function createClipperExport(
   return record;
 }
 
-/** @deprecated Use createClipperExport for append-only export history. */
-export async function upsertClipperExport(
-  projectId: string,
-  clipIndex: number,
-  formatId: string,
-  entry: Omit<
-    CreateClipperExportInput,
-    "id" | "clipIndex" | "formatId" | "exportedAt"
-  > & { fileSize: number },
-): Promise<ClipperExportRecord> {
-  const exports = await fetchClipperExports(projectId);
-  const existing = exports.find(
-    (item) => item.clipIndex === clipIndex && item.formatId === formatId,
-  );
-  const now = new Date().toISOString();
-  const record: ClipperExportRecord = {
-    id: existing?.id ?? crypto.randomUUID(),
-    projectId,
-    clipIndex,
-    formatId,
-    ...entry,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
-  await localRecordPut(EXPORTS, projectId, projectId, [
-    ...exports.filter((item) => item.id !== record.id),
-    record,
-  ]);
-  return record;
-}
-
 export async function syncClipperExportsBulk(
   projectId: string,
   entries: Array<{

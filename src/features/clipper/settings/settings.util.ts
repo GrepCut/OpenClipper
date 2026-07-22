@@ -3,6 +3,7 @@ import type {
   SubtitleFontSize,
   SubtitlePosition,
 } from '../lib/captions/subtitle-render.util';
+import { clamp } from '../lib/math.util';
 
 export type ClipperCropMode = "center" | "smart-follow" | "face-follow" | "podcast-collage" | "manual";
 export type ClipperFacePickStrategy = "largest" | "centered";
@@ -152,10 +153,6 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   },
   lastDurationPresetSec: 60,
 };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 export function clampOpacity01(value: number): number {
   return clamp(value, 0, 1);

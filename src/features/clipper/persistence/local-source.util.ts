@@ -2,9 +2,6 @@ import { openDB, type IDBPDatabase } from "idb";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { pathBackedFile } from "../platform/native-source.util";
 
-/** @deprecated Use pathBackedFile from platform/native-source */
-export const pathBackedMediaFile = pathBackedFile;
-
 type LocalMediaSourceRecord = {
   kind: "tauri-path";
   fileName: string;
@@ -74,7 +71,7 @@ export async function resolveOrPromptLocalMediaSourceAsFile(item: {
 }): Promise<File | null> {
   const cached = await getLocalMediaSource(item.id);
   if (cached?.path) {
-    return pathBackedMediaFile(cached.path, item.name);
+    return pathBackedFile(cached.path, item.name);
   }
 
   if (!isTauri()) return null;
@@ -88,5 +85,5 @@ export async function resolveOrPromptLocalMediaSourceAsFile(item: {
   if (typeof selected !== "string" || !selected) return null;
 
   await rememberLocalMediaSource(item.id, item.name, selected);
-  return pathBackedMediaFile(selected, item.name);
+  return pathBackedFile(selected, item.name);
 }

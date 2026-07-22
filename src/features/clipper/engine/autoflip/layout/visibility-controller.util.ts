@@ -46,9 +46,6 @@ export const DEFAULT_VISIBILITY_PARAMS: Readonly<VisibilityControllerParams> = O
   widerHoldSec: 1.2,
 });
 
-/** @deprecated Use `LEGACY_VISIBILITY_PARAMS` */
-export const RUN9_VISIBILITY_CONTROLLER_PARAMS = LEGACY_VISIBILITY_PARAMS;
-/** @deprecated Use `DEFAULT_VISIBILITY_PARAMS` */
 export const ITERATION10_VISIBILITY_CONTROLLER_PARAMS = DEFAULT_VISIBILITY_PARAMS;
 
 export function createVisibilityControllerState(): VisibilityControllerState {

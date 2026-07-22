@@ -11,10 +11,10 @@ import {
 } from "./tauri-media.util";
 import {
   getLocalMediaSource,
-  pathBackedMediaFile,
   rememberLocalMediaSource,
   resolveOrPromptLocalMediaSourceAsFile,
 } from "./local-source.util";
+import { pathBackedFile } from "../platform/native-source.util";
 import {
   createClipperMediaFile,
   getInMemorySourceFile,
@@ -174,7 +174,7 @@ async function resolveClipperSourceFile(
 
   if (isTauri() && sourceNativePath && isAbsoluteNativePath(sourceNativePath)) {
     await onPhase?.("Locating source video", "Using saved native path from project metadata");
-    return pathBackedMediaFile(sourceNativePath, mediaFile.name);
+    return pathBackedFile(sourceNativePath, mediaFile.name);
   }
 
   const inMemory = getInMemorySourceFile(mediaFile.id);
@@ -184,7 +184,7 @@ async function resolveClipperSourceFile(
     await onPhase?.("Locating source video", "Checking local media cache");
     const cached = await getLocalMediaSource(mediaFile.id);
     if (cached?.path) {
-      return pathBackedMediaFile(cached.path, mediaFile.name);
+      return pathBackedFile(cached.path, mediaFile.name);
     }
     await onPhase?.("Locating source video", "Prompting for source file");
     return resolveOrPromptLocalMediaSourceAsFile({
