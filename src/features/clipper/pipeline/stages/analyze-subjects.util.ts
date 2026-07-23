@@ -6,6 +6,7 @@ import {
 import { augmentFaceSamplesWithDetectedHeads } from "../../engine/reframe/collage";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { aspectRatioFromId } from "../../lib/media/video-draw.util";
+import { yieldToMain } from "../../shared/yield-to-main.util";
 import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings.util";
 import {
   clipperSmartCropDataRelativePath,
@@ -108,6 +109,12 @@ export async function runAnalyzeSubjectsStage(
   }
 
   reporter.subjectProgress(0.95);
+  // Let React paint the transition out of the 92% native-analysis bucket
+  // before the synchronous track build starts.
+  await yieldToMain();
+  if (options.signal.aborted) {
+    throw new DOMException("Conversion aborted", "AbortError");
+  }
   benchmark?.enterPhase("autoflip-track-build");
 
   const { frameWidth, frameHeight } = frameDimensions(session);

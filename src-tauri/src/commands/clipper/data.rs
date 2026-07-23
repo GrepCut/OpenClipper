@@ -75,6 +75,26 @@ pub fn write_clipper_project_data_bytes(
     fs::write(dir.join(file_name), contents).map_err(|e| e.to_string())
 }
 
+/// Stores diagnostic artifacts in a run-specific directory under the project data.
+/// Keeping this separate from normal project files makes these exports safe to inspect
+/// or remove without affecting the pipeline cache.
+#[tauri::command]
+pub fn write_clipper_project_diagnostic_file(
+    app: AppHandle,
+    project_id: String,
+    run_name: String,
+    file_name: String,
+    contents: Vec<u8>,
+) -> Result<String, String> {
+    validate_export_file_name(&run_name)?;
+    validate_export_file_name(&file_name)?;
+    let dir = clipper_project_data_dir(&app, &project_id)
+        .map(|path| path.join("diagnostics").join(run_name))?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(dir.join(file_name), contents).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub fn write_clipper_project_data_raw(app: AppHandle, request: Request<'_>) -> Result<(), String> {
     let project_id = request

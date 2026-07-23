@@ -18,6 +18,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::data::read_clipper_project_data_file,
             crate::commands::clipper::data::write_clipper_project_data_file,
             crate::commands::clipper::data::write_clipper_project_data_bytes,
+            crate::commands::clipper::data::write_clipper_project_diagnostic_file,
             crate::commands::clipper::data::write_clipper_project_data_raw,
             crate::commands::clipper::data::get_clipper_project_data_file_path,
             crate::commands::clipper::data::extract_clipper_segment_to_project_data,

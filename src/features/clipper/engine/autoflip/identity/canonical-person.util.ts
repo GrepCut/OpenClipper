@@ -108,7 +108,15 @@ function associationScore(
   return geometryValid ? score : Number.NEGATIVE_INFINITY;
 }
 
-/** Exact global maximum assignment. Detector samples contain few people, so exhaustive search is deterministic and cheap. */
+/**
+ * Exact global maximum assignment.
+ *
+ * The native tracker can emit many face candidates for a single frame.  The
+ * previous exhaustive search grew as P(tracks, evidence), which blocked the
+ * browser thread during AutoFlip construction.  The Hungarian algorithm keeps
+ * the same global optimum in polynomial time.  One zero-value dummy column per
+ * evidence item represents the valid "leave unmatched" outcome.
+ */
 function assignGlobally<T>(
   evidence: Evidence<T>[],
   tracks: TrackState[],
@@ -116,38 +124,91 @@ function assignGlobally<T>(
   time: number,
   reidEmbedding?: number[],
 ): Map<number, { track: TrackState; confidence: number; ambiguous: boolean }> {
-  let bestScore = 0;
-  let best = new Map<number, number>();
-  const visit = (index: number, used: Set<number>, score: number, chosen: Map<number, number>) => {
-    if (index === evidence.length) {
-      if (score > bestScore + EPSILON) {
-        bestScore = score;
-        best = new Map(chosen);
-      }
-      return;
-    }
-    visit(index + 1, used, score, chosen);
-    for (let trackIndex = 0; trackIndex < tracks.length; trackIndex++) {
-      if (used.has(trackIndex)) continue;
-      const candidate = associationScore(tracks[trackIndex]!, evidence[index]!, kind, time, reidEmbedding);
-      if (!Number.isFinite(candidate) || candidate < 0.45) continue;
-      used.add(trackIndex);
-      chosen.set(index, trackIndex);
-      visit(index + 1, used, score + candidate, chosen);
-      chosen.delete(index);
-      used.delete(trackIndex);
-    }
-  };
-  visit(0, new Set(), 0, new Map());
+  if (evidence.length === 0 || tracks.length === 0) return new Map();
+
+  const scores = evidence.map((item) => tracks.map((track) =>
+    associationScore(track, item, kind, time, reidEmbedding)));
+  const eligible = scores.map((row) => row.map((score) => Number.isFinite(score) && score >= 0.45));
+  const best = maximumWeightAssignment(scores, eligible, tracks.length);
   const result = new Map<number, { track: TrackState; confidence: number; ambiguous: boolean }>();
-  for (const [evidenceIndex, trackIndex] of best) {
-    const scores = tracks.map((track) => associationScore(track, evidence[evidenceIndex]!, kind, time, reidEmbedding));
-    const selected = scores[trackIndex]!;
-    const runnerUp = Math.max(0, ...scores.filter((_, index) => index !== trackIndex && Number.isFinite(scores[index])));
+  for (const [evidenceIndex, trackIndex] of best.entries()) {
+    if (trackIndex == null || !eligible[evidenceIndex]![trackIndex]) continue;
+    const row = scores[evidenceIndex]!;
+    const selected = row[trackIndex]!;
+    const runnerUp = Math.max(0, ...row.filter((score, index) => index !== trackIndex && Number.isFinite(score)));
     const confidence = Math.max(0, Math.min(1, 0.45 + selected / 5));
     result.set(evidenceIndex, { track: tracks[trackIndex]!, confidence, ambiguous: selected - runnerUp < 0.25 });
   }
   return result;
+}
+
+/** Returns the selected real-track column for every evidence row, or -1. */
+function maximumWeightAssignment(
+  scores: number[][],
+  eligible: boolean[][],
+  trackCount: number,
+): number[] {
+  const rowCount = scores.length;
+  // The extra dummy columns make an unmatched observation cost zero and keep
+  // the rectangular Hungarian matrix wide enough for every row.
+  const columnCount = trackCount + rowCount;
+  const u = new Array<number>(rowCount + 1).fill(0);
+  const v = new Array<number>(columnCount + 1).fill(0);
+  const p = new Array<number>(columnCount + 1).fill(0);
+  const way = new Array<number>(columnCount + 1).fill(0);
+
+  for (let row = 1; row <= rowCount; row++) {
+    p[0] = row;
+    let column = 0;
+    const minValue = new Array<number>(columnCount + 1).fill(Number.POSITIVE_INFINITY);
+    const used = new Array<boolean>(columnCount + 1).fill(false);
+    do {
+      used[column] = true;
+      const currentRow = p[column]!;
+      let delta = Number.POSITIVE_INFINITY;
+      let nextColumn = 0;
+      for (let candidateColumn = 1; candidateColumn <= columnCount; candidateColumn++) {
+        if (used[candidateColumn]) continue;
+        const trackIndex = candidateColumn - 1;
+        const weight = trackIndex < trackCount && eligible[currentRow - 1]![trackIndex]
+          ? scores[currentRow - 1]![trackIndex]!
+          : 0;
+        // Hungarian solves a minimum-cost assignment; negate the score to
+        // maximize it. Stable iteration order gives deterministic tie breaks.
+        const reducedCost = -weight - u[currentRow]! - v[candidateColumn]!;
+        if (reducedCost < minValue[candidateColumn]!) {
+          minValue[candidateColumn] = reducedCost;
+          way[candidateColumn] = column;
+        }
+        if (minValue[candidateColumn]! < delta) {
+          delta = minValue[candidateColumn]!;
+          nextColumn = candidateColumn;
+        }
+      }
+      for (let index = 0; index <= columnCount; index++) {
+        if (used[index]) {
+          u[p[index]!] += delta;
+          v[index] -= delta;
+        } else {
+          minValue[index] -= delta;
+        }
+      }
+      column = nextColumn;
+    } while (p[column] !== 0);
+
+    do {
+      const previousColumn = way[column]!;
+      p[column] = p[previousColumn]!;
+      column = previousColumn;
+    } while (column !== 0);
+  }
+
+  const assignment = new Array<number>(rowCount).fill(-1);
+  for (let column = 1; column <= trackCount; column++) {
+    const row = p[column]!;
+    if (row > 0) assignment[row - 1] = column - 1;
+  }
+  return assignment;
 }
 
 function snapshot(track: TrackState, time: number): CanonicalPersonTrack {

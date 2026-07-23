@@ -10,6 +10,7 @@ import { kinematicOptionsForSmoothing } from "./config/kinematic-options.util";
 import { applyActiveSpeakerPolicy } from "./identity/active-speaker.util";
 import { buildCanonicalPersonTracks } from "./identity/canonical-person.util";
 import { buildProjectCompositionMemory, compositionScoreByIdentity } from "./identity/project-composition-memory.util";
+import { attachFaceCacheEvidence } from "./face-cache-evidence.util";
 import { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MAX_SCENE_FRAMES, AUTOFLIP_MODEL_ID, AUTOFLIP_TRACK_FPS } from "./config/config.constants";
 import { DEFAULT_ARBITER_PARAMS, LEGACY_ARBITER_PARAMS } from "./layout";
 import { smoothShotCropSamples } from "./camera/shot-smoothing.util";
@@ -145,14 +146,15 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
   const sourceFrameRate = Number.isFinite(input.sourceFrameRate) && input.sourceFrameRate! > 0 ? input.sourceFrameRate! : 30;
   const kinematicOptions = kinematicOptionsForSmoothing(input.smoothing ?? "balanced");
   const scenes = splitScenes(input.clipStart, input.clipEnd, input.sceneCuts, sourceFrameRate);
-  const canonicalFusion = buildCanonicalPersonTracks(input.detections);
+  const detectionsWithCachedFaces = attachFaceCacheEvidence(input.detections, input.faces, input.sceneCuts);
+  const canonicalFusion = buildCanonicalPersonTracks(detectionsWithCachedFaces);
   const activeSpeaker = applyActiveSpeakerPolicy(canonicalFusion.samples);
   const compositionInputs = input.enhancedIdentityFusion
     ? samplesWithVerifiedPeopleOnly(activeSpeaker.samples)
     : activeSpeaker.samples;
   const compositionMemory = buildProjectCompositionMemory(compositionInputs);
   const contentDetections = detectionsInContent(
-    input.enhancedIdentityFusion ? compositionMemory.samples : input.detections,
+    input.enhancedIdentityFusion ? compositionMemory.samples : detectionsWithCachedFaces,
     contentRect,
   );
   const rawKeyframes = buildSalientKeyframes({

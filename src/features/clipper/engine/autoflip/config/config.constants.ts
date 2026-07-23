@@ -1,6 +1,6 @@
 // v27 keeps source detail through 1080p and augments SCRFD with overlapping
 // native-resolution tiles; persisted v26 tracks must be recomputed.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v27-yolox-s-scrfd10g-tiled";
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v28-face-cache-evidence";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v5-yolox-s-scrfd10g-tiled";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;

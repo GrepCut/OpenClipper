@@ -53,6 +53,8 @@ export function ClipperPreviewSidePanel({
   smartCropAnalysis,
   previewTimeSec,
   primaryFormat,
+  projectId,
+  rangeTrimmedVideoUrl,
 }: ClipperPreviewSidePanelProps) {
   return (
     <Box
@@ -129,6 +131,7 @@ export function ClipperPreviewSidePanel({
             analysis={smartCropAnalysis}
             formatId={primaryFormat?.id}
             formatLabel={primaryFormat?.label}
+            projectId={projectId}
             time={previewTimeSec}
             theme={theme}
             onSeek={(t) => seekToTranscriptTime(activeClipIndex, t)}

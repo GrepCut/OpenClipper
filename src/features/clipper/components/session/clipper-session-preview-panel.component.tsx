@@ -15,6 +15,7 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
 }) => {
   const { theme, errorPanel } = useClipperUi();
   const {
+    project,
     state,
     settings,
     exportCount,
@@ -69,6 +70,7 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         </Box>
       )}
       <ClipperPreview
+        projectId={project.id}
         state={state}
         rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl!}
         clipPreviews={state.clipPreviews}

@@ -1,15 +1,21 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Box, HStack, Progress, Text, VStack } from "@chakra-ui/react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Activity,
+  Download,
   Info,
   Layers,
   Scissors,
   ShieldAlert,
+  Sparkles,
   Target,
   TrendingUp,
 } from "lucide-react";
+import { appToast } from "../../../../shared/utils/toast.service";
 import { importanceAtTime, precedingIndex, resolveLayoutTrack } from "../../engine/autoflip/layout";
+import { extractVideoFrameJpeg } from "../../lib/media/video-frame-extract.util";
+import { CLIPPER_TRIMMED_SEGMENT_FILE, pathBackedClipperFile } from "../../platform/native-source.util";
 import type { ClipperLayoutMode, ClipperSmartCropBlob, ImportanceRegion } from "../../shared/smart-crop.util";
 import { clipperTheme } from "../../shared/theme.util";
 import type { Theme } from "../../../../theme";
@@ -18,6 +24,7 @@ interface FramingDecisionsPanelProps {
   analysis: ClipperSmartCropBlob | null | undefined;
   formatId: string | undefined;
   formatLabel: string | undefined;
+  projectId: string;
   time: number;
   theme: Theme;
   onSeek?: (time: number) => void;
@@ -56,6 +63,105 @@ function trustLabel(trust: ImportanceRegion["trust"]): string {
 function timestamp(value: number) {
   const minutes = Math.floor(value / 60);
   return `${minutes}:${(value - minutes * 60).toFixed(2).padStart(5, "0")}`;
+}
+
+type TimelineSample = {
+  t: number;
+  semanticScore: number | null;
+  baselineScore: number | null;
+  hasTargets: boolean;
+  targetCount: number;
+  strategy?: string;
+  reasonCodes?: string[];
+  cut?: boolean;
+};
+
+type ScoredTimelineSample = TimelineSample & {
+  semanticScore: number;
+  baselineScore: number;
+};
+
+type FlatMarginPeriod = {
+  startTime: number;
+  endTime: number;
+  samples: ScoredTimelineSample[];
+};
+
+const FLAT_MARGIN_MIN_DURATION_SEC = 4;
+const FLAT_MARGIN_STEP_TOLERANCE = 0.01;
+const FLAT_MARGIN_RANGE_TOLERANCE = 0.02;
+const FLAT_FRAME_EXPORT_INTERVAL_SEC = 0.5;
+
+function isScored(sample: TimelineSample): sample is ScoredTimelineSample {
+  return sample.hasTargets && sample.semanticScore != null && sample.baselineScore != null;
+}
+
+/** Finds stable runs in the actual margin, never bridging missing target evidence or cuts. */
+function findFlatMarginPeriods(samples: TimelineSample[]): FlatMarginPeriod[] {
+  if (samples.length < 2) return [];
+  const periods: FlatMarginPeriod[] = [];
+  let run: ScoredTimelineSample[] = [];
+
+  const addPeriod = () => {
+    const periodSamples = run;
+    run = [];
+    if (periodSamples.length < 2) return;
+    const gains = periodSamples.map((sample) => sample.semanticScore - sample.baselineScore);
+    const gainRange = Math.max(...gains) - Math.min(...gains);
+    const duration = periodSamples.at(-1)!.t - periodSamples[0]!.t;
+    if (duration >= FLAT_MARGIN_MIN_DURATION_SEC && gainRange <= FLAT_MARGIN_RANGE_TOLERANCE) {
+      periods.push({
+        startTime: periodSamples[0]!.t,
+        endTime: periodSamples.at(-1)!.t,
+        samples: periodSamples,
+      });
+    }
+  };
+
+  for (const sample of samples) {
+    if (!isScored(sample)) {
+      addPeriod();
+      continue;
+    }
+    const previous = run.at(-1);
+    const previousGain = previous ? previous.semanticScore - previous.baselineScore : null;
+    const gain = sample.semanticScore - sample.baselineScore;
+    if (sample.cut || (previousGain != null && Math.abs(gain - previousGain) > FLAT_MARGIN_STEP_TOLERANCE)) {
+      addPeriod();
+    }
+    run.push(sample);
+  }
+  addPeriod();
+  return periods;
+}
+
+function nearestTimelineSample(samples: ScoredTimelineSample[], timeSec: number): ScoredTimelineSample {
+  let best = samples[0]!;
+  let bestDistance = Math.abs(best.t - timeSec);
+  for (const sample of samples) {
+    const distance = Math.abs(sample.t - timeSec);
+    if (distance < bestDistance) {
+      best = sample;
+      bestDistance = distance;
+    }
+  }
+  return { ...best, t: timeSec };
+}
+
+function buildFlatExportSamples(period: FlatMarginPeriod): ScoredTimelineSample[] {
+  const exportSamples: ScoredTimelineSample[] = [];
+  for (let timeSec = period.startTime; timeSec <= period.endTime + 1e-6; timeSec += FLAT_FRAME_EXPORT_INTERVAL_SEC) {
+    exportSamples.push(nearestTimelineSample(period.samples, timeSec));
+  }
+  return exportSamples;
+}
+
+async function loadTrimmedVideoFile(projectId: string): Promise<File> {
+  const filePath = await invoke<string>("get_clipper_project_data_file_path", {
+    projectId,
+    fileName: CLIPPER_TRIMMED_SEGMENT_FILE,
+  });
+  return pathBackedClipperFile(filePath);
 }
 
 function SectionCard({
@@ -180,13 +286,13 @@ function DecisionTimelineChart({
 }: {
   samples: Array<{
     t: number;
-    semanticScore: number;
-    baselineScore: number;
+    semanticScore: number | null;
+    baselineScore: number | null;
     selectSemantic: boolean;
     mode: ClipperLayoutMode;
     strategy?: string;
     hasTargets: boolean;
-    isDefaultFraming: boolean;
+    isUnscored: boolean;
     cut?: boolean;
     visibilityRisk?: boolean;
     targetCount: number;
@@ -216,15 +322,32 @@ function DecisionTimelineChart({
   const toX = (t: number) => paddingX + ((t - minTime) / timeSpan) * (width - paddingX * 2);
   const toY = (score: number) => paddingTop + (1 - score) * graphH;
 
-  // Build SVG path points for Semantic and Baseline score lines
-  const semanticPoints = samples.map((s) => `${toX(s.t)},${toY(s.semanticScore)}`).join(" ");
-  const baselinePoints = samples.map((s) => `${toX(s.t)},${toY(s.baselineScore)}`).join(" ");
+  const scoreSegments = (key: "semanticScore" | "baselineScore") => {
+    const segments: string[][] = [];
+    let current: string[] = [];
+    for (const sample of samples) {
+      const score = sample[key];
+      if (sample.cut && current.length) {
+        segments.push(current);
+        current = [];
+      }
+      if (score == null) {
+        if (current.length) segments.push(current);
+        current = [];
+        continue;
+      }
+      current.push(`${toX(sample.t)},${toY(score)}`);
+    }
+    if (current.length) segments.push(current);
+    return segments;
+  };
 
-  // Closed area under semantic curve
-  const firstX = toX(samples[0]!.t);
-  const lastX = toX(samples.at(-1)!.t);
+  const semanticSegments = scoreSegments("semanticScore");
+  const baselineSegments = scoreSegments("baselineScore");
   const bottomY = toY(0);
-  const semanticAreaPath = `M ${firstX},${bottomY} L ${semanticPoints} L ${lastX},${bottomY} Z`;
+  const semanticAreaPaths = semanticSegments
+    .filter((points) => points.length > 1)
+    .map((points) => `M ${points[0]!.split(",")[0]},${bottomY} L ${points.join(" ")} L ${points.at(-1)!.split(",")[0]},${bottomY} Z`);
 
   const curX = toX(currentTime);
 
@@ -378,6 +501,23 @@ function DecisionTimelineChart({
               })
             : null}
 
+          {/* Layer: No-target gaps; scores are deliberately not carried through these spans. */}
+          {samples.map((s, idx) => {
+            if (!s.isUnscored) return null;
+            const nextT = samples[idx + 1]?.t ?? s.t + 0.5;
+            const x1 = toX(s.t);
+            return (
+              <rect
+                key={`no-target-${idx}`}
+                x={x1}
+                y={paddingTop}
+                width={Math.max(1, toX(nextT) - x1)}
+                height={graphH}
+                fill="rgba(100, 116, 139, 0.12)"
+              />
+            );
+          })}
+
           {/* Layer: Shot Cut Boundary Markers */}
           {showCuts
             ? samples.map((s, idx) => {
@@ -427,27 +567,33 @@ function DecisionTimelineChart({
           })}
 
           {/* Area Fill for Margin / Semantic Score */}
-          {showMargin ? <path d={semanticAreaPath} fill="url(#timelineSemanticArea)" /> : null}
+          {showMargin ? semanticAreaPaths.map((path, index) => <path key={`semantic-area-${index}`} d={path} fill="url(#timelineSemanticArea)" />) : null}
 
           {/* Baseline Score Line (Dashed Amber) */}
-          <polyline
-            points={baselinePoints}
-            fill="none"
-            stroke="#f59e0b"
-            strokeWidth="1.5"
-            strokeDasharray="3 3"
-            opacity="0.85"
-          />
+          {baselineSegments.map((points, index) => (
+            <polyline
+              key={`baseline-${index}`}
+              points={points.join(" ")}
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity="0.85"
+            />
+          ))}
 
           {/* Semantic Score Line (Solid Glowing Cyan) */}
-          <polyline
-            points={semanticPoints}
-            fill="none"
-            stroke="#06b6d4"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          {semanticSegments.map((points, index) => (
+            <polyline
+              key={`semantic-${index}`}
+              points={points.join(" ")}
+              fill="none"
+              stroke="#06b6d4"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
 
           {/* Hover indicator line */}
           {hoverTime != null ? (
@@ -514,6 +660,8 @@ function DecisionTimelineChart({
           <Text>Split</Text>
           <Box w={2} h={2} borderRadius="xs" bg="#f59e0b" ml={1} />
           <Text>Baseline</Text>
+          <Box w={2} h={2} borderRadius="xs" bg="#64748b" ml={1} />
+          <Text>No targets</Text>
         </HStack>
       </HStack>
     </VStack>
@@ -529,7 +677,9 @@ export function FramingDecisionsPanel({
   time,
   theme,
   onSeek,
+  projectId,
 }: FramingDecisionsPanelProps) {
+  const [exportingFlatFrames, setExportingFlatFrames] = useState(false);
   const data = useMemo(() => {
     if (!analysis || !formatId) return null;
     const track = resolveLayoutTrack(analysis.layoutTracks, formatId);
@@ -545,28 +695,11 @@ export function FramingDecisionsPanel({
       .slice(0, 6);
     const alternatives = decision?.candidateVariants ?? [];
 
-    // Build smoothed time-series data for the timeline graph
-    // Prevents scores from plummeting to 0 when no required targets exist in a frame
-    let lastValidSemantic = 0.85;
-    let lastValidBaseline = 0.85;
-
     const timelineSamples = samples.map((s) => {
       const targetCount = s.requiredRegionIds?.length ?? 0;
       const hasTargets = targetCount > 0;
-      let rawSem = s.semanticScore ?? 0;
-      let rawBase = s.baselineScore ?? 0;
-
-      let isDefaultFraming = false;
-
-      if (hasTargets && (rawSem > 0 || rawBase > 0)) {
-        lastValidSemantic = rawSem;
-        lastValidBaseline = rawBase;
-      } else {
-        // Zero target fallback: smooth out 0 drops by holding last known score or default 1.0 framing
-        rawSem = lastValidSemantic;
-        rawBase = lastValidBaseline;
-        isDefaultFraming = true;
-      }
+      const rawSem = hasTargets && Number.isFinite(s.semanticScore) ? s.semanticScore! : null;
+      const rawBase = hasTargets && Number.isFinite(s.baselineScore) ? s.baselineScore! : null;
 
       const selectSemantic = s.strategy !== "legacy-baseline" && s.strategy != null;
       const visibilityRisk = s.visibilityRisk === true || (s.baselineRequiredCoverage != null && s.baselineRequiredCoverage[0]! < 0.85);
@@ -579,17 +712,26 @@ export function FramingDecisionsPanel({
         mode: s.mode,
         strategy: s.strategy,
         hasTargets,
-        isDefaultFraming,
+        isUnscored: rawSem == null || rawBase == null,
         cut: s.cut === true,
         visibilityRisk,
         targetCount,
+        reasonCodes: s.reasonCodes,
       };
     });
 
-    // Apply 3-point moving average smoothing across samples to eliminate micro-spikes
+    // Smooth only a continuous scored run. Missing targets and cuts are facts,
+    // not a reason to paint a plausible-looking score from neighbouring frames.
     const smoothedTimeline = timelineSamples.map((curr, i, arr) => {
-      const prev = arr[i - 1] ?? curr;
-      const next = arr[i + 1] ?? curr;
+      if (curr.semanticScore == null || curr.baselineScore == null) return curr;
+      const previous = arr[i - 1];
+      const following = arr[i + 1];
+      const prev = previous?.semanticScore != null && previous.baselineScore != null && !previous.cut && !curr.cut
+        ? previous
+        : curr;
+      const next = following?.semanticScore != null && following.baselineScore != null && !following.cut && !curr.cut
+        ? following
+        : curr;
       const smoothSem = prev.semanticScore * 0.25 + curr.semanticScore * 0.5 + next.semanticScore * 0.25;
       const smoothBase = prev.baselineScore * 0.25 + curr.baselineScore * 0.5 + next.baselineScore * 0.25;
       return {
@@ -601,6 +743,88 @@ export function FramingDecisionsPanel({
 
     return { decision, regions, rankedEntities, alternatives, timelineSamples: smoothedTimeline };
   }, [analysis, formatId, time]);
+
+  const exportFlatMarginFrames = useCallback(async () => {
+    const periods = findFlatMarginPeriods(data?.timelineSamples ?? []);
+    if (!periods.length) {
+      appToast.info("No flat Margin Gain periods", "No stable margin run lasting at least 4 seconds was found.");
+      return;
+    }
+
+    setExportingFlatFrames(true);
+    const loadingToast = appToast.loading("Exporting flat Margin Gain frames", "Preparing diagnostic stills…");
+    try {
+      const videoFile = await loadTrimmedVideoFile(projectId);
+      const runName = `flat-margin-gain-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      const frameManifest: Array<{
+        file: string;
+        timeSec: number;
+        semanticScore: number;
+        baselineScore: number;
+        marginGain: number;
+        period: number;
+        targetCount: number;
+        strategy?: string;
+        reasonCodes?: string[];
+      }> = [];
+      let exportDir = "";
+      let frameNumber = 0;
+
+      for (const [periodIndex, period] of periods.entries()) {
+        const exportSamples = buildFlatExportSamples(period);
+        for (const sample of exportSamples) {
+          const frame = await extractVideoFrameJpeg(videoFile, sample.t);
+          const fileName = `period-${String(periodIndex + 1).padStart(2, "0")}_t-${sample.t.toFixed(2).replace(".", "-")}.jpg`;
+          exportDir = await invoke<string>("write_clipper_project_diagnostic_file", {
+            projectId,
+            runName,
+            fileName,
+            contents: frame,
+          });
+          frameManifest.push({
+            file: fileName,
+            timeSec: sample.t,
+            semanticScore: sample.semanticScore,
+            baselineScore: sample.baselineScore,
+            marginGain: sample.semanticScore - sample.baselineScore,
+            period: periodIndex + 1,
+            targetCount: sample.targetCount,
+            strategy: sample.strategy,
+            reasonCodes: sample.reasonCodes,
+          });
+          frameNumber += 1;
+        }
+      }
+
+      await invoke<string>("write_clipper_project_diagnostic_file", {
+        projectId,
+        runName,
+        fileName: "manifest.json",
+        contents: new TextEncoder().encode(JSON.stringify({
+          criterion: {
+            metric: "semanticScore - baselineScore",
+            minDurationSec: FLAT_MARGIN_MIN_DURATION_SEC,
+            stepTolerance: FLAT_MARGIN_STEP_TOLERANCE,
+            rangeTolerance: FLAT_MARGIN_RANGE_TOLERANCE,
+            exportIntervalSec: FLAT_FRAME_EXPORT_INTERVAL_SEC,
+          },
+          periods: periods.map((period, index) => ({
+            period: index + 1,
+            startTimeSec: period.startTime,
+            endTimeSec: period.endTime,
+            durationSec: period.endTime - period.startTime,
+          })),
+          frames: frameManifest,
+        }, null, 2)),
+      });
+      await navigator.clipboard.writeText(exportDir);
+      appToast.update(loadingToast, "success", "Flat Margin Gain frames exported", `${frameNumber} still(s) in ${periods.length} period(s). The folder path was copied to the clipboard.`);
+    } catch (error) {
+      appToast.update(loadingToast, "error", "Could not export diagnostic frames", String(error));
+    } finally {
+      setExportingFlatFrames(false);
+    }
+  }, [data?.timelineSamples, projectId]);
 
   if (!data?.decision) {
     return (
@@ -629,8 +853,8 @@ export function FramingDecisionsPanel({
     : `semantic ${decision.candidateMode ?? "proposal"}`;
 
   const currentSample = timelineSamples.find((s) => Math.abs(s.t - decision.t) < 0.05) ?? {
-    semanticScore: decision.semanticScore ?? 0.85,
-    baselineScore: decision.baselineScore ?? 0.85,
+    semanticScore: decision.semanticScore ?? null,
+    baselineScore: decision.baselineScore ?? null,
     hasTargets: decision.requiredRegionIds.length > 0,
   };
 
@@ -643,9 +867,36 @@ export function FramingDecisionsPanel({
         {/* Multi-Layer Time-Series Timeline Chart */}
         <SectionCard
           title="Score Dynamics Over Time"
-          subtitle="Click timeline to seek video time"
+          subtitle="Click timeline to seek video time · export finds flat Margin Gain runs ≥ 4 s at 0.5 s intervals"
           theme={theme}
-          action={<Activity size={15} color={theme.text.muted} />}
+          action={
+            <HStack gap={2}>
+              <Box
+                as="button"
+                type="button"
+                onClick={() => void exportFlatMarginFrames()}
+                disabled={exportingFlatFrames}
+                px={2}
+                py={1}
+                borderRadius="md"
+                border="1px solid"
+                borderColor="rgba(6, 182, 212, 0.45)"
+                bg="rgba(6, 182, 212, 0.12)"
+                color="#67e8f9"
+                fontSize="10px"
+                fontWeight="semibold"
+                cursor={exportingFlatFrames ? "wait" : "pointer"}
+                opacity={exportingFlatFrames ? 0.65 : 1}
+                display="inline-flex"
+                alignItems="center"
+                gap={1}
+              >
+                <Download size={12} />
+                {exportingFlatFrames ? "Exporting…" : "Export flat frames"}
+              </Box>
+              <Activity size={15} color={theme.text.muted} />
+            </HStack>
+          }
         >
           <DecisionTimelineChart
             samples={timelineSamples}

@@ -4,6 +4,7 @@
  * random access instead of decoding the whole track like `video-frame-effect.ts` does.
  */
 import { ALL_FORMATS, BlobSource, Input, VideoSampleSink } from "mediabunny";
+import { createMediabunnyInput } from "./mediabunny-file-source.util";
 
 export type FramePosition = "start" | "middle" | "end";
 
@@ -76,6 +77,48 @@ export async function extractVideoFrame(
 ): Promise<ExtractedVideoFrame> {
   const raw = await extractRawVideoFrame(file, position);
   return downscaleExtractedFrame(raw, maxDimension);
+}
+
+async function encodeVideoFrameAsJpeg(frame: VideoFrame, quality = 0.92): Promise<Uint8Array> {
+  const canvas = new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not create a canvas for frame export.");
+  ctx.drawImage(frame, 0, 0);
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+  if (!blob) throw new Error("Could not encode a video frame as JPEG.");
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** Returns a single decoded frame at `timestampSec` as JPEG bytes (WebCodecs, not HTML video). */
+export async function extractVideoFrameJpeg(
+  file: File,
+  timestampSec: number,
+  quality = 0.92,
+): Promise<Uint8Array> {
+  const input = await createMediabunnyInput(file);
+  try {
+    const videoTrack = await input.getPrimaryVideoTrack();
+    if (!videoTrack) throw new Error("No video track found in this file.");
+    const sink = new VideoSampleSink(videoTrack);
+    const duration = await input.computeDuration();
+    const clampedTime = duration > 0.05
+      ? Math.max(0, Math.min(timestampSec, duration - 0.05))
+      : Math.max(0, timestampSec);
+    const sample = await sink.getSample(clampedTime);
+    if (!sample) throw new Error(`Could not read a frame at ${clampedTime.toFixed(2)}s.`);
+    try {
+      const frame = sample.toVideoFrame();
+      try {
+        return await encodeVideoFrameAsJpeg(frame, quality);
+      } finally {
+        frame.close();
+      }
+    } finally {
+      sample.close();
+    }
+  } finally {
+    input.dispose();
+  }
 }
 
 export function downscaleExtractedFrame(

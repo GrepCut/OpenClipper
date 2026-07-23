@@ -16,6 +16,7 @@ import type { ClipperClipPreview, ClipperPipelineState, ClipSourceMode } from ".
 import type { SidePanelTab } from "./clipper-preview.constants";
 
 export interface ClipperPreviewProps {
+  projectId: string;
   state: ClipperPipelineState;
   rangeTrimmedVideoUrl: string;
   clipPreviews: ClipperClipPreview[];
