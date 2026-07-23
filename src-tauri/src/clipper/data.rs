@@ -22,7 +22,10 @@ pub(crate) fn clipper_project_root(app: &AppHandle, project_id: &str) -> Result<
     Ok(clipper_projects_root(app)?.join(project_id))
 }
 
-pub(crate) fn clipper_project_data_dir(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> {
+pub(crate) fn clipper_project_data_dir(
+    app: &AppHandle,
+    project_id: &str,
+) -> Result<PathBuf, String> {
     Ok(clipper_project_root(app, project_id)?.join("data"))
 }
 

@@ -2,12 +2,14 @@ use serde::Serialize;
 
 pub const BLAZE_INPUT_SIZE: usize = 192;
 pub const BLAZE_ANCHOR_COUNT: usize = 2304;
+pub const SCRFD_INPUT_SIZE: usize = 640;
+pub const SCRFD_ANCHORS_PER_CELL: usize = 2;
 pub const MOVENET_INPUT_SIZE: usize = 512;
 pub const MOVENET_POSE_COUNT: usize = 6;
 pub const MOVENET_KEYPOINT_COUNT: usize = 17;
 pub const MOVENET_INSTANCE_SIZE: usize = 56;
-pub const YOLOX_INPUT_SIZE: usize = 416;
-pub const YOLOX_PREDICTION_COUNT: usize = 3549;
+pub const YOLOX_INPUT_SIZE: usize = 640;
+pub const YOLOX_PREDICTION_COUNT: usize = 8400;
 pub const YOLOX_CLASS_COUNT: usize = 80;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]

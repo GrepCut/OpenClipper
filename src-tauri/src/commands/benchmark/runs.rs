@@ -21,9 +21,15 @@ pub async fn benchmark_run_create(
     config: Value,
 ) -> Result<benchmark_run::Model, String> {
     validate_id(&id)?;
-    TestRepository::create_run(&db.database, id, dataset_id, serde_json::json!(clip_ids), config)
-        .await
-        .map_err(Into::into)
+    TestRepository::create_run(
+        &db.database,
+        id,
+        dataset_id,
+        serde_json::json!(clip_ids),
+        config,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -34,15 +40,9 @@ pub async fn benchmark_run_finish(
     error: Option<String>,
     manifest_relative_path: Option<String>,
 ) -> Result<benchmark_run::Model, String> {
-    TestRepository::finish_run(
-        &db.database,
-        &id,
-        status,
-        error,
-        manifest_relative_path,
-    )
-    .await
-    .map_err(Into::into)
+    TestRepository::finish_run(&db.database, &id, status, error, manifest_relative_path)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]

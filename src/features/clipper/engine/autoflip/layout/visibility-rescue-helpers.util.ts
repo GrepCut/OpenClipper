@@ -37,6 +37,25 @@ export function stablePair(
   return observed >= minimumSamples;
 }
 
+export function stableTriple(
+  samples: ImportanceRegionSample[],
+  index: number,
+  ids: string[],
+  minimumSamples: number,
+): boolean {
+  if (ids.length !== 3) return false;
+  const key = [...ids].sort().join("|");
+  let observed = 0;
+  for (let cursor = index; cursor >= 0 && observed < minimumSamples; cursor--) {
+    const sample = samples[cursor]!;
+    if (cursor < index && (samples[cursor + 1]?.cut || sample.cut)) break;
+    const required = requiredRegions(sample).filter(hasIndependentEvidence);
+    if (required.length !== 3 || required.map((region) => region.id).sort().join("|") !== key) break;
+    observed++;
+  }
+  return observed >= minimumSamples;
+}
+
 export function similarlyImportantPeople(sample: ImportanceRegionSample): number {
   const human = new Set(["face", "head", "speaker", "person"]);
   const candidates = sample.regions.filter((region) => !region.predicted && human.has(region.kind));
@@ -73,6 +92,24 @@ export function orderedPair(regions: ImportanceRegion[], state: VisibilityContro
   }
   const ordered = [...regions].sort((a, b) =>
     (a.contentBox.x + a.contentBox.width / 2) - (b.contentBox.x + b.contentBox.width / 2));
+  state.panelOrder = ordered.map((region) => region.id);
+  return ordered;
+}
+
+/** Keep the editorial primary first; the lower/right pair is spatially stable. */
+export function orderedTriple(regions: ImportanceRegion[], state: VisibilityControllerState): ImportanceRegion[] {
+  const primary = regions.find((region) => region.role === "primary")
+    ?? [...regions].sort((a, b) => b.importanceScore - a.importanceScore)[0]!;
+  const others = regions.filter((region) => region.id !== primary.id);
+  if (state.panelOrder.length === 3 && state.panelOrder[0] === primary.id) {
+    const ordered = state.panelOrder
+      .map((id) => regions.find((region) => region.id === id))
+      .filter((region): region is ImportanceRegion => region != null);
+    if (ordered.length === 3) return ordered;
+  }
+  others.sort((a, b) =>
+    (a.contentBox.x + a.contentBox.width / 2) - (b.contentBox.x + b.contentBox.width / 2));
+  const ordered = [primary, ...others];
   state.panelOrder = ordered.map((region) => region.id);
   return ordered;
 }

@@ -10,6 +10,106 @@ export const SMOOTHING_ALPHA: Record<ClipperSmoothingStrength, number> = {
   snappy: 0.85,
 };
 
+const FOCUS_DEAD_ZONE = 0.03;
+const FOCUS_SWITCH_DISTANCE = 0.12;
+const FOCUS_SWITCH_MATCH_DISTANCE = 0.08;
+const FOCUS_SWITCH_CONFIRMATION_SAMPLES = 2;
+const FOCUS_EXTENT_DEAD_ZONE = 0.015;
+const FOCUS_MAX_SPEED_PER_SEC: Record<ClipperSmoothingStrength, number> = {
+  smooth: 0.12,
+  balanced: 0.16,
+  snappy: 0.24,
+};
+const FOCUS_MAX_EXTENT_SPEED_PER_SEC = 0.12;
+
+export interface FocusStabilizerState {
+  activeTarget: FaceCentroid | null;
+  pendingTarget: FaceCentroid | null;
+  pendingSamples: number;
+  displayed: FaceCentroid | null;
+  lastTime: number | null;
+}
+
+export function createFocusStabilizer(): FocusStabilizerState {
+  return {
+    activeTarget: null,
+    pendingTarget: null,
+    pendingSamples: 0,
+    displayed: null,
+    lastTime: null,
+  };
+}
+
+function centroidDistance(a: FaceCentroid, b: FaceCentroid): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function moveTowards(current: number, target: number, maxStep: number): number {
+  const delta = target - current;
+  if (Math.abs(delta) <= maxStep) return target;
+  return current + Math.sign(delta) * maxStep;
+}
+
+/**
+ * Holds a spatially inconsistent face candidate until it repeats, then moves
+ * the visible focus point with a dead zone and a time-based speed cap. Face
+ * samples currently have no stable id, so proximity is the identity proxy.
+ */
+export function stabilizeFocusCentroid(
+  state: FocusStabilizerState,
+  observed: FaceCentroid,
+  time: number,
+  smoothing: ClipperSmoothingStrength,
+  sceneCut = false,
+): FaceCentroid {
+  if (sceneCut || !state.activeTarget || !state.displayed) {
+    state.activeTarget = observed;
+    state.pendingTarget = null;
+    state.pendingSamples = 0;
+    state.displayed = observed;
+    state.lastTime = time;
+    return observed;
+  }
+
+  if (centroidDistance(observed, state.activeTarget) > FOCUS_SWITCH_DISTANCE) {
+    if (state.pendingTarget && centroidDistance(observed, state.pendingTarget) <= FOCUS_SWITCH_MATCH_DISTANCE) {
+      state.pendingSamples++;
+    } else {
+      state.pendingTarget = observed;
+      state.pendingSamples = 1;
+    }
+    if (state.pendingSamples >= FOCUS_SWITCH_CONFIRMATION_SAMPLES) {
+      state.activeTarget = observed;
+      state.pendingTarget = null;
+      state.pendingSamples = 0;
+    }
+  } else {
+    state.activeTarget = observed;
+    state.pendingTarget = null;
+    state.pendingSamples = 0;
+  }
+
+  const target = blendCentroid(state.displayed, state.activeTarget, SMOOTHING_ALPHA[smoothing]);
+  const elapsed = Math.max(0, time - (state.lastTime ?? time));
+  const distance = centroidDistance(target, state.displayed);
+  const maxDistance = FOCUS_MAX_SPEED_PER_SEC[smoothing] * elapsed;
+  const moveFactor = distance <= FOCUS_DEAD_ZONE || maxDistance <= 0
+    ? 0
+    : Math.min(1, maxDistance / distance);
+  const extentDelta = target.extent - state.displayed.extent;
+  const extent = Math.abs(extentDelta) <= FOCUS_EXTENT_DEAD_ZONE
+    ? state.displayed.extent
+    : moveTowards(state.displayed.extent, target.extent, FOCUS_MAX_EXTENT_SPEED_PER_SEC * elapsed);
+  const stable = {
+    x: state.displayed.x + (target.x - state.displayed.x) * moveFactor,
+    y: state.displayed.y + (target.y - state.displayed.y) * moveFactor,
+    extent,
+  };
+  state.displayed = stable;
+  state.lastTime = time;
+  return stable;
+}
+
 export function pickPrimaryFace(
   faces: FaceBox[],
   frameW: number,
@@ -43,20 +143,18 @@ export function deriveSingleFocusTrack(
   strategy: ClipperFacePickStrategy,
   smoothing: ClipperSmoothingStrength,
 ): CentroidSample[] {
-  const alpha = SMOOTHING_ALPHA[smoothing];
   const track: CentroidSample[] = [];
-  let prev: FaceCentroid | null = null;
+  const stabilizer = createFocusStabilizer();
 
   for (const sample of samples) {
     const face = pickPrimaryFace(sample.faces, sample.frameW, sample.frameH, strategy);
     if (!face) {
-      if (prev) track.push({ t: sample.time, ...prev });
+      if (stabilizer.displayed) track.push({ t: sample.time, ...stabilizer.displayed });
       continue;
     }
     const centroid = faceToCentroid(face, sample.frameW, sample.frameH);
-    const previous: FaceCentroid | null = prev;
-    prev = sample.sceneCut || previous === null ? centroid : blendCentroid(previous, centroid, alpha);
-    track.push({ t: sample.time, ...prev, cut: sample.sceneCut });
+    const stabilized = stabilizeFocusCentroid(stabilizer, centroid, sample.time, smoothing, sample.sceneCut);
+    track.push({ t: sample.time, ...stabilized, cut: sample.sceneCut });
   }
 
   return track;

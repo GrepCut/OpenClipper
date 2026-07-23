@@ -229,10 +229,9 @@ export function replayClip(
   framing?: SemanticFramingParams,
   visibilityController?: VisibilityControllerParams,
 ): ClipReplayResult {
-  // RUN10_ARBITER_PARAMS is the only params object that sets both flags —
-  // this mirrors production, which always pairs it with the Iteration 10
-  // visibility controller.
-  const controller = visibilityController ?? (params.allowSplit === true && params.allowContain === true
+  // Split-enabled production replays use the same visibility controller as
+  // Smart Follow. There is intentionally no contain/padding fallback.
+  const controller = visibilityController ?? (params.allowSplit === true
     ? { ...DEFAULT_VISIBILITY_PARAMS }
     : undefined);
   const samples = replayTrack(clip.debug, clip.formatId, params, framing || controller ? {
@@ -266,7 +265,7 @@ export function replayClip(
     "wider-crop",
     "stable-split-v2",
     "stable-split-v3",
-    "contain-fail-safe",
+    "stable-split-3",
   ];
   for (const kind of kinds) {
     const variantSamples = samples.map((sample): ReplayedSample => {
@@ -278,10 +277,8 @@ export function replayClip(
         ...sample,
         mode: candidate.mode,
         strategy: candidate.mode === "split"
-          ? "semantic-split"
-          : candidate.mode === "contain"
-            ? "semantic-contain"
-            : "semantic-single",
+          ? candidate.viewports.length === 3 ? "semantic-split-3" : "semantic-split"
+          : "semantic-single",
         viewports: candidate.viewports,
       };
     });

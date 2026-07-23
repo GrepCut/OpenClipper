@@ -6,6 +6,7 @@ import type {
 import {
   DEFAULT_ARBITER_PARAMS,
   decideLayoutStrategy,
+  coveredFraction,
   importanceAtTime,
   precedingIndex,
   proposalScore,
@@ -20,6 +21,7 @@ import { groupUnionLexicographicOk } from "./group-union-layout.util";
 import { rawMode } from "./layout-mode.util";
 import { createVisibilityFramingState } from "./visibility-framing.util";
 import { buildViewports } from "./viewport-builder.util";
+import { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";
 
 const EPSILON = 1e-9;
 
@@ -32,14 +34,8 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
     const visibilityControllerState = createVisibilityControllerState();
     const samples: ClipperLayoutSample[] = aspectTrack.samples.map((cropSample) => {
       const importance = importanceAtTime(input.importanceSamples, cropSample.t);
-      const fallbackPixelAspect = cropSample.crop.width * sourceAspect / Math.max(EPSILON, cropSample.crop.height);
-      const explicitPadding = cropSample.solidBackgroundColor != null
-        && Math.abs(fallbackPixelAspect - aspectTrack.targetAspectRatio) > 0.001;
       const required = requiredRegions(importance);
-      const baselineMode: ClipperLayoutMode = explicitPadding
-        || Math.abs(fallbackPixelAspect - aspectTrack.targetAspectRatio) > 0.001
-        ? "contain"
-        : "single-crop";
+      const baselineMode: ClipperLayoutMode = "single-crop";
       const baselineViewports = [cropSample.crop];
       const importanceIndex = precedingIndex(input.importanceSamples, cropSample.t);
       let desiredMode = rawMode(importance, sourceAspect, aspectTrack.targetAspectRatio);
@@ -90,11 +86,15 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
       const coverageRegions = visibilityDecision?.envelopes ?? required;
       const baselineScore = proposalScore(baselineViewports, coverageRegions);
       const semanticScore = proposalScore(semanticViewports, coverageRegions);
+      const baselineCoverage = coverageRegions.length
+        ? Math.min(...coverageRegions.map((region) => Math.max(...baselineViewports.map((viewport) => coveredFraction(viewport, region.contentBox)))))
+        : 1;
       const decision = decideLayoutStrategy({
         desiredMode,
         baselineScore,
         semanticScore,
         controllerReasonCodes: visibilityDecision?.reasonCodes,
+        baselineCoverage,
       }, arbiterParams);
       return {
         t: cropSample.t,
@@ -117,7 +117,7 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
           : visibilityDecision?.baselineCoverage,
         visibilityRisk: visibilityDecision?.visibilityRisk,
         qualityTelemetry: visibilityDecision ? {
-          containDutyCandidate: decision.selectSemantic && desiredMode === "contain",
+          containDutyCandidate: false,
           subjectDisplayHeightFractions: coverageRegions.map((region) => Math.min(1, Math.max(
             ...((decision.selectSemantic ? semanticViewports : baselineViewports).map((viewport) =>
               region.contentBox.height / Math.max(EPSILON, viewport.height))),
@@ -128,6 +128,7 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         solidBackgroundColor: cropSample.solidBackgroundColor,
       };
     });
-    return [formatId, { targetAspectRatio: aspectTrack.targetAspectRatio, samples }];
+    const smoothedSamples = smoothLayoutTrackSamples(samples);
+    return [formatId, { targetAspectRatio: aspectTrack.targetAspectRatio, samples: smoothedSamples }];
   }));
 }

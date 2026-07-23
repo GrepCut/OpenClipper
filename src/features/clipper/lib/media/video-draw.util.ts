@@ -155,3 +155,47 @@ export function drawVerticalSplitFrame(
     ctx.fillRect(0, topHeight - dividerPx / 2, output.width, dividerPx);
   }
 }
+
+/**
+ * Renders a full-frame editorial three-up. Portrait keeps the primary panel
+ * above two secondaries; square and landscape place it left of a stacked pair.
+ */
+export function drawPrimaryPlusTwoFrame(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  frame: CanvasImageSource,
+  output: VideoSize,
+  primaryCrop: SplitCropRect,
+  secondaryOneCrop: SplitCropRect,
+  secondaryTwoCrop: SplitCropRect,
+  dividerPx = 3,
+): void {
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, output.width, output.height);
+  if (output.width / output.height < 1) {
+    const primaryHeight = evenInt(output.height / 2);
+    const lowerHeight = output.height - primaryHeight;
+    const leftWidth = evenInt(output.width / 2);
+    const rightWidth = output.width - leftWidth;
+    ctx.drawImage(frame, primaryCrop.sx, primaryCrop.sy, primaryCrop.sw, primaryCrop.sh, 0, 0, output.width, primaryHeight);
+    ctx.drawImage(frame, secondaryOneCrop.sx, secondaryOneCrop.sy, secondaryOneCrop.sw, secondaryOneCrop.sh, 0, primaryHeight, leftWidth, lowerHeight);
+    ctx.drawImage(frame, secondaryTwoCrop.sx, secondaryTwoCrop.sy, secondaryTwoCrop.sw, secondaryTwoCrop.sh, leftWidth, primaryHeight, rightWidth, lowerHeight);
+    if (dividerPx > 0) {
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(0, primaryHeight - dividerPx / 2, output.width, dividerPx);
+      ctx.fillRect(leftWidth - dividerPx / 2, primaryHeight, dividerPx, lowerHeight);
+    }
+    return;
+  }
+  const primaryWidth = evenInt(output.width * 0.6);
+  const secondaryWidth = output.width - primaryWidth;
+  const upperHeight = evenInt(output.height / 2);
+  const lowerHeight = output.height - upperHeight;
+  ctx.drawImage(frame, primaryCrop.sx, primaryCrop.sy, primaryCrop.sw, primaryCrop.sh, 0, 0, primaryWidth, output.height);
+  ctx.drawImage(frame, secondaryOneCrop.sx, secondaryOneCrop.sy, secondaryOneCrop.sw, secondaryOneCrop.sh, primaryWidth, 0, secondaryWidth, upperHeight);
+  ctx.drawImage(frame, secondaryTwoCrop.sx, secondaryTwoCrop.sy, secondaryTwoCrop.sw, secondaryTwoCrop.sh, primaryWidth, upperHeight, secondaryWidth, lowerHeight);
+  if (dividerPx > 0) {
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    ctx.fillRect(primaryWidth - dividerPx / 2, 0, dividerPx, output.height);
+    ctx.fillRect(primaryWidth, upperHeight - dividerPx / 2, secondaryWidth, dividerPx);
+  }
+}

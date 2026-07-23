@@ -117,6 +117,7 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         exportCount={exportCount}
         onViewExports={goToExports}
         onOpenRenderQueue={renderQueue.openRenderQueue}
+        guardAccount={guardAccount}
         disabledCollageRegionIds={disabledCollageRegionIds}
         onToggleCollageRegion={toggleCollageRegion}
         autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}

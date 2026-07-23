@@ -1,6 +1,7 @@
 export {
   DEFAULT_ARBITER_PARAMS,
   LEGACY_ARBITER_PARAMS,
+  RUN9_ARBITER_PARAMS,
   RUN10_ARBITER_PARAMS,
   coveredFraction,
   decideLayoutStrategy,
@@ -40,6 +41,7 @@ export {
 } from "./group-union-layout.util";
 export { buildViewports } from "./viewport-builder.util";
 export { buildLayoutTracks } from "./layout-planner.util";
+export { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";
 export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation.util";
 export type {
   ArbiterDecision,

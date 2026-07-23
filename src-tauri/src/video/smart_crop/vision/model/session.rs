@@ -2,7 +2,7 @@ use windows::AI::MachineLearning::{LearningModel, LearningModelDevice, LearningM
 
 use super::super::error_util::winml_error;
 use super::super::session::{make_bound_session, Session};
-use super::super::types::{BATCH_BOUND, NativeVisionDevice, NativeVisionError, SessionConfig};
+use super::super::types::{NativeVisionDevice, NativeVisionError, SessionConfig, BATCH_BOUND};
 use super::WinMlModel;
 
 impl WinMlModel {
@@ -14,7 +14,9 @@ impl WinMlModel {
         }
     }
 
-    pub(super) fn device_for(config: SessionConfig) -> Result<LearningModelDevice, NativeVisionError> {
+    pub(super) fn device_for(
+        config: SessionConfig,
+    ) -> Result<LearningModelDevice, NativeVisionError> {
         let kind = match config.device {
             NativeVisionDevice::Cpu => LearningModelDeviceKind::Cpu,
             NativeVisionDevice::DirectXHighPerformance => {

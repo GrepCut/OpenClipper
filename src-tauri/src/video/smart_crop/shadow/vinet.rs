@@ -53,16 +53,22 @@ impl ViNetShadow {
                 for y in 0..VINET_HEIGHT {
                     for x in 0..VINET_WIDTH {
                         let src = clip[channel * VINET_HEIGHT * VINET_WIDTH + y * VINET_WIDTH + x];
-                        let dst = ((channel * VINET_CLIPS + clip_index) * VINET_HEIGHT + y) * VINET_WIDTH + x;
+                        let dst = ((channel * VINET_CLIPS + clip_index) * VINET_HEIGHT + y)
+                            * VINET_WIDTH
+                            + x;
                         input[dst] = src;
                     }
                 }
             }
         }
-        let shape = [1, 3, VINET_CLIPS as i64, VINET_HEIGHT as i64, VINET_WIDTH as i64];
-        let outputs = self
-            .model
-            .evaluate_named(&[("video", &shape, &input)])?;
+        let shape = [
+            1,
+            3,
+            VINET_CLIPS as i64,
+            VINET_HEIGHT as i64,
+            VINET_WIDTH as i64,
+        ];
+        let outputs = self.model.evaluate_named(&[("video", &shape, &input)])?;
         let map = outputs.into_iter().next().unwrap_or_default();
         let center = VINET_CLIPS / 2;
         let (box_, confidence) = saliency_map_to_box(&map, VINET_WIDTH, VINET_HEIGHT);

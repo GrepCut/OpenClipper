@@ -7,9 +7,9 @@ use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 use uuid::Uuid;
 
+use crate::infra::model_download::extract_tar_bz2_safe;
 use crate::storage::database::LocalDb;
 use crate::storage::entity::test_dataset;
-use crate::infra::model_download::extract_tar_bz2_safe;
 use crate::storage::repository::test_repository::TestDatasetSummary;
 use crate::storage::repository::TestRepository;
 
@@ -17,9 +17,7 @@ use super::archive::{build_archive_manifest, delete_dataset_rows, import_staged_
 use super::paths::{app_test_root, test_dataset_root, validate_id};
 
 #[tauri::command]
-pub async fn test_dataset_list(
-    db: State<'_, LocalDb>,
-) -> Result<Vec<TestDatasetSummary>, String> {
+pub async fn test_dataset_list(db: State<'_, LocalDb>) -> Result<Vec<TestDatasetSummary>, String> {
     TestRepository::list_datasets(&db.database)
         .await
         .map_err(Into::into)
@@ -152,11 +150,10 @@ pub async fn test_dataset_import(
     fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
     let archive_path = PathBuf::from(source_path);
     let extract_root = staging.clone();
-    let extract_result = tokio::task::spawn_blocking(move || {
-        extract_tar_bz2_safe(&archive_path, &extract_root)
-    })
-    .await
-    .map_err(|error| error.to_string())?;
+    let extract_result =
+        tokio::task::spawn_blocking(move || extract_tar_bz2_safe(&archive_path, &extract_root))
+            .await
+            .map_err(|error| error.to_string())?;
     if let Err(error) = extract_result {
         let _ = fs::remove_dir_all(&staging);
         return Err(error);

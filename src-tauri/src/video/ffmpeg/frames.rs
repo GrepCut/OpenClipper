@@ -139,10 +139,7 @@ pub(crate) fn probe_video_duration_sec(input: &ffmpeg::format::context::Input) -
         return None;
     }
     let time_base = stream.time_base();
-    Some(
-        stream.duration() as f64 * time_base.numerator() as f64
-            / time_base.denominator() as f64,
-    )
+    Some(stream.duration() as f64 * time_base.numerator() as f64 / time_base.denominator() as f64)
 }
 
 pub(crate) fn extract_frame_rgb_at_timestamp(
@@ -150,7 +147,8 @@ pub(crate) fn extract_frame_rgb_at_timestamp(
     timestamp_sec: f64,
 ) -> Result<ExtractedVideoFrame, String> {
     ensure_ffmpeg_init()?;
-    let mut input = ffmpeg::format::input(video_path).map_err(|e| format!("Cannot open video: {e}"))?;
+    let mut input =
+        ffmpeg::format::input(video_path).map_err(|e| format!("Cannot open video: {e}"))?;
     let timestamp_sec = match probe_video_duration_sec(&input) {
         Some(duration) if duration > 0.05 => timestamp_sec.min(duration - 0.05),
         _ => timestamp_sec,
@@ -160,7 +158,8 @@ pub(crate) fn extract_frame_rgb_at_timestamp(
         .best(Type::Video)
         .ok_or("No video stream found")?;
     let stream_index = stream.index();
-    let time_base_sec = stream.time_base().numerator() as f64 / stream.time_base().denominator() as f64;
+    let time_base_sec =
+        stream.time_base().numerator() as f64 / stream.time_base().denominator() as f64;
     let context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
         .map_err(|e| format!("Decoder context error: {e}"))?;
     let mut decoder = context

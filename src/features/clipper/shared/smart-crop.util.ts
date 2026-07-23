@@ -19,6 +19,8 @@ export interface SubjectDetection {
   canonicalId?: number;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
+  /** Project-wide identity assigned after the complete analysis range is observed. */
+  projectIdentityId?: string;
 }
 
 /** Full-range face detector output used only for AutoFlip's landmark signals. */
@@ -31,6 +33,7 @@ export interface AutoFlipFaceDetection {
   canonicalId?: number;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
+  projectIdentityId?: string;
 }
 
 /** Compact pose output retained by the cropper; raw model keypoints stay transient. */
@@ -44,6 +47,7 @@ export interface PoseSubject {
   canonicalId?: number;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
+  projectIdentityId?: string;
 }
 
 export interface SubjectDetectionSample {
@@ -157,6 +161,39 @@ export type ImportanceRegionSource =
   | "video-saliency"
   | "active-speaker";
 
+/** How safely a region may take control of automatic framing. */
+export type ImportanceRegionTrust =
+  | "verified-person"
+  | "unverified-person"
+  | "video-saliency"
+  | "object";
+
+export type CompositionEntityKind = "person" | "object";
+
+/** Compact, non-biometric project-wide evidence used to bias reframing. */
+export interface CompositionMemoryEntity {
+  id: string;
+  kind: CompositionEntityKind;
+  label?: string;
+  importanceScore: number;
+  observedSeconds: number;
+  speakerSeconds: number;
+  sceneCount: number;
+  medianHeight: number;
+  continuity: number;
+  saliency: number;
+}
+
+/** Persisted result of global composition analysis. Raw frames and embeddings never leave runtime memory. */
+export interface CompositionMemorySummary {
+  version: 2;
+  entities: CompositionMemoryEntity[];
+  /** Descending project-wide priority table across people and objects. */
+  rankedEntityIds: string[];
+  maxEntitiesPerKind: number;
+  degradedReason?: string;
+}
+
 /** A temporally ranked editing target, distinct from a raw detector box. */
 export interface ImportanceRegion {
   id: string;
@@ -169,10 +206,15 @@ export interface ImportanceRegion {
   required: boolean;
   role: "primary" | "secondary" | "candidate";
   sources: ImportanceRegionSource[];
+  /** The evidence class that allowed this region to influence framing. */
+  trust?: ImportanceRegionTrust;
   trackId?: number;
   predicted?: boolean;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
+  projectIdentityId?: string;
+  /** Global project evidence blended into this frame-local target. */
+  compositionScore?: number;
 }
 
 export interface ImportanceRegionSample {
@@ -181,12 +223,13 @@ export interface ImportanceRegionSample {
   cut?: boolean;
 }
 
+/** A split has two or three viewports; its arity defines the rendered template. */
 export type ClipperLayoutMode = "single-crop" | "split" | "contain";
 export type ClipperLayoutStrategy =
   | "legacy-baseline"
   | "semantic-single"
   | "semantic-split"
-  | "semantic-contain"
+  | "semantic-split-3"
   | "detector-splice";
 
 /** Source-space render instruction for one instant of one output format. */
@@ -209,7 +252,7 @@ export interface ClipperLayoutSample {
   reasonCodes?: string[];
   /** Run 9 counterfactual rescue ladder, persisted for offline replay/audit. */
   candidateVariants?: Array<{
-    kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "contain-fail-safe";
+    kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "stable-split-3";
     mode: ClipperLayoutMode;
     viewports: NormalizedBox[];
     requiredCoverage: number[];
@@ -303,6 +346,8 @@ export interface ClipperSmartCropBlob {
   layoutTracks?: Record<string, ClipperLayoutTrack>;
   canonicalIdentityTelemetry?: CanonicalIdentityTelemetry;
   activeSpeakerTelemetry?: ActiveSpeakerTelemetry;
+  /** v4: global person/object evidence computed before any crop paths are planned. */
+  compositionMemory?: CompositionMemorySummary;
   /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
   debug?: AutoFlipSceneDebug[];
 }

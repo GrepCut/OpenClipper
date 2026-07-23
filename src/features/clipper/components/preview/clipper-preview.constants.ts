@@ -1,8 +1,10 @@
 import { OUTLINED_ACTION_BUTTON_SIZE_PROPS } from "../../../../shared/components/buttons/outlined-action-button.component";
-import type { ClipSourceMode } from "../../shared/state.util";
 
-export const CLIP_SOURCE_MODE_OPTIONS: Array<{ value: ClipSourceMode; label: string }> = [
+export type SidePanelTab = "auto-parts" | "framing" | "ai";
+
+export const SIDE_PANEL_TAB_OPTIONS: Array<{ value: SidePanelTab; label: string }> = [
   { value: "auto-parts", label: "Auto-parts" },
+  { value: "framing", label: "Framing" },
   { value: "ai", label: "Generate with LLM" },
 ];
 

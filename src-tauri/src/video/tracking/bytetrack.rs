@@ -292,7 +292,10 @@ impl ByteTracker {
             };
             self.last_global_center = Some(center);
             self.last_camera_motion = (dx * dx + dy * dy).sqrt();
-            (Self::compensate_detections(detections, dx, dy), self.last_camera_motion)
+            (
+                Self::compensate_detections(detections, dx, dy),
+                self.last_camera_motion,
+            )
         } else {
             (detections.to_vec(), 0.0)
         };

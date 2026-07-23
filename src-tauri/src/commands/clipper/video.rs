@@ -60,12 +60,27 @@ pub fn start_clipper_winml_analysis(
         if !cancelled.load(Ordering::Acquire) {
             match joined {
                 Ok(Ok(summary)) => {
+                    crate::video::smart_crop::diagnostics::append(
+                        "command",
+                        "emitting successful native analysis result",
+                    );
                     let _ = emitter.result(&summary);
                 }
                 Ok(Err(error)) => {
+                    crate::video::smart_crop::diagnostics::append(
+                        "command",
+                        &format!(
+                            "emitting error code={} fatal={} message={}",
+                            error.code, error.fatal, error.message
+                        ),
+                    );
                     let _ = emitter.error(&error);
                 }
                 Err(error) => {
+                    crate::video::smart_crop::diagnostics::append(
+                        "command",
+                        &format!("spawn_blocking join error: {error}"),
+                    );
                     let failure = crate::video::smart_crop::vision::NativeVisionError::new(
                         "evaluation_failed",
                         format!("Native task join error: {error}"),

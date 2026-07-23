@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use super::preprocess::{resize_rgb_crop_to_reid, REID_HEIGHT, REID_WIDTH};
-use crate::video::smart_crop::vision_logic::NormalizedBox;
 use crate::video::smart_crop::vision::{NativeVisionError, VisionModel, WinMlModel};
+use crate::video::smart_crop::vision_logic::NormalizedBox;
 
 pub(super) struct OsnetShadow {
     model: WinMlModel,
@@ -24,9 +24,7 @@ impl OsnetShadow {
         let mut input = vec![0.0f32; 3 * REID_HEIGHT * REID_WIDTH];
         resize_rgb_crop_to_reid(rgb, width, height, box_, &mut input);
         let shape = [1, 3, REID_HEIGHT as i64, REID_WIDTH as i64];
-        let outputs = self
-            .model
-            .evaluate_named(&[("input", &shape, &input)])?;
+        let outputs = self.model.evaluate_named(&[("input", &shape, &input)])?;
         Ok(outputs.into_iter().next().unwrap_or_default())
     }
 }

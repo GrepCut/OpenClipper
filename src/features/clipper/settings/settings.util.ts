@@ -103,9 +103,9 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   reframe: {
     cropMode: "smart-follow",
     facePickStrategy: "largest",
-    // "snappy" is the immediate/precise default — the crop should already be
-    // centered on the speaker, not visibly panning to find them.
-    smoothing: "snappy",
+    // Smart Follow favours a deliberate camera path over reacting to every
+    // detector wobble. Users may still opt into the faster profiles.
+    smoothing: "smooth",
     headroom: "normal",
     manualFocalPoint: { x: 0.5, y: 0.5 },
     showDebugFaceBoxes: false,

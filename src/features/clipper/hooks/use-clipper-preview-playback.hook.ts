@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   localTimeToSourceTime,
   sourceTimeToLocalTime,
@@ -36,6 +36,15 @@ export function useClipperPreviewPlayback({
   const pendingSeekSourceTimeRef = useRef<number | null>(null);
   const previewRegionRef = useRef<HTMLDivElement>(null);
   const previewVisibleRef = useRef(true);
+  const [previewTimeSec, setPreviewTimeSec] = useState(0);
+  const reportedPreviewTimeRef = useRef(Number.NEGATIVE_INFINITY);
+
+  const reportPreviewTime = useCallback((time: number) => {
+    // Decision data changes at analysis cadence, not video-frame cadence.
+    if (!Number.isFinite(time) || Math.abs(time - reportedPreviewTimeRef.current) < 0.08) return;
+    reportedPreviewTimeRef.current = time;
+    setPreviewTimeSec(time);
+  }, []);
 
   const redrawCanvases = useCallback(() => {
     if (!previewVisibleRef.current) return;
@@ -143,13 +152,14 @@ export function useClipperPreviewPlayback({
       playbackStart,
       playbackEnd,
       scheduleRedraw,
+      onPreviewTimeChange: reportPreviewTime,
     });
 
     return () => {
       video.removeEventListener("error", onVideoError);
       unbindPlayback();
     };
-  }, [clipDuration, clipSegments, playbackEnd, playbackStart, rangeTrimmedVideoUrl, scheduleRedraw]);
+  }, [clipDuration, clipSegments, playbackEnd, playbackStart, rangeTrimmedVideoUrl, reportPreviewTime, scheduleRedraw]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -160,6 +170,7 @@ export function useClipperPreviewPlayback({
       pendingSeek ??
       localTimeToSourceTime(clipSegments, Math.min(3, clipDuration * 0.15));
     video.currentTime = initial;
+    reportPreviewTime(initial);
     if (playAfterClipSelectRef.current) {
       playAfterClipSelectRef.current = false;
       void video.play();
@@ -167,7 +178,7 @@ export function useClipperPreviewPlayback({
       video.pause();
     }
     scheduleRedraw();
-  }, [activeClipIndex, clipDuration, clipSegments, scheduleRedraw]);
+  }, [activeClipIndex, clipDuration, clipSegments, reportPreviewTime, scheduleRedraw]);
 
   useEffect(() => {
     scheduleRedraw();
@@ -232,6 +243,7 @@ export function useClipperPreviewPlayback({
     videoRef,
     canvasRefs,
     previewRegionRef,
+    previewTimeSec,
     togglePlay,
     seekToTranscriptTime,
   };

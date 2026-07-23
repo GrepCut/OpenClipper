@@ -30,7 +30,10 @@ enum KeyframeBracket<'a> {
     },
 }
 
-fn keyframe_bracket(keyframes: &[TestKeyframeDto], timestamp_us: i64) -> Option<KeyframeBracket<'_>> {
+fn keyframe_bracket(
+    keyframes: &[TestKeyframeDto],
+    timestamp_us: i64,
+) -> Option<KeyframeBracket<'_>> {
     if keyframes.is_empty() {
         return None;
     }
@@ -120,7 +123,10 @@ fn interpolate_crop_targets(
         .targets
         .iter()
         .map(|target| {
-            let target_next = next.targets.iter().find(|candidate| candidate.slot == target.slot);
+            let target_next = next
+                .targets
+                .iter()
+                .find(|candidate| candidate.slot == target.slot);
             match target_next {
                 Some(next_target) => TestTargetDto {
                     id: target.id.clone(),

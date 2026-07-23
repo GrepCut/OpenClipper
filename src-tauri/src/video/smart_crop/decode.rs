@@ -56,7 +56,12 @@ pub(crate) fn copy_rgb(frame: &ffmpeg::frame::Video, width: u32, height: u32) ->
     output
 }
 
-pub(crate) fn rotate_rgb(data: Vec<u8>, width: u32, height: u32, rotation: Rotation) -> (Vec<u8>, u32, u32) {
+pub(crate) fn rotate_rgb(
+    data: Vec<u8>,
+    width: u32,
+    height: u32,
+    rotation: Rotation,
+) -> (Vec<u8>, u32, u32) {
     if rotation == Rotation::R0 {
         return (data, width, height);
     }
@@ -74,18 +79,13 @@ pub(crate) fn rotate_rgb(data: Vec<u8>, width: u32, height: u32, rotation: Rotat
     (rotated.into_raw(), out_width, out_height)
 }
 
-pub(crate) fn scaler_dimensions(
+pub(crate) fn scaler_dimensions_for_long_edge(
     source_width: u32,
     source_height: u32,
-    rotation: Rotation,
-    displayed_target_width: u32,
+    target_long_edge: u32,
 ) -> (u32, u32) {
-    let displayed_width = if matches!(rotation, Rotation::R90 | Rotation::R270) {
-        source_height
-    } else {
-        source_width
-    };
-    let scale = (displayed_target_width as f64 / displayed_width.max(1) as f64).min(1.0);
+    let source_long_edge = source_width.max(source_height).max(1);
+    let scale = (target_long_edge as f64 / source_long_edge as f64).min(1.0);
     let width = (((source_width as f64 * scale).round() as u32).max(2)) & !1;
     let height = (((source_height as f64 * scale).round() as u32).max(2)) & !1;
     (width, height)
@@ -101,4 +101,3 @@ pub(crate) fn sample_due(timestamp: f64, next_sample: &mut f64, samples_per_seco
     }
     true
 }
-

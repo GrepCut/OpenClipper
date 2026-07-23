@@ -21,11 +21,7 @@ pub(super) struct TransNetShadow {
 #[cfg(windows)]
 impl TransNetShadow {
     pub(super) fn open(path: &Path) -> Result<Self, NativeVisionError> {
-        let model = WinMlModel::create_multi(
-            VisionModel::TransNet,
-            path,
-            &["534", "535"],
-        )?;
+        let model = WinMlModel::create_multi(VisionModel::TransNet, path, &["534", "535"])?;
         Ok(Self {
             model,
             buffer: Vec::with_capacity(TRANSNET_WINDOW * TRANSNET_HEIGHT * TRANSNET_WIDTH * 3),
@@ -79,7 +75,8 @@ impl TransNetShadow {
         let frame_count = TRANSNET_WINDOW;
         let mut single = vec![0.0f32; frame_count];
         let mut many = vec![0.0f32; frame_count];
-        if outputs.len() >= 2 && outputs[0].len() >= frame_count && outputs[1].len() >= frame_count {
+        if outputs.len() >= 2 && outputs[0].len() >= frame_count && outputs[1].len() >= frame_count
+        {
             single.copy_from_slice(&outputs[0][..frame_count]);
             many.copy_from_slice(&outputs[1][..frame_count]);
         }
@@ -115,7 +112,10 @@ pub fn calibrate_transnet_vs_histogram(samples: &[TransNetShadowSample]) -> Tran
             agreement_rate: 0.0,
         };
     }
-    let histogram_cut_count = samples.iter().filter(|sample| sample.histogram_scene_cut).count();
+    let histogram_cut_count = samples
+        .iter()
+        .filter(|sample| sample.histogram_scene_cut)
+        .count();
     let transnet_cut_count = samples
         .iter()
         .filter(|sample| sample.many_frame_probability >= TRANSNET_CUT_THRESHOLD)
@@ -123,8 +123,7 @@ pub fn calibrate_transnet_vs_histogram(samples: &[TransNetShadowSample]) -> Tran
     let agreements = samples
         .iter()
         .filter(|sample| {
-            sample.histogram_scene_cut
-                == (sample.many_frame_probability >= TRANSNET_CUT_THRESHOLD)
+            sample.histogram_scene_cut == (sample.many_frame_probability >= TRANSNET_CUT_THRESHOLD)
         })
         .count();
     TransNetCalibration {

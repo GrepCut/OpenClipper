@@ -1,10 +1,13 @@
-// v19 drops the legacy centroid track layer; aspectTracks are authoritative.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v19-no-centroid-track";
+// v27 keeps source detail through 1080p and augments SCRFD with overlapping
+// native-resolution tiles; persisted v26 tracks must be recomputed.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v27-yolox-s-scrfd10g-tiled";
 /** The graph-compatible object model identity. */
-export const AUTOFLIP_MODEL_ID = "clipper-vision-v2";
+export const AUTOFLIP_MODEL_ID = "clipper-vision-v5-yolox-s-scrfd10g-tiled";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;
 export const AUTOFLIP_MAX_SCENE_FRAMES = 600;
 export const AUTOFLIP_KEYFRAME_INTERVAL_SEC = 0.2;
+/** Production tracks are interpolated by the renderer; storing source-FPS paths wastes RAM. */
+export const AUTOFLIP_TRACK_FPS = 5;
 /** Never shrink the smart-follow window below this fraction of the nominal cover crop. */
 export const AUTOFLIP_MIN_ZOOM_SCALE = 0.65;
 /**

@@ -1,9 +1,11 @@
 use serde::Serialize;
 
-use super::super::shadow::GeneralizationShadowDiagnostics;
-use super::super::vision_logic::{AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection};
 use super::super::internal::{ContentRect, NativeFaceBox};
+use super::super::shadow::GeneralizationShadowDiagnostics;
 use super::super::vision::NativeVisionDevice;
+use super::super::vision_logic::{
+    AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection,
+};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +72,8 @@ pub struct NativeVisionMetrics {
     pub(crate) pose_inference_ms: u64,
     pub(crate) base_face_passes: usize,
     pub(crate) recovery_face_passes: usize,
+    pub(crate) recovery_object_passes: usize,
+    pub(crate) recovery_pose_passes: usize,
     pub(crate) orientation_probe_passes: usize,
     pub(crate) peak_face_queue_depth: usize,
     pub(crate) peak_object_queue_depth: usize,

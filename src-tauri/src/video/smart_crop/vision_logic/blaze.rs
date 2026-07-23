@@ -112,8 +112,16 @@ pub fn weighted_face_nms(
                 .sum::<f32>()
                 / total_score.max(f32::EPSILON)
         };
-        let mut keypoints = Vec::with_capacity(6);
-        for keypoint in 0..6 {
+        // BlazeFace exposes six landmarks, while SCRFD exposes five. This NMS
+        // helper is shared by both decoders, so merge only landmarks available
+        // in every detection in the overlap group.
+        let keypoint_count = group
+            .iter()
+            .map(|item| item.keypoints.len())
+            .min()
+            .unwrap_or(0);
+        let mut keypoints = Vec::with_capacity(keypoint_count);
+        for keypoint in 0..keypoint_count {
             keypoints.push(Keypoint {
                 x: group
                     .iter()

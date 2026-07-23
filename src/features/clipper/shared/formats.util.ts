@@ -11,8 +11,8 @@ export interface ClipperFormatDef {
   platform: ClipperPlatform;
   label: string;
   aspectId: ClipperAspectPresetId;
-  /** "crop" = cover-fill (subject to reframing); "pad" = contain/letterbox (always full frame). */
-  mode: "crop" | "pad";
+  /** Every format is cover-filled; Smart Follow supplies the source crop. */
+  mode: "crop";
   description: string;
   isDefaultEnabled: boolean;
 }
@@ -23,8 +23,8 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     platform: "youtube",
     label: "YouTube",
     aspectId: "16-9",
-    mode: "pad",
-    description: "Landscape 16:9",
+    mode: "crop",
+    description: "Landscape 16:9 (cropped)",
     isDefaultEnabled: false,
   },
   {
@@ -80,15 +80,10 @@ export function getClipperFormatDef(id: string): ClipperFormatDef | undefined {
 
 /**
  * Fixed target resolution for a format preset — used both for the actual render
- * output size and for preview-card aspect sizing. Not source-dependent: "pad"
- * formats letterbox the source into this box, "crop" formats cover-fill it.
+ * output size and for preview-card aspect sizing. All formats cover-fill it.
  */
 export function canonicalFormatDims(def: ClipperFormatDef): { width: number; height: number } {
   const ratio = aspectRatioFromId(def.aspectId);
-  if (def.mode === "pad") {
-    const width = 1920;
-    return { width: evenInt(width), height: evenInt(width / ratio) };
-  }
   const shortSide = 1080;
   if (ratio >= 1) {
     return { width: evenInt(shortSide * ratio), height: evenInt(shortSide) };

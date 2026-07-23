@@ -4,23 +4,22 @@ use std::path::Path;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use serde_json::Value;
 use tauri::AppHandle;
 use uuid::Uuid;
 
+use crate::infra::model_download::sha256_file;
 use crate::storage::entity::{
     benchmark_result, benchmark_run, test_clip, test_dataset, test_keyframe, test_target,
 };
-use crate::infra::model_download::sha256_file;
 use crate::storage::repository::TestRepository;
 use crate::video::ffmpeg::frames::probe_video_metadata;
 
 use super::paths::{test_dataset_root, validate_relative_path};
 use super::types::{
-    ArchiveKeyframe, TestArchiveManifest, TEST_ARCHIVE_SCHEMA_VERSION, MIN_CLIP_SECONDS,
+    ArchiveKeyframe, TestArchiveManifest, MIN_CLIP_SECONDS, TEST_ARCHIVE_SCHEMA_VERSION,
 };
 
 pub(crate) async fn delete_clip_rows<C: ConnectionTrait>(
@@ -355,7 +354,11 @@ fn copy_dir_all(source: &Path, target: &Path) -> Result<(), String> {
     for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let destination = target.join(entry.file_name());
-        if entry.file_type().map_err(|error| error.to_string())?.is_dir() {
+        if entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+        {
             copy_dir_all(&entry.path(), &destination)?;
         } else {
             fs::copy(entry.path(), destination).map_err(|error| error.to_string())?;

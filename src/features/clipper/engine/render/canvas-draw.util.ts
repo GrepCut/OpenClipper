@@ -4,7 +4,7 @@ import {
 } from '../../lib/captions/animated-caption-render.util';
 import type { SubtitleStyle } from '../../lib/captions/subtitle-render.util';
 import type { CaptionGroup } from "../../lib/media/transcription-export.util";
-import { drawFrameContain, drawVerticalSplitFrame } from "../../lib/media/video-draw.util";
+import { drawPrimaryPlusTwoFrame, drawVerticalSplitFrame } from "../../lib/media/video-draw.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
 import { cropRectForCentroid } from "../reframe";
@@ -21,6 +21,25 @@ export function drawClipperLayoutFrame(
   output: FrameEffectSize,
   layout: ResolvedClipperLayout,
 ): void {
+  if (layout.transitionFrom && layout.transitionProgress != null) {
+    drawLayoutContent(formatDef, ctx, frame, source, output, layout.transitionFrom);
+    ctx.save();
+    ctx.globalAlpha = layout.transitionProgress;
+    drawLayoutContent(formatDef, ctx, frame, source, output, layout);
+    ctx.restore();
+    return;
+  }
+  drawLayoutContent(formatDef, ctx, frame, source, output, layout);
+}
+
+function drawLayoutContent(
+  formatDef: ClipperFormatDef,
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  frame: CanvasImageSource,
+  source: FrameEffectSize,
+  output: FrameEffectSize,
+  layout: Pick<ResolvedClipperLayout, "mode" | "viewports" | "solidBackgroundColor">,
+): void {
   if (layout.mode !== "split" || layout.viewports.length < 2) {
     drawClipperPlatformFrame(
       formatDef,
@@ -31,6 +50,10 @@ export function drawClipperLayoutFrame(
       layout.viewports[0],
       layout.solidBackgroundColor,
     );
+    return;
+  }
+  if (layout.viewports.length >= 3) {
+    drawPrimaryPlusTwoFrame(ctx, frame, output, layout.viewports[0]!, layout.viewports[1]!, layout.viewports[2]!);
     return;
   }
   const [top, bottom] = layout.viewports;
@@ -50,41 +73,14 @@ export function drawClipperPlatformFrame(
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, output.width, output.height);
 
-  if (formatDef.mode === "pad") {
-    const coverScale = Math.max(output.width / source.width, output.height / source.height);
-    const backgroundW = source.width * coverScale;
-    const backgroundH = source.height * coverScale;
-    ctx.save();
-    ctx.filter = "blur(100px)";
-    ctx.drawImage(frame, (output.width - backgroundW) / 2, (output.height - backgroundH) / 2, backgroundW, backgroundH);
-    ctx.filter = "none";
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-    ctx.fillRect(0, 0, output.width, output.height);
-    ctx.restore();
-    drawFrameContain(ctx, frame, 0, 0, output.width, output.height, source.width, source.height);
-    return;
-  }
-
   if (cropRect) {
     const cropRatio = cropRect.sw / Math.max(1, cropRect.sh);
     const outputRatio = output.width / output.height;
     if (Math.abs(cropRatio - outputRatio) > 0.001) {
-      ctx.save();
-      if (solidBackgroundColor) {
-        ctx.fillStyle = `rgb(${solidBackgroundColor.r}, ${solidBackgroundColor.g}, ${solidBackgroundColor.b})`;
-        ctx.fillRect(0, 0, output.width, output.height);
-      } else {
-        ctx.filter = "blur(100px)";
-        ctx.drawImage(frame, cropRect.sx, cropRect.sy, cropRect.sw, cropRect.sh, 0, 0, output.width, output.height);
-        ctx.filter = "none";
-        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-        ctx.fillRect(0, 0, output.width, output.height);
-      }
-      const scale = Math.min(output.width / cropRect.sw, output.height / cropRect.sh);
-      const width = cropRect.sw * scale;
-      const height = cropRect.sh * scale;
-      ctx.drawImage(frame, cropRect.sx, cropRect.sy, cropRect.sw, cropRect.sh, (output.width - width) / 2, (output.height - height) / 2, width, height);
-      ctx.restore();
+      const scale = Math.max(output.width / cropRect.sw, output.height / cropRect.sh);
+      const drawWidth = cropRect.sw * scale;
+      const drawHeight = cropRect.sh * scale;
+      ctx.drawImage(frame, cropRect.sx, cropRect.sy, cropRect.sw, cropRect.sh, (output.width - drawWidth) / 2, (output.height - drawHeight) / 2, drawWidth, drawHeight);
       return;
     }
     ctx.drawImage(

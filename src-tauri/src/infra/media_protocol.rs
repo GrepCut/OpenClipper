@@ -1,5 +1,5 @@
-use serde::Serialize;
 use http_range_header::parse_range_header;
+use serde::Serialize;
 use std::{
     collections::hash_map::DefaultHasher,
     collections::HashMap,

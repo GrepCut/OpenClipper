@@ -72,6 +72,7 @@ export interface BindPreviewVideoPlaybackParams {
   playbackStart: number;
   playbackEnd: number;
   scheduleRedraw: () => void;
+  onPreviewTimeChange?: (time: number) => void;
 }
 
 export function bindPreviewVideoPlayback({
@@ -84,6 +85,7 @@ export function bindPreviewVideoPlayback({
   playbackStart,
   playbackEnd,
   scheduleRedraw,
+  onPreviewTimeChange,
 }: BindPreviewVideoPlaybackParams): () => void {
   const initialLocal = Math.min(3, clipDuration * 0.15);
   const initialTime = localTimeToSourceTime(clipSegments, initialLocal);
@@ -91,6 +93,11 @@ export function bindPreviewVideoPlayback({
   const onReady = () => {
     scheduleRedraw();
     video.currentTime = initialTime;
+    onPreviewTimeChange?.(initialTime);
+  };
+  const onSeeked = () => {
+    onPreviewTimeChange?.(video.currentTime);
+    scheduleRedraw();
   };
 
   const cancelVfc = () => {
@@ -102,7 +109,7 @@ export function bindPreviewVideoPlayback({
 
   video.addEventListener("loadedmetadata", scheduleRedraw);
   video.addEventListener("loadeddata", onReady);
-  video.addEventListener("seeked", scheduleRedraw);
+  video.addEventListener("seeked", onSeeked);
 
   const vfcVideo = video as VideoFrameCallbackCompat;
   const useVfc = typeof vfcVideo.requestVideoFrameCallback === "function";
@@ -111,6 +118,7 @@ export function bindPreviewVideoPlayback({
 
   if (useVfc) {
     const scheduleNext = () => {
+      onPreviewTimeChange?.(video.currentTime);
       scheduleRedraw();
       const v = videoRef.current;
       if (v && !v.paused && !v.ended) {
@@ -140,6 +148,7 @@ export function bindPreviewVideoPlayback({
     video.addEventListener("ended", cancelVfc);
   } else {
     onTimeUpdate = () => {
+      onPreviewTimeChange?.(video.currentTime);
       if (!video.paused) {
         const gapTarget = findGapJumpTarget(clipSegments, video.currentTime);
         if (gapTarget != null) {
@@ -161,7 +170,7 @@ export function bindPreviewVideoPlayback({
   return () => {
     video.removeEventListener("loadedmetadata", scheduleRedraw);
     video.removeEventListener("loadeddata", onReady);
-    video.removeEventListener("seeked", scheduleRedraw);
+    video.removeEventListener("seeked", onSeeked);
     if (useVfc) {
       cancelVfc();
       if (startVfcLoop) video.removeEventListener("play", startVfcLoop);

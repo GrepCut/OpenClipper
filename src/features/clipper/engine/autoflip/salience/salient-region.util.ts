@@ -60,14 +60,19 @@ function faceRegionsFromDetection(face: AutoFlipFaceDetection): SalientRegion[] 
   return [
     // VisualScorer's default is area-only and it evaluates each emitted
     // landmark rectangle independently.
-    { box: core, score: weightedScore(clamp01(core.width * core.height), "face_core"), signalType: "face_core", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous },
-    { box: all, score: weightedScore(clamp01(all.width * all.height), "face_all"), signalType: "face_all", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous },
+    { box: core, score: weightedScore(clamp01(core.width * core.height), "face_core"), signalType: "face_core", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous, projectIdentityId: face.projectIdentityId, trust: "verified-person" },
+    { box: all, score: weightedScore(clamp01(all.width * all.height), "face_all"), signalType: "face_all", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous, projectIdentityId: face.projectIdentityId, trust: "verified-person" },
   ];
 }
 
-function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] {
+function regionsFromDetections(detections: SubjectDetection[], verifiedCanonicalIds: ReadonlySet<number>): SalientRegion[] {
   return detections.flatMap((detection) => {
     const signalType = mapDetectionLabel(detection.label);
+    const trust = signalType === "human"
+      ? (detection.detectorSource === "pose" || (detection.canonicalId != null && verifiedCanonicalIds.has(detection.canonicalId))
+        ? "verified-person" as const
+        : "unverified-person" as const)
+      : "object" as const;
     const specific: SalientRegion = {
       box: detection.box,
       // LocalizationToRegionCalculator sets raw score to one, independent of
@@ -80,6 +85,8 @@ function regionsFromDetections(detections: SubjectDetection[]): SalientRegion[] 
       predicted: detection.predicted,
       associationConfidence: detection.associationConfidence,
       identityAmbiguous: detection.identityAmbiguous,
+      projectIdentityId: detection.projectIdentityId,
+      trust,
     };
     // LocalizationToRegionCalculator(output_all_signals: true) emits both the
     // class-specific signal and the low-priority generic object signal.
@@ -151,7 +158,7 @@ function poseRegions(poses: PoseSubject[], faces: AutoFlipFaceDetection[], prefe
     // A predicted pose is useful for track continuity, but its extrapolated
     // torso must not steer the camera after a cut or detector dropout.
     if (pose.predicted) continue;
-    // BlazeFace is more precise for talking-head material. When it already
+    // SCRFD is more precise for talking-head material. When it already
     // covers this pose's head, do not emit a second torso signal for the same
     // person—the duplicate shifts the aggregate focus down and sideways.
     if (pose.headBox && faces.some((face) => boxesIntersect(pose.headBox!, face.box))) continue;
@@ -173,6 +180,8 @@ function poseRegions(poses: PoseSubject[], faces: AutoFlipFaceDetection[], prefe
       predicted: pose.predicted,
       associationConfidence: pose.associationConfidence,
       identityAmbiguous: pose.identityAmbiguous,
+      projectIdentityId: pose.projectIdentityId,
+      trust: "verified-person",
     });
   }
   return regions;
@@ -198,11 +207,13 @@ function boxesIntersect(a: { x: number; y: number; width: number; height: number
 export function syntheticHeadRegions(
   detections: SubjectDetection[],
   faces: AutoFlipFaceDetection[],
+  verifiedCanonicalIds: ReadonlySet<number>,
 ): SalientRegion[] {
   const regions: SalientRegion[] = [];
   for (const detection of detections) {
     if (mapDetectionLabel(detection.label) !== "human") continue;
     if (detection.predicted || detection.score < HEAD_MIN_DETECTION_SCORE) continue;
+    if (detection.detectorSource !== "pose" && (detection.canonicalId == null || !verifiedCanonicalIds.has(detection.canonicalId))) continue;
     const box = detection.box;
     const head = {
       x: box.x + (box.width * (1 - HEAD_BAND_WIDTH_FRACTION)) / 2,
@@ -220,6 +231,8 @@ export function syntheticHeadRegions(
       trackId: detection.trackId,
       associationConfidence: detection.associationConfidence,
       identityAmbiguous: detection.identityAmbiguous,
+      projectIdentityId: detection.projectIdentityId,
+      trust: "verified-person",
     });
   }
   return regions;
@@ -257,11 +270,14 @@ export function buildSalientKeyframes(input: BuildSalientKeyframesInput): KeyFra
       ? preferTorsoByScene.length - 1
       : Math.max(0, Math.min(preferTorsoByScene.length - 1, nextBoundaryIndex - 1));
     const faces = detectionSample?.autoflipFaces ?? [];
+    const verifiedCanonicalIds = new Set((detectionSample?.canonicalPersons ?? [])
+      .filter((person) => !person.identityAmbiguous && (person.sources.includes("face") || person.sources.includes("pose")))
+      .map((person) => person.canonicalId));
     const regions = [
-      ...regionsFromDetections(detectionSample?.detections ?? []),
+      ...regionsFromDetections(detectionSample?.detections ?? [], verifiedCanonicalIds),
       ...faces.flatMap(faceRegionsFromDetection),
       ...poseRegions(detectionSample?.poseSubjects ?? [], faces, preferTorsoByScene[sceneIndex] ?? false),
-      ...syntheticHeadRegions(detectionSample?.detections ?? [], faces),
+      ...syntheticHeadRegions(detectionSample?.detections ?? [], faces, verifiedCanonicalIds),
     ];
     const isShotChange = input.sceneCuts.some((cut) => Math.abs(cut - time) <= interval * 0.6);
     keyframes.push({ time, regions, isShotChange });

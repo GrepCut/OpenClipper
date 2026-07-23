@@ -2,6 +2,7 @@ import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/s
 import type { FaceBoxSample } from "../../shared/face-samples.util";
 import type {
   AutoFlipStaticFeatureSample,
+  ImportanceRegionTrust,
   ImportanceSignalSample,
   NormalizedBox,
   SubjectDetectionSample,
@@ -34,6 +35,9 @@ export interface SalientRegion {
   predicted?: boolean;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
+  projectIdentityId?: string;
+  /** Confidence class used to reject a detector-only pseudo-person. */
+  trust?: ImportanceRegionTrust;
 }
 
 export interface KeyFrameSalientInput {

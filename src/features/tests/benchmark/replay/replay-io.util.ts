@@ -48,6 +48,25 @@ export interface RecordedAutoflipDebug {
   };
 }
 
+/**
+ * Older benchmark bundles do not persist detector-hypothesis diagnostics.
+ * Keep the replay CLI import-compatible and report an empty audit for those
+ * bundles rather than preventing all replay modes from starting.
+ */
+export function detectorHypothesisSamplesForDebug(_debug: RecordedAutoflipDebug): Array<{
+  hypotheses: Array<{
+    source: string;
+    features: {
+      identityAmbiguous: boolean;
+      detectorAgreementIou: number;
+      faceSupport: number;
+      poseSupport: number;
+    };
+  }>;
+}> {
+  return [];
+}
+
 /** Schema-v3 run 2 predates replayConfig but was recorded with Iteration 10. */
 export function recordedArbiterParams(
   debug: RecordedAutoflipDebug,

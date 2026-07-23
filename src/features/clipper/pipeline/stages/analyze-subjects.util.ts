@@ -50,10 +50,11 @@ function frameDimensions(session: ClipperSession): { frameWidth: number; frameHe
   return { frameWidth: 1920, frameHeight: 1080 };
 }
 
-function cropAspectRatios(): Record<string, number> {
+function cropAspectRatios(enabledFormatIds?: string[]): Record<string, number> {
+  const enabled = enabledFormatIds?.length ? new Set(enabledFormatIds) : null;
   return Object.fromEntries(
     CLIPPER_FORMAT_DEFS
-      .filter((format) => format.mode === "crop")
+      .filter((format) => format.mode === "crop" && (!enabled || enabled.has(format.id)))
       .map((format) => [format.id, aspectRatioFromId(format.aspectId)]),
   );
 }
@@ -121,7 +122,7 @@ export async function runAnalyzeSubjectsStage(
     staticFeatureSamples: pending.staticFeatureSamples,
     importanceSignals: pending.importanceSignals,
     contentRect: pending.contentRect,
-    targetAspectRatios: cropAspectRatios(),
+    targetAspectRatios: cropAspectRatios(input.enabledFormatIds),
     sourceFrameRate: pending.sourceFrameRate,
     trackerVersion: pending.trackerVersion,
     frameWidth,

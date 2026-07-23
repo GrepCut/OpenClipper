@@ -6,10 +6,9 @@ use windows::AI::MachineLearning::LearningModel;
 
 use super::super::error_util::winml_error;
 use super::super::session::{load_model, make_bound_session};
-use super::super::types::{
-    ModelPrecision, NativeVisionDevice, NativeVisionError, SessionConfig,
-};
+use super::super::types::{ModelPrecision, NativeVisionDevice, NativeVisionError, SessionConfig};
 use super::WinMlModel;
+use crate::video::smart_crop::diagnostics;
 
 impl WinMlModel {
     /// Benchmarks fp32-CPU, fp32-DirectX, and (when present) fp16-DirectX
@@ -25,6 +24,17 @@ impl WinMlModel {
         shape: &[i64],
         input: &[f32],
     ) -> Result<(LearningModel, SessionConfig), NativeVisionError> {
+        diagnostics::append(
+            "winml-calibrate",
+            &format!(
+                "start fp32={} fp16={} shape={shape:?} outputs={:?}",
+                fp32_path.display(),
+                fp16_path
+                    .map(|value| value.display().to_string())
+                    .unwrap_or_else(|| "<none>".into()),
+                output_names,
+            ),
+        );
         let benchmark = |session: &windows::AI::MachineLearning::LearningModelSession| -> Result<Vec<u128>, NativeVisionError> {
             for _ in 0..2 {
                 Self::evaluate_session(session, input_name, output_names, shape, input)?;
@@ -39,10 +49,15 @@ impl WinMlModel {
             Ok(times)
         };
         let try_config = |model: &LearningModel, config: SessionConfig| -> Option<Vec<u128>> {
+            diagnostics::append("winml-calibrate", &format!("trying config={config:?}"));
             let device = Self::device_for(config).ok()?;
             let session = make_bound_session(model, &device, 1).ok()?;
             let times = benchmark(&session).ok();
             let _ = session.Close();
+            diagnostics::append(
+                "winml-calibrate",
+                &format!("config={config:?} times_us={times:?}"),
+            );
             times
         };
 
@@ -56,6 +71,10 @@ impl WinMlModel {
             winml_error("cpu_session_failed", "WinML session creation failed", error)
         })?;
         let cpu_times = benchmark(&cpu_session)?;
+        diagnostics::append(
+            "winml-calibrate",
+            &format!("config={cpu_config:?} times_us={cpu_times:?}"),
+        );
         let _ = cpu_session.Close();
 
         let mut best_model = fp32_model.clone();
@@ -83,6 +102,10 @@ impl WinMlModel {
                 }
             }
         }
+        diagnostics::append(
+            "winml-calibrate",
+            &format!("selected config={:?} median_us={}", best.0, best.1[2]),
+        );
         Ok((best_model, best.0))
     }
 }

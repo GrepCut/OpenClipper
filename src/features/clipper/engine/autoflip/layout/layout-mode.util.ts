@@ -12,9 +12,9 @@ export function rawMode(
   if (!required.length) return "single-crop";
   const union = unionAll(required.map((region) => region.contentBox))!;
   if (boxFitsStrictCrop(union, sourceAspect, targetAspect)) return "single-crop";
-  if (required.length >= 2 && targetAspect <= 1) {
+  if (required.length >= 2) {
     const overlap = importanceGeometry.overlapFractionOfSmaller(required[0]!.contentBox, required[1]!.contentBox);
     if (overlap < 0.35) return "split";
   }
-  return "contain";
+  return "single-crop";
 }

@@ -150,7 +150,8 @@ pub fn parse_args() -> Option<CliRequest> {
 }
 
 pub fn is_benchmark_cli_argv(argv: &[String]) -> bool {
-    argv.iter().any(|arg| arg == "--benchmark-run" || arg == "--extract-miss-frames")
+    argv.iter()
+        .any(|arg| arg == "--benchmark-run" || arg == "--extract-miss-frames")
 }
 
 fn normalize_dataset_arg(raw: &str) -> String {

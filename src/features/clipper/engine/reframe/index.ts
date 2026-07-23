@@ -16,6 +16,8 @@ export {
   pickPrimaryFace,
   SMOOTHING_ALPHA,
   blendCentroid,
+  createFocusStabilizer,
+  stabilizeFocusCentroid,
 } from "./tracking.util";
 export {
   cropRectForCentroid,

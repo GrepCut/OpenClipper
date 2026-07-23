@@ -24,7 +24,6 @@ export function buildViewports(
   groupUnionMeta?: { used: boolean },
 ): NormalizedBox[] {
   const required = requiredRegions(importance);
-  if (mode === "contain" && !required.length) return [fallbackCrop];
   if (
     allowGroupUnion
     && mode === "single-crop"
@@ -68,12 +67,22 @@ export function buildViewports(
       framing.centerYFraction,
     )];
   }
-  if (mode === "split" && required.length >= 2) {
+  if (mode === "split" && required.length === 2) {
     const panelAspect = targetAspect * 2;
     return [
       cropAroundBox(required[0]!.contentBox, sourceAspect, panelAspect),
       cropAroundBox(required[1]!.contentBox, sourceAspect, panelAspect),
     ];
+  }
+  if (mode === "split" && required.length >= 3) {
+    const primary = required.find((region) => region.role === "primary") ?? required[0]!;
+    const secondary = required.filter((region) => region.id !== primary.id)
+      .sort((a, b) => (a.contentBox.x + a.contentBox.width / 2) - (b.contentBox.x + b.contentBox.width / 2));
+    const ordered = [primary, ...secondary].slice(0, 3);
+    const aspects = targetAspect < 1
+      ? [targetAspect * 2, targetAspect, targetAspect]
+      : [targetAspect * 0.6, targetAspect * 0.8, targetAspect * 0.8];
+    return ordered.map((region, index) => cropAroundBox(region.contentBox, sourceAspect, aspects[index]!));
   }
   const union = unionAll(required.map((region) => region.contentBox)) ?? required[0]!.contentBox;
   return [expandBox(union, 0.12)];

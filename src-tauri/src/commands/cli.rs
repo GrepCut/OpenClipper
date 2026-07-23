@@ -1,4 +1,7 @@
-use crate::cli::{finish_benchmark_cli, log_benchmark_progress, BenchmarkCliRequest, BenchmarkCliSummary, CliRequest};
+use crate::cli::{
+    finish_benchmark_cli, log_benchmark_progress, BenchmarkCliRequest, BenchmarkCliSummary,
+    CliRequest,
+};
 use tauri::{AppHandle, State};
 
 #[tauri::command]

@@ -150,10 +150,9 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
   const requestedMotionType = decideMotionType(motionAmount, successRate, sceneSpanSec, input.allowSweeping ?? true, Boolean(input.hasSolidColorBackground), hasSalientRegion, hasPersistentTrack);
   const keyframeCenters = keyframeCrops.map((item) => rectCenter(item.rect));
 
-  // Preserve Run4's independent scene window aggregation. A wider window is
-  // an intentional contain/padding decision on the 9:16 output canvas.
-  const aggregatedCropWidthNorm = Math.max(scaledTargetWidthNorm, ...nonEmptyResults.map(({ result }) => (result.focusBox ?? result.region).width));
-  const aggregatedCropHeightNorm = Math.max(scaledTargetHeightNorm, ...nonEmptyResults.map(({ result }) => (result.focusBox ?? result.region).height));
+  // A Smart Follow viewport always remains a cover crop. When several
+  // important regions do not fit, the layout controller chooses a split;
+  // widening this rectangle would create letterboxing in the renderer.
   // MediaPipe decides the sweep direction from the aggregated scene window,
   // then resets the actual crop window to the nominal target dimensions.
   // A portrait crop already spans the source height, so a vertical sweep has
@@ -177,8 +176,8 @@ export function analyzeSceneMotion(input: SceneMotionInput): SceneMotionResult {
     && sweepEndCenter - sweepStartCenter <= 1e-6
     ? "steady"
     : requestedMotionType;
-  const sceneCropWidthNorm = motionType === "sweeping" ? targetWidthNorm : aggregatedCropWidthNorm;
-  const sceneCropHeightNorm = motionType === "sweeping" ? targetHeightNorm : aggregatedCropHeightNorm;
+  const sceneCropWidthNorm = scaledTargetWidthNorm;
+  const sceneCropHeightNorm = scaledTargetHeightNorm;
 
   const centerMinX = keyframeCenters.length ? Math.min(...keyframeCenters.map((center) => center.x)) : 0.5;
   const centerMaxX = keyframeCenters.length ? Math.max(...keyframeCenters.map((center) => center.x)) : 0.5;

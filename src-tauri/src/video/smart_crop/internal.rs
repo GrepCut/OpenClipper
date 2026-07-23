@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
+use super::vision::{NativeVisionDevice, NativeVisionError, BATCH_BOUND};
 use super::vision_logic::{AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection};
-use super::vision::{BATCH_BOUND, NativeVisionDevice, NativeVisionError};
 
 pub(crate) const DETECTION_FPS: f64 = 3.5;
 pub(crate) const HISTOGRAM_FPS: f64 = 3.5;
@@ -78,6 +78,8 @@ pub(crate) struct ObjectResult {
     pub pose_device: NativeVisionDevice,
     pub duration_ms: u64,
     pub pose_duration_ms: u64,
+    pub recovery_passes: usize,
+    pub recovery_pose_passes: usize,
 }
 
 pub(crate) enum WorkerResult {
@@ -86,8 +88,8 @@ pub(crate) enum WorkerResult {
     Error(NativeVisionError),
 }
 
-/// Work item for the BlazeFace session pool: either the base pass over a
-/// sampled frame or one recovery tile cropped from it.
+/// Work item for the face session: either the base pass over a sampled frame
+/// or one high-detail tile cropped from it.
 pub(crate) struct FaceJob {
     pub frame: Arc<AnalysisFrame>,
     pub kind: FaceJobKind,
@@ -128,5 +130,95 @@ pub(crate) struct PendingRecovery {
     pub base: BaseFaceOutcome,
     pub collected: Vec<AutoFlipFaceDetection>,
     pub remaining: usize,
+    pub pass_count: usize,
     pub extra_duration_ms: u64,
+}
+
+/// Work item for the object session: base YOLOX pass, high-detail tile,
+/// MoveNet tile recovery, or final pose/motion publish.
+pub(crate) struct ObjectJob {
+    pub kind: ObjectJobKind,
+}
+
+pub(crate) enum ObjectJobKind {
+    Base {
+        frame: Arc<AnalysisFrame>,
+    },
+    Tile {
+        frame: Arc<AnalysisFrame>,
+        base_index: usize,
+        offset_x: f32,
+        offset_y: f32,
+        span_x: f32,
+        span_y: f32,
+    },
+    Finalize {
+        frame: Arc<AnalysisFrame>,
+        detections: Vec<SubjectDetection>,
+        recovery_passes: usize,
+        yolox_extra_ms: u64,
+        yolox_duration_ms: u64,
+        device: NativeVisionDevice,
+    },
+    PoseTile {
+        frame: Arc<AnalysisFrame>,
+        base_index: usize,
+        offset_x: f32,
+        offset_y: f32,
+        span_x: f32,
+        span_y: f32,
+    },
+}
+
+pub(crate) struct BaseObjectOutcome {
+    pub frame: Arc<AnalysisFrame>,
+    pub detections: Vec<SubjectDetection>,
+    pub device: NativeVisionDevice,
+    pub duration_ms: u64,
+}
+
+pub(crate) struct FinalizedObjectBase {
+    pub frame: Arc<AnalysisFrame>,
+    pub detections: Vec<SubjectDetection>,
+    pub poses: Vec<PoseSubject>,
+    pub motion_signal: Option<(NormalizedBox, f32)>,
+    pub device: NativeVisionDevice,
+    pub pose_device: NativeVisionDevice,
+    pub duration_ms: u64,
+    pub pose_duration_ms: u64,
+    pub recovery_passes: usize,
+    pub needs_pose_recovery: bool,
+}
+
+pub(crate) enum ObjectWorkerMsg {
+    Base(BaseObjectOutcome),
+    Tile {
+        base_index: usize,
+        detections: Vec<SubjectDetection>,
+        duration_ms: u64,
+    },
+    FinalizedBase(FinalizedObjectBase),
+    PoseTile {
+        base_index: usize,
+        poses: Vec<PoseSubject>,
+        duration_ms: u64,
+    },
+    Total(usize),
+    Error(NativeVisionError),
+}
+
+pub(crate) struct PendingObjectRecovery {
+    pub base: BaseObjectOutcome,
+    pub collected: Vec<SubjectDetection>,
+    pub remaining: usize,
+    pub pass_count: usize,
+    pub extra_duration_ms: u64,
+}
+
+pub(crate) struct PendingPoseRecovery {
+    pub base: FinalizedObjectBase,
+    pub collected: Vec<PoseSubject>,
+    pub remaining: usize,
+    pub pass_count: usize,
+    pub extra_pose_duration_ms: u64,
 }

@@ -183,9 +183,7 @@ pub fn download_url_to_file(
     if let Some(expected) = expected_size {
         if received != expected {
             let _ = std::fs::remove_file(&part_path);
-            let message = format!(
-                "Download incomplete ({url}): {received}/{expected} bytes"
-            );
+            let message = format!("Download incomplete ({url}): {received}/{expected} bytes");
             emit(received, true, Some(message.clone()));
             return Err(message);
         }

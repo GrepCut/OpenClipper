@@ -4,12 +4,12 @@ use ffmpeg_next::{format::Pixel, media::Type};
 use std::thread;
 use std::time::Instant;
 
+use super::super::decode::{scaler_dimensions_for_long_edge, stream_rotation};
+use super::super::vision::NativeVisionError;
+use super::super::vision_logic::Rotation;
+use super::types::StaticFeatureSample;
 use crate::video::ffmpeg::border::BorderFeatures;
 use crate::video::ffmpeg::frames::{ensure_ffmpeg_init, AutoFlipShotBoundaryDetector};
-use super::super::vision_logic::Rotation;
-use super::super::decode::{scaler_dimensions, stream_rotation};
-use super::super::vision::NativeVisionError;
-use super::types::StaticFeatureSample;
 
 pub(crate) struct DecodeStats {
     pub sample_count: usize,
@@ -132,16 +132,22 @@ impl DecodeSession {
         })?;
         let source_width = decoder.width();
         let source_height = decoder.height();
-        let (display_width, display_height) = if matches!(rotation, Rotation::R90 | Rotation::R270) {
+        let (display_width, display_height) = if matches!(rotation, Rotation::R90 | Rotation::R270)
+        {
             (source_height, source_width)
         } else {
             (source_width, source_height)
         };
+        // Keep source detail through 1080p. SCRFD's full-frame pass still
+        // letterboxes to 640, while its tiled passes consume native 640px
+        // crops and therefore retain small-face detail.
         let (sample_raw_width, sample_raw_height) =
-            scaler_dimensions(source_width, source_height, rotation, 480);
+            scaler_dimensions_for_long_edge(source_width, source_height, 1920);
         let histogram_scale = (192.0 / source_width.max(source_height).max(1) as f64).min(1.0);
-        let histogram_width = (((source_width as f64 * histogram_scale).round() as u32).max(2)) & !1;
-        let histogram_height = (((source_height as f64 * histogram_scale).round() as u32).max(2)) & !1;
+        let histogram_width =
+            (((source_width as f64 * histogram_scale).round() as u32).max(2)) & !1;
+        let histogram_height =
+            (((source_height as f64 * histogram_scale).round() as u32).max(2)) & !1;
         let sample_scaler = Scaler::get(
             decoder.format(),
             source_width,
@@ -149,7 +155,7 @@ impl DecodeSession {
             Pixel::RGB24,
             sample_raw_width,
             sample_raw_height,
-            Flags::BILINEAR,
+            Flags::BICUBIC,
         )
         .map_err(|error| {
             NativeVisionError::new("decode_failed", format!("Sample scaler: {error}"), true)
@@ -171,9 +177,9 @@ impl DecodeSession {
         let sample_frame =
             ffmpeg::frame::Video::new(Pixel::RGB24, sample_raw_width, sample_raw_height);
         let seek_target = (start_time * 1_000_000.0).round() as i64;
-        input
-            .seek(seek_target, ..seek_target)
-            .map_err(|error| NativeVisionError::new("decode_failed", format!("Seek: {error}"), true))?;
+        input.seek(seek_target, ..seek_target).map_err(|error| {
+            NativeVisionError::new("decode_failed", format!("Seek: {error}"), true)
+        })?;
         decoder.flush();
 
         Ok(Self {

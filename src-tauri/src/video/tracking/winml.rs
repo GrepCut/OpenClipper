@@ -1,8 +1,10 @@
 //! ByteTrack glue and tracked detection remapping.
 
 use super::bytetrack::{TrackDetection, TrackOutput};
-use crate::video::smart_crop::vision_logic::{self, AutoFlipFaceDetection, PoseSubject, SubjectDetection};
 use crate::video::smart_crop::internal::{ContentRect, NativeFaceBox};
+use crate::video::smart_crop::vision_logic::{
+    self, AutoFlipFaceDetection, PoseSubject, SubjectDetection,
+};
 
 pub(crate) fn stable_content_rect(observations: &[(u32, u32)], frame_height: u32) -> ContentRect {
     if observations.is_empty() || frame_height == 0 {
@@ -38,7 +40,11 @@ pub(crate) fn stable_content_rect(observations: &[(u32, u32)], frame_height: u32
     }
 }
 
-pub(crate) fn padded_face_box(face: &AutoFlipFaceDetection, width: u32, height: u32) -> NativeFaceBox {
+pub(crate) fn padded_face_box(
+    face: &AutoFlipFaceDetection,
+    width: u32,
+    height: u32,
+) -> NativeFaceBox {
     let padding_x = face.box_.width * 0.08;
     let padding_y = face.box_.height * 0.08;
     let left = (face.box_.x - padding_x).clamp(0.0, 1.0);
@@ -67,33 +73,45 @@ fn to_track_detections<T>(
 }
 
 pub(crate) fn subject_track_inputs(detections: &[SubjectDetection]) -> Vec<TrackDetection> {
-    to_track_detections(detections, |_| true, |source_index, detection| TrackDetection {
-        box_: detection.box_,
-        label: detection.label.clone(),
-        score: detection.score,
-        source_index,
-        detector_source: detection.detector_source,
-    })
+    to_track_detections(
+        detections,
+        |_| true,
+        |source_index, detection| TrackDetection {
+            box_: detection.box_,
+            label: detection.label.clone(),
+            score: detection.score,
+            source_index,
+            detector_source: detection.detector_source,
+        },
+    )
 }
 
 pub(crate) fn face_track_inputs(faces: &[AutoFlipFaceDetection]) -> Vec<TrackDetection> {
-    to_track_detections(faces, |_| true, |source_index, face| TrackDetection {
-        box_: face.box_,
-        label: "face".into(),
-        score: face.score,
-        source_index,
-        detector_source: None,
-    })
+    to_track_detections(
+        faces,
+        |_| true,
+        |source_index, face| TrackDetection {
+            box_: face.box_,
+            label: "face".into(),
+            score: face.score,
+            source_index,
+            detector_source: None,
+        },
+    )
 }
 
 pub(crate) fn pose_track_inputs(poses: &[PoseSubject]) -> Vec<TrackDetection> {
-    to_track_detections(poses, |pose| pose.trackable, |source_index, pose| TrackDetection {
-        box_: pose.box_,
-        label: "pose-person".into(),
-        score: pose.score,
-        source_index,
-        detector_source: None,
-    })
+    to_track_detections(
+        poses,
+        |pose| pose.trackable,
+        |source_index, pose| TrackDetection {
+            box_: pose.box_,
+            label: "pose-person".into(),
+            score: pose.score,
+            source_index,
+            detector_source: None,
+        },
+    )
 }
 
 pub(crate) fn tracked_subjects(outputs: Vec<TrackOutput>) -> Vec<SubjectDetection> {
@@ -220,4 +238,3 @@ pub(crate) fn tracked_poses(outputs: Vec<TrackOutput>, poses: &[PoseSubject]) ->
         })
         .collect()
 }
-

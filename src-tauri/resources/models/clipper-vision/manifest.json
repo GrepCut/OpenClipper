@@ -6,7 +6,7 @@
     "tensorflow": "2.15.1",
     "tf2onnx": "1.16.1"
   },
-  "modelVersion": "clipper-vision-v3-yolox",
+  "modelVersion": "clipper-vision-v5-yolox-s-scrfd10g-tiled",
   "models": {
     "lr_asd_ava": {
       "dynamicBatch": true,
@@ -52,6 +52,41 @@
       },
       "sourcePath": "public/models/yolox_tiny/yolox_tiny.onnx",
       "sourceSha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
+    },
+    "yolox_s": {
+      "batchParity": { "batchSize": 2, "maxAbsErrorVsSingle": 0.0 },
+      "decoder": {
+        "classCount": 80,
+        "inputSize": 640,
+        "nmsIouThreshold": 0.45,
+        "predictionCount": 8400,
+        "scoreThreshold": 0.1,
+        "strides": [8, 16, 32]
+      },
+      "dynamicBatch": true,
+      "input": { "dtype": "float32", "name": "images", "shape": ["batch", 3, 640, 640] },
+      "labelFile": "coco80.txt",
+      "labelSha256": "bd17f1ee35d5f3c862a4894605855abbb9dda4b0621fdb0ac4c2c8c7bb7e730a",
+      "onnxFile": "yolox_s.onnx",
+      "onnxSha256": "afcc56a126d485a7f2ac7a5cb61971339872227aeece6d2d531e723615f26a49",
+      "outputs": [{ "dtype": "float32", "name": "output", "shape": ["batch", 8400, 85] }],
+      "preprocessing": {
+        "colorOrder": "bgr",
+        "layout": "nchw",
+        "resize": "bilinear-letterbox-top-left",
+        "valueRange": [0.0, 255.0]
+      },
+      "sourcePath": "public/models/yolox_s/yolox_s.onnx",
+      "sourceSha256": "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063"
+    },
+    "yolox_s_fp16": {
+      "derivedFrom": "yolox_s",
+      "dynamicBatch": true,
+      "keepIoTypes": true,
+      "onnxFile": "yolox_s.fp16.onnx",
+      "onnxSha256": "341cfc33a729a3b89508bb36e79de215215b7410338d37482985bcbbf46c1f8d",
+      "parity": { "maxAbsErrorVsFp32": 0.092398, "meanAbsErrorVsFp32": 0.0000989462 },
+      "precision": "float16"
     },
     "blaze_face_full_range": {
       "batchParity": {},
@@ -155,6 +190,50 @@
         "reshaped_classifier_face_4": 0.25,
         "reshaped_regressor_face_4": 1.0
       },
+      "precision": "float16"
+    },
+    "scrfd_10g_bnkps": {
+      "batchParity": { "batchSize": 2, "maxAbsErrorVsSingle": 0.0 },
+      "decoder": {
+        "anchorsPerCell": 2,
+        "inputSize": 640,
+        "keypointCount": 5,
+        "nmsIouThreshold": 0.4,
+        "scoreThreshold": 0.5,
+        "strides": [8, 16, 32],
+        "tiling": { "edge": 640, "overlap": 0.2, "sampleLongEdgeCap": 1920 }
+      },
+      "dynamicBatch": true,
+      "input": { "dtype": "float32", "name": "input.1", "shape": ["batch", 3, 640, 640] },
+      "onnxFile": "scrfd_10g_bnkps.onnx",
+      "onnxSha256": "7aa52fd0d1bf8c24dc36fa2942a6cd9b41793e962f45a13dfc3f28ee07411053",
+      "outputs": [
+        { "dtype": "float32", "name": "448", "shape": ["batch*12800", 1] },
+        { "dtype": "float32", "name": "471", "shape": ["batch*3200", 1] },
+        { "dtype": "float32", "name": "494", "shape": ["batch*800", 1] },
+        { "dtype": "float32", "name": "451", "shape": ["batch*12800", 4] },
+        { "dtype": "float32", "name": "474", "shape": ["batch*3200", 4] },
+        { "dtype": "float32", "name": "497", "shape": ["batch*800", 4] },
+        { "dtype": "float32", "name": "454", "shape": ["batch*12800", 10] },
+        { "dtype": "float32", "name": "477", "shape": ["batch*3200", 10] },
+        { "dtype": "float32", "name": "500", "shape": ["batch*800", 10] }
+      ],
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nchw",
+        "normalize": "(pixel-127.5)/128",
+        "resize": "bilinear-letterbox-top-left"
+      },
+      "sourcePath": "public/models/scrfd_10g/scrfd_10g_bnkps.onnx",
+      "sourceSha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+    },
+    "scrfd_10g_bnkps_fp16": {
+      "derivedFrom": "scrfd_10g_bnkps",
+      "dynamicBatch": true,
+      "keepIoTypes": true,
+      "onnxFile": "scrfd_10g_bnkps.fp16.onnx",
+      "onnxSha256": "670d517dcb18bf4298e39ff82db627d5cb96d5236ed5aaf63c6e881a2f79447c",
+      "parity": { "maxAbsErrorVsFp32": 0.0119808, "meanAbsErrorVsFp32": 0.000877947 },
       "precision": "float16"
     },
     "movenet_multipose_lightning": {

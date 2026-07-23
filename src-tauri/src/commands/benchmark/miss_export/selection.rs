@@ -19,11 +19,7 @@ fn target_score(target: &BenchmarkTargetDetail) -> f64 {
 }
 
 fn frame_score(detail: &BenchmarkFrameDetail) -> f64 {
-    detail
-        .targets
-        .iter()
-        .map(target_score)
-        .fold(0.0, f64::max)
+    detail.targets.iter().map(target_score).fold(0.0, f64::max)
 }
 
 pub(crate) fn select_worst_half(sampled: Vec<SampledKeyframeFrame>) -> Vec<RankedFrame> {
@@ -118,9 +114,7 @@ pub(crate) fn sample_frames_at_keyframes(
             .expect("frames checked");
         if sampled
             .iter()
-            .any(|sample: &SampledKeyframeFrame| {
-                sample.detail.timestamp_us == nearest.timestamp_us
-            })
+            .any(|sample: &SampledKeyframeFrame| sample.detail.timestamp_us == nearest.timestamp_us)
         {
             continue;
         }

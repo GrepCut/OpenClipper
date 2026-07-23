@@ -24,6 +24,34 @@ class BoxOneEuroFilter {
   }
 }
 
+const MAX_CAMERA_SPEED_PER_SEC = 0.16;
+const MAX_CAMERA_ACCELERATION_PER_SEC2 = 0.4;
+
+function clampCameraMotion(
+  previous: NormalizedBox,
+  candidate: NormalizedBox,
+  previousVelocity: { x: number; y: number },
+  dt: number,
+): { crop: NormalizedBox; velocity: { x: number; y: number } } {
+  const safeDt = Math.max(1 / 120, dt);
+  const previousCenter = { x: previous.x + previous.width / 2, y: previous.y + previous.height / 2 };
+  const candidateCenter = { x: candidate.x + candidate.width / 2, y: candidate.y + candidate.height / 2 };
+  const desiredVelocity = {
+    x: (candidateCenter.x - previousCenter.x) / safeDt,
+    y: (candidateCenter.y - previousCenter.y) / safeDt,
+  };
+  const maxVelocityDelta = MAX_CAMERA_ACCELERATION_PER_SEC2 * safeDt;
+  const velocity = {
+    x: Math.max(-MAX_CAMERA_SPEED_PER_SEC, Math.min(MAX_CAMERA_SPEED_PER_SEC,
+      Math.max(previousVelocity.x - maxVelocityDelta, Math.min(previousVelocity.x + maxVelocityDelta, desiredVelocity.x)))),
+    y: Math.max(-MAX_CAMERA_SPEED_PER_SEC, Math.min(MAX_CAMERA_SPEED_PER_SEC,
+      Math.max(previousVelocity.y - maxVelocityDelta, Math.min(previousVelocity.y + maxVelocityDelta, desiredVelocity.y)))),
+  };
+  const x = Math.max(0, Math.min(1 - candidate.width, previousCenter.x + velocity.x * safeDt - candidate.width / 2));
+  const y = Math.max(0, Math.min(1 - candidate.height, previousCenter.y + velocity.y * safeDt - candidate.height / 2));
+  return { crop: { ...candidate, x, y }, velocity };
+}
+
 /** OneEuro smoothing inside shots; resets on scene cuts (handoff §5.5). */
 export function smoothShotCropSamples(
   samples: AutoFlipCropSample[],
@@ -31,16 +59,30 @@ export function smoothShotCropSamples(
 ): AutoFlipCropSample[] {
   const filter = new BoxOneEuroFilter();
   let lastTime = -Infinity;
-  return samples.map((sample) => {
+  let previousCrop: NormalizedBox | null = null;
+  let previousVelocity = { x: 0, y: 0 };
+  return samples.map((sample, index) => {
     if (sceneCuts.some((cut) => cut > lastTime + EPSILON && cut <= sample.t + EPSILON)) {
       filter.reset();
+      previousCrop = null;
+      previousVelocity = { x: 0, y: 0 };
     }
     lastTime = sample.t;
     if (sample.cut) {
       filter.reset();
+      previousCrop = null;
+      previousVelocity = { x: 0, y: 0 };
       return sample;
     }
-    return { ...sample, crop: filter.filter(sample.crop, sample.t) };
+    const filtered = filter.filter(sample.crop, sample.t);
+    if (!previousCrop) {
+      previousCrop = filtered;
+      return { ...sample, crop: filtered };
+    }
+    const limited = clampCameraMotion(previousCrop, filtered, previousVelocity, sample.t - (samples[index - 1]?.t ?? sample.t));
+    previousCrop = limited.crop;
+    previousVelocity = limited.velocity;
+    return { ...sample, crop: limited.crop };
   });
 }
 

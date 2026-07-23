@@ -6,7 +6,8 @@ import {
   getOutlinedActionSurfaceProps,
 } from "../../../../shared/components/buttons/outlined-action-button.component";
 import { ClipperClipsSection } from "../clipper-clips-section.component";
-import { CLIP_SOURCE_MODE_OPTIONS, TOOLBAR_ACTION_BUTTON_PROPS } from "./clipper-preview.constants";
+import { FramingDecisionsPanel } from "./framing-decisions-panel.component";
+import { SIDE_PANEL_TAB_OPTIONS, TOOLBAR_ACTION_BUTTON_PROPS } from "./clipper-preview.constants";
 import type { ClipperPreviewSidePanelProps } from "./clipper-preview.types";
 
 export function ClipperPreviewSidePanel({
@@ -17,7 +18,6 @@ export function ClipperPreviewSidePanel({
   clipSourceMode,
   activeClipIndex,
   onSelectClip,
-  onClipSourceModeChange,
   onDeleteAiClip,
   onDeleteAutoPartsClip,
   aiChatMessages,
@@ -48,6 +48,11 @@ export function ClipperPreviewSidePanel({
   lastEditedTranscriptRange,
   isRendering = false,
   onOpenRenderQueue,
+  sidePanelTab,
+  onSidePanelTabChange,
+  smartCropAnalysis,
+  previewTimeSec,
+  primaryFormat,
 }: ClipperPreviewSidePanelProps) {
   return (
     <Box
@@ -69,7 +74,6 @@ export function ClipperPreviewSidePanel({
       borderRadius="28px"
       bg="transparent"
     >
-      {/* Insety 8px (px/pt = 2) — spójne z polem czatu na dole panelu (px=2, pb=2). */}
       <HStack
         flexShrink={0}
         px={2}
@@ -92,14 +96,14 @@ export function ClipperPreviewSidePanel({
         </OutlinedActionButton>
 
         <HStack gap={1} flexShrink={0} align="center">
-          {CLIP_SOURCE_MODE_OPTIONS.map((option) => {
-            const isActive = clipSourceMode === option.value;
+          {SIDE_PANEL_TAB_OPTIONS.map((option) => {
+            const isActive = sidePanelTab === option.value;
             return (
               <Box
                 key={option.value}
                 as="button"
                 type="button"
-                onClick={() => onClipSourceModeChange(option.value)}
+                onClick={() => onSidePanelTabChange(option.value)}
                 aria-pressed={isActive}
                 {...TOOLBAR_ACTION_BUTTON_PROPS}
                 {...getOutlinedActionSurfaceProps(theme, isActive)}
@@ -120,42 +124,53 @@ export function ClipperPreviewSidePanel({
       </HStack>
 
       <Box flex="1" minH={0} overflow="hidden" display="flex" flexDirection="column">
-        <ClipperClipsSection
-          clipPreviews={clipPreviews}
-          autoPartsClipPreviews={safeAutoPartsPreviews}
-          aiClipPreviews={safeAiPreviews}
-          clipSourceMode={clipSourceMode}
-          activeClipIndex={activeClipIndex}
-          onSelectClip={onSelectClip}
-          onDeleteAiClip={onDeleteAiClip}
-          onDeleteAutoPartsClip={onDeleteAutoPartsClip}
-          aiChatMessages={aiChatMessages}
-          aiChatLoading={aiChatLoading}
-          aiChatError={aiChatError}
-          aiChatThinking={aiChatThinking}
-          aiChatProgressChars={aiChatProgressChars}
-          aiChatModel={aiChatModel}
-          onAiChatModelChange={onAiChatModelChange}
-          onSendAiChatMessage={onSendAiChatMessage}
-          onLoadAiChatHistory={onLoadAiChatHistory}
-          onNewAiChat={onNewAiChat}
-          aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
-          rangeWords={state.rangeWords}
-          collageRegions={collageRegions}
-          disabledCollageRegionIds={disabledCollageRegionIds}
-          onToggleCollageRegion={onToggleCollageRegion}
-          onSeekToTranscriptTime={seekToTranscriptTime}
-          autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}
-          onAutoPartsSegmentLengthChange={onAutoPartsSegmentLengthChange}
-          onResetAutoParts={onResetAutoParts}
-          autoPartsResegmenting={autoPartsResegmenting}
-          onEditClipTranscript={onEditClipTranscript}
-          onUndoClipEdit={onUndoClipEdit}
-          onRedoClipEdit={onRedoClipEdit}
-          canUndoClipEdit={canUndoClipEdit}
-          canRedoClipEdit={canRedoClipEdit}
-          lastEditedTranscriptRange={lastEditedTranscriptRange}
-        />
+        {sidePanelTab === "framing" ? (
+          <FramingDecisionsPanel
+            analysis={smartCropAnalysis}
+            formatId={primaryFormat?.id}
+            formatLabel={primaryFormat?.label}
+            time={previewTimeSec}
+            theme={theme}
+            onSeek={(t) => seekToTranscriptTime(activeClipIndex, t)}
+          />
+        ) : (
+          <ClipperClipsSection
+            clipPreviews={clipPreviews}
+            autoPartsClipPreviews={safeAutoPartsPreviews}
+            aiClipPreviews={safeAiPreviews}
+            clipSourceMode={clipSourceMode}
+            activeClipIndex={activeClipIndex}
+            onSelectClip={onSelectClip}
+            onDeleteAiClip={onDeleteAiClip}
+            onDeleteAutoPartsClip={onDeleteAutoPartsClip}
+            aiChatMessages={aiChatMessages}
+            aiChatLoading={aiChatLoading}
+            aiChatError={aiChatError}
+            aiChatThinking={aiChatThinking}
+            aiChatProgressChars={aiChatProgressChars}
+            aiChatModel={aiChatModel}
+            onAiChatModelChange={onAiChatModelChange}
+            onSendAiChatMessage={onSendAiChatMessage}
+            onLoadAiChatHistory={onLoadAiChatHistory}
+            onNewAiChat={onNewAiChat}
+            aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
+            rangeWords={state.rangeWords}
+            collageRegions={collageRegions}
+            disabledCollageRegionIds={disabledCollageRegionIds}
+            onToggleCollageRegion={onToggleCollageRegion}
+            onSeekToTranscriptTime={seekToTranscriptTime}
+            autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}
+            onAutoPartsSegmentLengthChange={onAutoPartsSegmentLengthChange}
+            onResetAutoParts={onResetAutoParts}
+            autoPartsResegmenting={autoPartsResegmenting}
+            onEditClipTranscript={onEditClipTranscript}
+            onUndoClipEdit={onUndoClipEdit}
+            onRedoClipEdit={onRedoClipEdit}
+            canUndoClipEdit={canUndoClipEdit}
+            canRedoClipEdit={canRedoClipEdit}
+            lastEditedTranscriptRange={lastEditedTranscriptRange}
+          />
+        )}
       </Box>
     </Box>
   );

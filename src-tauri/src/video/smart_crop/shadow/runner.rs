@@ -8,8 +8,8 @@ use super::types::{
     SaliencyShadowSample,
 };
 use super::vinet::ViNetShadow;
-use crate::video::smart_crop::vision_logic::NormalizedBox;
 use crate::video::smart_crop::vision::{VisionModel, WinMlModel};
+use crate::video::smart_crop::vision_logic::NormalizedBox;
 
 pub struct GeneralizationShadowRunner {
     config: GeneralizationShadowConfig,
@@ -125,7 +125,9 @@ impl GeneralizationShadowRunner {
         if self.config.vinet {
             let sample = if let Some(vinet) = self.vinet.as_mut() {
                 vinet.push_frame(rgb, width, height, time)
-            } else if let Some((box_, confidence)) = self.motion_saliency_from_rgb(rgb, width, height) {
+            } else if let Some((box_, confidence)) =
+                self.motion_saliency_from_rgb(rgb, width, height)
+            {
                 Some(SaliencyShadowSample {
                     time,
                     box_,
@@ -158,10 +160,9 @@ impl GeneralizationShadowRunner {
                 let src_x = gx * width / GRID_W;
                 let index = (src_y * width + src_x) * 3;
                 if index + 2 < rgb.len() {
-                    gray[gy * GRID_W + gx] = ((rgb[index] as u16
-                        + rgb[index + 1] as u16
-                        + rgb[index + 2] as u16)
-                        / 3) as u8;
+                    gray[gy * GRID_W + gx] =
+                        ((rgb[index] as u16 + rgb[index + 1] as u16 + rgb[index + 2] as u16) / 3)
+                            as u8;
                 }
             }
         }
@@ -222,7 +223,11 @@ impl GeneralizationShadowRunner {
         let Ok(embedding) = osnet.embed_person(rgb, *width, *height, box_) else {
             return None;
         };
-        let norm = embedding.iter().map(|value| value * value).sum::<f32>().sqrt();
+        let norm = embedding
+            .iter()
+            .map(|value| value * value)
+            .sum::<f32>()
+            .sqrt();
         self.reid_samples.push(ReIdShadowSample {
             time,
             person_count,

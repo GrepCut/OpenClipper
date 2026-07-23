@@ -88,7 +88,11 @@ fn draw_crop_viewport_border(
 }
 
 fn slot_color(slot: i32) -> [u8; 3] {
-    if slot == 1 { [244, 114, 182] } else { [34, 211, 238] }
+    if slot == 1 {
+        [244, 114, 182]
+    } else {
+        [34, 211, 238]
+    }
 }
 
 pub(crate) fn annotate_frame(

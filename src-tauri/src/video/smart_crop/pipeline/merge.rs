@@ -1,17 +1,18 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use crate::video::tracking::bytetrack::ByteTracker;
-use super::super::shadow::GeneralizationShadowRunner;
-use super::super::vision_logic::{box_iou, SubjectDetection};
+use super::super::diagnostics;
 use super::super::internal::{FaceResult, ObjectResult};
+use super::super::shadow::GeneralizationShadowRunner;
+use super::super::vision::{NativeVisionDevice, NativeVisionError};
+use super::super::vision_logic::{box_iou, SubjectDetection};
+use super::types::{
+    NativeFaceSample, NativeImportanceSignalRegion, NativeSubjectSample, NativeVisionProgress,
+};
+use crate::video::tracking::bytetrack::ByteTracker;
 use crate::video::tracking::winml::{
     face_track_inputs, padded_face_box, pose_track_inputs, subject_track_inputs, tracked_faces,
     tracked_poses, tracked_subjects,
-};
-use super::super::vision::{NativeVisionDevice, NativeVisionError};
-use super::types::{
-    NativeFaceSample, NativeImportanceSignalRegion, NativeSubjectSample, NativeVisionProgress,
 };
 
 pub(crate) struct MergeOutput {
@@ -24,6 +25,8 @@ pub(crate) struct MergeOutput {
     pub object_inference_ms: u64,
     pub pose_inference_ms: u64,
     pub recovery_face_passes: usize,
+    pub recovery_object_passes: usize,
+    pub recovery_pose_passes: usize,
     pub tracker_duration_ms: u64,
     pub tracked_subject_count: usize,
     pub predicted_subject_count: usize,
@@ -61,6 +64,8 @@ pub(crate) fn merge_samples(
     let mut object_inference_ms = 0;
     let mut pose_inference_ms = 0;
     let mut recovery_face_passes = 0;
+    let mut recovery_object_passes = 0;
+    let mut recovery_pose_passes = 0;
     let tracker_started = Instant::now();
     let mut object_tracker = ByteTracker::new();
     let mut face_tracker = ByteTracker::new();
@@ -68,6 +73,12 @@ pub(crate) fn merge_samples(
     let mut tracked_subject_count = 0usize;
     let mut predicted_subject_count = 0usize;
     for index in 0..sample_count {
+        if index == 0 || index % 25 == 0 || index + 1 == sample_count {
+            diagnostics::append(
+                "merge",
+                &format!("processing sample {}/{}", index + 1, sample_count),
+            );
+        }
         let face = face_results
             .remove(&index)
             .expect("validated ordered face result");
@@ -79,6 +90,8 @@ pub(crate) fn merge_samples(
         pose_device = object.pose_device;
         face_inference_ms += face.duration_ms;
         recovery_face_passes += face.recovery_passes;
+        recovery_object_passes += object.recovery_passes;
+        recovery_pose_passes += object.recovery_pose_passes;
         object_inference_ms += object.duration_ms;
         pose_inference_ms += object.pose_duration_ms;
         if tracking_enabled && face.scene_cut {
@@ -178,7 +191,7 @@ pub(crate) fn merge_samples(
             autoflip_faces,
             pose_subjects,
             importance_signals,
-            model_id: "clipper-vision-v3-yolox",
+            model_id: "clipper-vision-v5-yolox-s-scrfd10g-tiled",
             scene_cut: face.scene_cut.then_some(true),
             camera_motion_residual,
             reid_embedding,
@@ -209,6 +222,13 @@ pub(crate) fn merge_samples(
             queued_detections: sample_count - index - 1,
         })?;
     }
+    diagnostics::append(
+        "merge",
+        &format!(
+            "tracking complete tracked_subjects={tracked_subject_count} predicted_subjects={predicted_subject_count} tracker_ms={}",
+            tracker_started.elapsed().as_millis()
+        ),
+    );
     let tracker_duration_ms = tracking_enabled
         .then(|| tracker_started.elapsed().as_millis() as u64)
         .unwrap_or(0);
@@ -223,6 +243,8 @@ pub(crate) fn merge_samples(
         object_inference_ms,
         pose_inference_ms,
         recovery_face_passes,
+        recovery_object_passes,
+        recovery_pose_passes,
         tracker_duration_ms,
         tracked_subject_count,
         predicted_subject_count,

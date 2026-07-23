@@ -1,16 +1,16 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+use crate::infra::error::{DbError, DbResult};
 use crate::storage::entity::{
     benchmark_result, benchmark_run, test_clip, test_dataset, test_keyframe, test_target,
 };
-use crate::infra::error::{DbError, DbResult};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -167,7 +167,11 @@ impl TestRepository {
         id: String,
         dataset_role: String,
     ) -> DbResult<test_dataset::Model> {
-        let role = if dataset_role == "holdout" { "holdout" } else { "tuning" };
+        let role = if dataset_role == "holdout" {
+            "holdout"
+        } else {
+            "tuning"
+        };
         let existing = test_dataset::Entity::find_by_id(id)
             .one(db)
             .await?
@@ -211,10 +215,7 @@ impl TestRepository {
             .await?)
     }
 
-    pub async fn get_clip(
-        db: &DatabaseConnection,
-        id: &str,
-    ) -> DbResult<Option<test_clip::Model>> {
+    pub async fn get_clip(db: &DatabaseConnection, id: &str) -> DbResult<Option<test_clip::Model>> {
         Ok(test_clip::Entity::find_by_id(id).one(db).await?)
     }
 
@@ -319,7 +320,10 @@ impl TestRepository {
         active.annotation_revision = Set(revision);
         active.updated_at = Set(now.clone());
         active.update(&transaction).await?;
-        if let Some(dataset) = test_dataset::Entity::find_by_id(dataset_id).one(&transaction).await? {
+        if let Some(dataset) = test_dataset::Entity::find_by_id(dataset_id)
+            .one(&transaction)
+            .await?
+        {
             let mut active: test_dataset::ActiveModel = dataset.into();
             active.updated_at = Set(now);
             active.update(&transaction).await?;
@@ -393,7 +397,9 @@ impl TestRepository {
         model: benchmark_result::ActiveModel,
     ) -> DbResult<benchmark_result::Model> {
         let run_id = match &model.run_id {
-            sea_orm::ActiveValue::Set(value) | sea_orm::ActiveValue::Unchanged(value) => value.clone(),
+            sea_orm::ActiveValue::Set(value) | sea_orm::ActiveValue::Unchanged(value) => {
+                value.clone()
+            }
             sea_orm::ActiveValue::NotSet => return Err(DbError::message("Run id is required.")),
         };
         let run = benchmark_run::Entity::find_by_id(run_id)
@@ -419,24 +425,36 @@ impl TestRepository {
     }
 }
 
-fn validate_keyframes(keyframes: &[TestKeyframeDto], source_width: f64, source_height: f64) -> DbResult<()> {
+fn validate_keyframes(
+    keyframes: &[TestKeyframeDto],
+    source_width: f64,
+    source_height: f64,
+) -> DbResult<()> {
     const TARGET_ASPECT: f64 = 9.0 / 16.0;
     const ASPECT_TOLERANCE: f64 = 0.01;
     let mut last = None;
     for frame in keyframes {
         if frame.timestamp_us < 0 || last.is_some_and(|value| frame.timestamp_us <= value) {
-            return Err(DbError::message("Keyframes must have unique ascending timestamps."));
+            return Err(DbError::message(
+                "Keyframes must have unique ascending timestamps.",
+            ));
         }
         let intent = layout_intent(frame);
         if intent != "crop" && intent != "contain" {
-            return Err(DbError::message("Keyframe layout intent must be crop or contain."));
+            return Err(DbError::message(
+                "Keyframe layout intent must be crop or contain.",
+            ));
         }
         if intent == "contain" {
             if frame.targets.len() != 1 {
-                return Err(DbError::message("Contain keyframes must contain exactly one target."));
+                return Err(DbError::message(
+                    "Contain keyframes must contain exactly one target.",
+                ));
             }
         } else if !(1..=2).contains(&frame.targets.len()) {
-            return Err(DbError::message("Each crop keyframe must contain one or two targets."));
+            return Err(DbError::message(
+                "Each crop keyframe must contain one or two targets.",
+            ));
         }
         for (index, target) in frame.targets.iter().enumerate() {
             if target.slot != index as i32
@@ -454,9 +472,12 @@ fn validate_keyframes(keyframes: &[TestKeyframeDto], source_width: f64, source_h
                 return Err(DbError::message("Invalid normalized target geometry."));
             }
             if intent == "crop" {
-                let aspect = (target.width * source_width) / (target.height * source_height).max(1e-9);
+                let aspect =
+                    (target.width * source_width) / (target.height * source_height).max(1e-9);
                 if (aspect - TARGET_ASPECT).abs() > ASPECT_TOLERANCE {
-                    return Err(DbError::message("Target crop boxes must be 9:16 in pixel space."));
+                    return Err(DbError::message(
+                        "Target crop boxes must be 9:16 in pixel space.",
+                    ));
                 }
             }
         }

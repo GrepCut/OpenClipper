@@ -1,7 +1,9 @@
 //! Shared SIMD RGB resize via `fast_image_resize`.
 
 use fast_image_resize::images::Image;
-use fast_image_resize::{FilterType as FirFilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
+use fast_image_resize::{
+    FilterType as FirFilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+};
 
 thread_local! {
     static RGB_RESIZER: std::cell::RefCell<Resizer> = std::cell::RefCell::new(Resizer::new());

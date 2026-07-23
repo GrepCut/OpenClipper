@@ -3,6 +3,7 @@ import type {
   ImportanceRegionKind,
   ImportanceRegionSample,
   ImportanceRegionSource,
+  ImportanceRegionTrust,
   ImportanceSignalKind,
   ImportanceSignalSample,
   NormalizedBox,
@@ -52,11 +53,19 @@ interface Candidate {
   predicted?: boolean;
   associationConfidence?: number;
   identityAmbiguous?: boolean;
+  projectIdentityId?: string;
+  trust: ImportanceRegionTrust;
 }
 
 interface CandidateCluster {
   candidates: Candidate[];
   trackId?: number;
+  projectIdentityId?: string;
+}
+
+interface SaliencyStabilityState {
+  previous: ImportanceRegion | null;
+  consecutive: number;
 }
 
 function boxArea(box: NormalizedBox): number {
@@ -72,6 +81,12 @@ function intersectionArea(a: NormalizedBox, b: NormalizedBox): number {
 function overlapFractionOfSmaller(a: NormalizedBox, b: NormalizedBox): number {
   const smaller = Math.min(boxArea(a), boxArea(b));
   return smaller > 0 ? intersectionArea(a, b) / smaller : 0;
+}
+
+function intersectionOverUnion(a: NormalizedBox, b: NormalizedBox): number {
+  const intersection = intersectionArea(a, b);
+  const union = boxArea(a) + boxArea(b) - intersection;
+  return union > 0 ? intersection / union : 0;
 }
 
 function unionBoxes(a: NormalizedBox, b: NormalizedBox): NormalizedBox {
@@ -100,10 +115,20 @@ function signalCandidate(region: SalientRegion): Candidate {
     predicted: region.predicted,
     associationConfidence: region.associationConfidence,
     identityAmbiguous: region.identityAmbiguous,
+    projectIdentityId: region.projectIdentityId,
+    trust: region.trust
+      ?? (policy.source === "video-saliency"
+        ? "video-saliency"
+        : policy.kind === "person" || policy.kind === "face" || policy.kind === "head" || policy.kind === "speaker"
+          ? "unverified-person"
+          : "object"),
   };
 }
 
 function belongsToCluster(candidate: Candidate, cluster: CandidateCluster): boolean {
+  if (candidate.projectIdentityId != null && cluster.projectIdentityId != null) {
+    return candidate.projectIdentityId === cluster.projectIdentityId;
+  }
   if (
     candidate.trackId != null
     && cluster.trackId === candidate.trackId
@@ -127,8 +152,9 @@ function clusterCandidates(regions: SalientRegion[]): CandidateCluster[] {
     if (cluster) {
       cluster.candidates.push(candidate);
       cluster.trackId ??= candidate.trackId;
+      cluster.projectIdentityId ??= candidate.projectIdentityId;
     } else {
-      clusters.push({ candidates: [candidate], trackId: candidate.trackId });
+      clusters.push({ candidates: [candidate], trackId: candidate.trackId, projectIdentityId: candidate.projectIdentityId });
     }
   }
   return clusters;
@@ -153,6 +179,13 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
     : semantic.filter((candidate) => candidate.source === "face" || candidate.source === "head" || candidate.source === "active-speaker");
   const contentBox = (contextCandidates.length ? contextCandidates : [focus])
     .reduce((box, candidate) => unionBoxes(box, candidate.box), (contextCandidates[0] ?? focus).box);
+  const trust = semantic.some((candidate) => candidate.trust === "verified-person")
+    ? "verified-person"
+    : semantic.some((candidate) => candidate.trust === "video-saliency")
+      ? "video-saliency"
+      : semantic.some((candidate) => candidate.trust === "object")
+        ? "object"
+        : "unverified-person";
   return {
     box: focus.box,
     contentBox,
@@ -164,6 +197,8 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
     predicted: ordered.every((candidate) => candidate.predicted),
     associationConfidence: Math.min(...ordered.map((candidate) => candidate.associationConfidence ?? 1)),
     identityAmbiguous: ordered.some((candidate) => candidate.identityAmbiguous),
+    projectIdentityId: cluster.projectIdentityId,
+    trust,
   };
 }
 
@@ -195,32 +230,61 @@ function matchPreviousId(
 function rankFrame(
   regions: SalientRegion[],
   previous: ImportanceRegion[],
+  compositionScores?: ReadonlyMap<string, number>,
+  saliencyState?: SaliencyStabilityState,
 ): ImportanceRegion[] {
-  const ranked = clusterCandidates(regions)
+  const clusters = clusterCandidates(regions)
     .filter((cluster) => cluster.candidates.some((candidate) => candidate.source !== "motion"))
-    .filter((cluster) => !cluster.candidates.some((candidate) => candidate.identityAmbiguous))
+    .filter((cluster) => !cluster.candidates.some((candidate) => candidate.identityAmbiguous));
+  const ranked = clusters
     .map<ImportanceRegion>((cluster) => {
     const region = clusterRegion(cluster);
     const id = matchPreviousId(region, previous);
     const previousRegion = previous.find((candidate) => candidate.id === id);
-    const importanceScore = previousRegion
+    const localImportanceScore = previousRegion
       ? clamp01(region.importanceScore * 0.72 + previousRegion.importanceScore * 0.28 + 0.025)
       : region.importanceScore;
-    return { ...region, id, importanceScore, required: false, role: "candidate" as const } satisfies ImportanceRegion;
+    const compositionScore = region.projectIdentityId == null ? undefined : compositionScores?.get(region.projectIdentityId);
+    // The project-wide table is a substantial, but not absolute, vote. A
+    // new or temporarily more meaningful person/object can therefore win
+    // when its current-frame evidence is stronger.
+    const importanceScore = compositionScore == null
+      ? localImportanceScore
+      : clamp01(localImportanceScore * 0.58 + compositionScore * 0.42);
+    return { ...region, id, importanceScore, compositionScore, required: false, role: "candidate" as const } satisfies ImportanceRegion;
     }).sort((a, b) => b.importanceScore - a.importanceScore);
 
   if (!ranked.length) return ranked;
-  const priorPrimary = previous.find((region) => region.role === "primary");
+  const saliency = ranked.find((region) => region.trust === "video-saliency" && region.confidence >= 0.6);
+  if (saliencyState) {
+    saliencyState.consecutive = saliency && saliencyState.previous
+      && intersectionOverUnion(saliency.contentBox, saliencyState.previous.contentBox) >= 0.35
+      ? saliencyState.consecutive + 1
+      : saliency ? 1 : 0;
+    saliencyState.previous = saliency ?? null;
+  }
+  const verifiedPeople = ranked.filter((region) => region.trust === "verified-person");
+  const stableSaliency = saliencyState && saliencyState.consecutive >= 3 ? saliency : undefined;
+  // Never turn a YOLOX-only pseudo-person into a required camera target. A
+  // real person wins; otherwise a temporally stable ViNet region gets the
+  // animation fallback, then independent objects retain product-video use.
+  const eligible = verifiedPeople.length
+    ? verifiedPeople
+    : stableSaliency
+      ? [stableSaliency]
+      : ranked.filter((region) => region.trust === "object");
+  if (!eligible.length) return ranked;
+  const priorPrimary = previous.find((region) => region.role === "primary" && region.trust !== "unverified-person");
   const retainedPrimary = priorPrimary
-    ? ranked.find((region) => region.id === priorPrimary.id && region.importanceScore >= ranked[0]!.importanceScore - 0.12)
+    ? eligible.find((region) => region.id === priorPrimary.id && region.importanceScore >= eligible[0]!.importanceScore - 0.12)
     : undefined;
-  const primary = retainedPrimary ?? ranked[0]!;
+  const primary = retainedPrimary ?? eligible[0]!;
   primary.role = "primary";
   primary.required = true;
 
   // Three similarly strong people form a group/action composition. Picking
   // an arbitrary pair creates a false split and hides the third participant.
-  const topThree = ranked.slice(0, 3);
+  const topThree = eligible.slice(0, 3);
   const humanKinds = new Set<ImportanceRegionKind>(["face", "head", "speaker", "person"]);
   if (
     topThree.length === 3
@@ -240,7 +304,7 @@ function rankFrame(
     return ranked;
   }
 
-  const secondary = ranked.find((region) =>
+  const secondary = eligible.find((region) =>
     region.id !== primary.id
     && region.importanceScore >= 0.5
     && region.importanceScore >= primary.importanceScore * 0.68
@@ -280,12 +344,18 @@ export function attachImportanceSignals(
 /** Converts raw proposal regions into stable, explicit editing targets. */
 export function buildImportanceTimeline(
   keyframes: KeyFrameSalientInput[],
+  compositionScores?: ReadonlyMap<string, number>,
 ): ImportanceRegionSample[] {
   let previous: ImportanceRegion[] = [];
   let previousObservedTime = Number.NEGATIVE_INFINITY;
+  const saliencyState: SaliencyStabilityState = { previous: null, consecutive: 0 };
   return keyframes.map((keyframe) => {
-    if (keyframe.isShotChange || keyframe.time - previousObservedTime > 0.6) previous = [];
-    const regions = rankFrame(keyframe.regions, previous);
+    if (keyframe.isShotChange || keyframe.time - previousObservedTime > 0.6) {
+      previous = [];
+      saliencyState.previous = null;
+      saliencyState.consecutive = 0;
+    }
+    const regions = rankFrame(keyframe.regions, previous, compositionScores, saliencyState);
     // A detector dropout is not evidence that the person disappeared. Keep
     // the last observed identities for matching, while still emitting an
     // empty sample so the layout arbiter can fall back to baseline.

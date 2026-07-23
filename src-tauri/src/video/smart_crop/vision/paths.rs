@@ -13,9 +13,9 @@ pub struct VisionResourcePaths {
 pub fn resource_paths(resource_dir: &Path) -> VisionResourcePaths {
     let root = resource_dir.join("resources/models/clipper-vision");
     VisionResourcePaths {
-        face: root.join("blaze_face_full_range.onnx"),
+        face: root.join("scrfd_10g_bnkps.onnx"),
         pose: root.join("movenet_multipose_lightning.onnx"),
-        yolox: root.join("yolox_tiny.onnx"),
+        yolox: root.join("yolox_s.onnx"),
         yolox_labels: root.join("coco80.txt"),
         transnet: root.join("transnetv2.onnx"),
         osnet: root.join("osnet_x0_25_msmt17.onnx"),

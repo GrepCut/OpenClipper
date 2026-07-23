@@ -2,13 +2,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::video::ffmpeg::frames::should_decode_video_packet;
+use super::super::diagnostics;
 use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::NativeVisionError;
 use super::decode_frame::process_decoded_frame;
 use super::decode_session::{DecodeSession, DecodeStats};
 use super::setup::PipelineSetup;
 use super::types::NativeVisionProgress;
+use crate::video::ffmpeg::frames::should_decode_video_packet;
 
 impl DecodeSession {
     pub(crate) fn run(
@@ -18,6 +19,13 @@ impl DecodeSession {
         cancelled: Arc<AtomicBool>,
         progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
     ) -> Result<DecodeStats, NativeVisionError> {
+        diagnostics::append(
+            "decode",
+            &format!(
+                "packet loop start stream_index={} start={:.3} end={:.3}",
+                self.stream_index, self.meta.start_time, self.meta.end_time
+            ),
+        );
         let mut decoded = ffmpeg_next::frame::Video::empty();
         let stream_index = self.stream_index;
         let meta = &self.meta;
@@ -84,6 +92,16 @@ impl DecodeSession {
                 }
             }
         }
+        diagnostics::append(
+            "decode",
+            &format!(
+                "packet loop end reached_end={} cancelled={} decoded_frames={} sampled_frames={}",
+                reached_end,
+                cancelled.load(Ordering::Relaxed),
+                self.state.decoded_frame_count,
+                self.state.sample_count,
+            ),
+        );
         Ok(DecodeStats {
             sample_count: self.state.sample_count,
             decode_duration_ms: self.decode_started.elapsed().as_millis() as u64,

@@ -71,8 +71,7 @@ pub fn detect_motion_saliency(
                     }
                     residuals.push(
                         (current_cells[row * COLS + col]
-                            - previous_cells
-                                [previous_row as usize * COLS + previous_col as usize])
+                            - previous_cells[previous_row as usize * COLS + previous_col as usize])
                             .abs(),
                     );
                 }

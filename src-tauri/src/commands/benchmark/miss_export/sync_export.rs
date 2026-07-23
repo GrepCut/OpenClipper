@@ -10,9 +10,7 @@ use crate::video::ffmpeg::frames::extract_frame_rgb_at_timestamp;
 
 use super::annotate::{annotate_frame, encode_rgb_jpeg};
 use super::ground_truth::evaluate_ground_truth;
-use super::selection::{
-    read_frame_details, sample_frames_at_keyframes, select_frames_for_export,
-};
+use super::selection::{read_frame_details, sample_frames_at_keyframes, select_frames_for_export};
 use super::types::{
     BenchmarkFrameDetail, ExportInput, ExportManifest, ExportSyncResult, ManifestFrame,
     ManifestTarget,
@@ -115,7 +113,8 @@ pub(crate) fn export_benchmark_miss_frames_sync(
             &ranked_frame.detail,
             &ground_truth,
         );
-        let file_name = export_filename(&input.clip_id, &input.aspect_id, rank, &ranked_frame.detail);
+        let file_name =
+            export_filename(&input.clip_id, &input.aspect_id, rank, &ranked_frame.detail);
         fs::write(
             export_dir.join(&file_name),
             encode_rgb_jpeg(&annotated, extracted.width, extracted.height)?,

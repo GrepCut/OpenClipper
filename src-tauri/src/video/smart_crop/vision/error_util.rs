@@ -8,6 +8,8 @@ pub(super) fn winml_error(
     NativeVisionError::new(code, format!("{context}: {error}"), true)
 }
 
-pub(super) fn fallback_after_evaluation_failure(device: NativeVisionDevice) -> Option<NativeVisionDevice> {
+pub(super) fn fallback_after_evaluation_failure(
+    device: NativeVisionDevice,
+) -> Option<NativeVisionDevice> {
     (device == NativeVisionDevice::DirectXHighPerformance).then_some(NativeVisionDevice::Cpu)
 }

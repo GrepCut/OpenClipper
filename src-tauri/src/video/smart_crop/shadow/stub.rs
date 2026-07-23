@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use super::types::{GeneralizationShadowConfig, GeneralizationShadowDiagnostics, SaliencyShadowSample};
+use super::types::{
+    GeneralizationShadowConfig, GeneralizationShadowDiagnostics, SaliencyShadowSample,
+};
 use crate::video::smart_crop::vision_logic::NormalizedBox;
 
 pub struct GeneralizationShadowRunner;

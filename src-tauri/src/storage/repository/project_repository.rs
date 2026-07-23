@@ -6,8 +6,8 @@ use sea_orm::{
 };
 use serde_json::Value;
 
-use crate::storage::entity::local_project::{ActiveModel, Column, Entity, Model};
 use crate::infra::error::{DbError, DbResult};
+use crate::storage::entity::local_project::{ActiveModel, Column, Entity, Model};
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

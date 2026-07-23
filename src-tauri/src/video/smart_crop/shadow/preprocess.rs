@@ -44,7 +44,12 @@ pub(super) fn resize_rgb_crop_to_reid(
     write_rgb_nchw_f32(&resized, REID_WIDTH, REID_HEIGHT, output);
 }
 
-pub(super) fn resize_rgb_to_vinet_frame(rgb: &[u8], width: usize, height: usize, output: &mut [f32]) {
+pub(super) fn resize_rgb_to_vinet_frame(
+    rgb: &[u8],
+    width: usize,
+    height: usize,
+    output: &mut [f32],
+) {
     debug_assert_eq!(output.len(), VINET_PLANE);
     let resized = resize_rgb_u8(
         rgb,
@@ -71,7 +76,11 @@ pub(super) fn write_rgb_nchw_f32(rgb: &[u8], width: usize, height: usize, output
     }
 }
 
-pub(super) fn saliency_map_to_box(map: &[f32], width: usize, height: usize) -> (NormalizedBox, f32) {
+pub(super) fn saliency_map_to_box(
+    map: &[f32],
+    width: usize,
+    height: usize,
+) -> (NormalizedBox, f32) {
     let cells = width * height;
     if map.len() < cells {
         return (
@@ -154,7 +163,12 @@ pub(super) fn saliency_map_to_box(map: &[f32], width: usize, height: usize) -> (
     )
 }
 
-pub(super) fn resize_rgb_to_transnet(rgb: &[u8], width: usize, height: usize, output: &mut Vec<f32>) {
+pub(super) fn resize_rgb_to_transnet(
+    rgb: &[u8],
+    width: usize,
+    height: usize,
+    output: &mut Vec<f32>,
+) {
     let start = output.len();
     output.resize(start + TRANSNET_HEIGHT * TRANSNET_WIDTH * 3, 0.0);
     let slice = &mut output[start..];

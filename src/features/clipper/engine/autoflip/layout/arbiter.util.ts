@@ -13,25 +13,28 @@ const EPSILON = 1e-9;
 
 export const LEGACY_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
   decisionConfidenceScale: 0.3,
+  minimumSemanticScoreGain: 0.05,
+  emergencyBaselineCoverage: 0.85,
 });
 
 /**
  * Production policy (`analyze-subjects.ts` always builds with
  * `enhancedIdentityFusion: true`). The visibility controller is always enabled
  * in production and reports its decision via `controllerReasonCodes` — the
- * arbiter just needs to allow split/contain modes through so that decision
- * isn't overridden.
+ * arbiter still rejects cosmetic, low-confidence moves unless legacy coverage
+ * is unsafe for the selected required target.
  */
 export const DEFAULT_ARBITER_PARAMS: Readonly<ArbiterParams> = Object.freeze({
   ...LEGACY_ARBITER_PARAMS,
   allowSplit: true,
-  allowContain: true,
 });
 
 export const RUN10_ARBITER_PARAMS = DEFAULT_ARBITER_PARAMS;
+/** Compatibility name retained for the offline replay CLI. */
+export const RUN9_ARBITER_PARAMS = DEFAULT_ARBITER_PARAMS;
 
 export function requiredRegions(sample: ImportanceRegionSample): ImportanceRegion[] {
-  return sample.regions.filter((region) => region.required).slice(0, 2);
+  return sample.regions.filter((region) => region.required).slice(0, 3);
 }
 
 export function coveredFraction(viewport: NormalizedBox, box: NormalizedBox): number {
@@ -113,24 +116,34 @@ export function importanceAtTime(samples: ImportanceRegionSample[], time: number
  */
 export function decideLayoutStrategy(ctx: ArbiterSampleContext, params: ArbiterParams): ArbiterDecision {
   const modeAllowed = ctx.desiredMode === "single-crop"
-    || (ctx.desiredMode === "split" && params.allowSplit === true)
-    || (ctx.desiredMode === "contain" && params.allowContain === true);
+    || (ctx.desiredMode === "split" && params.allowSplit === true);
   const controllerApproved = ctx.controllerReasonCodes != null;
-  const selectSemantic = modeAllowed && controllerApproved;
+  const scoreGain = ctx.semanticScore - ctx.baselineScore;
+  const minimumGain = params.minimumSemanticScoreGain ?? 0.05;
+  const emergencyCoverage = params.emergencyBaselineCoverage ?? 0.85;
+  const baselineUnsafe = (ctx.baselineCoverage ?? 1) < emergencyCoverage;
+  const scoreApproved = scoreGain >= minimumGain || baselineUnsafe;
+  const selectSemantic = modeAllowed && controllerApproved && scoreApproved;
 
   const strategy: ClipperLayoutStrategy = selectSemantic
     ? ctx.desiredMode === "split"
       ? "semantic-split"
-      : ctx.desiredMode === "contain"
-        ? "semantic-contain"
-        : "semantic-single"
+      : "semantic-single"
     : "legacy-baseline";
 
   const reasonCodes = selectSemantic
-    ? ["visibility-controller", ...(ctx.controllerReasonCodes ?? [])]
+    ? [
+        "visibility-controller",
+        ...(ctx.controllerReasonCodes ?? []),
+        ...(baselineUnsafe && scoreGain < minimumGain ? ["baseline-coverage-rescue"] : []),
+      ]
     : [
         ...(!controllerApproved ? ["no-controller-decision"] : []),
+        ...(controllerApproved ? ["visibility-controller", ...(ctx.controllerReasonCodes ?? [])] : []),
         ...(controllerApproved && !modeAllowed ? ["mode-not-allowed"] : []),
+        ...(controllerApproved && modeAllowed && !scoreApproved
+          ? [baselineUnsafe ? "baseline-coverage-unsafe" : "insufficient-semantic-margin"]
+          : []),
       ];
 
   return {

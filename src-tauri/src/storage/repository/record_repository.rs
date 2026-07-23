@@ -2,8 +2,8 @@ use chrono::Utc;
 use sea_orm::{sea_query::OnConflict, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::Value;
 
-use crate::storage::entity::local_record::{ActiveModel, Column, Entity, Model};
 use crate::infra::error::DbResult;
+use crate::storage::entity::local_record::{ActiveModel, Column, Entity, Model};
 
 pub struct RecordRepository;
 

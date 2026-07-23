@@ -10,7 +10,10 @@ pub const FILE_STEM: &str = "open-clipper-startup";
 static PROCESS_STARTED_AT: OnceLock<Instant> = OnceLock::new();
 
 pub fn elapsed_ms() -> u128 {
-    PROCESS_STARTED_AT.get_or_init(Instant::now).elapsed().as_millis()
+    PROCESS_STARTED_AT
+        .get_or_init(Instant::now)
+        .elapsed()
+        .as_millis()
 }
 
 pub fn context() -> String {

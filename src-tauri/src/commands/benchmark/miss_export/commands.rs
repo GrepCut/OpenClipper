@@ -10,8 +10,8 @@ use crate::storage::entity::{benchmark_result, benchmark_run, test_clip};
 use crate::storage::repository::TestRepository;
 
 use super::sync_export::{
-    export_benchmark_miss_frames_sync, export_file_prefix, manifest_relative_path,
-    run_export_dir, write_manifest_file,
+    export_benchmark_miss_frames_sync, export_file_prefix, manifest_relative_path, run_export_dir,
+    write_manifest_file,
 };
 use super::types::{
     ExportBenchmarkMissFramesResult, ExportBenchmarkRunMissFramesResult, ExportInput,
@@ -100,9 +100,7 @@ pub async fn export_benchmark_run_miss_frames_inner(
         .map_err(String::from)?;
     let exportable: Vec<_> = results
         .into_iter()
-        .filter(|result| {
-            result.status == "completed" && result.details_relative_path.is_some()
-        })
+        .filter(|result| result.status == "completed" && result.details_relative_path.is_some())
         .collect();
     if exportable.is_empty() {
         return Err("This run has no completed results with per-frame details.".into());
@@ -118,10 +116,7 @@ pub async fn export_benchmark_run_miss_frames_inner(
     let mut frame_count = 0usize;
     let mut all_frames = Vec::new();
     for result in &exportable {
-        let details_relative_path = result
-            .details_relative_path
-            .clone()
-            .expect("filtered");
+        let details_relative_path = result.details_relative_path.clone().expect("filtered");
         let clip = test_clip::Entity::find_by_id(result.clip_id.clone())
             .one(db)
             .await
@@ -164,4 +159,3 @@ pub async fn export_benchmark_run_miss_frames_inner(
         result_count: exportable.len(),
     })
 }
-

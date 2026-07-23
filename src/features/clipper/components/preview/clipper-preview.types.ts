@@ -10,8 +10,10 @@ import type {
 } from "../../persistence/ai-clip-api.util";
 import type { AutoPartsSegmentLengthSec } from "../../persistence/project-metadata.util";
 import type { ClipperSettings } from "../../settings/settings.util";
+import type { ClipperSmartCropBlob } from "../../shared/smart-crop.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
 import type { ClipperClipPreview, ClipperPipelineState, ClipSourceMode } from "../../shared/state.util";
+import type { SidePanelTab } from "./clipper-preview.constants";
 
 export interface ClipperPreviewProps {
   state: ClipperPipelineState;
@@ -44,6 +46,8 @@ export interface ClipperPreviewProps {
   exportCount?: number;
   onViewExports?: () => void;
   onOpenRenderQueue: () => void;
+  /** Blocks AI tab when account is not available; returns false when blocked. */
+  guardAccount?: () => boolean;
   disabledCollageRegionIds: string[];
   onToggleCollageRegion: (regionId: string) => void;
   autoPartsSegmentLengthSec: AutoPartsSegmentLengthSec;
@@ -105,6 +109,11 @@ export interface ClipperPreviewSidePanelProps extends ClipperPreviewProps {
   safeAiPreviews: ClipperClipPreview[];
   collageRegions: CollageRegion[];
   seekToTranscriptTime: (clipIndex: number, sourceTimeSec: number) => void;
+  sidePanelTab: SidePanelTab;
+  onSidePanelTabChange: (tab: SidePanelTab) => void;
+  smartCropAnalysis: ClipperSmartCropBlob | null | undefined;
+  previewTimeSec: number;
+  primaryFormat: ClipperFormatDef | undefined;
 }
 
 export interface ClipperPreviewFormatsFooterProps {

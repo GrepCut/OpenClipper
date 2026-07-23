@@ -68,13 +68,19 @@ pub fn decode_yolox(
         }
     }
     debug_assert_eq!(row_index, YOLOX_PREDICTION_COUNT);
+    Ok(merge_subject_detections(candidates, 0.45))
+}
+
+pub fn merge_subject_detections(
+    mut candidates: Vec<SubjectDetection>,
+    iou_threshold: f32,
+) -> Vec<SubjectDetection> {
     candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut selected: Vec<SubjectDetection> = Vec::with_capacity(100);
     for candidate in candidates {
-        if selected
-            .iter()
-            .any(|kept| kept.label == candidate.label && box_iou(kept.box_, candidate.box_) >= 0.45)
-        {
+        if selected.iter().any(|kept| {
+            kept.label == candidate.label && box_iou(kept.box_, candidate.box_) >= iou_threshold
+        }) {
             continue;
         }
         selected.push(candidate);
@@ -82,5 +88,40 @@ pub fn decode_yolox(
             break;
         }
     }
-    Ok(selected)
+    selected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::video::smart_crop::vision_logic::NormalizedBox;
+
+    fn person_detection(x: f32, y: f32, width: f32, height: f32, score: f32) -> SubjectDetection {
+        SubjectDetection {
+            box_: NormalizedBox {
+                x,
+                y,
+                width,
+                height,
+            },
+            label: "person".into(),
+            score,
+            track_id: None,
+            predicted: None,
+            detector_source: Some("yolox"),
+        }
+    }
+
+    #[test]
+    fn merge_subject_detections_deduplicates_overlapping_boxes() {
+        let merged = merge_subject_detections(
+            vec![
+                person_detection(0.1, 0.1, 0.2, 0.2, 0.9),
+                person_detection(0.11, 0.11, 0.2, 0.2, 0.8),
+            ],
+            0.45,
+        );
+        assert_eq!(merged.len(), 1);
+        assert!((merged[0].score - 0.9).abs() < f32::EPSILON);
+    }
 }

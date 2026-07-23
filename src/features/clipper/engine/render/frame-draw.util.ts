@@ -8,6 +8,7 @@ import type { ClipperFormatDef } from "../../shared/formats.util";
 import { canonicalFormatDims } from "../../shared/formats.util";
 import type { ClipperResolutionCap, ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFrameContext } from "../types/render.types";
+import { resolveFrameLayoutBranch } from "./frame-layout-branch.util";
 import {
   buildCollageTracksForRegions,
   deriveCollageAspectEligibility,
@@ -16,7 +17,6 @@ import {
   findActiveRegion,
   isCollageAspectEligible,
 } from "../reframe/collage";
-import type { CollageRegion } from "../types/collage.types";
 import {
   deriveSingleFocusTrack,
   FaceSampleCache,
@@ -89,18 +89,18 @@ export function drawClipperFrame(
     : null;
 
   const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;
-  const plannedLayout = resolvedPlannedLayout?.mode === "split"
+  const collageEligible = needsTracking
+    && render.settings.reframe.cropMode !== "manual"
+    && formatDef.mode === "crop"
     && activeRegion != null
-    && render.disabledCollageRegionIds.includes(activeRegion.id)
-    ? undefined
-    : resolvedPlannedLayout;
-  const useCollage =
-    plannedLayout == null &&
-    render.settings.reframe.cropMode !== "manual" &&
-    formatDef.mode === "crop" &&
-    activeRegion != null &&
-    !render.disabledCollageRegionIds.includes(activeRegion.id) &&
-    isCollageAspectEligible(collageEligibility!, formatDef.aspectId, activeRegion.id, t);
+    && !render.disabledCollageRegionIds.includes(activeRegion.id)
+    && isCollageAspectEligible(collageEligibility!, formatDef.aspectId, activeRegion.id, t);
+  const { plannedLayout, useCollage } = resolveFrameLayoutBranch(
+    resolvedPlannedLayout,
+    activeRegion,
+    render.disabledCollageRegionIds,
+    collageEligible,
+  );
 
   const showDebug = isPreview && render.settings.reframe.showDebugFaceBoxes && formatDef.mode === "crop";
 

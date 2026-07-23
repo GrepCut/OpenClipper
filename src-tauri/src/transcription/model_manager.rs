@@ -330,10 +330,7 @@ fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
             })?;
         let path = model_dir.join(file);
         let actual = sha256_file(&path).map_err(|error| {
-            TranscriptionError::ModelLoad(format!(
-                "Nie można odczytać {}: {error}",
-                path.display()
-            ))
+            TranscriptionError::ModelLoad(format!("Nie można odczytać {}: {error}", path.display()))
         })?;
         if actual != expected {
             return Err(TranscriptionError::ModelLoad(format!(

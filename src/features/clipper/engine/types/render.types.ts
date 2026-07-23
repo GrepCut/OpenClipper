@@ -31,6 +31,9 @@ export interface ResolvedClipperLayout {
   reasonCodes?: string[];
   requiredRegionIds?: string[];
   subjectDisplayHeightFractions?: number[];
+  /** Brief visual handoff when a non-cut layout changes panel count. */
+  transitionFrom?: Pick<ResolvedClipperLayout, "mode" | "viewports" | "solidBackgroundColor">;
+  transitionProgress?: number;
 }
 
 /** Everything needed to render one frame's crop + captions for a given settings snapshot. */

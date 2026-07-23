@@ -1,13 +1,11 @@
 use windows::core::{Interface, HSTRING};
-use windows::AI::MachineLearning::{
-    LearningModelBinding, LearningModelSession, TensorFloat,
-};
+use windows::AI::MachineLearning::{LearningModelBinding, LearningModelSession, TensorFloat};
 
 use super::super::device_cache::device_cache;
 use super::super::error_util::{fallback_after_evaluation_failure, winml_error};
 use super::super::session::{load_model, make_bound_session};
 use super::super::types::{
-    BATCH_BOUND, ModelPrecision, NativeVisionDevice, NativeVisionError, SessionConfig,
+    ModelPrecision, NativeVisionDevice, NativeVisionError, SessionConfig, BATCH_BOUND,
 };
 use super::WinMlModel;
 
@@ -31,13 +29,14 @@ impl WinMlModel {
             winml_error("evaluation_failed", "Could not create WinML binding", error)
         })?;
         for (input_name, shape, input) in inputs {
-            let tensor = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input).map_err(|error| {
-                winml_error(
-                    "tensor_contract_mismatch",
-                    "Could not create input tensor",
-                    error,
-                )
-            })?;
+            let tensor =
+                TensorFloat::CreateFromShapeArrayAndDataArray(shape, input).map_err(|error| {
+                    winml_error(
+                        "tensor_contract_mismatch",
+                        "Could not create input tensor",
+                        error,
+                    )
+                })?;
             binding.Bind(input_name, &tensor).map_err(|error| {
                 winml_error(
                     "tensor_contract_mismatch",
@@ -137,7 +136,11 @@ impl WinMlModel {
         &mut self,
         inputs: &[(&str, &[i64], &[f32])],
     ) -> Result<Vec<Vec<f32>>, NativeVisionError> {
-        let batch = inputs.first().and_then(|input| input.1.first()).copied().unwrap_or(1) as usize;
+        let batch = inputs
+            .first()
+            .and_then(|input| input.1.first())
+            .copied()
+            .unwrap_or(1) as usize;
         if batch != 1 && batch != BATCH_BOUND {
             return Err(NativeVisionError::new(
                 "tensor_contract_mismatch",
@@ -147,12 +150,25 @@ impl WinMlModel {
         }
         if batch == 1 && self.single_session.is_none() {
             let device = Self::device_for(self.session.config)?;
-            self.single_session = Some(make_bound_session(&self.model, &device, 1).map_err(|error| {
-                winml_error(Self::error_code(self.session.config.device), "WinML session creation failed", error)
-            })?);
+            self.single_session = Some(make_bound_session(&self.model, &device, 1).map_err(
+                |error| {
+                    winml_error(
+                        Self::error_code(self.session.config.device),
+                        "WinML session creation failed",
+                        error,
+                    )
+                },
+            )?);
         }
-        let names = inputs.iter().map(|input| HSTRING::from(input.0)).collect::<Vec<_>>();
-        let bound = inputs.iter().enumerate().map(|(index, input)| (&names[index], input.1, input.2)).collect::<Vec<_>>();
+        let names = inputs
+            .iter()
+            .map(|input| HSTRING::from(input.0))
+            .collect::<Vec<_>>();
+        let bound = inputs
+            .iter()
+            .enumerate()
+            .map(|(index, input)| (&names[index], input.1, input.2))
+            .collect::<Vec<_>>();
         let session = if batch == 1 {
             self.single_session.as_ref().expect("created above")
         } else {

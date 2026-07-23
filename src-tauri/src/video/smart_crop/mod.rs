@@ -1,6 +1,8 @@
 #[cfg(windows)]
 pub mod decode;
 #[cfg(windows)]
+pub mod diagnostics;
+#[cfg(windows)]
 pub mod internal;
 #[cfg(windows)]
 pub mod pipeline;

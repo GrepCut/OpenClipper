@@ -1,12 +1,10 @@
 use super::super::shadow::GeneralizationShadowDiagnostics;
-use super::super::vision_logic::Rotation;
-use crate::video::tracking::winml::stable_content_rect;
 use super::super::vision::NativeVisionError;
+use super::super::vision_logic::Rotation;
 use super::decode_session::{DecodeSession, DecodeStats};
 use super::merge::MergeOutput;
-use super::types::{
-    NativeVisionMetrics, NativeVisionProgress, NativeVisionSummary, RgbColor,
-};
+use super::types::{NativeVisionMetrics, NativeVisionProgress, NativeVisionSummary, RgbColor};
+use crate::video::tracking::winml::stable_content_rect;
 
 pub(crate) fn build_summary(
     session: &DecodeSession,
@@ -22,8 +20,8 @@ pub(crate) fn build_summary(
     let state = &session.state;
     let meta = &session.meta;
     let sample_count = decode_stats.sample_count;
-    let has_solid_color_background = sample_count > 0
-        && state.solid_background_frames as f64 / sample_count as f64 >= 0.6;
+    let has_solid_color_background =
+        sample_count > 0 && state.solid_background_frames as f64 / sample_count as f64 >= 0.6;
     let solid_background_color = has_solid_color_background.then(|| RgbColor {
         r: (state.solid_rgb_sum.0 / state.solid_background_frames.max(1) as u64) as u8,
         g: (state.solid_rgb_sum.1 / state.solid_background_frames.max(1) as u64) as u8,
@@ -49,7 +47,8 @@ pub(crate) fn build_summary(
         subject_sample_count: merged.subject_samples.len(),
         scene_cut_timestamps: state.scene_cut_timestamps.clone(),
         frame_timestamps: state.frame_timestamps.clone(),
-        source_frame_rate: if session.source_frame_rate.is_finite() && session.source_frame_rate > 0.0
+        source_frame_rate: if session.source_frame_rate.is_finite()
+            && session.source_frame_rate > 0.0
         {
             session.source_frame_rate
         } else {
@@ -66,7 +65,7 @@ pub(crate) fn build_summary(
                 meta.sample_raw_height
             },
         ),
-        model_version: "clipper-vision-v3-yolox",
+        model_version: "clipper-vision-v5-yolox-s-scrfd10g-tiled",
         tracker_version: tracking_enabled.then_some("bytetrack-v1"),
         metrics: NativeVisionMetrics {
             decode_duration_ms: decode_stats.decode_duration_ms,
@@ -77,6 +76,8 @@ pub(crate) fn build_summary(
             pose_inference_ms: merged.pose_inference_ms,
             base_face_passes: sample_count,
             recovery_face_passes: merged.recovery_face_passes,
+            recovery_object_passes: merged.recovery_object_passes,
+            recovery_pose_passes: merged.recovery_pose_passes,
             orientation_probe_passes: 0,
             peak_face_queue_depth: decode_stats.peak_face_queue,
             peak_object_queue_depth: decode_stats.peak_object_queue,

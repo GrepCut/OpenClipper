@@ -1,14 +1,12 @@
 use crate::app::{protocols, window};
-use crate::invoke_handler;
 use crate::cli::{self, CliRequest};
 use crate::infra::startup_log;
+use crate::invoke_handler;
 use crate::storage::database;
 use crate::transcription::ParakeetService;
 use crate::video::jobs::registry::NativeJobRegistry;
 use tauri::Manager;
-use tauri_plugin_log::{
-    FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy,
-};
+use tauri_plugin_log::{FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -118,11 +116,7 @@ pub fn run() {
                         let result = tauri::async_runtime::block_on(
                             cli::run_extract_miss_frames_cli(app.handle(), &extract_request),
                         );
-                        cli::finish_extract_miss_frames_cli(
-                            app.handle(),
-                            &extract_request,
-                            result,
-                        );
+                        cli::finish_extract_miss_frames_cli(app.handle(), &extract_request, result);
                     }
                 }
             }

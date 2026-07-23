@@ -3,11 +3,11 @@ import type { ClipperAspectPresetId } from "../../../shared/formats.util";
 import type { NormalizedBox, SubjectDetectionSample } from "../../../shared/smart-crop.util";
 import { computeTargetCropSize } from "../../autoflip/geometry/frame-crop-region.util";
 import {
-  blendCentroid,
+  createFocusStabilizer,
   cropRectForCentroid,
   FACE_SAMPLE_INTERVAL_SEC,
   faceToCentroid,
-  SMOOTHING_ALPHA,
+  stabilizeFocusCentroid,
 } from "../index";
 import type { ClipperHeadroom } from "../../../settings/settings.util";
 import type { FaceBox, FaceBoxSample } from "../../../shared/face-samples.util";
@@ -18,7 +18,7 @@ import type {
   CollageTracks,
   FacePair,
 } from "../../types/collage.types";
-import type { CentroidSample, FaceCentroid } from "../../types/reframe.types";
+import type { CentroidSample } from "../../types/reframe.types";
 
 /** Confirm quickly, but tolerate brief detector dropouts once split-screen is active. */
 const REGION_ENTER_SAMPLES = 2;
@@ -254,21 +254,20 @@ export function buildCollageTracksForRegions(
   regions: CollageRegion[],
   disabledRegionIds: string[],
 ): CollageTracks {
-  const alpha = SMOOTHING_ALPHA[smoothing];
   const top: CentroidSample[] = [];
   const bottom: CentroidSample[] = [];
   const disabled = new Set(disabledRegionIds);
   const enabledRegions = regions.filter((r) => !disabled.has(r.id));
 
   let regionIndex = 0;
-  let prevTop: FaceCentroid | null = null;
-  let prevBottom: FaceCentroid | null = null;
+  const topStabilizer = createFocusStabilizer();
+  const bottomStabilizer = createFocusStabilizer();
 
   for (const sample of samples) {
     while (regionIndex < enabledRegions.length && sample.time > enabledRegions[regionIndex]!.end) {
       regionIndex++;
-      prevTop = null;
-      prevBottom = null;
+      Object.assign(topStabilizer, createFocusStabilizer());
+      Object.assign(bottomStabilizer, createFocusStabilizer());
     }
     const region = enabledRegions[regionIndex];
     if (!region || sample.time < region.start || sample.faces.length === 0) continue;
@@ -279,15 +278,15 @@ export function buildCollageTracksForRegions(
 
     if (topFace) {
       const centroid = faceToCentroid(topFace, sample.frameW, sample.frameH);
-      prevTop = sample.sceneCut || !prevTop ? centroid : blendCentroid(prevTop, centroid, alpha);
+      const stabilized = stabilizeFocusCentroid(topStabilizer, centroid, sample.time, smoothing, sample.sceneCut);
+      top.push({ t: sample.time, ...stabilized, cut: sample.sceneCut });
     }
-    if (prevTop) top.push({ t: sample.time, ...prevTop, cut: sample.sceneCut });
 
     if (bottomFace) {
       const centroid = faceToCentroid(bottomFace, sample.frameW, sample.frameH);
-      prevBottom = sample.sceneCut || !prevBottom ? centroid : blendCentroid(prevBottom, centroid, alpha);
+      const stabilized = stabilizeFocusCentroid(bottomStabilizer, centroid, sample.time, smoothing, sample.sceneCut);
+      bottom.push({ t: sample.time, ...stabilized, cut: sample.sceneCut });
     }
-    if (prevBottom) bottom.push({ t: sample.time, ...prevBottom, cut: sample.sceneCut });
   }
 
   return { top, bottom, hasTwoSpeakers: enabledRegions.length > 0 };

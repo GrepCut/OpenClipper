@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Box, VStack, useDisclosure } from "@chakra-ui/react";
 import {
   deriveCollageAspectEligibility,
@@ -13,6 +13,7 @@ import { ClipperSettingsDrawer } from "../clipper-settings-drawer.component";
 import { ClipperPreviewFormatsFooter } from "./formats-footer.component";
 import { ClipperPreviewHeroSection } from "./hero-section.component";
 import { ClipperPreviewSidePanel } from "./side-panel.component";
+import type { SidePanelTab } from "./clipper-preview.constants";
 import type { ClipperPreviewProps } from "./clipper-preview.types";
 
 export type { ClipperPreviewProps } from "./clipper-preview.types";
@@ -49,6 +50,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     exportCount = 0,
     onViewExports,
     onOpenRenderQueue,
+    guardAccount,
     disabledCollageRegionIds,
     onToggleCollageRegion,
     autoPartsSegmentLengthSec,
@@ -65,6 +67,24 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
 
   const { theme, outlineButton } = useClipperUi();
   const { open: settingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
+  const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>(
+    clipSourceMode === "ai" ? "ai" : "auto-parts",
+  );
+
+  const handleSidePanelTabChange = useCallback((tab: SidePanelTab) => {
+    if (tab === "framing") {
+      setSidePanelTab("framing");
+      return;
+    }
+    if (tab === "ai") {
+      if (guardAccount && !guardAccount()) return;
+      onClipSourceModeChange("ai");
+      setSidePanelTab("ai");
+      return;
+    }
+    onClipSourceModeChange("auto-parts");
+    setSidePanelTab("auto-parts");
+  }, [guardAccount, onClipSourceModeChange]);
 
   const safeAutoPartsPreviews = autoPartsClipPreviews ?? [];
   const safeAiPreviews = aiClipPreviews ?? [];
@@ -114,7 +134,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     [state.faceSampleRevision, settings.reframe.headroom, settings.formats.enabledFormatIds],
   );
 
-  const { videoRef, canvasRefs, previewRegionRef, togglePlay, seekToTranscriptTime } =
+  const { videoRef, canvasRefs, previewRegionRef, previewTimeSec, togglePlay, seekToTranscriptTime } =
     useClipperPreviewPlayback({
       rangeTrimmedVideoUrl,
       activeClipIndex,
@@ -172,6 +192,11 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
           safeAiPreviews={safeAiPreviews}
           collageRegions={collageRegions}
           seekToTranscriptTime={seekToTranscriptTime}
+          sidePanelTab={sidePanelTab}
+          onSidePanelTabChange={handleSidePanelTabChange}
+          smartCropAnalysis={getFrameContext()?.smartCropAnalysis}
+          previewTimeSec={previewTimeSec}
+          primaryFormat={primaryFormat}
         />
       </Box>
 
