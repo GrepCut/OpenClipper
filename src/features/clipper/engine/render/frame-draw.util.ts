@@ -9,7 +9,7 @@ import { canonicalFormatDims } from "../../shared/formats.util";
 import type { ClipperResolutionCap, ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFrameContext } from "../types/render.types";
 import { resolveFrameLayoutBranch } from "./frame-layout-branch.util";
-import { deriveTwoSpeakerRegions, findActiveRegion } from "../reframe/collage";
+import { deriveRegionsFromLayoutTracks, findActiveRegion } from "../reframe/collage";
 import { resolveAutoFlipCropRender } from "./crop-resolvers.util";
 import { resolveClipperLayoutRender } from "./layout-resolvers.util";
 import {
@@ -58,9 +58,8 @@ export function drawClipperFrame(
   const resolvedPlannedLayout = formatDef.mode === "crop"
     ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t)
     : undefined;
-  const samples = needsTracking && !render.faceRender ? render.faceCache?.sortedSamples() ?? [] : [];
   const collageRegions = needsTracking
-    ? (render.faceRender?.collageRegions ?? deriveTwoSpeakerRegions(samples))
+    ? deriveRegionsFromLayoutTracks(render.smartCropAnalysis)
     : [];
 
   const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;

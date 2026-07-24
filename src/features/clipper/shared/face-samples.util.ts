@@ -18,7 +18,7 @@ export interface FaceBoxSample {
 
 export interface ClipperFaceSamplesBlob {
   detectorVersion: string;
-  engine?: "winml";
+  engine?: "winml" | "wasm";
   modelVersion?: string;
   clipStart: number;
   clipEnd: number;

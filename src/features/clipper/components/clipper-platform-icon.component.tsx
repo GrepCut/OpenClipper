@@ -38,15 +38,13 @@ function ClipperPlatformLogoCircle({
       boxShadow={theme.shadow.dropdown}
       {...boxProps}
     >
-      <Box
-        as="img"
+      <img
         src={PLATFORM_LOGO[platform]}
         alt=""
         aria-hidden
-        w={`${size}px`}
-        h={`${size}px`}
-        objectFit="cover"
-        display="block"
+        width={size}
+        height={size}
+        style={{ objectFit: "cover", display: "block" }}
         draggable={false}
       />
     </Box>

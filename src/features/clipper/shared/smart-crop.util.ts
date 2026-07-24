@@ -348,7 +348,7 @@ export interface ClipperSmartCropBlob {
   analyzerVersion: string;
   modelId: string;
   /** Runtime provenance. */
-  engine?: "winml";
+  engine?: "winml" | "wasm";
   /** Present when the native analysis used temporal ByteTrack stabilization. */
   trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   clipStart: number;

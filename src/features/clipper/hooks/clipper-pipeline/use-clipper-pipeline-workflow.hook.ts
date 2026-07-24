@@ -61,7 +61,7 @@ export function useClipperPipelineWorkflow(
       words: Parameters<typeof preparePreviewFromRange>[4],
       controller: AbortController,
       runId: string,
-      options: Parameters<typeof preparePreviewFromRange>[6],
+      options: Parameters<typeof preparePreviewFromRange>[7],
     ) => preparePreviewFromRange(previewDeps, session, snappedStart, end, words, controller, runId, options),
     [
       activeClipIndexRef,

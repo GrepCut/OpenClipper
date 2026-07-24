@@ -93,7 +93,13 @@ export function visibleBootSteps(steps: ClipperLoadingStep[]): ClipperLoadingSte
   if (activeIndex >= 0) {
     return steps.slice(0, activeIndex + 1);
   }
-  const lastDoneIndex = steps.findLastIndex((step) => step.status === "done");
+  let lastDoneIndex = -1;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i]!.status === "done") {
+      lastDoneIndex = i;
+      break;
+    }
+  }
   if (lastDoneIndex >= 0) {
     return steps.slice(0, lastDoneIndex + 1);
   }

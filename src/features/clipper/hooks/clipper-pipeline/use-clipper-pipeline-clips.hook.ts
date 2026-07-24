@@ -46,28 +46,27 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         syncSessionActiveClips(session);
       }
       persistMetadata({ clipSourceMode: mode });
-      setState((prev) => ({
-        ...prev,
-        clipSourceMode: mode,
-        clipPreviews: activeClipPreviewsForMode(
+      setState((prev) => {
+        const previews = activeClipPreviewsForMode(
           mode,
           prev.autoPartsClipPreviews ?? [],
           prev.aiClipPreviews ?? [],
-        ),
-        activeClipIndex: Math.min(
+        );
+        const nextIndex = Math.min(
           prev.activeClipIndex,
-          Math.max(
-            0,
-            activeClipPreviewsForMode(
-              mode,
-              prev.autoPartsClipPreviews ?? [],
-              prev.aiClipPreviews ?? [],
-            ).length - 1,
-          ),
-        ),
-      }));
+          Math.max(0, previews.length - 1),
+        );
+        activeClipIndexRef.current = nextIndex;
+        if (session) session.activeClipIndex = nextIndex;
+        return {
+          ...prev,
+          clipSourceMode: mode,
+          clipPreviews: previews,
+          activeClipIndex: nextIndex,
+        };
+      });
     },
-    [persistMetadata, sessionRef, setState],
+    [activeClipIndexRef, persistMetadata, sessionRef, setState],
   );
 
   const resegmentAutoParts = useCallback(
@@ -84,7 +83,8 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
       }
 
       const session = sessionRef.current;
-      const trimmedFile = session?.rangeTrimmedFile ?? session?.trimmedFile;
+      if (!session) return;
+      const trimmedFile = session.rangeTrimmedFile ?? session.trimmedFile;
       if (!trimmedFile) return;
 
       const rangeDuration = session.rangeEnd - session.rangeStart;
@@ -127,17 +127,22 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         setAutoPartsSegmentLengthSec(segmentLengthSec);
 
         const autoPartsClipPreviews = buildClipPreviews(clips);
-        setState((prev) => ({
-          ...prev,
-          autoPartsClipPreviews,
-          clipPreviews:
-            prev.clipSourceMode === "ai" ? prev.clipPreviews : autoPartsClipPreviews,
-          activeClipIndex: Math.min(
+        setState((prev) => {
+          const nextIndex = Math.min(
             prev.activeClipIndex,
             Math.max(0, clips.length - 1),
-          ),
-          stageMessage: `Review ${clips.length} clip${clips.length > 1 ? "s" : ""}, then render`,
-        }));
+          );
+          activeClipIndexRef.current = nextIndex;
+          session.activeClipIndex = nextIndex;
+          return {
+            ...prev,
+            autoPartsClipPreviews,
+            clipPreviews:
+              prev.clipSourceMode === "ai" ? prev.clipPreviews : autoPartsClipPreviews,
+            activeClipIndex: nextIndex,
+            stageMessage: `Review ${clips.length} clip${clips.length > 1 ? "s" : ""}, then render`,
+          };
+        });
       } catch (error) {
         clipperError("pipeline: resegment auto-parts failed", error);
         setState((prev) => ({
@@ -152,6 +157,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
       }
     },
     [
+      activeClipIndexRef,
       autoPartsResegmenting,
       autoPartsSegmentLengthSec,
       persistMetadata,

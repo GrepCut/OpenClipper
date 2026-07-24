@@ -120,7 +120,6 @@ export function BenchmarkRunsPanel({
               <Box
                 key={run.id}
                 as="button"
-                type="button"
                 w="full"
                 textAlign="left"
                 p={4}

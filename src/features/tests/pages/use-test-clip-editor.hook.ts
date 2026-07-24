@@ -63,7 +63,7 @@ export function useTestClipEditor(datasetId: string, clipId: string) {
       testDataService.getAnnotations(clipId),
       testDataService.playableClip(clipId),
     ]).then(([loadedDataset, loadedClip, annotations, playable]) => {
-      if (disposed) return;
+      if (disposed || !loadedClip) return;
       const normalized = normalizeKeyframes(annotations, loadedClip.width, loadedClip.height);
       const initialIntent = normalized.length ? evaluateLayoutIntent(normalized, 0) : "crop";
       const initial = normalized.length

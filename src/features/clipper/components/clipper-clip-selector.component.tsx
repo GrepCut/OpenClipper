@@ -57,7 +57,7 @@ function getClipTranscriptBlocks(clip: ClipperGeneratedClip, rangeWords: WordCue
 
   if (segments.length > 1) {
     return segments.map((segment) => ({
-      timeLabel: `${formatTime(segment.startSec)}–${formatTime(segment.endSec)}`,
+      timeLabel: `${formatDurationMmSs(segment.startSec)}–${formatDurationMmSs(segment.endSec)}`,
       words: sliceWordsForTimeWindow(rangeWords, segment.startSec, segment.endSec),
       wordTimeOffsetSec: 0,
       windowStartSec: segment.startSec,

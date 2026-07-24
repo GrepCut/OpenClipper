@@ -14,7 +14,7 @@ const CONFIRM_BUTTON_PROPS = {
 
 interface ClipperDeleteClipConfirmProps {
   onConfirm: () => void;
-  children: React.ReactElement;
+  children: React.ReactElement<{ onClick?: (e: React.MouseEvent) => void }>;
 }
 
 export const ClipperDeleteClipConfirm: React.FC<ClipperDeleteClipConfirmProps> = ({

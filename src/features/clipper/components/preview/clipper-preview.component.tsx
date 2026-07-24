@@ -1,11 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Box, VStack, useDisclosure } from "@chakra-ui/react";
-import {
-  deriveCollageAspectEligibility,
-  deriveRegionsFromLayoutTracks,
-  deriveTwoSpeakerRegions,
-  filterRegionsWithEligibleAspects,
-} from "../../engine/reframe/collage";
+import { deriveRegionsFromLayoutTracks } from "../../engine/reframe/collage";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
 import { useClipperPreviewPlayback } from "../../hooks/use-clipper-preview-playback.hook";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
@@ -119,24 +114,10 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     [previewFormats, primaryFormat?.id],
   );
 
+  const smartCropAnalysis = getFrameContext()?.smartCropAnalysis ?? null;
   const collageRegions = useMemo(
-    () => {
-      const context = getFrameContext();
-      if (context?.smartCropAnalysis?.layoutTracks) {
-        const layoutRegions = deriveRegionsFromLayoutTracks(context.smartCropAnalysis, "tiktok");
-        if (layoutRegions.length > 0) return layoutRegions;
-      }
-      const samples = context?.faceCache?.sortedSamples() ?? [];
-      const regions = context?.faceRender?.collageRegions ?? deriveTwoSpeakerRegions(samples);
-      const eligibility = context?.faceRender?.collageEligibility
-        ?? deriveCollageAspectEligibility(samples, regions, settings.reframe.headroom);
-      const enabledAspectIds = CLIPPER_FORMAT_DEFS
-        .filter((format) => format.mode === "crop" && settings.formats.enabledFormatIds.includes(format.id))
-        .map((format) => format.aspectId);
-      return filterRegionsWithEligibleAspects(regions, eligibility, enabledAspectIds);
-    },
-    // faceSampleRevision is the actual change signal; getFrameContext is a stable closure over the session.
-    [state.faceSampleRevision, settings.reframe.headroom, settings.formats.enabledFormatIds],
+    () => deriveRegionsFromLayoutTracks(smartCropAnalysis),
+    [smartCropAnalysis],
   );
 
   const { videoRef, canvasRefs, previewRegionRef, previewTimeSec, togglePlay, seekToTranscriptTime } =
@@ -199,7 +180,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
           seekToTranscriptTime={seekToTranscriptTime}
           sidePanelTab={sidePanelTab}
           onSidePanelTabChange={handleSidePanelTabChange}
-          smartCropAnalysis={getFrameContext()?.smartCropAnalysis}
+          smartCropAnalysis={smartCropAnalysis}
           previewTimeSec={previewTimeSec}
           primaryFormat={primaryFormat}
         />

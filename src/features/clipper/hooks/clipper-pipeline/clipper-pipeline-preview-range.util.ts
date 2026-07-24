@@ -158,6 +158,9 @@ export async function preparePreviewFromRange(
     clipperError(`pipeline[${runId}]: save auto-parts clips failed`, error),
   );
 
+  const restoredActiveClipIndex =
+    metadataRef.current.activeClipIndex ?? activeClipIndexRef.current ?? 0;
+
   persistMetadata(
     {
       clipStart: snappedStart,
@@ -166,7 +169,7 @@ export async function preparePreviewFromRange(
       transcribedClipEnd: end,
       wordsPerGroupAtTranscribe: wordsPerGroup,
       autoPartsSegmentLengthSec: segmentLength,
-      activeClipIndex: 0,
+      activeClipIndex: restoredActiveClipIndex,
     },
     "preview",
   );
@@ -191,7 +194,10 @@ export async function preparePreviewFromRange(
     autoPartsClipPreviews,
     aiClipPreviews,
   );
-  activeClipIndexRef.current = 0;
+  const validActiveClipIndex =
+    restoredActiveClipIndex < clipPreviews.length ? restoredActiveClipIndex : 0;
+  activeClipIndexRef.current = validActiveClipIndex;
+  session.activeClipIndex = validActiveClipIndex;
 
   clipperLog(`pipeline[${runId}]: post-face — enter preview`, {
     rangeDuration: result.rangeDuration,
@@ -211,7 +217,7 @@ export async function preparePreviewFromRange(
     autoPartsClipPreviews,
     aiClipPreviews,
     clipSourceMode,
-    activeClipIndex: 0,
+    activeClipIndex: validActiveClipIndex,
     clipDuration: result.rangeDuration,
     clipStart: snappedStart,
     clipEnd: end,

@@ -5,6 +5,7 @@ import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.f
 import { colors, useTheme } from "../../../theme";
 import { resolveClipCohorts } from "../benchmark/cohort-tags.util";
 import { formatShortDate } from "../../../shared/utils/time.util";
+import type { TestClip } from "../test.types";
 
 interface TestClipListRowProps {
   clip: TestClip;

@@ -75,18 +75,18 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
       <Text whiteSpace="nowrap">{backLink.label}</Text>
     </HStack>
   ) : (
-    <HStack
-      as={RouterLink}
-      to={backTo}
-      gap={2}
-      color={theme.text.muted}
-      fontSize="sm"
-      flexShrink={0}
-      _hover={{ color: theme.brand.purpleLight, textDecoration: "none" }}
-    >
-      <ArrowLeft size={16} />
-      <Text whiteSpace="nowrap">{backLabel}</Text>
-    </HStack>
+    <RouterLink to={backTo} style={{ textDecoration: "none" }}>
+      <HStack
+        gap={2}
+        color={theme.text.muted}
+        fontSize="sm"
+        flexShrink={0}
+        _hover={{ color: theme.brand.purpleLight }}
+      >
+        <ArrowLeft size={16} />
+        <Text whiteSpace="nowrap">{backLabel}</Text>
+      </HStack>
+    </RouterLink>
   );
 
   return (

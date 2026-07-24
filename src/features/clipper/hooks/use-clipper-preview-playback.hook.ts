@@ -36,6 +36,8 @@ export function useClipperPreviewPlayback({
   const pendingSeekSourceTimeRef = useRef<number | null>(null);
   const previewRegionRef = useRef<HTMLDivElement>(null);
   const previewVisibleRef = useRef(true);
+  const getFrameContextRef = useRef(getFrameContext);
+  getFrameContextRef.current = getFrameContext;
   const [previewTimeSec, setPreviewTimeSec] = useState(0);
   const reportedPreviewTimeRef = useRef(Number.NEGATIVE_INFINITY);
 
@@ -56,11 +58,11 @@ export function useClipperPreviewPlayback({
       canvasCaches: canvasCachesRef.current,
       previewFormats,
       primaryFormatId: primaryFormat?.id,
-      getFrameContext,
+      getFrameContext: () => getFrameContextRef.current(),
       activeClipIndex,
       firstFrameLoggedRef,
     });
-  }, [activeClipIndex, previewFormats, getFrameContext, primaryFormat?.id]);
+  }, [activeClipIndex, previewFormats, primaryFormat?.id]);
 
   const scheduleRedrawRef = useRef<() => void>(() => {});
 

@@ -28,7 +28,6 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
     >
       <Box
         as="button"
-        type="button"
         w="full"
         px={1}
         py={3.5}

@@ -344,15 +344,19 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
               <Box
                 key={target.id}
                 as="button"
-                type="button"
                 textAlign="left"
                 p={4}
                 borderRadius="xl"
                 border="1px solid"
-                borderColor={selected ? theme.brand.primary : theme.dashboard.border}
+                borderColor={selected ? colors.purple.medium : theme.dashboard.border}
                 bg={selected ? theme.brand.purpleSoftAlpha12 : theme.background.card}
-                onClick={() => setSelectedMetaPageId(target.id)}
-                disabled={isSavingMetaTarget}
+                onClick={() => {
+                  if (isSavingMetaTarget) return;
+                  setSelectedMetaPageId(target.id);
+                }}
+                aria-disabled={isSavingMetaTarget || undefined}
+                pointerEvents={isSavingMetaTarget ? "none" : undefined}
+                opacity={isSavingMetaTarget ? 0.65 : 1}
               >
                 <Text fontWeight="semibold" color={theme.text.primary}>
                   {target.name}

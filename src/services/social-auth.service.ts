@@ -6,6 +6,7 @@ import type {
   PublishClipperToSocialParams,
   SocialDisconnectResponse,
   SocialOAuthFlow,
+  SocialPublishJobStatus,
   SocialPublishJobStatusResponse,
   SocialPublishResponse,
   SocialPublishablePlatform,

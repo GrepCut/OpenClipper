@@ -22,7 +22,6 @@ function SettingsRailTab({ open, onToggle, controlsId }: SettingsRailTabProps) {
   return (
     <Box
       as="button"
-      type="button"
       position="fixed"
       right={0}
       top="50%"
@@ -85,7 +84,6 @@ function SettingsMobileTab({ open, onToggle, controlsId }: SettingsRailTabProps)
   return (
     <Box
       as="button"
-      type="button"
       position="fixed"
       right={4}
       bottom={6}

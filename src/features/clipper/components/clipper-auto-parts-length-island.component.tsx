@@ -98,10 +98,13 @@ export function ClipperAutoPartsLengthIsland({
                 <Box
                   key={option.value}
                   as="button"
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onChange(option.value)}
+                  aria-disabled={disabled || undefined}
+                  onClick={() => {
+                    if (disabled) return;
+                    onChange(option.value);
+                  }}
                   aria-pressed={isActive}
+                  pointerEvents={disabled ? "none" : undefined}
                   {...pillButtonProps(isActive)}
                 >
                   {option.label}
@@ -114,10 +117,13 @@ export function ClipperAutoPartsLengthIsland({
 
           <Box
             as="button"
-            type="button"
-            disabled={disabled}
-            onClick={() => setCustomModalOpen(true)}
+            aria-disabled={disabled || undefined}
+            onClick={() => {
+              if (disabled) return;
+              setCustomModalOpen(true);
+            }}
             aria-pressed={isCustom}
+            pointerEvents={disabled ? "none" : undefined}
             {...pillButtonProps(isCustom)}
             minW={isCustom ? "44px" : undefined}
           >

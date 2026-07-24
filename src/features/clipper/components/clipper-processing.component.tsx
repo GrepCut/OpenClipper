@@ -29,6 +29,7 @@ const STAGE_ORDER = [
 type UiStepKey = (typeof STEPS)[number]["key"];
 
 function uiStepKeyForStage(stage: ClipperPipelineState["stage"]): UiStepKey | "trimming" | "done" | "error" | "rendering" {
+  if (stage === "idle") return "uploading";
   if (stage === "analyzing-faces" || stage === "analyzing-subjects") return "analyzing";
   return stage;
 }

@@ -15,7 +15,7 @@ function syncRangeTrimAliases(session: ClipperSession): void {
 
 /** True when persisted clip boundaries can replace a mediabunny keyframe scan on reopen. */
 export function canUseFastPreviewResume(
-  clips: ClipperClipPayload[],
+  clips: Array<Pick<ClipperClipPayload, "startSec" | "endSec">>,
   skipToPreview: boolean,
   snappedStart: number,
   end: number,

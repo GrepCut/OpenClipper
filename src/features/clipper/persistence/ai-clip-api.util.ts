@@ -173,19 +173,21 @@ export const clipperAiClipService = {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    const parser = createParser((event) => {
-      if (event.type !== "event" || !event.data) return;
-      const parsed = JSON.parse(event.data) as ClipperAiChatStreamEvent;
-      if (parsed.type === "done") {
-        void Promise.all([
-          localRecordPut("clipper-ai-chat", projectId, projectId, [
-            ...historyWithUser,
-            parsed.assistantMessage,
-          ]),
-          localRecordPut("clipper-ai-clips", projectId, projectId, parsed.clips),
-        ]);
-      }
-      dispatchClipperAiChatStreamEvent(parsed, events);
+    const parser = createParser({
+      onEvent: (event) => {
+        if (!event.data) return;
+        const parsed = JSON.parse(event.data) as ClipperAiChatStreamEvent;
+        if (parsed.type === "done") {
+          void Promise.all([
+            localRecordPut("clipper-ai-chat", projectId, projectId, [
+              ...historyWithUser,
+              parsed.assistantMessage,
+            ]),
+            localRecordPut("clipper-ai-clips", projectId, projectId, parsed.clips),
+          ]);
+        }
+        dispatchClipperAiChatStreamEvent(parsed, events);
+      },
     });
 
     while (true) {

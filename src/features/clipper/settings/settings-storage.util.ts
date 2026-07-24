@@ -9,7 +9,7 @@ export function loadClipperSettings(): ClipperSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_CLIPPER_SETTINGS;
     const parsed = parseStoredClipperSettings(JSON.parse(raw));
-    return mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, parsed ?? undefined);
+    return mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, parsed as Partial<ClipperSettings> | undefined);
   } catch {
     return DEFAULT_CLIPPER_SETTINGS;
   }

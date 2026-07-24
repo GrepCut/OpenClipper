@@ -49,10 +49,10 @@ interface FramingDecisionsPanelProps {
   onSeek?: (time: number) => void;
 }
 
-const percent = (value: number | undefined) =>
+const percent = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "–" : `${Math.round(value * 100)}%`;
 
-const percentValue = (value: number | undefined) =>
+const percentValue = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? 0 : Math.round(value * 100);
 
 function compactId(id: string | undefined): string {
@@ -674,8 +674,8 @@ export function FramingDecisionsPanel({
       const next = following?.semanticScore != null && following.baselineScore != null && !following.cut && !curr.cut
         ? following
         : curr;
-      const smoothSem = prev.semanticScore * 0.25 + curr.semanticScore * 0.5 + next.semanticScore * 0.25;
-      const smoothBase = prev.baselineScore * 0.25 + curr.baselineScore * 0.5 + next.baselineScore * 0.25;
+      const smoothSem = (prev.semanticScore ?? curr.semanticScore) * 0.25 + curr.semanticScore * 0.5 + (next.semanticScore ?? curr.semanticScore) * 0.25;
+      const smoothBase = (prev.baselineScore ?? curr.baselineScore) * 0.25 + curr.baselineScore * 0.5 + (next.baselineScore ?? curr.baselineScore) * 0.25;
       return {
         ...curr,
         semanticScore: Math.max(0, Math.min(1, smoothSem)),
@@ -840,9 +840,12 @@ export function FramingDecisionsPanel({
             <HStack gap={2}>
               <Box
                 as="button"
-                type="button"
-                onClick={() => void exportFlatMarginFrames()}
-                disabled={exportingFlatFrames}
+                onClick={() => {
+                  if (exportingFlatFrames) return;
+                  void exportFlatMarginFrames();
+                }}
+                aria-disabled={exportingFlatFrames || undefined}
+                pointerEvents={exportingFlatFrames ? "none" : undefined}
                 px={2}
                 py={1}
                 borderRadius="md"

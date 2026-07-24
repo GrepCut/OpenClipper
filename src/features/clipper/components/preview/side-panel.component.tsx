@@ -104,7 +104,6 @@ export function ClipperPreviewSidePanel({
               <Box
                 key={option.value}
                 as="button"
-                type="button"
                 onClick={() => onSidePanelTabChange(option.value)}
                 aria-pressed={isActive}
                 {...TOOLBAR_ACTION_BUTTON_PROPS}

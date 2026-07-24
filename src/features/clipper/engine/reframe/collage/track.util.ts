@@ -2,12 +2,10 @@ import type { ClipperAspectPresetId } from "../../../shared/formats.util";
 import type { NormalizedBox, SubjectDetectionSample } from "../../../shared/smart-crop.util";
 import { computeTargetCropSize } from "../../autoflip/geometry/frame-crop-region.util";
 import {
-  createFocusStabilizer,
-  cropRectForCentroid,
   FACE_SAMPLE_INTERVAL_SEC,
-  faceToCentroid,
-  stabilizeFocusCentroid,
-} from "../index";
+} from "../cache.util";
+import { cropRectForCentroid, faceToCentroid } from "../crop.util";
+import { createFocusStabilizer, stabilizeFocusCentroid } from "../tracking.util";
 import type { ClipperHeadroom } from "../../../settings/settings.util";
 import type { FaceBox, FaceBoxSample } from "../../../shared/face-samples.util";
 import type {

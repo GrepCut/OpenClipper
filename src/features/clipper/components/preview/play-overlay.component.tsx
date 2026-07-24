@@ -34,7 +34,6 @@ export const ClipperPreviewPlayOverlay = React.memo(function ClipperPreviewPlayO
   return (
     <Box
       as="button"
-      type="button"
       position="absolute"
       inset={0}
       display="flex"

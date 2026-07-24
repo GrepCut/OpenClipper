@@ -56,6 +56,70 @@ export function sliceWordsForTimeWindow(
   return words.filter((word) => word.end > startSec && word.start < endSec);
 }
 
+function SplitRegionMarker({
+  region,
+  enabled,
+  onToggle,
+  inline,
+  onBrand,
+  muted,
+}: {
+  region: CollageRegion;
+  enabled: boolean;
+  onToggle: (regionId: string) => void;
+  inline?: boolean;
+  onBrand: string;
+  muted: string;
+}) {
+  return (
+    <IconButton
+      key={region.id}
+      aria-label={
+        enabled
+          ? "Two speakers detected — split-screen on here. Click to turn off for this part."
+          : "Split-screen turned off for this part. Click to turn back on."
+      }
+      title={
+        enabled
+          ? "Split-screen on here — click to turn off"
+          : "Split-screen off here — click to turn on"
+      }
+      size="2xs"
+      variant={enabled ? "solid" : "outline"}
+      bg={enabled ? clipperTheme.accent : undefined}
+      color={enabled ? onBrand : muted}
+      borderRadius="full"
+      w="22px"
+      h="22px"
+      minW="22px"
+      minH="22px"
+      p={0}
+      flexShrink={0}
+      mx={inline ? 1 : undefined}
+      verticalAlign={inline ? "middle" : undefined}
+      transition="background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease"
+      _hover={
+        enabled
+          ? {
+              bg: clipperTheme.accentHover,
+              opacity: 0.92,
+            }
+          : {
+              bg: `rgba(${clipperTheme.accentTintRgb},0.12)`,
+              borderColor: clipperTheme.accent,
+              color: clipperTheme.accentLight,
+            }
+      }
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(region.id);
+      }}
+    >
+      <Columns2 size={12} />
+    </IconButton>
+  );
+}
+
 export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = ({
   words,
   wordTimeOffsetSec,
@@ -69,12 +133,31 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
   const { theme } = useClipperUi();
   const disabledSet = useMemo(() => new Set(disabledRegionIds), [disabledRegionIds]);
   const markersByWordIndex = useMemo(
-    () => (showCollageMarkers ? regionsByWordIndex(words, regions, wordTimeOffsetSec) : new Map()),
+    () => (showCollageMarkers ? regionsByWordIndex(words, regions, wordTimeOffsetSec) : new Map<number, CollageRegion[]>()),
     [words, regions, wordTimeOffsetSec, showCollageMarkers],
   );
 
   if (words.length === 0) {
-    return <ClipperTranscriptEmpty message={emptyMessage} />;
+    if (!showCollageMarkers || regions.length === 0) {
+      return <ClipperTranscriptEmpty message={emptyMessage} />;
+    }
+    return (
+      <Box>
+        <ClipperTranscriptEmpty message={emptyMessage} />
+        <Box mt={1} display="flex" flexWrap="wrap" gap={1}>
+          {regions.map((region) => (
+            <SplitRegionMarker
+              key={region.id}
+              region={region}
+              enabled={!disabledSet.has(region.id)}
+              onToggle={onToggleRegion}
+              onBrand={theme.text.onBrand}
+              muted={theme.text.muted}
+            />
+          ))}
+        </Box>
+      </Box>
+    );
   }
 
   return (
@@ -83,56 +166,17 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
         const markers = markersByWordIndex.get(index);
         return (
           <React.Fragment key={index}>
-            {markers?.map((region) => {
-              const enabled = !disabledSet.has(region.id);
-              return (
-                <IconButton
-                  key={region.id}
-                  aria-label={
-                    enabled
-                      ? "Two speakers detected — split-screen on here. Click to turn off for this part."
-                      : "Split-screen turned off for this part. Click to turn back on."
-                  }
-                  title={
-                    enabled
-                      ? "Split-screen on here — click to turn off"
-                      : "Split-screen off here — click to turn on"
-                  }
-                  size="2xs"
-                  variant={enabled ? "solid" : "outline"}
-                  bg={enabled ? clipperTheme.accent : undefined}
-                  color={enabled ? theme.text.onBrand : theme.text.muted}
-                  borderRadius="full"
-                  w="22px"
-                  h="22px"
-                  minW="22px"
-                  minH="22px"
-                  p={0}
-                  flexShrink={0}
-                  mx={1}
-                  verticalAlign="middle"
-                  transition="background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease"
-                  _hover={
-                    enabled
-                      ? {
-                          bg: clipperTheme.accentHover,
-                          opacity: 0.92,
-                        }
-                      : {
-                          bg: `rgba(${clipperTheme.accentTintRgb},0.12)`,
-                          borderColor: clipperTheme.accent,
-                          color: clipperTheme.accentLight,
-                        }
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleRegion(region.id);
-                  }}
-                >
-                  <Columns2 size={12} />
-                </IconButton>
-              );
-            })}
+            {markers?.map((region) => (
+              <SplitRegionMarker
+                key={region.id}
+                region={region}
+                enabled={!disabledSet.has(region.id)}
+                onToggle={onToggleRegion}
+                inline
+                onBrand={theme.text.onBrand}
+                muted={theme.text.muted}
+              />
+            ))}
             {onWordClick ? (
               <Box
                 as="span"

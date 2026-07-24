@@ -20,14 +20,16 @@ function FormatProgressRing({ progress }: { progress: number }) {
 
   return (
     <Box
-      as="svg"
-      width={`${PROGRESS_RING_SIZE}px`}
-      height={`${PROGRESS_RING_SIZE}px`}
-      viewBox={`0 0 ${PROGRESS_RING_SIZE} ${PROGRESS_RING_SIZE}`}
+      asChild
       flexShrink={0}
       transform="rotate(-90deg)"
       aria-hidden
     >
+      <svg
+        width={PROGRESS_RING_SIZE}
+        height={PROGRESS_RING_SIZE}
+        viewBox={`0 0 ${PROGRESS_RING_SIZE} ${PROGRESS_RING_SIZE}`}
+      >
       <circle
         cx={center}
         cy={center}
@@ -47,6 +49,7 @@ function FormatProgressRing({ progress }: { progress: number }) {
         strokeDashoffset={offset}
         strokeLinecap="round"
       />
+      </svg>
     </Box>
   );
 }

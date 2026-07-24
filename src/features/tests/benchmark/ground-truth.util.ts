@@ -140,10 +140,10 @@ export function normalizeKeyframes(
           .map((target, index) => {
             const slot = index as 0 | 1;
             const geometry = layoutIntent === "contain"
-              ? clampTargetRect({ ...target, slot })
+              ? clampTargetRect(target)
               : sourceWidth && sourceHeight
-                ? finalizeTargetRect({ ...target, slot }, sourceWidth, sourceHeight)
-                : clampTargetRect({ ...target, slot });
+                ? finalizeTargetRect(target, sourceWidth, sourceHeight)
+                : clampTargetRect(target);
             return { ...target, ...geometry, slot };
           }),
       };

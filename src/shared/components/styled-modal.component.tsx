@@ -1,10 +1,21 @@
 import { Dialog, Box, Portal } from "@chakra-ui/react";
 import { cloneElement, isValidElement, useId } from "react";
-import type { CSSProperties, ReactNode, SyntheticEvent } from "react";
+import type { CSSProperties, ReactElement, ReactNode, SyntheticEvent } from "react";
 import { useTheme } from '../../theme';
 import { SecondaryMainTitle } from "../fonts/secondary-main-title.font";
 import { MainButton } from "./buttons/main-button.component";
 import { colors } from "../../theme/colors.util";
+
+interface StyledModalFooterProps {
+  onCancel: () => void;
+  onSubmit: () => void;
+  cancelText?: string;
+  submitText?: string;
+  isLoading?: boolean;
+  submitDisabled?: boolean;
+  submitColorScheme?: string;
+  submitFormId?: string;
+}
 
 interface StyledModalProps {
   isOpen: boolean;
@@ -64,7 +75,7 @@ export function StyledModal({
 
   const footerContent =
     footer && onFormSubmit && isValidElement(footer)
-      ? cloneElement(footer, { submitFormId: formId })
+      ? cloneElement(footer as ReactElement<StyledModalFooterProps>, { submitFormId: formId })
       : footer;
 
   return (
@@ -126,9 +137,6 @@ export function StyledModal({
 
               {onFormSubmit ? (
                 <Dialog.Body
-                  as="form"
-                  id={formId}
-                  onSubmit={handleFormSubmit}
                   color={theme.text.primary}
                   overflowY={scrollBehavior === "inside" ? "auto" : undefined}
                   flex="1"
@@ -145,7 +153,11 @@ export function StyledModal({
                     },
                   }}
                 >
-                  {children}
+                  <Box asChild display="contents">
+                    <form id={formId} onSubmit={handleFormSubmit}>
+                      {children}
+                    </form>
+                  </Box>
                 </Dialog.Body>
               ) : (
                 <Dialog.Body
@@ -182,17 +194,6 @@ export function StyledModal({
       </Portal>
     </Dialog.Root>
   );
-}
-
-interface StyledModalFooterProps {
-  onCancel: () => void;
-  onSubmit: () => void;
-  cancelText?: string;
-  submitText?: string;
-  isLoading?: boolean;
-  submitDisabled?: boolean;
-  submitColorScheme?: string;
-  submitFormId?: string;
 }
 
 export function StyledModalFooter({

@@ -41,10 +41,12 @@ export const ClipperHomeNavToggle: React.FC<ClipperHomeNavToggleProps> = ({
           <Flex
             key={option.value}
             as="button"
-            type="button"
-            disabled={disabled}
+            aria-disabled={disabled || undefined}
             aria-pressed={isActive}
-            onClick={() => onChange(option.value)}
+            onClick={() => {
+              if (disabled) return;
+              onChange(option.value);
+            }}
             align="center"
             justify="center"
             px={3}
@@ -56,6 +58,7 @@ export const ClipperHomeNavToggle: React.FC<ClipperHomeNavToggleProps> = ({
             color={isActive ? "white" : theme.text.muted}
             bg={isActive ? accent : "transparent"}
             cursor={disabled ? "not-allowed" : "pointer"}
+            pointerEvents={disabled ? "none" : undefined}
             transition="all 0.2s ease"
             _hover={
               !isActive && !disabled

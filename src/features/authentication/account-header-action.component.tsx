@@ -36,7 +36,6 @@ export function AccountHeaderAction() {
     return (
       <Box
         as="button"
-        type="button"
         {...common}
         onClick={() => {
           rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
@@ -54,7 +53,6 @@ export function AccountHeaderAction() {
   return (
     <Box
       as="button"
-      type="button"
       {...common}
       onClick={() => void logout()}
       _hover={{ bg: theme.surface.hover, color: theme.text.primary }}

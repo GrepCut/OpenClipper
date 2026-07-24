@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { ClipperSmartCropBlob } from "../shared/smart-crop.util";
 import { CLIPPER_EXPORT_MANIFEST_VERSION } from "./export-files.types";
 
 const clipperSettingsSchema = z
@@ -169,14 +170,8 @@ const restoredSmartCropSchema = z.object({
   version: z.string().optional(),
 });
 
-export function parseRestoredSmartCropBlob(raw: unknown): {
-  clipStart: number;
-  clipEnd: number;
-  analyzerVersion?: string;
-  cameraSmoothing?: "smooth" | "balanced" | "snappy";
-  aspectTracks?: Record<string, { samples: unknown[] }>;
-  version?: string;
-} | null {
+/** Schema only gates restore eligibility; return raw so layoutTracks etc. survive. */
+export function parseRestoredSmartCropBlob(raw: unknown): ClipperSmartCropBlob | null {
   const result = restoredSmartCropSchema.safeParse(raw);
-  return result.success ? result.data : null;
+  return result.success ? (raw as ClipperSmartCropBlob) : null;
 }

@@ -122,7 +122,6 @@ export async function runTestBenchmarkAnalysis(input: {
     trackerVersion: summary.trackerVersion,
     frameWidth: input.clip.width,
     frameHeight: input.clip.height,
-    smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
     headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
@@ -144,7 +143,6 @@ export async function runTestBenchmarkAnalysis(input: {
     trackerVersion: summary.trackerVersion,
     frameWidth: input.clip.width,
     frameHeight: input.clip.height,
-    smoothing: DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
     headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
@@ -156,7 +154,6 @@ export async function runTestBenchmarkAnalysis(input: {
   const regions = deriveTwoSpeakerRegions(collageFaceSamples);
   const tracks = buildCollageTracksForRegions(
     collageFaceSamples,
-    DEFAULT_CLIPPER_SETTINGS.reframe.smoothing,
     regions,
     [],
   );

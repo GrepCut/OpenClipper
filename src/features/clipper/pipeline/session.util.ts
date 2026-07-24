@@ -2,9 +2,8 @@ import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperSettings } from "../settings/settings.util";
 import {
   buildCollageTracksForRegions,
-  deriveCollageAspectEligibility,
   deriveCollageTracks,
-  deriveTwoSpeakerRegions,
+  deriveRegionsFromLayoutTracks,
   type CollageAspectEligibility,
   type CollageRegion,
   type CollageTracks,
@@ -85,6 +84,8 @@ export interface ClipperSession {
   faceRenderCache: {
     reframeKey: string;
     sampleRevision: number;
+    /** Invalidates when AutoFlip layout tracks change (marker source of truth). */
+    layoutKey: string;
     collageTracks: CollageTracks;
     collageRegions: CollageRegion[];
     collageEligibility: CollageAspectEligibility;
@@ -109,6 +110,25 @@ export function reframeCacheKey(settings: ClipperSettings, disabledCollageRegion
   const { headroom } = settings.reframe;
   return `${headroom}|${[...disabledCollageRegionIds].sort().join(",")}`;
 }
+
+/** Cache key for layout-derived collage regions (AutoFlip split markers). */
+export function layoutRegionsCacheKey(
+  smartCropAnalysis: ClipperSmartCropBlob | null | undefined,
+): string {
+  if (!smartCropAnalysis?.layoutTracks) return "none";
+  const sampleCount = Object.values(smartCropAnalysis.layoutTracks).reduce(
+    (n, track) => n + (track.samples?.length ?? 0),
+    0,
+  );
+  return `${smartCropAnalysis.analyzerVersion ?? ""}|${sampleCount}`;
+}
+
+const EMPTY_COLLAGE_ELIGIBILITY: CollageAspectEligibility = {
+  "16-9": [],
+  "9-16": [],
+  "1-1": [],
+  "4-5": [],
+};
 
 /** Creates a face sample cache that reports detection summary via the reporter. */
 export function createFaceCache(
@@ -135,23 +155,29 @@ export function resolveFaceRender(
   const disabledCollageRegionIds = session.disabledCollageRegionIds ?? [];
   const reframeKey = reframeCacheKey(settings, disabledCollageRegionIds);
   const sampleRevision = cache.sampleRevision;
+  const layoutKey = layoutRegionsCacheKey(session.smartCropAnalysis);
   let cached = session.faceRenderCache;
-  if (!cached || cached.reframeKey !== reframeKey || cached.sampleRevision !== sampleRevision) {
+  if (
+    !cached ||
+    cached.reframeKey !== reframeKey ||
+    cached.sampleRevision !== sampleRevision ||
+    cached.layoutKey !== layoutKey
+  ) {
     const samples = cache.sortedSamples();
-    // Collage sees the head-augmented samples so profile faces still open a
-    // split; the single-focus track keeps real face detections only.
     const collageSamples = session.collageFaceSamples ?? samples;
-    const collageRegions = deriveTwoSpeakerRegions(collageSamples);
+    // Single source of truth: AutoFlip layoutTracks (same as preview split).
+    const collageRegions = deriveRegionsFromLayoutTracks(session.smartCropAnalysis);
     cached = {
       reframeKey,
       sampleRevision,
+      layoutKey,
       collageTracks: buildCollageTracksForRegions(
         collageSamples,
         collageRegions,
         disabledCollageRegionIds,
       ),
       collageRegions,
-      collageEligibility: deriveCollageAspectEligibility(collageSamples, collageRegions, settings.reframe.headroom),
+      collageEligibility: EMPTY_COLLAGE_ELIGIBILITY,
     };
     session.faceRenderCache = cached;
   }

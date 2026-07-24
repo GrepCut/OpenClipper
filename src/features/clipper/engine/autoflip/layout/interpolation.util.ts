@@ -17,8 +17,8 @@ function samePanelOwners(a: ClipperLayoutSample, b: ClipperLayoutSample): boolea
   if (a.mode !== "split") return true;
   const aOwners = a.panelSubjects;
   const bOwners = b.panelSubjects;
-  if (!aOwners && !bOwners) return true;
-  return aOwners?.length === bOwners?.length
+  if (!aOwners || !bOwners) return !aOwners && !bOwners;
+  return aOwners.length === bOwners.length
     && aOwners.every((owner, index) => owner.id === bOwners[index]?.id);
 }
 

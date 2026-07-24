@@ -18,6 +18,12 @@ import { clipperPipelineService, markClipperStepCompleted } from "../../persiste
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
 import { isRestoredSmartCropAnalysisValid } from "../is-restored-analysis-valid.util";
+import type {
+  ClipperSmartCropBlob,
+  PoseSubject,
+  SubjectDetection,
+  SubjectDetectionSample,
+} from "../../shared/smart-crop.util";
 
 export interface AnalyzeSubjectsInput {
   projectId: string;
@@ -51,6 +57,49 @@ function frameDimensions(session: ClipperSession): { frameWidth: number; frameHe
   return { frameWidth: 1920, frameHeight: 1080 };
 }
 
+function synthesizeDetectionsFromSmartCrop(
+  blob: ClipperSmartCropBlob,
+): SubjectDetectionSample[] {
+  if (!blob.importanceSamples || blob.importanceSamples.length === 0) return [];
+  return blob.importanceSamples.map((sample) => {
+    const detections: SubjectDetection[] = [];
+    const poseSubjects: PoseSubject[] = [];
+
+    for (const region of sample.regions) {
+      if (
+        region.kind === "person" ||
+        region.kind === "head" ||
+        region.kind === "face" ||
+        region.kind === "speaker"
+      ) {
+        detections.push({
+          box: region.box,
+          label: region.kind === "head" ? "head" : "person",
+          score: region.confidence ?? 0.9,
+          trackId: region.trackId,
+          predicted: region.predicted,
+        });
+      }
+      if (region.kind === "head") {
+        poseSubjects.push({
+          headBox: region.box,
+          box: region.contentBox ?? region.box,
+          score: region.confidence ?? 0.9,
+          trackId: region.trackId,
+          predicted: region.predicted,
+        });
+      }
+    }
+
+    return {
+      time: sample.time,
+      detections,
+      poseSubjects,
+      sceneCut: sample.cut,
+    };
+  });
+}
+
 function synthesizeDetectionsFromFaceCache(faceSamples: ReturnType<NonNullable<ClipperSession["faceCache"]>["sortedSamples"]>): SubjectDetectionSample[] {
   return faceSamples.map((sample) => {
     const frameW = sample.frameW || 1920;
@@ -63,13 +112,11 @@ function synthesizeDetectionsFromFaceCache(faceSamples: ReturnType<NonNullable<C
         height: Math.max(0, Math.min(1, f.height / frameH)),
       },
       keypoints: [],
-      trackId: f.trackId,
     }));
     const detections = autoflipFaces.map((f) => ({
       box: f.box,
       label: "person",
       score: 0.9,
-      trackId: f.trackId,
       detectorSource: "pose" as const,
     }));
     return {
@@ -102,6 +149,18 @@ export async function runAnalyzeSubjectsStage(
     const restored = await readClipperSmartCropAnalysis(input.projectId);
     if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd)) {
       session.smartCropAnalysis = restored;
+      const faceCacheSamples = session.faceCache?.sortedSamples() ?? [];
+      if (faceCacheSamples.length > 0) {
+        const detections =
+          restored && restored.importanceSamples?.length
+            ? synthesizeDetectionsFromSmartCrop(restored)
+            : synthesizeDetectionsFromFaceCache(faceCacheSamples);
+        session.collageFaceSamples = augmentFaceSamplesWithDetectedHeads(
+          faceCacheSamples,
+          detections,
+        );
+      }
+      session.faceRenderCache = null;
       reporter.subjectProgress(1);
       await markClipperStepCompleted(input.projectId, "preview_ready");
       await writeFaceActionBenchmarkIfPresent(session, input.projectId);
