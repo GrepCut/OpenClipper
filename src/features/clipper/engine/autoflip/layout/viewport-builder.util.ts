@@ -7,6 +7,7 @@ import {
   centerViewportOnBox,
   cropAroundBox,
   expandBox,
+  fitSeparatedSplitPanels,
   strictAspectViewport,
   splitViewportsAreDistinct,
   unionAll,
@@ -68,28 +69,41 @@ export function buildViewports(
       framing.centerYFraction,
     )];
   }
+  if (mode === "split" && (targetAspect > 1.0 || required.length < 2)) {
+    return buildViewports(
+      "single-crop",
+      importance,
+      fallbackCrop,
+      sourceAspect,
+      targetAspect,
+      framing,
+      visibilityState,
+      cut,
+      allowGroupUnion,
+      groupUnionMeta,
+    );
+  }
   if (mode === "split" && required.length === 2) {
     const panelAspect = targetAspect * 2;
-    const panels = [
-      cropAroundBox(required[0]!.contentBox, sourceAspect, panelAspect),
-      cropAroundBox(required[1]!.contentBox, sourceAspect, panelAspect),
+    const panelRegions = [
+      { id: required[0]!.id, box: required[0]!.box, contentBox: required[0]!.contentBox },
+      { id: required[1]!.id, box: required[1]!.box, contentBox: required[1]!.contentBox },
     ];
-    // Do not render a duplicated subject in both panels. Re-enter the normal
+    const panels = fitSeparatedSplitPanels(panelRegions, sourceAspect, [panelAspect, panelAspect]);
+    // Do not render a duplicated or overlapping subject in panels. Re-enter
     // single-crop branch so it selects and frames the primary region.
-    return splitViewportsAreDistinct(panels)
-      ? panels
-      : buildViewports(
-          "single-crop",
-          importance,
-          fallbackCrop,
-          sourceAspect,
-          targetAspect,
-          framing,
-          visibilityState,
-          cut,
-          allowGroupUnion,
-          groupUnionMeta,
-        );
+    return panels ?? buildViewports(
+      "single-crop",
+      importance,
+      fallbackCrop,
+      sourceAspect,
+      targetAspect,
+      framing,
+      visibilityState,
+      cut,
+      allowGroupUnion,
+      groupUnionMeta,
+    );
   }
   if (mode === "split" && required.length >= 3) {
     const primary = required.find((region) => region.role === "primary") ?? required[0]!;

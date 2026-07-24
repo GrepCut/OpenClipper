@@ -9,6 +9,8 @@ import type { VisibilityControllerState, VisibilityVariant } from "../../types/a
 import { coverage } from "./visibility-envelope.util";
 
 const EPSILON = 1e-9;
+const PAIR_SLOT_MAX_CENTER_DELTA = 0.13;
+const PAIR_SLOT_MAX_VERTICAL_DELTA = 0.25;
 
 export function hasIndependentEvidence(region: ImportanceRegion): boolean {
   const semantic = new Set(region.sources.filter((source) => source !== "motion"));
@@ -21,20 +23,68 @@ export function hasIndependentEvidence(region: ImportanceRegion): boolean {
 export function stablePair(
   samples: ImportanceRegionSample[],
   index: number,
-  ids: string[],
+  regions: ImportanceRegion[],
   minimumSamples: number,
 ): boolean {
-  if (ids.length !== 2) return false;
-  const key = [...ids].sort().join("|");
+  if (regions.length !== 2) return false;
+  const current = requiredRegions(samples[index] ?? { time: 0, regions: [] }).filter(hasIndependentEvidence);
+  if (current.length !== 2 || !pairObservationMatches(regions, current)) return false;
+  // Analysis is offline. Confirm against either the preceding or following
+  // eight-sample window, so evidence gathering does not delay the final edit.
+  // Five matching observations tolerate detector dropouts without allowing a
+  // single frame to create a split.
+  const minimumObserved = Math.max(2, Math.ceil(minimumSamples * 0.625));
+  return matchingPairObservations(samples, index, regions, minimumSamples, -1) >= minimumObserved
+    || matchingPairObservations(samples, index, regions, minimumSamples, 1) >= minimumObserved;
+}
+
+function boxCenter(box: NormalizedBox): { x: number; y: number } {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+function orderedPairByPosition(regions: ImportanceRegion[]): [ImportanceRegion, ImportanceRegion] | null {
+  if (regions.length !== 2) return null;
+  const ordered = [...regions].sort((left, right) => boxCenter(left.contentBox).x - boxCenter(right.contentBox).x);
+  return [ordered[0]!, ordered[1]!];
+}
+
+function pairObservationMatches(reference: ImportanceRegion[], observed: ImportanceRegion[]): boolean {
+  const referenceKey = reference.map((region) => region.id).sort().join("|");
+  const observedKey = observed.map((region) => region.id).sort().join("|");
+  if (referenceKey === observedKey) return true;
+  const referenceSlots = orderedPairByPosition(reference);
+  const observedSlots = orderedPairByPosition(observed);
+  if (!referenceSlots || !observedSlots) return false;
+  return referenceSlots.every((slot, slotIndex) => {
+    const candidate = observedSlots[slotIndex]!;
+    if (slot.id === candidate.id) return true;
+    const expected = boxCenter(slot.contentBox);
+    const actual = boxCenter(candidate.contentBox);
+    return Math.abs(expected.x - actual.x) <= PAIR_SLOT_MAX_CENTER_DELTA
+      && Math.abs(expected.y - actual.y) <= PAIR_SLOT_MAX_VERTICAL_DELTA;
+  });
+}
+
+function matchingPairObservations(
+  samples: ImportanceRegionSample[],
+  index: number,
+  reference: ImportanceRegion[],
+  maximumSamples: number,
+  direction: -1 | 1,
+): number {
   let observed = 0;
-  for (let cursor = index; cursor >= 0 && observed < minimumSamples; cursor--) {
+  for (let offset = 0; offset < maximumSamples; offset++) {
+    const cursor = index + offset * direction;
+    if (cursor < 0 || cursor >= samples.length) break;
     const sample = samples[cursor]!;
-    if (cursor < index && (samples[cursor + 1]?.cut || sample.cut)) break;
+    if (offset > 0) {
+      const boundary = direction < 0 ? samples[cursor + 1] : sample;
+      if (boundary?.cut) break;
+    }
     const required = requiredRegions(sample).filter(hasIndependentEvidence);
-    if (required.length !== 2 || required.map((region) => region.id).sort().join("|") !== key) break;
-    observed++;
+    if (required.length === 2 && pairObservationMatches(reference, required)) observed++;
   }
-  return observed >= minimumSamples;
+  return observed;
 }
 
 export function stableTriple(
@@ -119,8 +169,14 @@ export function variant(
   mode: ClipperLayoutMode,
   viewports: NormalizedBox[],
   envelopes: ImportanceRegion[],
+  panelSubjects = envelopes,
 ): VisibilityVariant {
-  return { kind, mode, viewports, requiredCoverage: coverage(viewports, envelopes) };
+  return {
+    kind, mode, viewports, requiredCoverage: coverage(viewports, envelopes),
+    panelSubjects: mode === "split"
+      ? panelSubjects.map((region) => ({ id: region.id, focusBox: { ...region.box } }))
+      : undefined,
+  };
 }
 
 export function minimumCoverage(values: number[]): number {

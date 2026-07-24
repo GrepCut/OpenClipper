@@ -2,6 +2,7 @@ import type {
   ClipperLayoutSample,
   NormalizedBox,
 } from "../../../shared/smart-crop.util";
+import { splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
 
 const DEFAULT_SPIKE_THRESHOLD = 0.04;
 // A lower cutoff removes detector jitter while leaving deliberate reframing
@@ -32,6 +33,25 @@ function interpolateBox(a: NormalizedBox, b: NormalizedBox, alpha: number): Norm
 export interface TrajectorySmoothingOptions {
   spikeThreshold?: number;
   lambdaEma?: number;
+}
+
+function panelOwnerKey(sample: ClipperLayoutSample): string {
+  return sample.mode === "split"
+    ? sample.panelSubjects?.map((subject) => subject.id).join("|") ?? "unknown"
+    : "single";
+}
+
+function sameLayoutIdentity(a: ClipperLayoutSample, b: ClipperLayoutSample): boolean {
+  return a.mode === b.mode
+    && a.viewports.length === b.viewports.length
+    && panelOwnerKey(a) === panelOwnerKey(b);
+}
+
+function validSplit(sample: ClipperLayoutSample, viewports: NormalizedBox[]): boolean {
+  return sample.mode !== "split" || (
+    splitViewportsAreDistinct(viewports)
+    && splitPanelsPreserveSubjects(viewports, sample.panelSubjects)
+  );
 }
 
 /**
@@ -66,8 +86,7 @@ export function smoothLayoutTrackSamples(
     const next = cleaned[i + 1]!;
 
     if (curr.cut || next.cut) continue;
-    if (prev.viewports.length !== curr.viewports.length || curr.viewports.length !== next.viewports.length) continue;
-    if (prev.mode !== curr.mode || curr.mode !== next.mode) continue;
+    if (!sameLayoutIdentity(prev, curr) || !sameLayoutIdentity(curr, next)) continue;
 
     const interpolatedViewports: NormalizedBox[] = [];
     let isSpike = false;
@@ -91,7 +110,7 @@ export function smoothLayoutTrackSamples(
       }
     }
 
-    if (isSpike) {
+    if (isSpike && validSplit(curr, interpolatedViewports)) {
       curr.viewports = interpolatedViewports;
       curr.reasonCodes = [...(curr.reasonCodes ?? []), "spike-filtered-1"];
     }
@@ -105,12 +124,7 @@ export function smoothLayoutTrackSamples(
     const s3 = cleaned[i + 2]!;
 
     if (s1.cut || s2.cut || s3.cut) continue;
-    if (
-      s0.viewports.length !== s1.viewports.length ||
-      s1.viewports.length !== s2.viewports.length ||
-      s2.viewports.length !== s3.viewports.length
-    ) continue;
-    if (s0.mode !== s1.mode || s1.mode !== s2.mode || s2.mode !== s3.mode) continue;
+    if (!sameLayoutIdentity(s0, s1) || !sameLayoutIdentity(s1, s2) || !sameLayoutIdentity(s2, s3)) continue;
 
     let isSpike2 = false;
     const interpolatedS1: NormalizedBox[] = [];
@@ -140,7 +154,7 @@ export function smoothLayoutTrackSamples(
       }
     }
 
-    if (isSpike2) {
+    if (isSpike2 && validSplit(s1, interpolatedS1) && validSplit(s2, interpolatedS2)) {
       s1.viewports = interpolatedS1;
       s1.reasonCodes = [...(s1.reasonCodes ?? []), "spike-filtered-2"];
       s2.viewports = interpolatedS2;
@@ -160,8 +174,7 @@ export function smoothLayoutTrackSamples(
     while (
       segmentEnd < cleaned.length
       && !cleaned[segmentEnd]!.cut
-      && cleaned[segmentEnd]!.mode === cleaned[segmentStart]!.mode
-      && cleaned[segmentEnd]!.viewports.length === cleaned[segmentStart]!.viewports.length
+      && sameLayoutIdentity(cleaned[segmentEnd]!, cleaned[segmentStart]!)
     ) segmentEnd++;
 
     // Forward pass: attenuate detector noise while following intended motion.
@@ -170,8 +183,9 @@ export function smoothLayoutTrackSamples(
       const previous = smoothed[index - 1]!;
       const dt = Math.max(1e-3, current.t - cleaned[index - 1]!.t);
       const alpha = 1 - Math.exp(-lambdaEma * dt);
-      smoothed[index]!.viewports = current.viewports.map((viewport, viewportIndex) =>
+      const proposed = current.viewports.map((viewport, viewportIndex) =>
         interpolateBox(previous.viewports[viewportIndex]!, viewport, alpha));
+      smoothed[index]!.viewports = validSplit(current, proposed) ? proposed : previous.viewports.map((viewport) => ({ ...viewport }));
     }
 
     // Reverse pass: removes the phase lag introduced by the forward pass.
@@ -180,8 +194,9 @@ export function smoothLayoutTrackSamples(
       const following = smoothed[index + 1]!;
       const dt = Math.max(1e-3, cleaned[index + 1]!.t - cleaned[index]!.t);
       const alpha = 1 - Math.exp(-lambdaEma * dt);
-      current.viewports = current.viewports.map((viewport, viewportIndex) =>
+      const proposed = current.viewports.map((viewport, viewportIndex) =>
         interpolateBox(following.viewports[viewportIndex]!, viewport, alpha));
+      current.viewports = validSplit(cleaned[index]!, proposed) ? proposed : following.viewports.map((viewport) => ({ ...viewport }));
     }
     segmentStart = segmentEnd;
   }

@@ -261,6 +261,10 @@ export interface ClipperLayoutSample {
   baselineViewports?: NormalizedBox[];
   primaryRegionId?: string;
   requiredRegionIds: string[];
+  /** The detected subject assigned to each rendered panel.  This makes panel
+   * identity explicit, so temporal filtering cannot blend one speaker's crop
+   * into another speaker's panel. */
+  panelSubjects?: Array<{ id: string; focusBox: NormalizedBox }>;
   baselineScore?: number;
   semanticScore?: number;
   decisionConfidence?: number;
@@ -273,6 +277,7 @@ export interface ClipperLayoutSample {
     mode: ClipperLayoutMode;
     viewports: NormalizedBox[];
     requiredCoverage: number[];
+    panelSubjects?: Array<{ id: string; focusBox: NormalizedBox }>;
   }>;
   /** Per-required-envelope hard coverage before and after arbitration. */
   baselineRequiredCoverage?: number[];

@@ -51,6 +51,36 @@ function frameDimensions(session: ClipperSession): { frameWidth: number; frameHe
   return { frameWidth: 1920, frameHeight: 1080 };
 }
 
+function synthesizeDetectionsFromFaceCache(faceSamples: ReturnType<NonNullable<ClipperSession["faceCache"]>["sortedSamples"]>): SubjectDetectionSample[] {
+  return faceSamples.map((sample) => {
+    const frameW = sample.frameW || 1920;
+    const frameH = sample.frameH || 1080;
+    const autoflipFaces = sample.faces.map((f) => ({
+      box: {
+        x: Math.max(0, Math.min(1, f.x / frameW)),
+        y: Math.max(0, Math.min(1, f.y / frameH)),
+        width: Math.max(0, Math.min(1, f.width / frameW)),
+        height: Math.max(0, Math.min(1, f.height / frameH)),
+      },
+      keypoints: [],
+      trackId: f.trackId,
+    }));
+    const detections = autoflipFaces.map((f) => ({
+      box: f.box,
+      label: "person",
+      score: 0.9,
+      trackId: f.trackId,
+      detectorSource: "pose" as const,
+    }));
+    return {
+      time: sample.time,
+      detections,
+      autoflipFaces,
+      sceneCut: sample.sceneCut,
+    };
+  });
+}
+
 function cropAspectRatios(enabledFormatIds?: string[]): Record<string, number> {
   const enabled = enabledFormatIds?.length ? new Set(enabledFormatIds) : null;
   return Object.fromEntries(
@@ -89,11 +119,15 @@ export async function runAnalyzeSubjectsStage(
 
   const pending = session.pendingSubjectExtraction ?? null;
   session.pendingSubjectExtraction = null;
-  const detections = pending?.detections ?? [];
+  const faceCacheSamples = session.faceCache?.sortedSamples() ?? [];
+  let detections = pending?.detections ?? [];
+  if (detections.length === 0 && faceCacheSamples.length > 0) {
+    detections = synthesizeDetectionsFromFaceCache(faceCacheSamples);
+  }
   const degradedReason = pending?.degradedReason
     ?? detections.find((sample) => sample.degradedReason)?.degradedReason;
 
-  if (!pending || detections.length === 0) {
+  if (detections.length === 0) {
     session.smartCropAnalysis = null;
     await markClipperStepCompleted(input.projectId, "analyze_subjects", {
       analyzerVersion: AUTOFLIP_ANALYZER_VERSION,
@@ -123,15 +157,15 @@ export async function runAnalyzeSubjectsStage(
     clipEnd: input.clipEnd,
     detections,
     faces: session.faceCache?.sortedSamples() ?? [],
-    sceneCuts: pending.sceneCutTimestamps,
-    hasSolidColorBackground: pending.hasSolidColorBackground,
-    solidBackgroundColor: pending.solidBackgroundColor ?? undefined,
-    staticFeatureSamples: pending.staticFeatureSamples,
-    importanceSignals: pending.importanceSignals,
-    contentRect: pending.contentRect,
+    sceneCuts: pending?.sceneCutTimestamps ?? [],
+    hasSolidColorBackground: pending?.hasSolidColorBackground,
+    solidBackgroundColor: pending?.solidBackgroundColor ?? undefined,
+    staticFeatureSamples: pending?.staticFeatureSamples,
+    importanceSignals: pending?.importanceSignals,
+    contentRect: pending?.contentRect,
     targetAspectRatios: cropAspectRatios(input.enabledFormatIds),
-    sourceFrameRate: pending.sourceFrameRate,
-    trackerVersion: pending.trackerVersion,
+    sourceFrameRate: pending?.sourceFrameRate,
+    trackerVersion: pending?.trackerVersion,
     frameWidth,
     frameHeight,
     headroom: input.headroom,

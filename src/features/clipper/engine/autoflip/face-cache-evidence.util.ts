@@ -27,6 +27,34 @@ function overlapFractionOfSmaller(a: NormalizedBox, b: NormalizedBox): number {
   return smallerArea > 0 ? (overlapWidth * overlapHeight) / smallerArea : 0;
 }
 
+function boxCenter(box: NormalizedBox): { x: number; y: number } {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+function unionBoxes(a: NormalizedBox, b: NormalizedBox): NormalizedBox {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  const right = Math.max(a.x + a.width, b.x + b.width);
+  const bottom = Math.max(a.y + a.height, b.y + b.height);
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+function matchingNativeFaceIndex(nativeFaces: AutoFlipFaceDetection[], cached: AutoFlipFaceDetection): number {
+  const cachedCenter = boxCenter(cached.box);
+  return nativeFaces
+    .map((native, index) => {
+      const nativeCenter = boxCenter(native.box);
+      const dx = Math.abs(nativeCenter.x - cachedCenter.x);
+      const dy = Math.abs(nativeCenter.y - cachedCenter.y);
+      const overlaps = overlapFractionOfSmaller(cached.box, native.box) >= DUPLICATE_FACE_OVERLAP;
+      const centerCompatible = dx <= Math.max(0.025, cached.box.width * 0.4)
+        && dy <= Math.max(0.025, cached.box.height * 0.4);
+      return { index, distance: Math.hypot(dx, dy), compatible: overlaps && centerCompatible };
+    })
+    .filter((candidate) => candidate.compatible)
+    .sort((left, right) => left.distance - right.distance)[0]?.index ?? -1;
+}
+
 function crossesSceneCut(from: number, to: number, sceneCuts: readonly number[]): boolean {
   const start = Math.min(from, to);
   const end = Math.max(from, to);
@@ -67,13 +95,25 @@ export function attachFaceCacheEvidence(
   return detections.map((sample) => {
     const cached = nearestFaceSample(sortedFaces, sample.time, sceneCuts);
     if (!cached?.faces.length) return sample;
-    const nativeFaces = sample.autoflipFaces ?? [];
+    const nativeFaces = (sample.autoflipFaces ?? []).map((face) => ({ ...face, box: { ...face.box } }));
     const cachedFaces = cached.faces
       .map((face) => normalizeFace(face, cached))
-      .filter((face): face is AutoFlipFaceDetection => face != null)
-      .filter((face) => !nativeFaces.some((native) => overlapFractionOfSmaller(face.box, native.box) >= DUPLICATE_FACE_OVERLAP));
-    return cachedFaces.length
-      ? { ...sample, autoflipFaces: [...nativeFaces, ...cachedFaces] }
-      : sample;
+      .filter((face): face is AutoFlipFaceDetection => face != null);
+    if (!cachedFaces.length) return sample;
+    const merged = [...nativeFaces];
+    for (const cachedFace of cachedFaces) {
+      const nativeIndex = matchingNativeFaceIndex(merged, cachedFace);
+      if (nativeIndex < 0) {
+        merged.push(cachedFace);
+        continue;
+      }
+      const native = merged[nativeIndex]!;
+      // The native landmark payload supplies identity and precise focus; the
+      // persisted SCRFD rectangle supplies the complete visible face extent.
+      // Enrich the same observation instead of dropping the larger rectangle
+      // as a duplicate.
+      merged[nativeIndex] = { ...native, box: unionBoxes(native.box, cachedFace.box) };
+    }
+    return { ...sample, autoflipFaces: merged };
   });
 }

@@ -5,17 +5,112 @@ import { importanceGeometry } from "../salience/importance-ranker.util";
 const EPSILON = 1e-9;
 
 /**
- * A split should show two distinct views, not the same subject twice.  The
- * fraction is measured against the smaller viewport so containment is also
- * treated as a full overlap.
+ * A split panel must show distinct subjects without overlapping viewports or
+ * visual crowding. Source crops must be disjoint (0% overlap) and separated by
+ * at least 10% of normalized frame width.
  */
-export const MAX_SPLIT_VIEWPORT_OVERLAP = 0.2;
+export const MAX_SPLIT_VIEWPORT_OVERLAP = 0.0;
+export const MIN_SPLIT_VIEWPORT_GAP = 0.10;
 
-export function splitViewportsAreDistinct(viewports: NormalizedBox[]): boolean {
+export function boxesIntersect(a: NormalizedBox, b: NormalizedBox): boolean {
+  const overlapX = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const overlapY = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return overlapX > EPSILON && overlapY > EPSILON;
+}
+
+export function splitViewportsAreDistinct(
+  viewports: NormalizedBox[],
+  minGap = MIN_SPLIT_VIEWPORT_GAP,
+): boolean {
+  if (viewports.length < 2) return true;
   return viewports.every((viewport, index) =>
-    viewports.slice(index + 1).every((other) =>
-      importanceGeometry.overlapFractionOfSmaller(viewport, other) <= MAX_SPLIT_VIEWPORT_OVERLAP,
-    ));
+    viewports.slice(index + 1).every((other) => {
+      if (boxesIntersect(viewport, other)) return false;
+      if (importanceGeometry.overlapFractionOfSmaller(viewport, other) > MAX_SPLIT_VIEWPORT_OVERLAP + EPSILON) {
+        return false;
+      }
+      const gapX = Math.max(viewport.x, other.x) - Math.min(viewport.x + viewport.width, other.x + other.width);
+      const gapY = Math.max(viewport.y, other.y) - Math.min(viewport.y + viewport.height, other.y + other.height);
+      const minDistance = Math.max(gapX, gapY);
+      return minDistance >= minGap - EPSILON;
+    }));
+}
+
+/** A split panel owns one face core. It must contain its owner and may not
+ * intersect another panel's owner. This is an invariant, not a score threshold. */
+export function splitPanelsPreserveSubjects(
+  viewports: NormalizedBox[],
+  panelSubjects: Array<{ id: string; focusBox: NormalizedBox }> | undefined,
+): boolean {
+  if (!panelSubjects) return true; // legacy analyses are re-run by the version gate.
+  if (viewports.length < 2 || viewports.length !== panelSubjects.length) return false;
+  return panelSubjects.every((subject, index) =>
+    containsBox(viewports[index]!, subject.focusBox)
+    && viewports.every((viewport, otherIndex) =>
+      otherIndex === index || !boxesIntersect(viewport, subject.focusBox)));
+}
+
+export interface SplitPanelRegionInput {
+  box: NormalizedBox;
+  contentBox: NormalizedBox;
+  id: string;
+}
+
+export function fitSeparatedSplitPanels(
+  panelRegions: SplitPanelRegionInput[],
+  sourceAspect: number,
+  targetAspects: number[],
+  minGap = MIN_SPLIT_VIEWPORT_GAP,
+  minScaleThreshold = 0.35,
+): NormalizedBox[] | null {
+  if (panelRegions.length !== targetAspects.length) return null;
+  const panelSubjects = panelRegions.map((region) => ({ id: region.id, focusBox: region.box }));
+  const scaleMultipliers = [1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35];
+
+  for (const k of scaleMultipliers) {
+    const panels = panelRegions.map((region, index) => {
+      const targetAspect = targetAspects[index]!;
+      const nominal = nominalCropSize(sourceAspect, targetAspect);
+      const rawScale = Math.max(
+        minScaleThreshold,
+        region.contentBox.width / Math.max(EPSILON, nominal.width),
+        region.contentBox.height / Math.max(EPSILON, nominal.height),
+      );
+      const clampedScale = Math.min(1, Math.max(minScaleThreshold, rawScale * k));
+      const width = nominal.width * clampedScale;
+      const height = nominal.height * clampedScale;
+      const faceCenter = {
+        x: region.box.x + region.box.width / 2,
+        y: region.box.y + region.box.height * 0.5,
+      };
+
+      if (region.contentBox.width > width + EPSILON || region.contentBox.height > height + EPSILON) {
+        return null;
+      }
+      const minimumX = Math.max(0, region.contentBox.x + region.contentBox.width - width);
+      const maximumX = Math.min(1 - width, region.contentBox.x);
+      const minimumY = Math.max(0, region.contentBox.y + region.contentBox.height - height);
+      const maximumY = Math.min(1 - height, region.contentBox.y);
+      if (minimumX > maximumX + EPSILON || minimumY > maximumY + EPSILON) return null;
+
+      return {
+        x: clamp(faceCenter.x - width / 2, minimumX, maximumX),
+        y: clamp(faceCenter.y - height / 2, minimumY, maximumY),
+        width,
+        height,
+      };
+    });
+
+    if (
+      panels.every((panel): panel is NormalizedBox => panel != null)
+      && splitViewportsAreDistinct(panels, minGap)
+      && splitPanelsPreserveSubjects(panels, panelSubjects)
+    ) {
+      return panels;
+    }
+  }
+
+  return null;
 }
 
 export function unionAll(boxes: NormalizedBox[]): NormalizedBox | null {

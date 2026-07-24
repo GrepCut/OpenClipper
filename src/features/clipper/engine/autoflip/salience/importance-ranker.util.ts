@@ -80,6 +80,16 @@ interface TemporalPersonFallbackState {
   observations: Map<string, TemporalPersonObservation>;
 }
 
+interface ConversationPairMemory {
+  ids: [string, string];
+  centers: [number, number];
+  lastObservedAt: number;
+}
+
+interface ConversationPairState {
+  memory: ConversationPairMemory | null;
+}
+
 // Native subject samples arrive at 5 FPS. Three trustworthy observations
 // give a fast-moving rider a usable target in roughly 0.4 seconds without
 // promoting a one-off detector hit.
@@ -89,6 +99,13 @@ const TEMPORAL_PERSON_MAX_GAP_SEC = 0.75;
 const TEMPORAL_PERSON_MAX_HOLD_SEC = 1.2;
 const TEMPORAL_PERSON_MIN_DETECTOR_CONFIDENCE = 0.25;
 const TEMPORAL_PERSON_MIN_ASSOCIATION_CONFIDENCE = 0.6;
+// A detector may skip one or two native 5 FPS frames while the conversation
+// is unchanged. Remember the two established speakers across that brief gap,
+// but never manufacture a second target after the pair actually disappears.
+const CONVERSATION_PAIR_HOLD_SEC = 0.5;
+const CONVERSATION_SLOT_MAX_CENTER_DELTA = 0.12;
+const GROUP_THIRD_MIN_AREA_RATIO = 0.5;
+const TARGET_RETENTION_MARGIN = 0.04;
 
 function boxArea(box: NormalizedBox): number {
   return Math.max(0, box.width) * Math.max(0, box.height);
@@ -117,6 +134,81 @@ function unionBoxes(a: NormalizedBox, b: NormalizedBox): NormalizedBox {
   const right = Math.max(a.x + a.width, b.x + b.width);
   const bottom = Math.max(a.y + a.height, b.y + b.height);
   return { x, y, width: right - x, height: bottom - y };
+}
+
+function centerX(box: NormalizedBox): number {
+  return box.x + box.width / 2;
+}
+
+function isHumanRegion(region: ImportanceRegion): boolean {
+  return region.kind === "face" || region.kind === "head" || region.kind === "speaker" || region.kind === "person";
+}
+
+function humanSemanticQuality(region: ImportanceRegion): number {
+  if (region.kind === "face" || region.kind === "speaker") return 1;
+  if (region.kind === "head") return 0.95;
+  if (region.kind === "person") return 0.72;
+  return 0;
+}
+
+function targetSelectionScore(region: ImportanceRegion, maximumFocusArea: number): number {
+  const prominence = maximumFocusArea > 0
+    ? Math.sqrt(Math.min(1, boxArea(region.box) / maximumFocusArea))
+    : 0;
+  // Detector confidence often saturates for many faces in a crowd. Semantic
+  // specificity and visual prominence provide deterministic, scene-relative
+  // tie breakers without hard-coding screen positions or identities.
+  return region.importanceScore * 0.3
+    + humanSemanticQuality(region) * 0.55
+    + prominence * 0.15;
+}
+
+function rememberedConversationPair(
+  eligible: ImportanceRegion[],
+  time: number,
+  state: ConversationPairState | undefined,
+): [ImportanceRegion, ImportanceRegion] | null {
+  const memory = state?.memory;
+  if (!memory || time - memory.lastObservedAt > CONVERSATION_PAIR_HOLD_SEC) return null;
+  const humans = eligible.filter(isHumanRegion);
+  const byId = memory.ids.map((id) => humans.find((region) => region.id === id));
+  if (byId[0] && byId[1] && byId[0].id !== byId[1].id) return [byId[0], byId[1]];
+
+  // Canonical identity can change when a cached face detection is associated
+  // with a fresh native track. Fall back only to the established left/right
+  // slots; this avoids promoting the small background head between speakers.
+  const nearestSlot = (center: number, excludedId?: string) => humans
+    .filter((region) => region.id !== excludedId)
+    .filter((region) => Math.abs(centerX(region.contentBox) - center) <= CONVERSATION_SLOT_MAX_CENTER_DELTA)
+    .sort((a, b) => Math.abs(centerX(a.contentBox) - center) - Math.abs(centerX(b.contentBox) - center))[0];
+  const left = nearestSlot(memory.centers[0]);
+  const right = nearestSlot(memory.centers[1], left?.id);
+  return left && right ? [left, right] : null;
+}
+
+function rememberConversationPair(
+  pair: [ImportanceRegion, ImportanceRegion],
+  time: number,
+  state: ConversationPairState | undefined,
+): void {
+  if (!state) return;
+  const ordered = [...pair].sort((a, b) => centerX(a.contentBox) - centerX(b.contentBox)) as [ImportanceRegion, ImportanceRegion];
+  state.memory = {
+    ids: [ordered[0].id, ordered[1].id],
+    centers: [centerX(ordered[0].contentBox), centerX(ordered[1].contentBox)],
+    lastObservedAt: time,
+  };
+}
+
+function isMeaningfulThirdPerson(pair: [ImportanceRegion, ImportanceRegion], third: ImportanceRegion | undefined): boolean {
+  if (!third || !isHumanRegion(third)) return false;
+  const largerPairArea = Math.max(boxArea(pair[0].contentBox), boxArea(pair[1].contentBox));
+  const minimumPairSemanticQuality = Math.min(...pair.map(humanSemanticQuality));
+  return largerPairArea > 0
+    && boxArea(third.contentBox) >= largerPairArea * GROUP_THIRD_MIN_AREA_RATIO
+    && humanSemanticQuality(third) >= minimumPairSemanticQuality - 0.15
+    && overlapFractionOfSmaller(third.contentBox, pair[0].contentBox) < 0.7
+    && overlapFractionOfSmaller(third.contentBox, pair[1].contentBox) < 0.7;
 }
 
 function signalCandidate(region: SalientRegion): Candidate {
@@ -317,6 +409,7 @@ function rankFrame(
   compositionScores?: ReadonlyMap<string, number>,
   saliencyState?: SaliencyStabilityState,
   temporalPersonState?: TemporalPersonFallbackState,
+  conversationPairState?: ConversationPairState,
 ): { regions: ImportanceRegion[]; targetEvidence: TargetEvidence } {
   const clusters = clusterCandidates(regions)
     .filter((cluster) => cluster.candidates.some((candidate) => candidate.source !== "motion"))
@@ -356,11 +449,14 @@ function rankFrame(
   // Never turn a YOLOX-only pseudo-person into a required camera target. A
   // real person wins; otherwise a temporally stable ViNet region gets the
   // animation fallback, then independent objects retain product-video use.
-  const eligible = verifiedPeople.length
+  const eligibleUnordered = verifiedPeople.length
     ? verifiedPeople
     : stableSaliency
       ? [stableSaliency]
       : ranked.filter((region) => region.trust === "object");
+  const maximumFocusArea = Math.max(0, ...eligibleUnordered.filter(isHumanRegion).map((region) => boxArea(region.box)));
+  const eligible = [...eligibleUnordered].sort((left, right) =>
+    targetSelectionScore(right, maximumFocusArea) - targetSelectionScore(left, maximumFocusArea));
   if (!eligible.length) {
     const temporalPrimary = ranked.find((region) => qualifiedTemporalIds.has(region.id));
     if (!temporalPrimary) {
@@ -380,20 +476,28 @@ function rankFrame(
   }
   const priorPrimary = previous.find((region) => region.role === "primary" && region.trust !== "unverified-person");
   const retainedPrimary = priorPrimary
-    ? eligible.find((region) => region.id === priorPrimary.id && region.importanceScore >= eligible[0]!.importanceScore - 0.12)
+    ? eligible.find((region) => region.id === priorPrimary.id
+      && targetSelectionScore(region, maximumFocusArea) >= targetSelectionScore(eligible[0]!, maximumFocusArea) - TARGET_RETENTION_MARGIN)
     : undefined;
-  const primary = retainedPrimary ?? eligible[0]!;
+  const rememberedPair = rememberedConversationPair(eligible, time, conversationPairState);
+  const primary = rememberedPair?.find((region) => region.id === retainedPrimary?.id)
+    ?? rememberedPair?.[0]
+    ?? retainedPrimary
+    ?? eligible[0]!;
   primary.role = "primary";
   primary.required = true;
 
   // Three similarly strong people form a group/action composition. Picking
   // an arbitrary pair creates a false split and hides the third participant.
   const topThree = eligible.slice(0, 3);
-  const humanKinds = new Set<ImportanceRegionKind>(["face", "head", "speaker", "person"]);
+  const groupPair: [ImportanceRegion, ImportanceRegion] | null = rememberedPair
+    ?? (topThree[0] && topThree[1] ? [topThree[0], topThree[1]] : null);
   if (
     topThree.length === 3
-    && topThree.every((region) => humanKinds.has(region.kind))
-    && topThree[2]!.importanceScore >= topThree[1]!.importanceScore * 0.8
+    && topThree.every(isHumanRegion)
+    && targetSelectionScore(topThree[2]!, maximumFocusArea) >= targetSelectionScore(topThree[1]!, maximumFocusArea) * 0.85
+    && groupPair != null
+    && isMeaningfulThirdPerson(groupPair, topThree.find((region) => !groupPair.some((member) => member.id === region.id)))
   ) {
     primary.kind = "action";
     primary.contentBox = topThree.reduce(
@@ -408,15 +512,17 @@ function rankFrame(
     return { regions: ranked, targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified") };
   }
 
-  const secondary = eligible.find((region) =>
-    region.id !== primary.id
-    && region.importanceScore >= 0.5
-    && region.importanceScore >= primary.importanceScore * 0.68
-    && overlapFractionOfSmaller(region.contentBox, primary.contentBox) < 0.7,
-  );
+  const secondary = rememberedPair?.find((region) => region.id !== primary.id)
+    ?? eligible.find((region) =>
+      region.id !== primary.id
+      && region.importanceScore >= 0.5
+      && region.importanceScore >= primary.importanceScore * 0.68
+      && overlapFractionOfSmaller(region.contentBox, primary.contentBox) < 0.7,
+    );
   if (secondary) {
     secondary.role = "secondary";
     secondary.required = true;
+    rememberConversationPair([primary, secondary], time, conversationPairState);
   }
   return { regions: ranked, targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified") };
 }
@@ -454,12 +560,14 @@ export function buildImportanceTimeline(
   let previousObservedTime = Number.NEGATIVE_INFINITY;
   const saliencyState: SaliencyStabilityState = { previous: null, consecutive: 0 };
   const temporalPersonState: TemporalPersonFallbackState = { observations: new Map() };
+  const conversationPairState: ConversationPairState = { memory: null };
   return keyframes.map((keyframe) => {
     if (keyframe.isShotChange || keyframe.time - previousObservedTime > 0.6) {
       previous = [];
       saliencyState.previous = null;
       saliencyState.consecutive = 0;
       temporalPersonState.observations.clear();
+      conversationPairState.memory = null;
     }
     const ranked = rankFrame(
       keyframe.regions,
@@ -468,6 +576,7 @@ export function buildImportanceTimeline(
       compositionScores,
       saliencyState,
       temporalPersonState,
+      conversationPairState,
     );
     const regions = ranked.regions;
     // A detector dropout is not evidence that the person disappeared. Keep

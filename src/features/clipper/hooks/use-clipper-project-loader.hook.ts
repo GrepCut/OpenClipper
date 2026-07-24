@@ -33,6 +33,7 @@ import {
   type ClipperPipelineStepRecord,
   type ClipperResumePlan,
 } from "../persistence/pipeline-api.util";
+import { AUTOFLIP_ANALYZER_VERSION } from "../engine/autoflip/config/config.constants";
 
 export type ClipperLoaderPhase = "loading" | "ready" | "error";
 
@@ -130,7 +131,9 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
           "Loading pipeline state",
           "Fetching completed steps and resume plan from the server",
         );
-        const pipelineState = await clipperPipelineService.getPipeline(project.id);
+        const pipelineState = await clipperPipelineService.getPipeline(project.id, {
+          requiredAnalyzerVersion: AUTOFLIP_ANALYZER_VERSION,
+        });
         const { steps, resumePlan, faceAnalysis } = pipelineState;
         isRestoreFlow = isRestoreBootFlow(resumePlan, metadata.stage);
 

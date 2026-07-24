@@ -44,6 +44,14 @@ export {
 export { buildViewports } from "./viewport-builder.util";
 export { buildLayoutTracks } from "./layout-planner.util";
 export { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";
+export { bridgeTransientSplitGaps, confirmOfflineSplitEntries } from "./offline-split-confirmation.util";
+export {
+  isShortCandidateSplitRun,
+  isShortSelectedSplitRun,
+  restoreShortSplitCandidate,
+  shouldKeepShortSplitRun,
+  withShortSplitConfidenceReason,
+} from "./short-split-policy.util";
 export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation.util";
 export type {
   ArbiterDecision,

@@ -132,7 +132,7 @@ export function drawVerticalSplitFrame(
   output: VideoSize,
   topCrop: SplitCropRect,
   bottomCrop: SplitCropRect,
-  dividerPx = 3,
+  dividerPx = 0,
 ): void {
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, output.width, output.height);
@@ -167,7 +167,7 @@ export function drawPrimaryPlusTwoFrame(
   primaryCrop: SplitCropRect,
   secondaryOneCrop: SplitCropRect,
   secondaryTwoCrop: SplitCropRect,
-  dividerPx = 3,
+  dividerPx = 0,
 ): void {
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, output.width, output.height);

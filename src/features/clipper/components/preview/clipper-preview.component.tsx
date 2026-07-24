@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Box, VStack, useDisclosure } from "@chakra-ui/react";
 import {
   deriveCollageAspectEligibility,
+  deriveRegionsFromLayoutTracks,
   deriveTwoSpeakerRegions,
   filterRegionsWithEligibleAspects,
 } from "../../engine/reframe/collage";
@@ -121,6 +122,10 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
   const collageRegions = useMemo(
     () => {
       const context = getFrameContext();
+      if (context?.smartCropAnalysis?.layoutTracks) {
+        const layoutRegions = deriveRegionsFromLayoutTracks(context.smartCropAnalysis, "tiktok");
+        if (layoutRegions.length > 0) return layoutRegions;
+      }
       const samples = context?.faceCache?.sortedSamples() ?? [];
       const regions = context?.faceRender?.collageRegions ?? deriveTwoSpeakerRegions(samples);
       const eligibility = context?.faceRender?.collageEligibility

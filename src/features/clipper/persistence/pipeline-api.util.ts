@@ -56,8 +56,9 @@ export interface ClipperPipelineStateResponse {
 const STEPS = "clipper-pipeline-steps";
 const FACE = "clipper-face-analysis";
 
-function computeResumePlan(
+export function computeResumePlan(
   steps: ClipperPipelineStepRecord[],
+  options?: { requiredAnalyzerVersion?: string },
 ): ClipperResumePlan {
   const completed = (key: ClipperPipelineStepKey) =>
     steps.find((step) => step.stepKey === key)?.status === "completed";
@@ -70,17 +71,26 @@ function computeResumePlan(
       skipToPreview: false,
     };
   }
+  const subjectStep = steps.find((step) => step.stepKey === "analyze_subjects");
+  const savedAnalyzerVersion = typeof subjectStep?.metadata?.analyzerVersion === "string"
+    ? subjectStep.metadata.analyzerVersion
+    : undefined;
+  const subjectAnalysisCurrent = options?.requiredAnalyzerVersion == null
+    || savedAnalyzerVersion === options.requiredAnalyzerVersion;
   return {
     target: "restoring",
     skipTranscribe: completed("transcribe"),
     skipFaceDetect: completed("analyze_faces"),
-    skipSubjectAnalysis: completed("analyze_subjects"),
+    // Face detections can be restored, but a changed layout/identity policy
+    // must rebuild the AutoFlip track from fresh subject extraction.
+    skipSubjectAnalysis: completed("analyze_subjects") && subjectAnalysisCurrent,
     skipToPreview: completed("preview_ready"),
   };
 }
 
 async function getState(
   projectId: string,
+  options?: { requiredAnalyzerVersion?: string },
 ): Promise<ClipperPipelineStateResponse> {
   const steps =
     (await localRecordGet<ClipperPipelineStepRecord[]>(STEPS, projectId)) ?? [];
@@ -88,7 +98,7 @@ async function getState(
     FACE,
     projectId,
   );
-  return { steps, resumePlan: computeResumePlan(steps), faceAnalysis };
+  return { steps, resumePlan: computeResumePlan(steps, options), faceAnalysis };
 }
 
 export const clipperPipelineService = {

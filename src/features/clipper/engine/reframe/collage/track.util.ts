@@ -366,6 +366,9 @@ export function deriveCollageAspectEligibility(
   for (const region of regions) {
     const regionSamples = samples.filter((sample) => sample.time >= region.start && sample.time <= region.end);
     for (const aspectId of Object.keys(COLLAGE_ASPECT_RATIOS) as ClipperAspectPresetId[]) {
+      // Landscape 16:9 (YouTube, X / Twitter) should NEVER use split screen / collage.
+      if (aspectId === "16-9") continue;
+
       const ratio = COLLAGE_ASPECT_RATIOS[aspectId];
       let qualifyingRun = 0;
       let disqualifyingRun = 0;
@@ -374,7 +377,11 @@ export function deriveCollageAspectEligibility(
       for (let index = 0; index < regionSamples.length; index++) {
         const sample = regionSamples[index]!;
         const pair = selectDominantFacePair(sample.faces);
+        // For square 1:1 (Instagram 1:1), try single crop first. Only allow collage split
+        // if both faces cannot fit in a single crop.
+        const fitsInSingle = aspectId === "1-1" && pair != null && facesFitSingleCrop(pair, sample.frameW, sample.frameH, ratio);
         const qualifies = pair != null
+          && !fitsInSingle
           && splitCropsAreDistinct(pair, sample.frameW, sample.frameH, ratio, headroom);
 
         if (qualifies) {
@@ -418,4 +425,50 @@ export function filterRegionsWithEligibleAspects(
     aspectIds.flatMap((aspectId) => eligibility[aspectId].map((window) => window.regionId)),
   );
   return regions.filter((region) => eligibleIds.has(region.id));
+}
+
+export function deriveRegionsFromLayoutTracks(
+  smartCropAnalysis: { layoutTracks?: Record<string, { samples: Array<{ t: number; mode: string }> }> } | null | undefined,
+  primaryFormatId = "tiktok",
+): CollageRegion[] {
+  if (!smartCropAnalysis?.layoutTracks) return [];
+  const track = smartCropAnalysis.layoutTracks[primaryFormatId]
+    ?? smartCropAnalysis.layoutTracks.default
+    ?? Object.values(smartCropAnalysis.layoutTracks)[0];
+  if (!track?.samples.length) return [];
+
+  const regions: CollageRegion[] = [];
+  let openStart: number | null = null;
+
+  for (let i = 0; i < track.samples.length; i++) {
+    const sample = track.samples[i]!;
+    const isSplit = sample.mode === "split";
+
+    if (isSplit && openStart == null) {
+      openStart = sample.t;
+    } else if (!isSplit && openStart != null) {
+      const prevTime = track.samples[Math.max(0, i - 1)]!.t;
+      const startBucket = Math.round(openStart / FACE_SAMPLE_INTERVAL_SEC);
+      regions.push({
+        id: `r${startBucket}`,
+        start: openStart,
+        end: prevTime,
+        topIsLeft: true,
+      });
+      openStart = null;
+    }
+  }
+
+  if (openStart != null) {
+    const lastTime = track.samples.at(-1)!.t;
+    const startBucket = Math.round(openStart / FACE_SAMPLE_INTERVAL_SEC);
+    regions.push({
+      id: `r${startBucket}`,
+      start: openStart,
+      end: lastTime,
+      topIsLeft: true,
+    });
+  }
+
+  return regions;
 }

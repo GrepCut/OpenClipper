@@ -1,29 +1,27 @@
 import type { CollageRegion } from "../types/collage.types";
 import type { ResolvedClipperLayout } from "../types/render.types";
 
-/** Picks semantic layout vs face collage vs single-crop fallback for one frame. */
+/** Applies user region overrides to the planned AutoFlip layout decision for one frame. */
 export function resolveFrameLayoutBranch(
   resolvedPlannedLayout: ResolvedClipperLayout | undefined,
   activeRegion: CollageRegion | null,
   disabledRegionIds: string[],
-  collageEligible: boolean,
-): { plannedLayout: ResolvedClipperLayout | undefined; useCollage: boolean } {
-  const splitDisabledByUser = resolvedPlannedLayout?.mode === "split"
+): { plannedLayout: ResolvedClipperLayout | undefined } {
+  if (!resolvedPlannedLayout) return { plannedLayout: undefined };
+
+  const splitDisabledByUser = resolvedPlannedLayout.mode === "split"
     && activeRegion != null
     && disabledRegionIds.includes(activeRegion.id);
 
-  let plannedLayout = splitDisabledByUser ? undefined : resolvedPlannedLayout;
-
-  if (
-    plannedLayout != null
-    && (plannedLayout.mode === "single-crop" || plannedLayout.mode === "contain")
-    && collageEligible
-  ) {
-    plannedLayout = undefined;
+  if (splitDisabledByUser) {
+    return {
+      plannedLayout: {
+        ...resolvedPlannedLayout,
+        mode: "single-crop",
+        viewports: [resolvedPlannedLayout.viewports[0]!],
+      },
+    };
   }
 
-  return {
-    plannedLayout,
-    useCollage: plannedLayout == null && collageEligible,
-  };
+  return { plannedLayout: resolvedPlannedLayout };
 }

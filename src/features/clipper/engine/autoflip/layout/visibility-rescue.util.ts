@@ -3,7 +3,7 @@ import type {
   ImportanceRegionSample,
   NormalizedBox,
 } from "../../../shared/smart-crop.util";
-import { nominalCropSize, splitViewportsAreDistinct } from "./viewport-geometry.util";
+import { fitSeparatedSplitPanels, nominalCropSize, splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
 import type {
   VisibilityControllerDecision,
   VisibilityControllerParams,
@@ -51,7 +51,10 @@ function currentVariant(state: VisibilityControllerState, envelopes: ImportanceR
   const kind = state.lastSplitViewports.length === 3
     ? "stable-split-3"
     : "stable-split-v3";
-  return variant(kind, "split", state.lastSplitViewports, envelopes);
+  return variant(kind, "split", state.lastSplitViewports, envelopes, state.lastSplitPanelSubjects.map((subject) => ({
+    id: subject.id,
+    box: subject.focusBox,
+  })) as ImportanceRegion[]);
 }
 
 function layoutKey(mode: string, viewportCount: number): string {
@@ -179,6 +182,7 @@ export function planVisibilityRescue(input: {
   const envelopes = buildVisibilityEnvelopes(input.samples, input.importanceIndex, { ...params, lookaheadSec: 0 });
   const baseline = variant("run8-baseline", "single-crop", [input.baselineViewport], envelopes);
   const variants: VisibilityVariant[] = [baseline];
+  const activeSplitBeforeEvidence = currentVariant(input.state, envelopes);
   const emergency = (baseline.requiredCoverage[0] ?? 1) < EMERGENCY_PRIMARY_COVERAGE;
   const trackedPrediction = envelopes.length === 1
     && envelopes[0]?.role === "primary"
@@ -191,6 +195,31 @@ export function planVisibilityRescue(input: {
   if (!params.enabled || !envelopes.length || (sample.cut && !singlePrimary)
     || envelopes.some((region) => region.identityAmbiguous)
     || (envelopes.some((region) => region.predicted) && !trackedPrediction)) {
+    // A detector dropout is not evidence that the editorial split ended.
+    // Keep the previously confirmed layout until the same exit confirmation
+    // window used by the state machine has elapsed.
+    if (!sample.cut && activeSplitBeforeEvidence) {
+      input.state.identityLostAt ??= time;
+      if (time - input.state.identityLostAt < params.splitExitStableSec) {
+        return {
+          mode: "split",
+          viewports: activeSplitBeforeEvidence.viewports,
+          envelopes,
+          variants: [...variants, activeSplitBeforeEvidence],
+          baselineCoverage: baseline.requiredCoverage,
+          selectedCoverage: activeSplitBeforeEvidence.requiredCoverage,
+          reasonCodes: ["stable-split-dropout-hold"],
+          visibilityRisk: true,
+        };
+      }
+    }
+    if (input.state.activeMode === "split") {
+      input.state.activeMode = "single-crop";
+      input.state.activeViewportCount = 1;
+      input.state.modeSince = time;
+      input.state.lastSplitViewports = [];
+      input.state.identityLostAt = null;
+    }
     const noTargetReason = sample.targetEvidence?.status === "temporal-pending"
       ? "temporal-person-pending"
       : "no-target-evidence";
@@ -246,32 +275,37 @@ export function planVisibilityRescue(input: {
   const wider = cropForEnvelope(requiredUnion, input.sourceAspect, input.targetAspect, Math.min(1, currentScale + 0.08));
   if (wider) variants.push(variant("wider-crop", "single-crop", [wider], envelopes));
 
+  // Split screen is not permitted for landscape/wide formats (targetAspect > 1.0).
+  const allowSplitForAspect = input.targetAspect <= 1.0;
   const stableEvidence = envelopes.every(hasIndependentEvidence)
     && envelopes.every((region) => (region.associationConfidence ?? 1) >= (params.minimumAssociationConfidence ?? 0));
+  const pairStable = allowSplitForAspect && envelopes.length === 2 && stableEvidence
+    && stablePair(input.samples, input.importanceIndex, envelopes, params.splitStableSamples);
   const ids = envelopes.map((region) => region.id);
-  const pairStable = envelopes.length === 2 && stableEvidence
-    && stablePair(input.samples, input.importanceIndex, ids, params.splitStableSamples);
-  const tripleStable = envelopes.length === 3 && stableEvidence
+  const tripleStable = allowSplitForAspect && envelopes.length === 3 && stableEvidence
     && stableTriple(input.samples, input.importanceIndex, ids, params.splitStableSamples);
   if (pairStable) {
-    const panels = orderedPair(envelopes, input.state)
-      .map((region) => cropForEnvelope(region.contentBox, input.sourceAspect, input.targetAspect * 2, 0.55));
-    if (
-      panels.every((panel): panel is NormalizedBox => panel != null)
-      && splitViewportsAreDistinct(panels)
-    ) {
-      variants.push(variant(params.splitVariant === "v3" ? "stable-split-v3" : "stable-split-v2", "split", panels, envelopes));
+    const panelRegions = orderedPair(envelopes, input.state);
+    const targetAspects = [input.targetAspect * 2, input.targetAspect * 2];
+    const panels = fitSeparatedSplitPanels(
+      panelRegions.map((r) => ({ id: r.id, box: r.box, contentBox: r.contentBox })),
+      input.sourceAspect,
+      targetAspects,
+    );
+    if (panels) {
+      variants.push(variant(params.splitVariant === "v3" ? "stable-split-v3" : "stable-split-v2", "split", panels, envelopes, panelRegions));
     }
   }
   if (tripleStable) {
     const aspects = splitThreePanelAspects(input.targetAspect);
-    const panels = orderedTriple(envelopes, input.state)
-      .map((region, index) => cropForEnvelope(region.contentBox, input.sourceAspect, aspects[index]!, 0.55));
-    if (
-      panels.every((panel): panel is NormalizedBox => panel != null)
-      && splitViewportsAreDistinct(panels)
-    ) {
-      variants.push(variant("stable-split-3", "split", panels, envelopes));
+    const panelRegions = orderedTriple(envelopes, input.state);
+    const panels = fitSeparatedSplitPanels(
+      panelRegions.map((r) => ({ id: r.id, box: r.box, contentBox: r.contentBox })),
+      input.sourceAspect,
+      aspects,
+    );
+    if (panels) {
+      variants.push(variant("stable-split-3", "split", panels, envelopes, panelRegions));
     }
   }
 
@@ -292,18 +326,47 @@ export function planVisibilityRescue(input: {
     coversAll(centeredSingle.requiredCoverage)
     || input.state.singlePrimaryId === envelopes[0]?.id
   );
-  let selected = primaryCenterSafe ? centeredSingle : baselineSafe ? baseline : safeCommonCrop ?? splitCandidate ?? baseline;
+  // For square 1:1 formats (input.targetAspect === 1.0), prioritize single-crop
+  // (shifted/wider/baseline crop) over split screen whenever a single crop is safe.
+  const preferSingleForSquare = Math.abs(input.targetAspect - 1.0) < EPSILON;
+  let selected = primaryCenterSafe
+    ? centeredSingle
+    : baselineSafe
+    ? baseline
+    : preferSingleForSquare
+      ? (safeCommonCrop ?? splitCandidate ?? baseline)
+      : (safeCommonCrop ?? splitCandidate ?? baseline);
+  if (preferSingleForSquare && (safeCommonCrop || baselineSafe)) {
+    selected = primaryCenterSafe ? centeredSingle : baselineSafe ? baseline : safeCommonCrop ?? baseline;
+  }
 
+  // A single-person frame can be a transient detector loss.  The split is
+  // allowed to end only after the controller's existing exit confirmation;
+  // this is deliberately state-based rather than a frame-count heuristic.
+  const heldSplit = currentVariant(input.state, envelopes);
+  let holdingActiveSplit = false;
+  if (input.state.activeMode === "split" && !pairStable) {
+    input.state.identityLostAt ??= time;
+    if (heldSplit && time - input.state.identityLostAt < params.splitExitStableSec) {
+      selected = heldSplit;
+      holdingActiveSplit = true;
+    }
+  }
   const currentKey = layoutKey(input.state.activeMode, input.state.activeViewportCount);
   const selectedKey = layoutKey(selected.mode, selected.viewports.length);
   const activeFor = time - input.state.modeSince;
   const switching = currentKey !== selectedKey;
+  const resumesKnownPair = pairStable
+    && input.state.identityLostAt != null
+    && time - input.state.identityLostAt <= (params.identityHoldSec ?? 0.6);
   if (switching && selected.mode === "split" && !emergency) {
-    if (input.state.machineState !== "split-pending") {
+    if (resumesKnownPair) {
+      input.state.pendingSince = null;
+    } else if (input.state.machineState !== "split-pending") {
       input.state.machineState = "split-pending";
       input.state.pendingSince = time;
     }
-    if (time - (input.state.pendingSince ?? time) < (params.splitPendingSec ?? 1.5)) {
+    if (!resumesKnownPair && time - (input.state.pendingSince ?? time) < (params.splitPendingSec ?? 1.5)) {
       selected = safeCommonCrop ?? baseline;
     }
   } else if (selected.mode !== "split") {
@@ -350,7 +413,16 @@ export function planVisibilityRescue(input: {
   if (!(input.state.machineState === "split-pending" && selected.mode !== "split")) {
     input.state.machineState = selected.mode === "split" ? "split-active" : "common";
   }
-  if (selected.mode === "split") input.state.lastSplitViewports = selected.viewports.map((viewport) => ({ ...viewport }));
+  if (selected.mode === "split") {
+    // Holding a previous layout must not restart the exit timer. Only an
+    // independently re-observed pair proves that the split is still valid.
+    if (pairStable) input.state.identityLostAt = null;
+    input.state.lastSplitViewports = selected.viewports.map((viewport) => ({ ...viewport }));
+    input.state.lastSplitPanelSubjects = selected.panelSubjects?.map((subject) => ({
+      id: subject.id,
+      focusBox: { ...subject.focusBox },
+    })) ?? [];
+  }
   input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
   const reason = selected === centeredSingle
     ? "primary-horizontal-center"
@@ -370,7 +442,14 @@ export function planVisibilityRescue(input: {
     variants,
     baselineCoverage: baseline.requiredCoverage,
     selectedCoverage: selected.requiredCoverage,
-    reasonCodes: [reason, ...(emergency ? ["primary-coverage-emergency"] : []), ...(predictedEdgeRisk ? ["outward-edge-risk"] : []), "lookahead-envelope"],
+    reasonCodes: [
+      reason,
+      ...(holdingActiveSplit ? ["stable-split-dropout-hold"] : []),
+      ...(emergency ? ["primary-coverage-emergency"] : []),
+      ...(predictedEdgeRisk ? ["outward-edge-risk"] : []),
+      "lookahead-envelope",
+    ],
     visibilityRisk: risk,
+    panelSubjects: selected.panelSubjects,
   };
 }

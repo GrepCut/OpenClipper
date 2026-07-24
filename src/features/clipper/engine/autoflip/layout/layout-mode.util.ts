@@ -10,8 +10,12 @@ export function rawMode(
 ): ClipperLayoutMode {
   const required = requiredRegions(sample);
   if (!required.length) return "single-crop";
+  // Landscape / wide formats (e.g. 16:9 YouTube) should never use split screen.
+  if (targetAspect > 1.0) return "single-crop";
+
   const union = unionAll(required.map((region) => region.contentBox))!;
   if (boxFitsStrictCrop(union, sourceAspect, targetAspect)) return "single-crop";
+
   if (required.length >= 2) {
     const overlap = importanceGeometry.overlapFractionOfSmaller(required[0]!.contentBox, required[1]!.contentBox);
     // Above this threshold the two panels would mostly repeat the same

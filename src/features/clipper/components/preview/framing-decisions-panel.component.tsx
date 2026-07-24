@@ -13,7 +13,16 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { appToast } from "../../../../shared/utils/toast.service";
-import { importanceAtTime, precedingIndex, resolveLayoutTrack } from "../../engine/autoflip/layout";
+import {
+  importanceAtTime,
+  isShortCandidateSplitRun,
+  isShortSelectedSplitRun,
+  precedingIndex,
+  resolveLayoutTrack,
+  restoreShortSplitCandidate,
+  shouldKeepShortSplitRun,
+  withShortSplitConfidenceReason,
+} from "../../engine/autoflip/layout";
 import { extractVideoFrameJpeg } from "../../lib/media/video-frame-extract.util";
 import { CLIPPER_TRIMMED_SEGMENT_FILE, pathBackedClipperFile } from "../../platform/native-source.util";
 import type { ClipperLayoutMode, ClipperSmartCropBlob, ImportanceRegion } from "../../shared/smart-crop.util";
@@ -611,7 +620,15 @@ export function FramingDecisionsPanel({
 
     const samples = track.samples;
     const index = precedingIndex(samples.map((sample) => ({ time: sample.t })), time);
-    const decision = index >= 0 ? samples[index] : undefined;
+    const rawDecision = index >= 0 ? samples[index] : undefined;
+    const decision = rawDecision != null
+      && ((rawDecision.mode === "split" && isShortSelectedSplitRun(samples, index))
+        || isShortCandidateSplitRun(samples, index))
+      && shouldKeepShortSplitRun(samples, index)
+      ? rawDecision.mode === "split"
+        ? withShortSplitConfidenceReason(rawDecision)
+        : restoreShortSplitCandidate(rawDecision) ?? rawDecision
+      : rawDecision;
     const regions = importanceAtTime(analysis.importanceSamples ?? [], time).regions;
     const rankedEntities = (analysis.compositionMemory?.rankedEntityIds ?? [])
       .map((id) => analysis.compositionMemory?.entities.find((entity) => entity.id === id))

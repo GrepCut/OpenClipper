@@ -22,33 +22,29 @@ import { rawMode } from "./layout-mode.util";
 import { createVisibilityFramingState } from "./visibility-framing.util";
 import { buildViewports } from "./viewport-builder.util";
 import { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";
+import { bridgeTransientSplitGaps } from "./offline-split-confirmation.util";
+import {
+  isShortSelectedSplitRun,
+  shouldKeepShortSplitRun,
+  withShortSplitConfidenceReason,
+} from "./short-split-policy.util";
 
 const EPSILON = 1e-9;
-const MINIMUM_SPLIT_DURATION_SEC = 2;
 
 /** Remove split runs too short to be meaningful in the rendered video. */
 function removeShortSplitRuns(samples: ClipperLayoutSample[]): ClipperLayoutSample[] {
   const stabilized = samples.map((sample) => ({ ...sample, viewports: [...sample.viewports] }));
-  let start = 0;
-  while (start < stabilized.length) {
-    if (stabilized[start]!.mode !== "split") {
-      start++;
+  for (let index = 0; index < stabilized.length; index++) {
+    const sample = stabilized[index]!;
+    if (sample.mode !== "split" || !isShortSelectedSplitRun(stabilized, index)) continue;
+    if (shouldKeepShortSplitRun(stabilized, index)) {
+      stabilized[index] = withShortSplitConfidenceReason(sample);
       continue;
     }
-    let end = start + 1;
-    while (end < stabilized.length && stabilized[end]!.mode === "split" && !stabilized[end]!.cut) end++;
-    const lastSplit = stabilized[end - 1]!;
-    const endTime = end < stabilized.length ? stabilized[end]!.t : lastSplit.t;
-    if (endTime - stabilized[start]!.t < MINIMUM_SPLIT_DURATION_SEC) {
-      for (let index = start; index < end; index++) {
-        const sample = stabilized[index]!;
-        sample.mode = "single-crop";
-        sample.strategy = "legacy-baseline";
-        sample.viewports = sample.baselineViewports?.map((viewport) => ({ ...viewport })) ?? [sample.viewports[0]!];
-        sample.reasonCodes = [...(sample.reasonCodes ?? []), "split-too-short"];
-      }
-    }
-    start = end;
+    sample.mode = "single-crop";
+    sample.strategy = "legacy-baseline";
+    sample.viewports = sample.baselineViewports?.map((viewport) => ({ ...viewport })) ?? [sample.viewports[0]!];
+    sample.reasonCodes = [...(sample.reasonCodes ?? []), "split-too-short"];
   }
   return stabilized;
 }
@@ -137,6 +133,12 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         baselineViewports,
         primaryRegionId: required.find((region) => region.role === "primary")?.id,
         requiredRegionIds: required.map((region) => region.id),
+        panelSubjects: decision.selectSemantic && desiredMode === "split"
+          ? visibilityDecision?.panelSubjects?.map((subject) => ({
+              id: subject.id,
+              focusBox: { ...subject.focusBox },
+            }))
+          : undefined,
         baselineScore,
         semanticScore,
         decisionConfidence: decision.decisionConfidence,
@@ -160,7 +162,11 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         solidBackgroundColor: cropSample.solidBackgroundColor,
       };
     });
-    const smoothedSamples = smoothLayoutTrackSamples(samples);
+    const denoisedSamples = bridgeTransientSplitGaps(
+      samples,
+      input.visibilityControllerParams?.splitExitStableSec ?? 0,
+    );
+    const smoothedSamples = smoothLayoutTrackSamples(denoisedSamples);
     return [formatId, { targetAspectRatio: aspectTrack.targetAspectRatio, samples: removeShortSplitRuns(smoothedSamples) }];
   }));
 }

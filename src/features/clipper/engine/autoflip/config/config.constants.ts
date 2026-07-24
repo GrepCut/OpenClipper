@@ -1,6 +1,6 @@
-// v27 keeps source detail through 1080p and augments SCRFD with overlapping
-// native-resolution tiles; persisted v26 tracks must be recomputed.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v28-face-cache-evidence";
+// v33 keeps a confirmed conversation layout through detector dropouts without
+// allowing held panels to renew or confirm split evidence.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v35-no-landscape-split-and-gap-10pct";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v5-yolox-s-scrfd10g-tiled";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;

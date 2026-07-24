@@ -62,6 +62,12 @@ function faceRegionsFromDetection(face: AutoFlipFaceDetection): SalientRegion[] 
     // landmark rectangle independently.
     { box: core, score: weightedScore(clamp01(core.width * core.height), "face_core"), signalType: "face_core", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous, projectIdentityId: face.projectIdentityId, trust: "verified-person" },
     { box: all, score: weightedScore(clamp01(all.width * all.height), "face_all"), signalType: "face_all", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous, projectIdentityId: face.projectIdentityId, trust: "verified-person" },
+    // Landmarks describe the facial core, not the visible extent of the
+    // subject. Keep that precision for focus scoring while also carrying the
+    // detector's full face rectangle into coverage and pair geometry. This is
+    // detector-agnostic and prevents tightly clustered landmarks from making
+    // a real foreground person look smaller than a background head.
+    { box: face.box, score: weightedScore(clamp01(face.box.width * face.box.height), "face_full"), signalType: "face_full", isRequired: false, trackId: face.trackId, predicted: face.predicted, associationConfidence: face.associationConfidence, identityAmbiguous: face.identityAmbiguous, projectIdentityId: face.projectIdentityId, trust: "verified-person" },
   ];
 }
 

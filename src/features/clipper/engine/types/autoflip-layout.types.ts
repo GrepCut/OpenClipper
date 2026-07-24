@@ -72,6 +72,7 @@ export interface VisibilityControllerState {
   machineState: VisibilityMachineState;
   pendingSince: number | null;
   lastSplitViewports: NormalizedBox[];
+  lastSplitPanelSubjects: Array<{ id: string; focusBox: NormalizedBox }>;
   identityLostAt: number | null;
   modeSwitchTimestamps: number[];
   sceneStartedAt: number;
@@ -89,6 +90,7 @@ export interface VisibilityVariant {
   mode: ClipperLayoutMode;
   viewports: NormalizedBox[];
   requiredCoverage: number[];
+  panelSubjects?: Array<{ id: string; focusBox: NormalizedBox }>;
 }
 
 export interface VisibilityControllerDecision {
@@ -100,6 +102,7 @@ export interface VisibilityControllerDecision {
   selectedCoverage: number[];
   reasonCodes: string[];
   visibilityRisk: boolean;
+  panelSubjects?: Array<{ id: string; focusBox: NormalizedBox }>;
 }
 
 export interface SemanticFramingParams {

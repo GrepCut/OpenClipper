@@ -9,15 +9,7 @@ import { canonicalFormatDims } from "../../shared/formats.util";
 import type { ClipperResolutionCap, ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFrameContext } from "../types/render.types";
 import { resolveFrameLayoutBranch } from "./frame-layout-branch.util";
-import {
-  buildCollageTracksForRegions,
-  deriveCollageAspectEligibility,
-  deriveTwoSpeakerRegions,
-  drawPodcastCollageFrame,
-  findActiveRegion,
-  isCollageAspectEligible,
-} from "../reframe/collage";
-import { FaceSampleCache } from "../reframe";
+import { deriveTwoSpeakerRegions, findActiveRegion } from "../reframe/collage";
 import { resolveAutoFlipCropRender } from "./crop-resolvers.util";
 import { resolveClipperLayoutRender } from "./layout-resolvers.util";
 import {
@@ -70,47 +62,18 @@ export function drawClipperFrame(
   const collageRegions = needsTracking
     ? (render.faceRender?.collageRegions ?? deriveTwoSpeakerRegions(samples))
     : [];
-  const collageTracks = needsTracking
-    ? (render.faceRender?.collageTracks
-      ?? buildCollageTracksForRegions(
-        samples,
-        collageRegions,
-        render.disabledCollageRegionIds,
-      ))
-    : null;
-  const collageEligibility = needsTracking
-    ? (render.faceRender?.collageEligibility
-      ?? deriveCollageAspectEligibility(samples, collageRegions, render.settings.reframe.headroom))
-    : null;
 
   const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;
-  const collageEligible = needsTracking
-    && formatDef.mode === "crop"
-    && activeRegion != null
-    && !render.disabledCollageRegionIds.includes(activeRegion.id)
-    && isCollageAspectEligible(collageEligibility!, formatDef.aspectId, activeRegion.id, t);
-  const { plannedLayout, useCollage } = resolveFrameLayoutBranch(
+  const { plannedLayout } = resolveFrameLayoutBranch(
     resolvedPlannedLayout,
     activeRegion,
     render.disabledCollageRegionIds,
-    collageEligible,
   );
 
   const showDebug = isPreview && render.settings.reframe.showDebugFaceBoxes && formatDef.mode === "crop";
 
   if (plannedLayout) {
     drawClipperLayoutFrame(formatDef, ctx, frame, source, output, plannedLayout);
-  } else if (useCollage) {
-    drawPodcastCollageFrame(
-      ctx,
-      frame,
-      source,
-      output,
-      collageTracks!,
-      t,
-      render.settings.reframe.headroom,
-      true,
-    );
   } else {
     const autoFlipRender = resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t);
     const cropRect = autoFlipRender?.cropRect;

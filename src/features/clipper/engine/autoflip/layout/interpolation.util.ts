@@ -9,8 +9,18 @@ import {
   precedingIndex,
 } from "./arbiter.util";
 import { interpolateCameraBox } from "../camera/trajectory-interpolation.util";
+import { splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
 
 const EPSILON = 1e-9;
+
+function samePanelOwners(a: ClipperLayoutSample, b: ClipperLayoutSample): boolean {
+  if (a.mode !== "split") return true;
+  const aOwners = a.panelSubjects;
+  const bOwners = b.panelSubjects;
+  if (!aOwners && !bOwners) return true;
+  return aOwners?.length === bOwners?.length
+    && aOwners.every((owner, index) => owner.id === bOwners[index]?.id);
+}
 
 export function resolveLayoutTrack(
   tracks: Record<string, ClipperLayoutTrack> | undefined,
@@ -28,7 +38,7 @@ export function interpolateLayoutSample(
   const index = precedingIndex(track.samples.map((sample) => ({ ...sample, time: sample.t })), time);
   const previous = track.samples[index]!;
   const next = track.samples[index + 1];
-  if (!next || next.cut || next.mode !== previous.mode || next.viewports.length !== previous.viewports.length) {
+  if (!next || next.cut || next.mode !== previous.mode || next.viewports.length !== previous.viewports.length || !samePanelOwners(previous, next)) {
     return { ...previous, t: time };
   }
   const factor = clamp((time - previous.t) / Math.max(EPSILON, next.t - previous.t), 0, 1);
@@ -45,6 +55,12 @@ export function interpolateLayoutSample(
     : previous.coverageBoxes;
   const interpolationSafe = !interpolatedCoverageBoxes?.length || interpolatedCoverageBoxes.every((box) =>
     interpolatedViewports.some((viewport) => coveredFraction(viewport, box) >= 1 - EPSILON));
+  if (previous.mode === "split" && (
+    !splitViewportsAreDistinct(interpolatedViewports)
+    || !splitPanelsPreserveSubjects(interpolatedViewports, previous.panelSubjects)
+  )) {
+    return { ...previous, t: time, reasonCodes: [...(previous.reasonCodes ?? []), "interpolation-panel-owner-risk"] };
+  }
   return {
     ...previous,
     t: time,

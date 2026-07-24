@@ -23,7 +23,9 @@ export const DEFAULT_VISIBILITY_PARAMS: Readonly<VisibilityControllerParams> = O
   minimumAssociationConfidence: 0.75,
   maxSwitchesPerMinute: 3,
   riskMergeGapSec: 0.4,
-  identityHoldSec: 0.6,
+  // A known pair may return over the next two 5 FPS samples without paying
+  // the full split-entry debounce again. Longer gaps must be re-confirmed.
+  identityHoldSec: 0.5,
   widerHoldSec: 1.2,
 });
 
@@ -45,6 +47,7 @@ export function createVisibilityControllerState(): VisibilityControllerState {
     machineState: "common",
     pendingSince: null,
     lastSplitViewports: [],
+    lastSplitPanelSubjects: [],
     identityLostAt: null,
     modeSwitchTimestamps: [],
     sceneStartedAt: 0,
