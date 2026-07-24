@@ -67,6 +67,15 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
         event.preventDefault();
         void chooseNativeFile();
       }}
+      onKeyDown={(e) => {
+        if (disabled || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        if (isTauri()) {
+          void chooseNativeFile();
+        } else {
+          inputRef.current?.click();
+        }
+      }}
       transition="all 0.2s ease"
       _hover={{
         borderColor: clipperTheme.accentGlow,

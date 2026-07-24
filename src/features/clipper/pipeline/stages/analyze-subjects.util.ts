@@ -33,6 +33,7 @@ function isValidRestoredBlob(
   blob: Awaited<ReturnType<typeof readClipperSmartCropAnalysis>>,
   start: number,
   end: number,
+  smoothing: ClipperSmoothingStrength | undefined,
 ): boolean {
   if (blob?.engine === "wasm") return false;
   return isRestoredSmartCropAnalysisValid(blob, {
@@ -40,6 +41,7 @@ function isValidRestoredBlob(
     end,
     version: AUTOFLIP_ANALYZER_VERSION,
     blobVersion: blob?.analyzerVersion,
+    smoothing: smoothing ?? "balanced",
   });
 }
 
@@ -70,7 +72,7 @@ export async function runAnalyzeSubjectsStage(
   reporter.subjectProgress(0);
   if (input.skipSubjectAnalysis) {
     const restored = await readClipperSmartCropAnalysis(input.projectId);
-    if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd)) {
+    if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd, input.smoothing)) {
       session.smartCropAnalysis = restored;
       reporter.subjectProgress(1);
       await markClipperStepCompleted(input.projectId, "preview_ready");

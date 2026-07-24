@@ -4,7 +4,12 @@ import type {
 } from "../../../shared/smart-crop.util";
 
 const DEFAULT_SPIKE_THRESHOLD = 0.04;
-const DEFAULT_LAMBDA_EMA = 8.0;
+// A lower cutoff removes detector jitter while leaving deliberate reframing
+// responsive. The second (reverse) pass below cancels the usual EMA lag.
+// At the 5 Hz production-track cadence this is a deliberately strong
+// low-pass. The reverse pass avoids introducing the visible follow lag that a
+// single EMA would cause.
+const DEFAULT_LAMBDA_EMA = 4.0;
 
 function boxDistance(a: NormalizedBox, b: NormalizedBox): number {
   const cxA = a.x + a.width / 2;
@@ -32,7 +37,9 @@ export interface TrajectorySmoothingOptions {
 /**
  * 2-Pass Trajectory Smoothing & Spike Filter for Layout Track Samples.
  * Pass 1: Outlier impulse rejection (1-sample & 2-sample spike filtering).
- * Pass 2: Low-pass EMA (Exponential Moving Average) temporal smoothing.
+ * Pass 2: zero-phase forward/backward EMA denoise. Unlike a one-way moving
+ * average it removes high-frequency camera jitter without making the crop
+ * visibly trail the subject.
  */
 export function smoothLayoutTrackSamples(
   samples: ClipperLayoutSample[],
@@ -141,35 +148,42 @@ export function smoothLayoutTrackSamples(
     }
   }
 
-  // --- Pass 2: Low-pass EMA temporal smoothing within continuous segments ---
+  // --- Pass 2: zero-phase temporal denoise within continuous segments ---
   const smoothed: ClipperLayoutSample[] = cleaned.map((s) => ({
     ...s,
     viewports: s.viewports.map((v) => ({ ...v })),
   }));
 
-  let prevViewports: NormalizedBox[] | null = null;
+  let segmentStart = 0;
+  while (segmentStart < cleaned.length) {
+    let segmentEnd = segmentStart + 1;
+    while (
+      segmentEnd < cleaned.length
+      && !cleaned[segmentEnd]!.cut
+      && cleaned[segmentEnd]!.mode === cleaned[segmentStart]!.mode
+      && cleaned[segmentEnd]!.viewports.length === cleaned[segmentStart]!.viewports.length
+    ) segmentEnd++;
 
-  for (let i = 0; i < cleaned.length; i++) {
-    const sample = cleaned[i]!;
-
-    if (sample.cut || prevViewports === null || sample.viewports.length !== prevViewports.length) {
-      prevViewports = sample.viewports.map((v) => ({ ...v }));
-      smoothed[i]!.viewports = prevViewports;
-      continue;
+    // Forward pass: attenuate detector noise while following intended motion.
+    for (let index = segmentStart + 1; index < segmentEnd; index++) {
+      const current = cleaned[index]!;
+      const previous = smoothed[index - 1]!;
+      const dt = Math.max(1e-3, current.t - cleaned[index - 1]!.t);
+      const alpha = 1 - Math.exp(-lambdaEma * dt);
+      smoothed[index]!.viewports = current.viewports.map((viewport, viewportIndex) =>
+        interpolateBox(previous.viewports[viewportIndex]!, viewport, alpha));
     }
 
-    const dt = Math.max(1e-3, sample.t - cleaned[i - 1]!.t);
-    const alpha = 1.0 - Math.exp(-lambdaEma * dt);
-
-    const newViewports: NormalizedBox[] = [];
-    for (let vIdx = 0; vIdx < sample.viewports.length; vIdx++) {
-      const vCurr = sample.viewports[vIdx]!;
-      const vPrev = prevViewports[vIdx]!;
-      newViewports.push(interpolateBox(vPrev, vCurr, alpha));
+    // Reverse pass: removes the phase lag introduced by the forward pass.
+    for (let index = segmentEnd - 2; index >= segmentStart; index--) {
+      const current = smoothed[index]!;
+      const following = smoothed[index + 1]!;
+      const dt = Math.max(1e-3, cleaned[index + 1]!.t - cleaned[index]!.t);
+      const alpha = 1 - Math.exp(-lambdaEma * dt);
+      current.viewports = current.viewports.map((viewport, viewportIndex) =>
+        interpolateBox(following.viewports[viewportIndex]!, viewport, alpha));
     }
-
-    smoothed[i]!.viewports = newViewports;
-    prevViewports = newViewports;
+    segmentStart = segmentEnd;
   }
 
   return smoothed;

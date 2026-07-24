@@ -117,7 +117,7 @@ export interface NativeVisionCommandSummary {
   staticFeatureSamples: AutoFlipStaticFeatureSample[];
   contentRect: { x: number; y: number; width: number; height: number };
   modelVersion: string;
-  trackerVersion?: "bytetrack-v1";
+  trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   metrics: NativeVisionMetrics;
   shadowDiagnostics?: GeneralizationShadowDiagnostics;
 }

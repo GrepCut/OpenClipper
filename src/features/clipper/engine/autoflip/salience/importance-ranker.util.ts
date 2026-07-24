@@ -7,6 +7,7 @@ import type {
   ImportanceSignalKind,
   ImportanceSignalSample,
   NormalizedBox,
+  TargetEvidence,
 } from "../../../shared/smart-crop.util";
 import type { KeyFrameSalientInput, SalientRegion, SalientSignalType } from "../../types/autoflip.types";
 
@@ -47,6 +48,7 @@ interface Candidate {
   box: NormalizedBox;
   evidence: number;
   confidence: number;
+  detectorConfidence?: number;
   kind: ImportanceRegionKind;
   source: ImportanceRegionSource;
   trackId?: number;
@@ -67,6 +69,26 @@ interface SaliencyStabilityState {
   previous: ImportanceRegion | null;
   consecutive: number;
 }
+
+interface TemporalPersonObservation {
+  count: number;
+  startedAt: number;
+  lastObservedAt: number;
+}
+
+interface TemporalPersonFallbackState {
+  observations: Map<string, TemporalPersonObservation>;
+}
+
+// Native subject samples arrive at 5 FPS. Three trustworthy observations
+// give a fast-moving rider a usable target in roughly 0.4 seconds without
+// promoting a one-off detector hit.
+const TEMPORAL_PERSON_MIN_OBSERVATIONS = 3;
+const TEMPORAL_PERSON_MIN_SPAN_SEC = 0.35;
+const TEMPORAL_PERSON_MAX_GAP_SEC = 0.75;
+const TEMPORAL_PERSON_MAX_HOLD_SEC = 1.2;
+const TEMPORAL_PERSON_MIN_DETECTOR_CONFIDENCE = 0.25;
+const TEMPORAL_PERSON_MIN_ASSOCIATION_CONFIDENCE = 0.6;
 
 function boxArea(box: NormalizedBox): number {
   return Math.max(0, box.width) * Math.max(0, box.height);
@@ -109,6 +131,7 @@ function signalCandidate(region: SalientRegion): Candidate {
     box: region.box,
     evidence: clamp01(evidence),
     confidence,
+    detectorConfidence: region.detectorConfidence,
     kind: policy.kind,
     source: policy.source,
     trackId: region.trackId,
@@ -143,7 +166,10 @@ function belongsToCluster(candidate: Candidate, cluster: CandidateCluster): bool
 
 function clusterCandidates(regions: SalientRegion[]): CandidateCluster[] {
   const candidates = regions
-    .filter((region) => region.box.width > 0 && region.box.height > 0 && !region.predicted)
+    // ByteTrack predictions bridge detector cadence and short occlusions. They
+    // are only allowed to become targets after the temporal gate below has
+    // seen a real observation for the same canonical track.
+    .filter((region) => region.box.width > 0 && region.box.height > 0)
     .map(signalCandidate)
     .sort((a, b) => b.evidence - a.evidence);
   const clusters: CandidateCluster[] = [];
@@ -183,6 +209,8 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
     ? "verified-person"
     : semantic.some((candidate) => candidate.trust === "video-saliency")
       ? "video-saliency"
+      : semantic.some((candidate) => candidate.trust === "unverified-person")
+        ? "unverified-person"
       : semantic.some((candidate) => candidate.trust === "object")
         ? "object"
         : "unverified-person";
@@ -192,6 +220,7 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
     kind: focus.kind,
     importanceScore: clamp01(combinedEvidence),
     confidence: Math.max(...ordered.map((candidate) => candidate.confidence)),
+    detectorConfidence: Math.max(...ordered.map((candidate) => candidate.detectorConfidence ?? 0)),
     sources,
     trackId: cluster.trackId,
     predicted: ordered.every((candidate) => candidate.predicted),
@@ -227,12 +256,68 @@ function matchPreviousId(
   return best?.id ?? stableUntrackedId(region);
 }
 
+function isTemporalPersonCandidate(region: ImportanceRegion): boolean {
+  return region.kind === "person"
+    && region.trust === "unverified-person"
+    && region.trackId != null
+    && !region.predicted
+    && !region.identityAmbiguous
+    && (region.detectorConfidence ?? 0) >= TEMPORAL_PERSON_MIN_DETECTOR_CONFIDENCE
+    && (region.associationConfidence ?? 0) >= TEMPORAL_PERSON_MIN_ASSOCIATION_CONFIDENCE;
+}
+
+function observeTemporalPeople(
+  ranked: ImportanceRegion[],
+  time: number,
+  state: TemporalPersonFallbackState,
+): Set<string> {
+  const qualified = new Set<string>();
+  for (const [id, observation] of state.observations) {
+    if (time - observation.lastObservedAt > TEMPORAL_PERSON_MAX_HOLD_SEC) state.observations.delete(id);
+  }
+  for (const region of ranked.filter(isTemporalPersonCandidate)) {
+    const prior = state.observations.get(region.id);
+    const continuous = prior != null && time - prior.lastObservedAt <= TEMPORAL_PERSON_MAX_GAP_SEC;
+    const observation: TemporalPersonObservation = continuous
+      ? { count: prior.count + 1, startedAt: prior.startedAt, lastObservedAt: time }
+      : { count: 1, startedAt: time, lastObservedAt: time };
+    state.observations.set(region.id, observation);
+    if (
+      observation.count >= TEMPORAL_PERSON_MIN_OBSERVATIONS
+      && time - observation.startedAt >= TEMPORAL_PERSON_MIN_SPAN_SEC
+    ) qualified.add(region.id);
+  }
+  for (const region of ranked) {
+    if (!region.predicted || region.trust !== "unverified-person") continue;
+    const observation = state.observations.get(region.id);
+    if (observation && time - observation.lastObservedAt <= TEMPORAL_PERSON_MAX_HOLD_SEC
+      && observation.count >= TEMPORAL_PERSON_MIN_OBSERVATIONS
+      && time - observation.startedAt >= TEMPORAL_PERSON_MIN_SPAN_SEC) {
+      qualified.add(region.id);
+    }
+  }
+  return qualified;
+}
+
+function evidenceSummary(ranked: ImportanceRegion[], qualifiedTemporalIds: Set<string>, status: TargetEvidence["status"]): TargetEvidence {
+  return {
+    status,
+    verifiedPersonCount: ranked.filter((region) => region.trust === "verified-person").length,
+    unverifiedPersonCount: ranked.filter((region) =>
+      (region.trust === "unverified-person" || region.trust === "temporally-qualified-person")
+      && region.kind === "person").length,
+    temporallyQualifiedPersonCount: qualifiedTemporalIds.size,
+  };
+}
+
 function rankFrame(
   regions: SalientRegion[],
+  time: number,
   previous: ImportanceRegion[],
   compositionScores?: ReadonlyMap<string, number>,
   saliencyState?: SaliencyStabilityState,
-): ImportanceRegion[] {
+  temporalPersonState?: TemporalPersonFallbackState,
+): { regions: ImportanceRegion[]; targetEvidence: TargetEvidence } {
   const clusters = clusterCandidates(regions)
     .filter((cluster) => cluster.candidates.some((candidate) => candidate.source !== "motion"))
     .filter((cluster) => !cluster.candidates.some((candidate) => candidate.identityAmbiguous));
@@ -254,7 +339,7 @@ function rankFrame(
     return { ...region, id, importanceScore, compositionScore, required: false, role: "candidate" as const } satisfies ImportanceRegion;
     }).sort((a, b) => b.importanceScore - a.importanceScore);
 
-  if (!ranked.length) return ranked;
+  if (!ranked.length) return { regions: ranked, targetEvidence: evidenceSummary(ranked, new Set(), "no-candidate") };
   const saliency = ranked.find((region) => region.trust === "video-saliency" && region.confidence >= 0.6);
   if (saliencyState) {
     saliencyState.consecutive = saliency && saliencyState.previous
@@ -265,6 +350,9 @@ function rankFrame(
   }
   const verifiedPeople = ranked.filter((region) => region.trust === "verified-person");
   const stableSaliency = saliencyState && saliencyState.consecutive >= 3 ? saliency : undefined;
+  const qualifiedTemporalIds = temporalPersonState
+    ? observeTemporalPeople(ranked, time, temporalPersonState)
+    : new Set<string>();
   // Never turn a YOLOX-only pseudo-person into a required camera target. A
   // real person wins; otherwise a temporally stable ViNet region gets the
   // animation fallback, then independent objects retain product-video use.
@@ -273,7 +361,23 @@ function rankFrame(
     : stableSaliency
       ? [stableSaliency]
       : ranked.filter((region) => region.trust === "object");
-  if (!eligible.length) return ranked;
+  if (!eligible.length) {
+    const temporalPrimary = ranked.find((region) => qualifiedTemporalIds.has(region.id));
+    if (!temporalPrimary) {
+      const hasPendingTemporalPerson = ranked.some(isTemporalPersonCandidate);
+      return {
+        regions: ranked,
+        targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, hasPendingTemporalPerson ? "temporal-pending" : "no-candidate"),
+      };
+    }
+    temporalPrimary.trust = "temporally-qualified-person";
+    temporalPrimary.role = "primary";
+    temporalPrimary.required = true;
+    return {
+      regions: ranked,
+      targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified"),
+    };
+  }
   const priorPrimary = previous.find((region) => region.role === "primary" && region.trust !== "unverified-person");
   const retainedPrimary = priorPrimary
     ? eligible.find((region) => region.id === priorPrimary.id && region.importanceScore >= eligible[0]!.importanceScore - 0.12)
@@ -301,7 +405,7 @@ function rankFrame(
       region.role = "candidate";
       region.required = false;
     }
-    return ranked;
+    return { regions: ranked, targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified") };
   }
 
   const secondary = eligible.find((region) =>
@@ -314,7 +418,7 @@ function rankFrame(
     secondary.role = "secondary";
     secondary.required = true;
   }
-  return ranked;
+  return { regions: ranked, targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified") };
 }
 
 /** Adds sparse specialised-model signals to the nearest AutoFlip keyframe. */
@@ -349,13 +453,23 @@ export function buildImportanceTimeline(
   let previous: ImportanceRegion[] = [];
   let previousObservedTime = Number.NEGATIVE_INFINITY;
   const saliencyState: SaliencyStabilityState = { previous: null, consecutive: 0 };
+  const temporalPersonState: TemporalPersonFallbackState = { observations: new Map() };
   return keyframes.map((keyframe) => {
     if (keyframe.isShotChange || keyframe.time - previousObservedTime > 0.6) {
       previous = [];
       saliencyState.previous = null;
       saliencyState.consecutive = 0;
+      temporalPersonState.observations.clear();
     }
-    const regions = rankFrame(keyframe.regions, previous, compositionScores, saliencyState);
+    const ranked = rankFrame(
+      keyframe.regions,
+      keyframe.time,
+      previous,
+      compositionScores,
+      saliencyState,
+      temporalPersonState,
+    );
+    const regions = ranked.regions;
     // A detector dropout is not evidence that the person disappeared. Keep
     // the last observed identities for matching, while still emitting an
     // empty sample so the layout arbiter can fall back to baseline.
@@ -363,7 +477,12 @@ export function buildImportanceTimeline(
       previous = regions;
       previousObservedTime = keyframe.time;
     }
-    return { time: keyframe.time, regions, cut: keyframe.isShotChange || undefined };
+    return {
+      time: keyframe.time,
+      regions,
+      cut: keyframe.isShotChange || undefined,
+      targetEvidence: ranked.targetEvidence,
+    };
   });
 }
 

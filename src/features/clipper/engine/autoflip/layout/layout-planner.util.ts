@@ -24,6 +24,34 @@ import { buildViewports } from "./viewport-builder.util";
 import { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";
 
 const EPSILON = 1e-9;
+const MINIMUM_SPLIT_DURATION_SEC = 2;
+
+/** Remove split runs too short to be meaningful in the rendered video. */
+function removeShortSplitRuns(samples: ClipperLayoutSample[]): ClipperLayoutSample[] {
+  const stabilized = samples.map((sample) => ({ ...sample, viewports: [...sample.viewports] }));
+  let start = 0;
+  while (start < stabilized.length) {
+    if (stabilized[start]!.mode !== "split") {
+      start++;
+      continue;
+    }
+    let end = start + 1;
+    while (end < stabilized.length && stabilized[end]!.mode === "split" && !stabilized[end]!.cut) end++;
+    const lastSplit = stabilized[end - 1]!;
+    const endTime = end < stabilized.length ? stabilized[end]!.t : lastSplit.t;
+    if (endTime - stabilized[start]!.t < MINIMUM_SPLIT_DURATION_SEC) {
+      for (let index = start; index < end; index++) {
+        const sample = stabilized[index]!;
+        sample.mode = "single-crop";
+        sample.strategy = "legacy-baseline";
+        sample.viewports = sample.baselineViewports?.map((viewport) => ({ ...viewport })) ?? [sample.viewports[0]!];
+        sample.reasonCodes = [...(sample.reasonCodes ?? []), "split-too-short"];
+      }
+    }
+    start = end;
+  }
+  return stabilized;
+}
 
 /** Builds stable format-aware render decisions over the smooth legacy camera path. */
 export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string, ClipperLayoutTrack> {
@@ -52,6 +80,9 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         Boolean(arbiterParams.allowGroupUnion),
         groupUnionMeta,
       );
+      if (desiredMode === "split" && semanticViewports.length < 2) {
+        desiredMode = "single-crop";
+      }
       if (groupUnionMeta.used) {
         const fallbackViewports = buildViewports(
           desiredMode,
@@ -110,6 +141,7 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         semanticScore,
         decisionConfidence: decision.decisionConfidence,
         reasonCodes: decision.reasonCodes,
+        targetEvidence: importance.targetEvidence,
         candidateVariants: visibilityDecision?.variants,
         baselineRequiredCoverage: visibilityDecision?.baselineCoverage,
         selectedRequiredCoverage: decision.selectSemantic
@@ -129,6 +161,6 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
       };
     });
     const smoothedSamples = smoothLayoutTrackSamples(samples);
-    return [formatId, { targetAspectRatio: aspectTrack.targetAspectRatio, samples: smoothedSamples }];
+    return [formatId, { targetAspectRatio: aspectTrack.targetAspectRatio, samples: removeShortSplitRuns(smoothedSamples) }];
   }));
 }

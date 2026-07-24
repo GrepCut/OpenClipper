@@ -33,7 +33,7 @@ pub fn start_clipper_winml_analysis(
     let finish_registry = registry.clone();
     let finish_session_id = session_id.clone();
     let finish_job_id = job_id.clone();
-    let tracking_enabled = tracking_mode.as_deref().unwrap_or("bytetrack-v1") != "off";
+    let tracking_enabled = tracking_mode.as_deref().unwrap_or("bytetrack-v2") != "off";
 
     tauri::async_runtime::spawn(async move {
         let joined = tauri::async_runtime::spawn_blocking(move || {

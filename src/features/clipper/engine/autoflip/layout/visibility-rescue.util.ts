@@ -3,7 +3,7 @@ import type {
   ImportanceRegionSample,
   NormalizedBox,
 } from "../../../shared/smart-crop.util";
-import { nominalCropSize } from "./viewport-geometry.util";
+import { nominalCropSize, splitViewportsAreDistinct } from "./viewport-geometry.util";
 import type {
   VisibilityControllerDecision,
   VisibilityControllerParams,
@@ -180,12 +180,20 @@ export function planVisibilityRescue(input: {
   const baseline = variant("run8-baseline", "single-crop", [input.baselineViewport], envelopes);
   const variants: VisibilityVariant[] = [baseline];
   const emergency = (baseline.requiredCoverage[0] ?? 1) < EMERGENCY_PRIMARY_COVERAGE;
+  const trackedPrediction = envelopes.length === 1
+    && envelopes[0]?.role === "primary"
+    && envelopes[0].predicted === true
+    && (envelopes[0].trust === "temporally-qualified-person" || envelopes[0].trust === "object");
   const singlePrimary = envelopes.length === 1
     && envelopes[0]?.role === "primary"
-    && hasIndependentEvidence(envelopes[0]);
+    && (hasIndependentEvidence(envelopes[0]) || trackedPrediction);
   if (!singlePrimary) resetSingleTargetState(input.state);
   if (!params.enabled || !envelopes.length || (sample.cut && !singlePrimary)
-    || envelopes.some((region) => region.predicted || region.identityAmbiguous)) {
+    || envelopes.some((region) => region.identityAmbiguous)
+    || (envelopes.some((region) => region.predicted) && !trackedPrediction)) {
+    const noTargetReason = sample.targetEvidence?.status === "temporal-pending"
+      ? "temporal-person-pending"
+      : "no-target-evidence";
     return {
       mode: "single-crop",
       viewports: [input.baselineViewport],
@@ -193,7 +201,7 @@ export function planVisibilityRescue(input: {
       variants,
       baselineCoverage: baseline.requiredCoverage,
       selectedCoverage: baseline.requiredCoverage,
-      reasonCodes: [sample.cut ? "shot-boundary" : "stable-single-fallback"],
+      reasonCodes: [sample.cut ? "shot-boundary" : !envelopes.length ? noTargetReason : "stable-single-fallback"],
       visibilityRisk: false,
     };
   }
@@ -248,7 +256,10 @@ export function planVisibilityRescue(input: {
   if (pairStable) {
     const panels = orderedPair(envelopes, input.state)
       .map((region) => cropForEnvelope(region.contentBox, input.sourceAspect, input.targetAspect * 2, 0.55));
-    if (panels.every((panel): panel is NormalizedBox => panel != null)) {
+    if (
+      panels.every((panel): panel is NormalizedBox => panel != null)
+      && splitViewportsAreDistinct(panels)
+    ) {
       variants.push(variant(params.splitVariant === "v3" ? "stable-split-v3" : "stable-split-v2", "split", panels, envelopes));
     }
   }
@@ -256,7 +267,10 @@ export function planVisibilityRescue(input: {
     const aspects = splitThreePanelAspects(input.targetAspect);
     const panels = orderedTriple(envelopes, input.state)
       .map((region, index) => cropForEnvelope(region.contentBox, input.sourceAspect, aspects[index]!, 0.55));
-    if (panels.every((panel): panel is NormalizedBox => panel != null)) {
+    if (
+      panels.every((panel): panel is NormalizedBox => panel != null)
+      && splitViewportsAreDistinct(panels)
+    ) {
       variants.push(variant("stable-split-3", "split", panels, envelopes));
     }
   }

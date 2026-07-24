@@ -14,7 +14,9 @@ export function rawMode(
   if (boxFitsStrictCrop(union, sourceAspect, targetAspect)) return "single-crop";
   if (required.length >= 2) {
     const overlap = importanceGeometry.overlapFractionOfSmaller(required[0]!.contentBox, required[1]!.contentBox);
-    if (overlap < 0.35) return "split";
+    // Above this threshold the two panels would mostly repeat the same
+    // content. Keep the primary subject in a single frame instead.
+    if (overlap <= 0.2) return "split";
   }
   return "single-crop";
 }

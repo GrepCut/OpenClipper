@@ -132,7 +132,9 @@ pub(crate) fn merge_samples(
                 .iter()
                 .filter(|item| item.predicted == Some(true))
                 .count();
-            (tracked, Some(object_tracker.last_camera_motion()))
+            // ByteTrack v2 keeps image-space boxes and deliberately does not
+            // report camera motion without independent background evidence.
+            (tracked, None)
         } else {
             (object.detections, None)
         };

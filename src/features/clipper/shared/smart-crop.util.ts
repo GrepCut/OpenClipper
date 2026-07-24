@@ -165,6 +165,8 @@ export type ImportanceRegionSource =
 export type ImportanceRegionTrust =
   | "verified-person"
   | "unverified-person"
+  /** A detector-only person that passed the local continuity gate. */
+  | "temporally-qualified-person"
   | "video-saliency"
   | "object";
 
@@ -203,6 +205,8 @@ export interface ImportanceRegion {
   kind: ImportanceRegionKind;
   importanceScore: number;
   confidence: number;
+  /** Native detector confidence retained for temporal-only person qualification. */
+  detectorConfidence?: number;
   required: boolean;
   role: "primary" | "secondary" | "candidate";
   sources: ImportanceRegionSource[];
@@ -217,10 +221,21 @@ export interface ImportanceRegion {
   compositionScore?: number;
 }
 
+export type TargetEvidenceStatus = "qualified" | "temporal-pending" | "no-candidate";
+
+/** Compact explanation of why a frame can or cannot receive a framing score. */
+export interface TargetEvidence {
+  status: TargetEvidenceStatus;
+  verifiedPersonCount: number;
+  unverifiedPersonCount: number;
+  temporallyQualifiedPersonCount: number;
+}
+
 export interface ImportanceRegionSample {
   time: number;
   regions: ImportanceRegion[];
   cut?: boolean;
+  targetEvidence?: TargetEvidence;
 }
 
 /** A split has two or three viewports; its arity defines the rendered template. */
@@ -250,6 +265,8 @@ export interface ClipperLayoutSample {
   semanticScore?: number;
   decisionConfidence?: number;
   reasonCodes?: string[];
+  /** Evidence summary used by the framing diagnostics and fault-frame export. */
+  targetEvidence?: TargetEvidence;
   /** Run 9 counterfactual rescue ladder, persisted for offline replay/audit. */
   candidateVariants?: Array<{
     kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "stable-split-3";
@@ -328,9 +345,11 @@ export interface ClipperSmartCropBlob {
   /** Runtime provenance. */
   engine?: "winml";
   /** Present when the native analysis used temporal ByteTrack stabilization. */
-  trackerVersion?: "bytetrack-v1";
+  trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   clipStart: number;
   clipEnd: number;
+  /** Reframe profile used to build this camera path; mismatches require rebuild. */
+  cameraSmoothing?: "smooth" | "balanced" | "snappy";
   /** Target crop aspect ratio (width / height) used when building the track. */
   targetAspectRatio?: number;
   /** Source-space active image area after static letterbox borders are removed. */

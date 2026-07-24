@@ -38,14 +38,16 @@ impl RecoveryPolicy {
                 self.consecutive_context_without_target.saturating_add(1);
         }
         let trigger = (is_recovery_bucket && self.first_bucket_in_scene)
-            || self.consecutive_target_misses >= 2
+            // At 5 FPS, waiting for a second broken observation means a
+            // fast athlete is already well outside a portrait crop.
+            || self.consecutive_target_misses >= 1
             || self.consecutive_context_without_target >= 2;
         if is_recovery_bucket {
             self.first_bucket_in_scene = false;
         }
         let cooldown_ready = self
             .last_recovery_time
-            .map_or(true, |last| time - last >= 1.0);
+            .map_or(true, |last| time - last >= 0.6);
         if trigger && cooldown_ready {
             self.last_recovery_time = Some(time);
             self.consecutive_target_misses = 0;
@@ -70,13 +72,12 @@ mod tests {
     }
 
     #[test]
-    fn waits_for_two_track_misses_then_respects_cooldown() {
+    fn recovers_on_the_first_track_miss_then_respects_short_cooldown() {
         let mut policy = RecoveryPolicy::default();
         policy.new_scene();
         assert!(!policy.observe(0.0, false, true, false, false));
-        assert!(!policy.observe(0.2, false, false, false, true));
-        assert!(policy.observe(0.4, false, false, false, true));
+        assert!(policy.observe(0.2, false, false, false, true));
         assert!(!policy.observe(0.6, false, false, false, true));
-        assert!(policy.observe(1.6, false, false, false, true));
+        assert!(policy.observe(0.8, false, false, false, true));
     }
 }

@@ -11,6 +11,11 @@ import { CLIPPER_CARD_FRAME_HEIGHT, CLIPPER_HERO_PREVIEW_HEIGHT } from "../../sh
 import type { ClipperFormatDef } from "../../shared/formats.util";
 import type { VideoFrameCallbackCompat } from "./clipper-preview-playback.util";
 
+const PREVIEW_PERFORMANCE_SAMPLE_WINDOW = 120;
+let previewFrameCount = 0;
+let previewTotalDrawMs = 0;
+let previewWorstDrawMs = 0;
+
 export interface RedrawPreviewCanvasesParams {
   video: HTMLVideoElement;
   canvasRefs: Record<string, HTMLCanvasElement | null>;
@@ -52,10 +57,27 @@ export function redrawPreviewCanvases({
     drawClipperPreviewFrame(canvas, video, source, formatDef, render, time, frameHeight, cache);
   }
 
+  const drawMs = performance.now() - drawStart;
+  previewFrameCount++;
+  previewTotalDrawMs += drawMs;
+  previewWorstDrawMs = Math.max(previewWorstDrawMs, drawMs);
+  if (previewFrameCount >= PREVIEW_PERFORMANCE_SAMPLE_WINDOW) {
+    clipperLog("preview: render performance", {
+      backend: "canvas2d-display-resolution",
+      formats: previewFormats.length,
+      averageDrawMs: Math.round((previewTotalDrawMs / previewFrameCount) * 10) / 10,
+      worstDrawMs: Math.round(previewWorstDrawMs * 10) / 10,
+    });
+    previewFrameCount = 0;
+    previewTotalDrawMs = 0;
+    previewWorstDrawMs = 0;
+  }
+
   if (!firstFrameLoggedRef.current) {
     firstFrameLoggedRef.current = true;
     clipperLog("preview: first frame drawn", {
-      drawMs: Math.round(performance.now() - drawStart),
+      drawMs: Math.round(drawMs),
+      backend: "canvas2d-display-resolution",
       videoWxH: `${video.videoWidth}x${video.videoHeight}`,
       clipIndex: activeClipIndex,
     });

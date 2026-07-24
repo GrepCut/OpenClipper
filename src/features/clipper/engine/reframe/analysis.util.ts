@@ -27,10 +27,10 @@ interface NativeVisionProgress {
   subjectSample?: import("../../shared/smart-crop.util").SubjectDetectionSample;
 }
 
-function clipperByteTrackTrackingMode(): "bytetrack-v1" | "off" {
-  if (typeof window === "undefined") return "bytetrack-v1";
+function clipperByteTrackTrackingMode(): "bytetrack-v2" | "off" {
+  if (typeof window === "undefined") return "bytetrack-v2";
   const override = window.localStorage?.getItem("clipperByteTrack");
-  return override === "false" || override === "0" || override === "off" ? "off" : "bytetrack-v1";
+  return override === "false" || override === "0" || override === "off" ? "off" : "bytetrack-v2";
 }
 
 async function detectWinMlMedia(

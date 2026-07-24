@@ -82,7 +82,7 @@ export function interpolateBox(a: NormalizedBox, b: NormalizedBox, factor: numbe
 }
 
 export function importanceAtTime(samples: ImportanceRegionSample[], time: number): ImportanceRegionSample {
-  if (!samples.length) return { time, regions: [] };
+  if (!samples.length) return { time, regions: [], targetEvidence: { status: "no-candidate", verifiedPersonCount: 0, unverifiedPersonCount: 0, temporallyQualifiedPersonCount: 0 } };
   const index = precedingIndex(samples, time);
   const previous = samples[index]!;
   const next = samples[index + 1];
@@ -103,7 +103,7 @@ export function importanceAtTime(samples: ImportanceRegionSample[], time: number
       importanceScore: region.importanceScore + (nextRegion.importanceScore - region.importanceScore) * factor,
     } : region;
   });
-  return { time, regions, cut: previous.cut };
+  return { time, regions, cut: previous.cut, targetEvidence: previous.targetEvidence };
 }
 
 /**

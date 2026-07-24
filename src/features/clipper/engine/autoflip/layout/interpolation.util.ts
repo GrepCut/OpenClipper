@@ -8,6 +8,7 @@ import {
   interpolateBox,
   precedingIndex,
 } from "./arbiter.util";
+import { interpolateCameraBox } from "../camera/trajectory-interpolation.util";
 
 const EPSILON = 1e-9;
 
@@ -27,24 +28,32 @@ export function interpolateLayoutSample(
   const index = precedingIndex(track.samples.map((sample) => ({ ...sample, time: sample.t })), time);
   const previous = track.samples[index]!;
   const next = track.samples[index + 1];
-  if (!next || next.cut || next.mode !== previous.mode || next.strategy !== previous.strategy || next.viewports.length !== previous.viewports.length) {
+  if (!next || next.cut || next.mode !== previous.mode || next.viewports.length !== previous.viewports.length) {
     return { ...previous, t: time };
   }
   const factor = clamp((time - previous.t) / Math.max(EPSILON, next.t - previous.t), 0, 1);
   const interpolatedViewports = previous.viewports.map((viewport, viewportIndex) =>
-    interpolateBox(viewport, next.viewports[viewportIndex]!, factor));
+    interpolateCameraBox(
+      { t: previous.t, box: viewport },
+      { t: next.t, box: next.viewports[viewportIndex]! },
+      time,
+    ));
   const previousCoverageBoxes = previous.coverageBoxes;
   const nextCoverageBoxes = next.coverageBoxes;
   const interpolatedCoverageBoxes = previousCoverageBoxes?.length === nextCoverageBoxes?.length
-    ? previousCoverageBoxes?.map((box, index) => interpolateBox(box, nextCoverageBoxes![index]!, factor))
+      ? previousCoverageBoxes?.map((box, index) => interpolateBox(box, nextCoverageBoxes![index]!, factor))
     : previous.coverageBoxes;
   const interpolationSafe = !interpolatedCoverageBoxes?.length || interpolatedCoverageBoxes.every((box) =>
     interpolatedViewports.some((viewport) => coveredFraction(viewport, box) >= 1 - EPSILON));
-  if (!interpolationSafe) return { ...previous, t: time, reasonCodes: [...(previous.reasonCodes ?? []), "interpolation-hold-coverage"] };
   return {
     ...previous,
     t: time,
     viewports: interpolatedViewports,
+    // Do not freeze the camera while coverage diagnostics are marginal. A
+    // held sparse keyframe causes the visible staircase/catch-up jump.
+    reasonCodes: interpolationSafe
+      ? previous.reasonCodes
+      : [...(previous.reasonCodes ?? []), "interpolation-coverage-risk"],
     candidateViewports: previous.candidateViewports?.length === next.candidateViewports?.length
       ? previous.candidateViewports?.map((viewport, viewportIndex) =>
           interpolateBox(viewport, next.candidateViewports![viewportIndex]!, factor))

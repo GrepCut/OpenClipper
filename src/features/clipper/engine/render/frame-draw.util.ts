@@ -162,17 +162,22 @@ export function drawClipperPreviewFrame(
   displayHeight: number,
   cache: FrameCanvasCache,
 ): void {
-  const output = resolveClipperOutputSize(formatDef, render.settings.formats.resolutionCap);
-  const scale = displayHeight / output.height;
-  const displayW = Math.round(output.width * scale);
+  const canonicalOutput = resolveClipperOutputSize(formatDef, render.settings.formats.resolutionCap);
+  const scale = displayHeight / canonicalOutput.height;
+  const displayW = Math.round(canonicalOutput.width * scale);
   const displayH = displayHeight;
+  // Preview is a display-only render. Compositing at the final 1080p output
+  // and then shrinking it forced six expensive CPU canvas passes per video
+  // frame. Geometry is normalized, so rendering directly at display size is
+  // visually equivalent while keeping captions and layout decisions intact.
+  const output = { width: displayW, height: displayH };
 
   if (canvas.width !== displayW) canvas.width = displayW;
   if (canvas.height !== displayH) canvas.height = displayH;
 
-  const ctx = cache.get(output.width, output.height);
+  const ctx = cache.get(displayW, displayH);
   ctx.save();
-  resetContext(ctx, output.width, output.height);
+  resetContext(ctx, displayW, displayH);
   try {
     drawClipperFrame(formatDef, ctx, frame, source, output, timestampSec, render, true);
   } finally {

@@ -9,6 +9,7 @@ export interface RestoredClipAnalysisBlob {
 export interface RestoredSmartCropAnalysisBlob {
   clipStart: number;
   clipEnd: number;
+  cameraSmoothing?: "smooth" | "balanced" | "snappy";
   aspectTracks?: Record<string, { samples: unknown[] }>;
 }
 
@@ -45,11 +46,13 @@ export function isRestoredSmartCropAnalysisValid(
     version: string;
     blobVersion: string | undefined;
     minSamples?: number;
+    smoothing?: "smooth" | "balanced" | "snappy";
   },
 ): boolean {
   if (!blob || options.blobVersion !== options.version) {
     return false;
   }
+  if (options.smoothing != null && blob.cameraSmoothing !== options.smoothing) return false;
 
   const minSamples = options.minSamples ?? 1;
   const trackSamples = Object.values(blob.aspectTracks ?? {}).map((track) => track.samples.length);

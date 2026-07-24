@@ -7,10 +7,13 @@ use crate::video::smart_crop::vision_logic::{box_iou, NormalizedBox};
 const HIGH_SCORE: f32 = 0.6;
 const LOW_SCORE: f32 = 0.1;
 const NEW_TRACK_SCORE: f32 = 0.7;
-const HIGH_MATCH_COST: f32 = 0.8; // IoU >= 0.2, matching ByteTrack defaults.
+// The detector is sampled at 5 FPS. Fast action can move a small subject by
+// most of its width between samples, so retain a high-confidence match down to
+// IoU 0.1. Low-confidence recovery remains deliberately stricter.
+const HIGH_MATCH_COST: f32 = 0.9; // IoU >= 0.1.
 const LOW_MATCH_COST: f32 = 0.5; // Keep low-confidence recovery conservative.
-const MAX_LOST_SECONDS: f64 = 1.0;
-const PREDICTION_HOLD_SECONDS: f64 = 0.6;
+const MAX_LOST_SECONDS: f64 = 1.2;
+const PREDICTION_HOLD_SECONDS: f64 = 0.9;
 
 #[derive(Clone, Debug)]
 pub struct TrackDetection {
@@ -222,8 +225,6 @@ impl Track {
 pub struct ByteTracker {
     tracks: Vec<Track>,
     next_id: u64,
-    last_global_center: Option<(f32, f32)>,
-    last_camera_motion: f32,
 }
 
 impl ByteTracker {
@@ -231,76 +232,20 @@ impl ByteTracker {
         Self {
             tracks: Vec::new(),
             next_id: 1,
-            last_global_center: None,
-            last_camera_motion: 0.0,
         }
     }
 
     pub fn reset(&mut self) {
         self.tracks.clear();
-        self.last_global_center = None;
-        self.last_camera_motion = 0.0;
-    }
-
-    pub fn last_camera_motion(&self) -> f32 {
-        self.last_camera_motion
-    }
-
-    fn estimate_global_center(detections: &[TrackDetection]) -> Option<(f32, f32)> {
-        let high: Vec<_> = detections
-            .iter()
-            .filter(|detection| detection.score >= HIGH_SCORE)
-            .collect();
-        if high.is_empty() {
-            return None;
-        }
-        let count = high.len() as f32;
-        let cx = high
-            .iter()
-            .map(|detection| detection.box_.x + detection.box_.width / 2.0)
-            .sum::<f32>()
-            / count;
-        let cy = high
-            .iter()
-            .map(|detection| detection.box_.y + detection.box_.height / 2.0)
-            .sum::<f32>()
-            / count;
-        Some((cx, cy))
-    }
-
-    fn compensate_detections(
-        detections: &[TrackDetection],
-        dx: f32,
-        dy: f32,
-    ) -> Vec<TrackDetection> {
-        detections
-            .iter()
-            .map(|detection| {
-                let mut compensated = detection.clone();
-                compensated.box_.x = (compensated.box_.x - dx).clamp(0.0, 1.0);
-                compensated.box_.y = (compensated.box_.y - dy).clamp(0.0, 1.0);
-                compensated
-            })
-            .collect()
     }
 
     pub fn update(&mut self, time: f64, detections: &[TrackDetection]) -> Vec<TrackOutput> {
-        let (working, motion) = if let Some(center) = Self::estimate_global_center(detections) {
-            let (dx, dy) = match self.last_global_center {
-                Some((previous_x, previous_y)) => (center.0 - previous_x, center.1 - previous_y),
-                None => (0.0, 0.0),
-            };
-            self.last_global_center = Some(center);
-            self.last_camera_motion = (dx * dx + dy * dy).sqrt();
-            (
-                Self::compensate_detections(detections, dx, dy),
-                self.last_camera_motion,
-            )
-        } else {
-            (detections.to_vec(), 0.0)
-        };
-        self.last_camera_motion = motion;
-        self.update_associated(time, &working)
+        // Do not infer camera motion from the centre of foreground detections.
+        // With one rider that heuristic subtracts the rider's own motion and
+        // makes the emitted box appear frozen. A future background-motion
+        // estimator may populate this telemetry again; tracker coordinates
+        // must always remain in the original image space.
+        self.update_associated(time, detections)
     }
 
     fn update_associated(&mut self, time: f64, detections: &[TrackDetection]) -> Vec<TrackOutput> {
@@ -581,4 +526,57 @@ fn invert4(value: [[f32; 4]; 4]) -> Option<[[f32; 4]; 4]> {
         }
     }
     Some(inverse)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ByteTracker, TrackDetection};
+    use crate::video::smart_crop::vision_logic::NormalizedBox;
+
+    fn person(x: f32) -> TrackDetection {
+        TrackDetection {
+            box_: NormalizedBox {
+                x,
+                y: 0.25,
+                width: 0.1,
+                height: 0.2,
+            },
+            label: "person".into(),
+            score: 0.95,
+            source_index: 0,
+            detector_source: Some("yolox"),
+        }
+    }
+
+    #[test]
+    fn emits_image_space_motion_for_a_single_moving_person() {
+        let mut tracker = ByteTracker::new();
+        assert!(tracker.update(0.0, &[person(0.2)]).is_empty());
+
+        // 0.02 overlap on 0.1-wide boxes is just above the v2 high-match
+        // floor (IoU ~= 0.11) and would have its motion cancelled by v1 GMC.
+        let output = tracker.update(0.3, &[person(0.28)]);
+        assert_eq!(output.len(), 1);
+        assert!(!output[0].predicted);
+        // This was close to 0.2 with foreground-centre compensation because
+        // a single rider was incorrectly treated as camera motion.
+        assert!(output[0].box_.x > 0.25);
+    }
+
+    #[test]
+    fn keeps_a_fast_track_through_one_missing_sample() {
+        let mut tracker = ByteTracker::new();
+        tracker.update(0.0, &[person(0.2)]);
+        let confirmed = tracker.update(0.3, &[person(0.28)]);
+        assert_eq!(confirmed[0].track_id, 1);
+
+        let predicted = tracker.update(0.6, &[]);
+        assert_eq!(predicted.len(), 1);
+        assert!(predicted[0].predicted);
+
+        let reacquired = tracker.update(0.9, &[person(0.31)]);
+        assert_eq!(reacquired.len(), 1);
+        assert_eq!(reacquired[0].track_id, 1);
+        assert!(!reacquired[0].predicted);
+    }
 }

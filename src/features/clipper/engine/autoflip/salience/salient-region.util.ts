@@ -6,8 +6,8 @@ import { OneEuroFilter } from "../filters/one-euro-filter.util";
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
-/** Allow one decoded source-frame of timestamp jitter, but never borrow a neighbouring 5 FPS sample. */
-const MAX_KEYFRAME_SAMPLE_DELTA_SEC = 0.1;
+/** Native subject analysis runs at 3.5 FPS while the crop track runs at 5 FPS. */
+const MAX_KEYFRAME_SAMPLE_DELTA_SEC = 0.16;
 
 const SIGNAL_WEIGHTS: Record<SalientSignalType, { minScore: number; maxScore: number; required: boolean }> = {
   face_core: { minScore: 0.85, maxScore: 0.9, required: false },
@@ -78,6 +78,7 @@ function regionsFromDetections(detections: SubjectDetection[], verifiedCanonical
       // LocalizationToRegionCalculator sets raw score to one, independent of
       // the detector confidence that already passed the graph threshold.
       score: weightedScore(1, signalType),
+      detectorConfidence: detection.score,
       signalType,
       // The reference AutoFlip graph marks every configured signal optional.
       isRequired: false,
@@ -264,7 +265,7 @@ export function buildSalientKeyframes(input: BuildSalientKeyframesInput): KeyFra
   });
   const keyframes: KeyFrameSalientInput[] = [];
   for (let time = input.clipStart; time <= input.clipEnd + 1e-9; time += interval) {
-    const detectionSample = nearest(smoothedDetections, time, Math.min(interval / 2, MAX_KEYFRAME_SAMPLE_DELTA_SEC));
+    const detectionSample = nearest(smoothedDetections, time, Math.max(interval / 2, MAX_KEYFRAME_SAMPLE_DELTA_SEC));
     const nextBoundaryIndex = boundaries.findIndex((boundary) => boundary > time + 1e-9);
     const sceneIndex = nextBoundaryIndex < 0
       ? preferTorsoByScene.length - 1

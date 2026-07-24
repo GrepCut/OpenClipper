@@ -25,7 +25,8 @@ const REGION_ENTER_SAMPLES = 2;
 const REGION_EXIT_SAMPLES = 3;
 const DUPLICATE_FACE_OVERLAP = 0.5;
 const AMBIGUOUS_THIRD_FACE_AREA_RATIO = 0.5;
-const MAX_COLLAGE_CROP_OVERLAP = 0.5;
+/** A split only makes sense when its two source crops are materially distinct. */
+const MAX_COLLAGE_CROP_OVERLAP = 0.2;
 
 const COLLAGE_ASPECT_RATIOS: Record<ClipperAspectPresetId, number> = {
   "16-9": 16 / 9,

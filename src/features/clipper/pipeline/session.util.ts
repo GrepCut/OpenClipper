@@ -33,7 +33,7 @@ import type { FaceActionBenchmark } from "../shared/face-action-benchmark.util";
  */
 export interface PendingSubjectExtraction {
   detections: SubjectDetectionSample[];
-  trackerVersion?: "bytetrack-v1";
+  trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   sceneCutTimestamps: number[];
   sourceFrameRate?: number;
   hasSolidColorBackground?: boolean;

@@ -19,10 +19,28 @@ use super::preprocess::{
 };
 use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
 use super::vision_logic::{
-    decode_movenet, decode_scrfd, detect_motion_saliency, map_pose_from_tile, merge_pose_subjects,
-    merge_subject_detections, weighted_face_nms, RecoveryPolicy, MOVENET_INPUT_SIZE,
-    SCRFD_INPUT_SIZE,
+    box_iou, decode_movenet, decode_scrfd, detect_motion_saliency, map_pose_from_tile,
+    merge_pose_subjects, merge_subject_detections, weighted_face_nms, NormalizedBox,
+    RecoveryPolicy, SubjectDetection, MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE,
 };
+
+const RECOVERY_PERSON_SCORE: f32 = 0.7;
+const RECOVERY_CONTINUITY_IOU: f32 = 0.1;
+
+fn strongest_person_box(detections: &[SubjectDetection]) -> Option<NormalizedBox> {
+    detections
+        .iter()
+        .filter(|detection| {
+            detection.label.eq_ignore_ascii_case("person")
+                && detection.score >= RECOVERY_PERSON_SCORE
+        })
+        .max_by(|left, right| {
+            left.score
+                .partial_cmp(&right.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|detection| detection.box_)
+}
 
 fn object_result_from(
     base: FinalizedObjectBase,
@@ -703,6 +721,7 @@ pub(crate) fn spawn_object_policy(
         let mut recovery_policy = RecoveryPolicy::default();
         recovery_policy.new_scene();
         let mut had_person_track = false;
+        let mut recovery_person_box: Option<NormalizedBox> = None;
 
         let send_finalize = |outcome: BaseObjectOutcome,
                              recovery_passes: usize,
@@ -754,11 +773,10 @@ pub(crate) fn spawn_object_policy(
                         let mut merged = std::mem::take(&mut done.base.detections);
                         merged.append(&mut done.collected);
                         done.base.detections = merge_subject_detections(merged, 0.45);
-                        had_person_track |= done
-                            .base
-                            .detections
-                            .iter()
-                            .any(|detection| detection.label.eq_ignore_ascii_case("person"));
+                        if let Some(box_) = strongest_person_box(&done.base.detections) {
+                            recovery_person_box = Some(box_);
+                            had_person_track = true;
+                        }
                         diagnostics::append(
                             "object-policy",
                             &format!(
@@ -877,19 +895,21 @@ pub(crate) fn spawn_object_policy(
                 if outcome.frame.scene_cut {
                     recovery_policy.new_scene();
                     had_person_track = false;
+                    recovery_person_box = None;
                 }
-                let has_person = outcome
-                    .detections
-                    .iter()
-                    .any(|detection| detection.label.eq_ignore_ascii_case("person"));
+                let current_person_box = strongest_person_box(&outcome.detections);
+                let has_continuous_person = current_person_box
+                    .zip(recovery_person_box)
+                    .map_or(false, |(current, previous)| {
+                        box_iou(current, previous) >= RECOVERY_CONTINUITY_IOU
+                    });
                 let recover_person = recovery_policy.observe(
                     outcome.frame.time,
                     outcome.frame.face_bucket,
-                    has_person,
-                    false,
+                    has_continuous_person,
+                    current_person_box.is_some() && !has_continuous_person,
                     had_person_track,
                 );
-                had_person_track |= has_person;
                 if recover_person {
                     let tiles = quality_object_tiles(&outcome.frame);
                     let tile_count = tiles.len();
@@ -897,7 +917,7 @@ pub(crate) fn spawn_object_policy(
                         diagnostics::append(
                             "object-policy",
                             &format!(
-                                "high-detail tiling frame={} source={}x{} tiles={tile_count}",
+                                "high-detail tiling frame={} source={}x{} tiles={tile_count} reason=person-continuity-loss",
                                 outcome.frame.index, outcome.frame.width, outcome.frame.height,
                             ),
                         );
@@ -926,6 +946,15 @@ pub(crate) fn spawn_object_policy(
                         });
                         break;
                     }
+                }
+                if let Some(box_) = current_person_box {
+                    // A discontinuous candidate is kept out of the recovery
+                    // state until a tiled pass confirms it. Otherwise a
+                    // sequence of unrelated raw boxes can suppress recovery.
+                    if recovery_person_box.is_none() || has_continuous_person {
+                        recovery_person_box = Some(box_);
+                    }
+                    had_person_track = true;
                 }
                 if send_finalize(outcome, 0, 0, &jobs).is_err() {
                     cancelled.store(true, Ordering::Relaxed);

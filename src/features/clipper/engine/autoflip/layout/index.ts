@@ -26,8 +26,10 @@ export {
 } from "./layout-planner.constants";
 export {
   layoutGeometry,
+  MAX_SPLIT_VIEWPORT_OVERLAP,
   cropAroundBox,
   nominalCropSize,
+  splitViewportsAreDistinct,
   strictAspectViewport,
 } from "./viewport-geometry.util";
 export { rawMode } from "./layout-mode.util";

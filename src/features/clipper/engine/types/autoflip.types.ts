@@ -29,6 +29,8 @@ export type SalientSignalType =
 export interface SalientRegion {
   box: NormalizedBox;
   score: number;
+  /** Raw native detector confidence; score remains graph-compatible salience. */
+  detectorConfidence?: number;
   signalType: SalientSignalType;
   isRequired: boolean;
   trackId?: number;
@@ -112,7 +114,7 @@ export interface BuildAutoFlipTrackInput {
   contentRect?: NormalizedBox;
   /** Native decoded frame rate; used for graph-equivalent scene boundaries and paths. */
   sourceFrameRate?: number;
-  trackerVersion?: "bytetrack-v1";
+  trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   /** Sparse outputs from optional head, saliency, motion or active-speaker analyzers. */
   importanceSignals?: ImportanceSignalSample[];
   /** Attach per-scene diagnostics to the returned blob (benchmark tooling only). */

@@ -153,8 +153,12 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     ? samplesWithVerifiedPeopleOnly(activeSpeaker.samples)
     : activeSpeaker.samples;
   const compositionMemory = buildProjectCompositionMemory(compositionInputs);
+  // Project memory intentionally learns only corroborated people, but local
+  // framing must still see the current detector track so it can apply its
+  // stricter temporal fallback for action footage without promoting it to a
+  // persistent project identity.
   const contentDetections = detectionsInContent(
-    input.enhancedIdentityFusion ? compositionMemory.samples : detectionsWithCachedFaces,
+    input.enhancedIdentityFusion ? activeSpeaker.samples : detectionsWithCachedFaces,
     contentRect,
   );
   const rawKeyframes = buildSalientKeyframes({
@@ -306,6 +310,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     trackerVersion: input.trackerVersion,
     clipStart: input.clipStart,
     clipEnd: input.clipEnd,
+    cameraSmoothing: input.smoothing ?? "balanced",
     targetAspectRatio: primaryTrack.targetAspectRatio,
     contentRect,
     solidBackgroundColor: undefined,

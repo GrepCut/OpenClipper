@@ -3,6 +3,7 @@ import type { AutoFlipAspectTrack, ClipperSmartCropBlob, NormalizedBox } from ".
 import type { ClipperSettings } from "../../settings/settings.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
 import { resolveAutoFlipCropTrack } from "../autoflip/build-track.util";
+import { interpolateCameraBox } from "../autoflip/camera/trajectory-interpolation.util";
 import {
   cropRectForCentroid,
   interpolateCentroid,
@@ -52,14 +53,8 @@ function interpolateAutoFlipCrop(track: AutoFlipAspectTrack, time: number): { cr
   const next = samples[low]!;
   const previous = samples[low - 1]!;
   if (next.cut) return { crop: previous.crop, solidBackgroundColor: previous.solidBackgroundColor };
-  const factor = (time - previous.t) / Math.max(Number.EPSILON, next.t - previous.t);
   return {
-    crop: {
-      x: previous.crop.x + (next.crop.x - previous.crop.x) * factor,
-      y: previous.crop.y + (next.crop.y - previous.crop.y) * factor,
-      width: previous.crop.width + (next.crop.width - previous.crop.width) * factor,
-      height: previous.crop.height + (next.crop.height - previous.crop.height) * factor,
-    },
+    crop: interpolateCameraBox({ t: previous.t, box: previous.crop }, { t: next.t, box: next.crop }, time),
     solidBackgroundColor: previous.solidBackgroundColor,
   };
 }

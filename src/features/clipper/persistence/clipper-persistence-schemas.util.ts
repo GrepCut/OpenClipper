@@ -179,6 +179,8 @@ export function parseRestoredClipAnalysisBlob(raw: unknown): {
 const restoredSmartCropSchema = z.object({
   clipStart: z.number(),
   clipEnd: z.number(),
+  analyzerVersion: z.string().optional(),
+  cameraSmoothing: z.enum(["smooth", "balanced", "snappy"]).optional(),
   aspectTracks: z
     .record(z.string(), z.object({ samples: z.array(z.unknown()) }))
     .optional(),
@@ -188,6 +190,8 @@ const restoredSmartCropSchema = z.object({
 export function parseRestoredSmartCropBlob(raw: unknown): {
   clipStart: number;
   clipEnd: number;
+  analyzerVersion?: string;
+  cameraSmoothing?: "smooth" | "balanced" | "snappy";
   aspectTracks?: Record<string, { samples: unknown[] }>;
   version?: string;
 } | null {

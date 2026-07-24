@@ -24,8 +24,36 @@ class BoxOneEuroFilter {
   }
 }
 
-const MAX_CAMERA_SPEED_PER_SEC = 0.16;
-const MAX_CAMERA_ACCELERATION_PER_SEC2 = 0.4;
+const MAX_CAMERA_SPEED_PER_SEC = 0.50;
+const MAX_CAMERA_ACCELERATION_PER_SEC2 = 1.5;
+
+function averageCrop(crops: Array<{ crop: NormalizedBox; weight: number }>): NormalizedBox {
+  const totalWeight = crops.reduce((sum, item) => sum + item.weight, 0);
+  return {
+    x: crops.reduce((sum, item) => sum + item.crop.x * item.weight, 0) / totalWeight,
+    y: crops.reduce((sum, item) => sum + item.crop.y * item.weight, 0) / totalWeight,
+    width: crops.reduce((sum, item) => sum + item.crop.width * item.weight, 0) / totalWeight,
+    height: crops.reduce((sum, item) => sum + item.crop.height * item.weight, 0) / totalWeight,
+  };
+}
+
+/** A strong 7-sample triangular denoiser that never reads another shot. */
+function smoothWithinShots(samples: AutoFlipCropSample[]): AutoFlipCropSample[] {
+  return samples.map((sample, index) => {
+    const window: Array<{ crop: NormalizedBox; weight: number }> = [{ crop: sample.crop, weight: 4 }];
+    for (const direction of [-1, 1] as const) {
+      if (direction < 0 && sample.cut) continue;
+      for (let distance = 1; distance <= 3; distance++) {
+        const candidate = samples[index + direction * distance];
+        // A `cut` sample starts a new shot, so it is a hard temporal boundary
+        // in either direction of the filter window.
+        if (!candidate || candidate.cut) break;
+        window.push({ crop: candidate.crop, weight: 4 - distance });
+      }
+    }
+    return { ...sample, crop: averageCrop(window) };
+  });
+}
 
 function clampCameraMotion(
   previous: NormalizedBox,
@@ -61,7 +89,7 @@ export function smoothShotCropSamples(
   let lastTime = -Infinity;
   let previousCrop: NormalizedBox | null = null;
   let previousVelocity = { x: 0, y: 0 };
-  return samples.map((sample, index) => {
+  const kinematicallySmoothed = samples.map((sample, index) => {
     if (sceneCuts.some((cut) => cut > lastTime + EPSILON && cut <= sample.t + EPSILON)) {
       filter.reset();
       previousCrop = null;
@@ -84,6 +112,7 @@ export function smoothShotCropSamples(
     previousVelocity = limited.velocity;
     return { ...sample, crop: limited.crop };
   });
+  return smoothWithinShots(kinematicallySmoothed);
 }
 
 export { viewportArea };

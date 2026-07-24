@@ -4,6 +4,20 @@ import { importanceGeometry } from "../salience/importance-ranker.util";
 
 const EPSILON = 1e-9;
 
+/**
+ * A split should show two distinct views, not the same subject twice.  The
+ * fraction is measured against the smaller viewport so containment is also
+ * treated as a full overlap.
+ */
+export const MAX_SPLIT_VIEWPORT_OVERLAP = 0.2;
+
+export function splitViewportsAreDistinct(viewports: NormalizedBox[]): boolean {
+  return viewports.every((viewport, index) =>
+    viewports.slice(index + 1).every((other) =>
+      importanceGeometry.overlapFractionOfSmaller(viewport, other) <= MAX_SPLIT_VIEWPORT_OVERLAP,
+    ));
+}
+
 export function unionAll(boxes: NormalizedBox[]): NormalizedBox | null {
   return boxes.reduce<NormalizedBox | null>(
     (result, box) => result ? importanceGeometry.unionBoxes(result, box) : { ...box },

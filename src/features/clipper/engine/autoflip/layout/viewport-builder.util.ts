@@ -8,6 +8,7 @@ import {
   cropAroundBox,
   expandBox,
   strictAspectViewport,
+  splitViewportsAreDistinct,
   unionAll,
 } from "./viewport-geometry.util";
 
@@ -69,10 +70,26 @@ export function buildViewports(
   }
   if (mode === "split" && required.length === 2) {
     const panelAspect = targetAspect * 2;
-    return [
+    const panels = [
       cropAroundBox(required[0]!.contentBox, sourceAspect, panelAspect),
       cropAroundBox(required[1]!.contentBox, sourceAspect, panelAspect),
     ];
+    // Do not render a duplicated subject in both panels. Re-enter the normal
+    // single-crop branch so it selects and frames the primary region.
+    return splitViewportsAreDistinct(panels)
+      ? panels
+      : buildViewports(
+          "single-crop",
+          importance,
+          fallbackCrop,
+          sourceAspect,
+          targetAspect,
+          framing,
+          visibilityState,
+          cut,
+          allowGroupUnion,
+          groupUnionMeta,
+        );
   }
   if (mode === "split" && required.length >= 3) {
     const primary = required.find((region) => region.role === "primary") ?? required[0]!;

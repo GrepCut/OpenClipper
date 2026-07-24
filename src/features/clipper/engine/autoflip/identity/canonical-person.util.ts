@@ -9,7 +9,9 @@ import type {
   SubjectDetectionSample,
 } from "../../../shared/smart-crop.util";
 
-const MAX_DROPOUT_SEC = 0.6;
+// Preserve several missed 5 FPS observations so temporal qualification and the
+// native prediction hold can reattach to the same rider.
+const MAX_DROPOUT_SEC = 0.9;
 const EPSILON = 1e-9;
 
 interface TrackState extends CanonicalPersonTrack {

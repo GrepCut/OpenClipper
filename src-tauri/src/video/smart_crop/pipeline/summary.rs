@@ -66,7 +66,7 @@ pub(crate) fn build_summary(
             },
         ),
         model_version: "clipper-vision-v5-yolox-s-scrfd10g-tiled",
-        tracker_version: tracking_enabled.then_some("bytetrack-v1"),
+        tracker_version: tracking_enabled.then_some("bytetrack-v2"),
         metrics: NativeVisionMetrics {
             decode_duration_ms: decode_stats.decode_duration_ms,
             inference_duration_ms: merged.inference_duration_ms,

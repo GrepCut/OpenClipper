@@ -19,6 +19,16 @@ import { CLIPPER_TRIMMED_SEGMENT_FILE, pathBackedClipperFile } from "../../platf
 import type { ClipperLayoutMode, ClipperSmartCropBlob, ImportanceRegion } from "../../shared/smart-crop.util";
 import { clipperTheme } from "../../shared/theme.util";
 import type { Theme } from "../../../../theme";
+import {
+  buildFaultExportSamples,
+  FLAT_FRAME_EXPORT_INTERVAL_SEC,
+  FLAT_MARGIN_MIN_DURATION_SEC,
+  FLAT_MARGIN_RANGE_TOLERANCE,
+  FLAT_MARGIN_STEP_TOLERANCE,
+  findFaultExportPeriods,
+  type FaultExportPeriod,
+  type TimelineSample,
+} from "./fault-frame-export.util";
 
 interface FramingDecisionsPanelProps {
   analysis: ClipperSmartCropBlob | null | undefined;
@@ -55,6 +65,7 @@ function roleLabel(role: ImportanceRegion["role"]): string {
 
 function trustLabel(trust: ImportanceRegion["trust"]): string {
   if (trust === "verified-person") return "Verified person";
+  if (trust === "temporally-qualified-person") return "Temporally qualified person";
   if (trust === "unverified-person") return "Unverified person";
   if (trust === "video-saliency") return "Saliency";
   return "Object";
@@ -63,97 +74,6 @@ function trustLabel(trust: ImportanceRegion["trust"]): string {
 function timestamp(value: number) {
   const minutes = Math.floor(value / 60);
   return `${minutes}:${(value - minutes * 60).toFixed(2).padStart(5, "0")}`;
-}
-
-type TimelineSample = {
-  t: number;
-  semanticScore: number | null;
-  baselineScore: number | null;
-  hasTargets: boolean;
-  targetCount: number;
-  strategy?: string;
-  reasonCodes?: string[];
-  cut?: boolean;
-};
-
-type ScoredTimelineSample = TimelineSample & {
-  semanticScore: number;
-  baselineScore: number;
-};
-
-type FlatMarginPeriod = {
-  startTime: number;
-  endTime: number;
-  samples: ScoredTimelineSample[];
-};
-
-const FLAT_MARGIN_MIN_DURATION_SEC = 4;
-const FLAT_MARGIN_STEP_TOLERANCE = 0.01;
-const FLAT_MARGIN_RANGE_TOLERANCE = 0.02;
-const FLAT_FRAME_EXPORT_INTERVAL_SEC = 0.5;
-
-function isScored(sample: TimelineSample): sample is ScoredTimelineSample {
-  return sample.hasTargets && sample.semanticScore != null && sample.baselineScore != null;
-}
-
-/** Finds stable runs in the actual margin, never bridging missing target evidence or cuts. */
-function findFlatMarginPeriods(samples: TimelineSample[]): FlatMarginPeriod[] {
-  if (samples.length < 2) return [];
-  const periods: FlatMarginPeriod[] = [];
-  let run: ScoredTimelineSample[] = [];
-
-  const addPeriod = () => {
-    const periodSamples = run;
-    run = [];
-    if (periodSamples.length < 2) return;
-    const gains = periodSamples.map((sample) => sample.semanticScore - sample.baselineScore);
-    const gainRange = Math.max(...gains) - Math.min(...gains);
-    const duration = periodSamples.at(-1)!.t - periodSamples[0]!.t;
-    if (duration >= FLAT_MARGIN_MIN_DURATION_SEC && gainRange <= FLAT_MARGIN_RANGE_TOLERANCE) {
-      periods.push({
-        startTime: periodSamples[0]!.t,
-        endTime: periodSamples.at(-1)!.t,
-        samples: periodSamples,
-      });
-    }
-  };
-
-  for (const sample of samples) {
-    if (!isScored(sample)) {
-      addPeriod();
-      continue;
-    }
-    const previous = run.at(-1);
-    const previousGain = previous ? previous.semanticScore - previous.baselineScore : null;
-    const gain = sample.semanticScore - sample.baselineScore;
-    if (sample.cut || (previousGain != null && Math.abs(gain - previousGain) > FLAT_MARGIN_STEP_TOLERANCE)) {
-      addPeriod();
-    }
-    run.push(sample);
-  }
-  addPeriod();
-  return periods;
-}
-
-function nearestTimelineSample(samples: ScoredTimelineSample[], timeSec: number): ScoredTimelineSample {
-  let best = samples[0]!;
-  let bestDistance = Math.abs(best.t - timeSec);
-  for (const sample of samples) {
-    const distance = Math.abs(sample.t - timeSec);
-    if (distance < bestDistance) {
-      best = sample;
-      bestDistance = distance;
-    }
-  }
-  return { ...best, t: timeSec };
-}
-
-function buildFlatExportSamples(period: FlatMarginPeriod): ScoredTimelineSample[] {
-  const exportSamples: ScoredTimelineSample[] = [];
-  for (let timeSec = period.startTime; timeSec <= period.endTime + 1e-6; timeSec += FLAT_FRAME_EXPORT_INTERVAL_SEC) {
-    exportSamples.push(nearestTimelineSample(period.samples, timeSec));
-  }
-  return exportSamples;
 }
 
 async function loadTrimmedVideoFile(projectId: string): Promise<File> {
@@ -296,6 +216,7 @@ function DecisionTimelineChart({
     cut?: boolean;
     visibilityRisk?: boolean;
     targetCount: number;
+    targetEvidence?: TimelineSample["targetEvidence"];
   }>;
   currentTime: number;
   onSeek?: (time: number) => void;
@@ -506,6 +427,7 @@ function DecisionTimelineChart({
             if (!s.isUnscored) return null;
             const nextT = samples[idx + 1]?.t ?? s.t + 0.5;
             const x1 = toX(s.t);
+            const pending = s.targetEvidence?.status === "temporal-pending";
             return (
               <rect
                 key={`no-target-${idx}`}
@@ -513,8 +435,10 @@ function DecisionTimelineChart({
                 y={paddingTop}
                 width={Math.max(1, toX(nextT) - x1)}
                 height={graphH}
-                fill="rgba(100, 116, 139, 0.12)"
-              />
+                fill={pending ? "rgba(234, 179, 8, 0.18)" : "rgba(100, 116, 139, 0.12)"}
+              >
+                <title>{pending ? "Tracking person evidence before framing" : "No framing target evidence"}</title>
+              </rect>
             );
           })}
 
@@ -717,6 +641,7 @@ export function FramingDecisionsPanel({
         visibilityRisk,
         targetCount,
         reasonCodes: s.reasonCodes,
+        targetEvidence: s.targetEvidence,
       };
     });
 
@@ -745,52 +670,63 @@ export function FramingDecisionsPanel({
   }, [analysis, formatId, time]);
 
   const exportFlatMarginFrames = useCallback(async () => {
-    const periods = findFlatMarginPeriods(data?.timelineSamples ?? []);
+    const periods = findFaultExportPeriods(data?.timelineSamples ?? []);
     if (!periods.length) {
-      appToast.info("No flat Margin Gain periods", "No stable margin run lasting at least 4 seconds was found.");
+      appToast.info(
+        "No fault periods found",
+        "No flat Margin Gain run or no-score gap lasting at least 4 seconds was found.",
+      );
       return;
     }
 
     setExportingFlatFrames(true);
-    const loadingToast = appToast.loading("Exporting flat Margin Gain frames", "Preparing diagnostic stills…");
+    const loadingToast = appToast.loading("Exporting fault frames", "Preparing diagnostic stills…");
     try {
       const videoFile = await loadTrimmedVideoFile(projectId);
-      const runName = `flat-margin-gain-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      const runName = `fault-frames-${new Date().toISOString().replace(/[:.]/g, "-")}`;
       const frameManifest: Array<{
         file: string;
         timeSec: number;
-        semanticScore: number;
-        baselineScore: number;
-        marginGain: number;
+        periodKind: FaultExportPeriod["kind"];
+        semanticScore: number | null;
+        baselineScore: number | null;
+        marginGain: number | null;
         period: number;
         targetCount: number;
         strategy?: string;
         reasonCodes?: string[];
+        targetEvidence?: TimelineSample["targetEvidence"];
       }> = [];
       let exportDir = "";
       let frameNumber = 0;
 
       for (const [periodIndex, period] of periods.entries()) {
-        const exportSamples = buildFlatExportSamples(period);
+        const exportSamples = buildFaultExportSamples(period);
         for (const sample of exportSamples) {
           const frame = await extractVideoFrameJpeg(videoFile, sample.t);
-          const fileName = `period-${String(periodIndex + 1).padStart(2, "0")}_t-${sample.t.toFixed(2).replace(".", "-")}.jpg`;
+          const kindSuffix = period.kind === "no-score" ? "_no-score" : "";
+          const fileName = `period-${String(periodIndex + 1).padStart(2, "0")}_t-${sample.t.toFixed(2).replace(".", "-")}${kindSuffix}.jpg`;
           exportDir = await invoke<string>("write_clipper_project_diagnostic_file", {
             projectId,
             runName,
             fileName,
             contents: frame,
           });
+          const marginGain = sample.semanticScore != null && sample.baselineScore != null
+            ? sample.semanticScore - sample.baselineScore
+            : null;
           frameManifest.push({
             file: fileName,
             timeSec: sample.t,
+            periodKind: period.kind,
             semanticScore: sample.semanticScore,
             baselineScore: sample.baselineScore,
-            marginGain: sample.semanticScore - sample.baselineScore,
+            marginGain,
             period: periodIndex + 1,
             targetCount: sample.targetCount,
             strategy: sample.strategy,
             reasonCodes: sample.reasonCodes,
+            targetEvidence: sample.targetEvidence,
           });
           frameNumber += 1;
         }
@@ -802,14 +738,20 @@ export function FramingDecisionsPanel({
         fileName: "manifest.json",
         contents: new TextEncoder().encode(JSON.stringify({
           criterion: {
-            metric: "semanticScore - baselineScore",
             minDurationSec: FLAT_MARGIN_MIN_DURATION_SEC,
-            stepTolerance: FLAT_MARGIN_STEP_TOLERANCE,
-            rangeTolerance: FLAT_MARGIN_RANGE_TOLERANCE,
             exportIntervalSec: FLAT_FRAME_EXPORT_INTERVAL_SEC,
+            flatMargin: {
+              metric: "semanticScore - baselineScore",
+              stepTolerance: FLAT_MARGIN_STEP_TOLERANCE,
+              rangeTolerance: FLAT_MARGIN_RANGE_TOLERANCE,
+            },
+            noScore: {
+              metric: "missing semantic/baseline score or no targets",
+            },
           },
           periods: periods.map((period, index) => ({
             period: index + 1,
+            kind: period.kind,
             startTimeSec: period.startTime,
             endTimeSec: period.endTime,
             durationSec: period.endTime - period.startTime,
@@ -818,7 +760,14 @@ export function FramingDecisionsPanel({
         }, null, 2)),
       });
       await navigator.clipboard.writeText(exportDir);
-      appToast.update(loadingToast, "success", "Flat Margin Gain frames exported", `${frameNumber} still(s) in ${periods.length} period(s). The folder path was copied to the clipboard.`);
+      const flatCount = periods.filter((period) => period.kind === "flat-margin").length;
+      const noScoreCount = periods.filter((period) => period.kind === "no-score").length;
+      appToast.update(
+        loadingToast,
+        "success",
+        "Fault frames exported",
+        `${frameNumber} still(s) in ${periods.length} period(s) (${flatCount} flat margin, ${noScoreCount} no-score). The folder path was copied to the clipboard.`,
+      );
     } catch (error) {
       appToast.update(loadingToast, "error", "Could not export diagnostic frames", String(error));
     } finally {
@@ -856,6 +805,7 @@ export function FramingDecisionsPanel({
     semanticScore: decision.semanticScore ?? null,
     baselineScore: decision.baselineScore ?? null,
     hasTargets: decision.requiredRegionIds.length > 0,
+    targetEvidence: decision.targetEvidence,
   };
 
   const semScore = currentSample.semanticScore;
@@ -867,7 +817,7 @@ export function FramingDecisionsPanel({
         {/* Multi-Layer Time-Series Timeline Chart */}
         <SectionCard
           title="Score Dynamics Over Time"
-          subtitle="Click timeline to seek video time · export finds flat Margin Gain runs ≥ 4 s at 0.5 s intervals"
+          subtitle="Click timeline to seek video time · export finds flat Margin Gain runs or no-score gaps ≥ 4 s at 0.5 s intervals"
           theme={theme}
           action={
             <HStack gap={2}>
@@ -892,7 +842,7 @@ export function FramingDecisionsPanel({
                 gap={1}
               >
                 <Download size={12} />
-                {exportingFlatFrames ? "Exporting…" : "Export flat frames"}
+                {exportingFlatFrames ? "Exporting…" : "Export fault frames"}
               </Box>
               <Activity size={15} color={theme.text.muted} />
             </HStack>
@@ -937,6 +887,13 @@ export function FramingDecisionsPanel({
               Rejected: <Box as="span" fontWeight="semibold" color={theme.text.muted}>{rejectedLabel}</Box>.
               {decision.decisionConfidence != null ? ` Confidence: ${percent(decision.decisionConfidence)}.` : ""}
             </Text>
+            {!currentSample.hasTargets && currentSample.targetEvidence?.status === "temporal-pending" ? (
+              <Text fontSize="xs" color="#facc15">
+                Tracking a detector-only person before it is allowed to steer framing.
+              </Text>
+            ) : !currentSample.hasTargets ? (
+              <Text fontSize="xs" color={theme.text.muted}>No eligible framing target was detected.</Text>
+            ) : null}
           </VStack>
         </SectionCard>
 
