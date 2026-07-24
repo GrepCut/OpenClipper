@@ -17,11 +17,8 @@ import {
   findActiveRegion,
   isCollageAspectEligible,
 } from "../reframe/collage";
-import {
-  deriveSingleFocusTrack,
-  FaceSampleCache,
-} from "../reframe";
-import { resolveCropRect, resolveAutoFlipCropRender } from "./crop-resolvers.util";
+import { FaceSampleCache } from "../reframe";
+import { resolveAutoFlipCropRender } from "./crop-resolvers.util";
 import { resolveClipperLayoutRender } from "./layout-resolvers.util";
 import {
   drawClipperCaptions,
@@ -50,9 +47,8 @@ export function resolveClipperOutputSize(
 }
 
 export function formatNeedsFaceTracking(formatDef: ClipperFormatDef, settings: ClipperSettings): boolean {
-  if (formatDef.mode !== "crop") return false;
-  const mode = settings.reframe.cropMode;
-  return mode === "center" || mode === "smart-follow" || mode === "face-follow" || mode === "podcast-collage";
+  void settings;
+  return formatDef.mode === "crop";
 }
 
 /** Full per-frame draw: crop/collage framing + captions. Shared by the live preview and the final render. */
@@ -67,7 +63,7 @@ export function drawClipperFrame(
   isPreview = false,
 ): void {
   const needsTracking = formatNeedsFaceTracking(formatDef, render.settings);
-  const resolvedPlannedLayout = render.settings.reframe.cropMode === "smart-follow" && formatDef.mode === "crop"
+  const resolvedPlannedLayout = formatDef.mode === "crop"
     ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t)
     : undefined;
   const samples = needsTracking && !render.faceRender ? render.faceCache?.sortedSamples() ?? [] : [];
@@ -78,7 +74,6 @@ export function drawClipperFrame(
     ? (render.faceRender?.collageTracks
       ?? buildCollageTracksForRegions(
         samples,
-        render.settings.reframe.smoothing,
         collageRegions,
         render.disabledCollageRegionIds,
       ))
@@ -90,7 +85,6 @@ export function drawClipperFrame(
 
   const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;
   const collageEligible = needsTracking
-    && render.settings.reframe.cropMode !== "manual"
     && formatDef.mode === "crop"
     && activeRegion != null
     && !render.disabledCollageRegionIds.includes(activeRegion.id)
@@ -118,17 +112,8 @@ export function drawClipperFrame(
       true,
     );
   } else {
-    const isSmartFollow = render.settings.reframe.cropMode === "smart-follow";
-    const focusTrack = needsTracking && !isSmartFollow
-      ? (render.faceRender?.focusTrack
-        ?? deriveSingleFocusTrack(samples, render.settings.reframe.facePickStrategy, render.settings.reframe.smoothing))
-      : null;
-    const autoFlipRender = isSmartFollow
-      ? resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t)
-      : undefined;
-    const cropRect = isSmartFollow
-      ? autoFlipRender?.cropRect
-      : resolveCropRect(formatDef, source, output, t, render.settings, focusTrack);
+    const autoFlipRender = resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t);
+    const cropRect = autoFlipRender?.cropRect;
     drawClipperPlatformFrame(
       formatDef,
       ctx,
@@ -136,7 +121,7 @@ export function drawClipperFrame(
       source,
       output,
       cropRect,
-      isSmartFollow ? autoFlipRender?.solidBackgroundColor : undefined,
+      autoFlipRender?.solidBackgroundColor,
     );
 
     if (showDebug && cropRect) {

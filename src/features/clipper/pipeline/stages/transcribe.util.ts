@@ -1,5 +1,4 @@
 import { transcriptionService } from "../../../../services/transcription.service";
-import type { TranscriptionEngine } from "../../../../services/types/transcription.types";
 import {
   computeRmsEnvelope,
   extractClipAudioForTranscription,
@@ -18,7 +17,6 @@ export interface TranscribeStageInput {
   clipDuration: number;
   trimUnchanged: boolean;
   existingWords: WordCue[];
-  engine: TranscriptionEngine;
 }
 
 async function prepareAudioEnvelope(
@@ -68,7 +66,6 @@ export async function runTranscribeStage(
     clipDuration,
     trimUnchanged,
     existingWords,
-    engine,
   } = input;
 
   const preparedAudio = await prepareAudioEnvelope(
@@ -89,22 +86,18 @@ export async function runTranscribeStage(
       {
         clipStartSec: snappedStart,
         clipEndSec: end,
-        engine,
       },
     );
     const words = buildWordCuesForTranscription(existing, clipDuration);
     clipperLog("transcribe: reused transcription", {
       wordCount: words.length,
-      engine,
+      engine: "parakeet_local",
     });
     return words;
   } catch {
-    const isLocal = engine === "parakeet_local";
     reporter.stage(
       "transcribing",
-      isLocal
-        ? "Transcribing speech (Parakeet local)…"
-        : "Transcribing speech (API)…",
+      "Transcribing speech (Parakeet local)…",
     );
     reporter.stageProgress(0);
 
@@ -126,9 +119,7 @@ export async function runTranscribeStage(
     reporter.stageProgress(0.6);
     reporter.stage(
       "transcribing",
-      isLocal
-        ? "Transcribing speech (Parakeet local)…"
-        : "Transcribing speech (API)…",
+      "Transcribing speech (Parakeet local)…",
     );
 
     const transcription = await transcriptionService.transcribe(
@@ -137,21 +128,16 @@ export async function runTranscribeStage(
       input.projectId,
       {
         signal: options.signal,
-        summarize: false,
-        audioDurationSeconds: clipDuration,
         clipStartSec: snappedStart,
         clipEndSec: end,
-        engine,
-        pcm16k: isLocal ? transcriptionAudio.pcm16k : undefined,
-        onParakeetProgress: isLocal
-          ? (progress) => {
-              reporter.stageProgress(0.6 + progress.ratio * 0.4);
-              reporter.stage(
-                "transcribing",
-                `Transcribing (Parakeet, chunk ${progress.chunkIndex + 1}/${progress.chunkCount})…`,
-              );
-            }
-          : undefined,
+        pcm16k: transcriptionAudio.pcm16k,
+        onParakeetProgress: (progress) => {
+          reporter.stageProgress(0.6 + progress.ratio * 0.4);
+          reporter.stage(
+            "transcribing",
+            `Transcribing (Parakeet, chunk ${progress.chunkIndex + 1}/${progress.chunkCount})…`,
+          );
+        },
       },
     );
     if (options.signal.aborted)

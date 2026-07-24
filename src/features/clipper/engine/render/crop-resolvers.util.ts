@@ -1,41 +1,9 @@
-import type { ClipperFormatDef } from "../../shared/formats.util";
 import type { AutoFlipAspectTrack, ClipperSmartCropBlob, NormalizedBox } from "../../shared/smart-crop.util";
-import type { ClipperSettings } from "../../settings/settings.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
 import { resolveAutoFlipCropTrack } from "../autoflip/build-track.util";
 import { interpolateCameraBox } from "../autoflip/camera/trajectory-interpolation.util";
-import {
-  cropRectForCentroid,
-  interpolateCentroid,
-  normalizedBoxToCropRect,
-} from "../reframe";
-import type { CentroidSample, ClipperCropRect } from "../types/reframe.types";
-
-export function resolveCropRect(
-  formatDef: ClipperFormatDef,
-  source: FrameEffectSize,
-  output: FrameEffectSize,
-  t: number,
-  settings: ClipperSettings,
-  focusTrack: CentroidSample[] | null,
-): ClipperCropRect | undefined {
-  if (formatDef.mode !== "crop") return undefined;
-  const targetRatio = output.width / output.height;
-  const { cropMode, headroom, manualFocalPoint } = settings.reframe;
-
-  if (cropMode === "manual") {
-    return cropRectForCentroid(source.width, source.height, manualFocalPoint.x, manualFocalPoint.y, targetRatio, headroom);
-  }
-  if (
-    (cropMode === "center" || cropMode === "smart-follow" || cropMode === "face-follow" || cropMode === "podcast-collage") &&
-    focusTrack &&
-    focusTrack.length > 0
-  ) {
-    const c = interpolateCentroid(focusTrack, t);
-    return cropRectForCentroid(source.width, source.height, c.x, c.y, targetRatio, headroom, c.extent);
-  }
-  return undefined;
-}
+import { normalizedBoxToCropRect } from "../reframe";
+import type { ClipperCropRect } from "../types/reframe.types";
 
 function interpolateAutoFlipCrop(track: AutoFlipAspectTrack, time: number): { crop: NormalizedBox; solidBackgroundColor?: { r: number; g: number; b: number } } | null {
   const samples = track.samples;

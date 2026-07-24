@@ -118,7 +118,6 @@ export function useClipperPipelineWorkflow(
             end,
             wordsPerGroup: settings.captions.wordsPerGroup,
             metadata: metadataRef.current,
-            engine: settings.transcription.engine,
           },
           reporterRef.current,
           { signal: controller.signal },
@@ -132,7 +131,6 @@ export function useClipperPipelineWorkflow(
             transcribedClipStart: snappedStart,
             transcribedClipEnd: rangeEnd,
             wordsPerGroupAtTranscribe: settings.captions.wordsPerGroup,
-            transcriptionEngine: settings.transcription.engine,
           },
           "analyzing-faces",
         );
@@ -168,7 +166,6 @@ export function useClipperPipelineWorkflow(
       setRangeLocked,
       setState,
       settings.captions.wordsPerGroup,
-      settings.transcription.engine,
     ],
   );
 

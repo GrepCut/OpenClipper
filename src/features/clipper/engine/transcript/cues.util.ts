@@ -41,7 +41,7 @@ export function buildWordCuesForClip(
   return segmentsToWordCues(sliceSegmentsForWindow(segments, clipDurationSec));
 }
 
-/** Prefer real word timestamps from Parakeet; fall back to segment interpolation for API. */
+/** Uses Parakeet word timestamps, falling back to segment interpolation if unavailable. */
 export function buildWordCuesForTranscription(
   transcription: Transcription,
   clipDurationSec: number,

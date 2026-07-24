@@ -8,7 +8,7 @@ import type {
   CollageRegion,
   CollageTracks,
 } from "./collage.types";
-import type { CentroidSample, ClipperCropRect } from "./reframe.types";
+import type { ClipperCropRect } from "./reframe.types";
 import type { ClipperSmartCropBlob } from "../../shared/smart-crop.util";
 
 export interface ClipperClipWindow {
@@ -42,7 +42,6 @@ export interface ClipperFrameContext {
   captionGroups: CaptionGroup[];
   faceCache: FaceSampleCache | null;
   faceRender?: {
-    focusTrack: CentroidSample[];
     collageTracks: CollageTracks;
     collageRegions: CollageRegion[];
     collageEligibility: CollageAspectEligibility;

@@ -14,7 +14,6 @@ import { findClipByIndex } from "../engine/segmentation";
 import {
   FACE_SAMPLE_INTERVAL_SEC,
   FaceSampleCache,
-  deriveSingleFocusTrack,
   hasAnyFaces,
   type CentroidSample,
 } from "../engine/reframe";
@@ -86,7 +85,6 @@ export interface ClipperSession {
   faceRenderCache: {
     reframeKey: string;
     sampleRevision: number;
-    focusTrack: CentroidSample[];
     collageTracks: CollageTracks;
     collageRegions: CollageRegion[];
     collageEligibility: CollageAspectEligibility;
@@ -108,8 +106,8 @@ export function normalizeClipperSession(session: ClipperSession): ClipperSession
 
 /** Cache key for derived face-render tracks from reframe settings + the session's region overrides. */
 export function reframeCacheKey(settings: ClipperSettings, disabledCollageRegionIds: string[]): string {
-  const { cropMode, facePickStrategy, smoothing, headroom } = settings.reframe;
-  return `${cropMode}|${facePickStrategy}|${smoothing}|${headroom}|${[...disabledCollageRegionIds].sort().join(",")}`;
+  const { headroom } = settings.reframe;
+  return `${headroom}|${[...disabledCollageRegionIds].sort().join(",")}`;
 }
 
 /** Creates a face sample cache that reports detection summary via the reporter. */
@@ -121,7 +119,7 @@ export function createFaceCache(
     const samples = session.faceCache!.sortedSamples();
     if (samples.length === 0) return;
     const hasFaces = hasAnyFaces(samples);
-    const hasTwoSpeakers = deriveCollageTracks(samples, "balanced").hasTwoSpeakers;
+    const hasTwoSpeakers = deriveCollageTracks(samples).hasTwoSpeakers;
     reporter.faces(hasFaces, hasTwoSpeakers, session.faceCache!.sampleRevision);
   });
 }
@@ -147,10 +145,8 @@ export function resolveFaceRender(
     cached = {
       reframeKey,
       sampleRevision,
-      focusTrack: deriveSingleFocusTrack(samples, settings.reframe.facePickStrategy, settings.reframe.smoothing),
       collageTracks: buildCollageTracksForRegions(
         collageSamples,
-        settings.reframe.smoothing,
         collageRegions,
         disabledCollageRegionIds,
       ),
@@ -161,7 +157,6 @@ export function resolveFaceRender(
   }
 
   return {
-    focusTrack: cached.focusTrack,
     collageTracks: cached.collageTracks,
     collageRegions: cached.collageRegions,
     collageEligibility: cached.collageEligibility,

@@ -5,9 +5,6 @@ import type {
 } from '../lib/captions/subtitle-render.util';
 import { clamp } from '../lib/math.util';
 
-export type ClipperCropMode = "center" | "smart-follow" | "face-follow" | "podcast-collage" | "manual";
-export type ClipperFacePickStrategy = "largest" | "centered";
-export type ClipperSmoothingStrength = "smooth" | "balanced" | "snappy";
 export type ClipperHeadroom = "tight" | "normal" | "wide";
 
 export type ClipperCaptionBoxStyle = "solid" | "outline" | "none";
@@ -18,12 +15,7 @@ export type ClipperResolutionCap = "source" | "1080p" | "720p";
 export type ClipperWatermarkCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 export interface ClipperReframeSettings {
-  cropMode: ClipperCropMode;
-  facePickStrategy: ClipperFacePickStrategy;
-  smoothing: ClipperSmoothingStrength;
   headroom: ClipperHeadroom;
-  /** 0..1 normalized, used only when cropMode === "manual". */
-  manualFocalPoint: { x: number; y: number };
   showDebugFaceBoxes: boolean;
 }
 
@@ -71,19 +63,12 @@ export interface ClipperBrandingSettings {
   showProgressBar: boolean;
 }
 
-export type ClipperTranscriptionEngine = "api" | "parakeet_local";
-
-export interface ClipperTranscriptionSettings {
-  engine: ClipperTranscriptionEngine;
-}
-
 export interface ClipperSettings {
   reframe: ClipperReframeSettings;
   captions: ClipperCaptionSettings;
   formats: ClipperFormatSettings;
   audio: ClipperAudioSettings;
   branding: ClipperBrandingSettings;
-  transcription: ClipperTranscriptionSettings;
   /** Last duration preset picked on the trim-select stage, remembered across uploads. */
   lastDurationPresetSec: number;
 }
@@ -101,13 +86,7 @@ export const CLIPPER_MIN_CLIP_SECONDS = 3;
 
 export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   reframe: {
-    cropMode: "smart-follow",
-    facePickStrategy: "largest",
-    // Smart Follow favours a deliberate camera path over reacting to every
-    // detector wobble. Users may still opt into the faster profiles.
-    smoothing: "smooth",
     headroom: "normal",
-    manualFocalPoint: { x: 0.5, y: 0.5 },
     showDebugFaceBoxes: false,
   },
   captions: {
@@ -148,9 +127,6 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     outroSeconds: 2,
     showProgressBar: false,
   },
-  transcription: {
-    engine: "api",
-  },
   lastDurationPresetSec: 60,
 };
 
@@ -189,14 +165,12 @@ export function mergeClipperSettings(
 ): ClipperSettings {
   if (!partial) return base;
   const reframe = { ...base.reframe, ...partial.reframe };
-  if (reframe.cropMode === "podcast-collage") reframe.cropMode = "smart-follow";
   return {
     reframe,
     captions: { ...base.captions, ...partial.captions },
     formats: { ...base.formats, ...partial.formats },
     audio: { ...base.audio, ...partial.audio },
     branding: { ...base.branding, ...partial.branding },
-    transcription: { ...base.transcription, ...partial.transcription },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };
 }

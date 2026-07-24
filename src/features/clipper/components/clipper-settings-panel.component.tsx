@@ -32,15 +32,7 @@ export const ClipperSettingsPanel: React.FC<ClipperSettingsPanelProps> = ({
   return (
     <VStack align="stretch" gap={0}>
       {!hideTranscript && <TranscriptSection words={words} />}
-      <TranscriptionSection
-        transcription={settings.transcription}
-        onChange={(patch) =>
-          onUpdateSettings((prev) => ({
-            ...prev,
-            transcription: { ...prev.transcription, ...patch },
-          }))
-        }
-      />
+      <TranscriptionSection />
       <ReframeSection
         reframe={settings.reframe}
         hasDetectedFaces={hasDetectedFaces}

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
 import { FiUploadCloud } from "react-icons/fi";
 import { clipperTheme } from "../shared/theme.util";
@@ -33,6 +33,40 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
     file.path = path;
     onFile(file);
   }, [onFile]);
+
+  const chooseFile = useCallback(() => {
+    if (disabled) return;
+    if (isTauri()) {
+      void chooseNativeFile();
+    } else {
+      inputRef.current?.click();
+    }
+  }, [disabled, chooseNativeFile]);
+
+  useEffect(() => {
+    if (disabled) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        const target = e.target as HTMLElement | null;
+        const isInput =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.tagName === "SELECT" ||
+            target.isContentEditable);
+        if (isInput) return;
+
+        e.preventDefault();
+        chooseFile();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [disabled, chooseFile]);
 
   return (
     <Box
@@ -70,11 +104,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
       onKeyDown={(e) => {
         if (disabled || (e.key !== "Enter" && e.key !== " ")) return;
         e.preventDefault();
-        if (isTauri()) {
-          void chooseNativeFile();
-        } else {
-          inputRef.current?.click();
-        }
+        chooseFile();
       }}
       transition="all 0.2s ease"
       _hover={{

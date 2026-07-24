@@ -1,5 +1,3 @@
-export type TranscriptionEngine = "api" | "parakeet_local";
-
 export interface TranscriptionSegment {
   id: string;
   startTime: number;
@@ -17,7 +15,7 @@ export interface Transcription {
   id: string;
   mediaFileId: string;
   language?: string;
-  engine?: TranscriptionEngine;
+  engine?: "parakeet_local";
   segments: TranscriptionSegment[];
   words?: TranscriptionWord[];
 }

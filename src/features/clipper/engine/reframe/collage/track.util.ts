@@ -1,4 +1,3 @@
-import type { ClipperSmoothingStrength } from "../../../settings/settings.util";
 import type { ClipperAspectPresetId } from "../../../shared/formats.util";
 import type { NormalizedBox, SubjectDetectionSample } from "../../../shared/smart-crop.util";
 import { computeTargetCropSize } from "../../autoflip/geometry/frame-crop-region.util";
@@ -161,10 +160,9 @@ export function augmentFaceSamplesWithDetectedHeads(
  */
 export function deriveCollageTracks(
   samples: FaceBoxSample[],
-  smoothing: ClipperSmoothingStrength,
 ): CollageTracks {
   const regions = deriveTwoSpeakerRegions(samples);
-  return buildCollageTracksForRegions(samples, smoothing, regions, []);
+  return buildCollageTracksForRegions(samples, regions, []);
 }
 
 /**
@@ -251,7 +249,6 @@ export function findActiveRegion(regions: CollageRegion[], t: number): CollageRe
  */
 export function buildCollageTracksForRegions(
   samples: FaceBoxSample[],
-  smoothing: ClipperSmoothingStrength,
   regions: CollageRegion[],
   disabledRegionIds: string[],
 ): CollageTracks {
@@ -279,13 +276,13 @@ export function buildCollageTracksForRegions(
 
     if (topFace) {
       const centroid = faceToCentroid(topFace, sample.frameW, sample.frameH);
-      const stabilized = stabilizeFocusCentroid(topStabilizer, centroid, sample.time, smoothing, sample.sceneCut);
+      const stabilized = stabilizeFocusCentroid(topStabilizer, centroid, sample.time, sample.sceneCut);
       top.push({ t: sample.time, ...stabilized, cut: sample.sceneCut });
     }
 
     if (bottomFace) {
       const centroid = faceToCentroid(bottomFace, sample.frameW, sample.frameH);
-      const stabilized = stabilizeFocusCentroid(bottomStabilizer, centroid, sample.time, smoothing, sample.sceneCut);
+      const stabilized = stabilizeFocusCentroid(bottomStabilizer, centroid, sample.time, sample.sceneCut);
       bottom.push({ t: sample.time, ...stabilized, cut: sample.sceneCut });
     }
   }

@@ -4,7 +4,6 @@ import {
   DEFAULT_CLIPPER_SETTINGS,
   mergeClipperSettings,
   type ClipperSettings,
-  type ClipperTranscriptionEngine,
 } from "../settings/settings.util";
 import { loadClipperSettings } from "../settings/settings-storage.util";
 import { isClipperPreviewReadyStage } from "../shared/stages.util";
@@ -26,7 +25,6 @@ export interface ClipperProjectMetadata {
   wordsPerGroupAtTranscribe?: number;
   transcribedClipStart?: number;
   transcribedClipEnd?: number;
-  transcriptionEngine?: ClipperTranscriptionEngine;
   /** Legacy jsonb fields — manual/AI clips are now stored in dedicated clipper_clip tables; kept optionally readable only for one-time server-side migration. */
   generatedClips?: Array<{ index: number; startSec: number; endSec: number }>;
   aiGeneratedClips?: Array<Record<string, unknown>>;
@@ -88,11 +86,6 @@ export function parseClipperProjectMetadata(
         : undefined,
     transcribedClipEnd:
       typeof partial.transcribedClipEnd === "number" ? partial.transcribedClipEnd : undefined,
-    transcriptionEngine:
-      partial.transcriptionEngine === "parakeet_local" ||
-      partial.transcriptionEngine === "api"
-        ? partial.transcriptionEngine
-        : undefined,
     generatedClips: Array.isArray(partial.generatedClips)
       ? partial.generatedClips.filter(
           (c): c is { index: number; startSec: number; endSec: number } =>

@@ -6,16 +6,10 @@ import type {
   ParakeetCapability,
   ParakeetModelStatus,
 } from "../../../../services/types/transcription.types";
-import type { ClipperTranscriptionSettings } from "../../settings/settings.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import { isTauri } from "../../../../shared/utils/platform.util";
 import { clipperLog, clipperWarn } from "../../shared/logger.util";
-import { SegmentedControl, SettingRow, SettingSection } from "./setting-controls.component";
-
-interface TranscriptionSectionProps {
-  transcription: ClipperTranscriptionSettings;
-  onChange: (patch: Partial<ClipperTranscriptionSettings>) => void;
-}
+import { SettingSection } from "./setting-controls.component";
 
 interface ModelDownloadEvent {
   path: string;
@@ -24,11 +18,6 @@ interface ModelDownloadEvent {
   done: boolean;
   error?: string | null;
 }
-
-const ENGINE_OPTIONS = [
-  { value: "api", label: "Online API" },
-  { value: "parakeet_local", label: "Parakeet local" },
-] as const;
 
 function providerLabel(provider?: string | null): string | null {
   if (!provider) return null;
@@ -67,10 +56,7 @@ function logParakeetDiagnostics(
   }
 }
 
-export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
-  transcription,
-  onChange,
-}) => {
+export const TranscriptionSection: React.FC = () => {
   const { theme } = useClipperUi();
   const [modelStatus, setModelStatus] = useState<ParakeetModelStatus | null>(null);
   const [capability, setCapability] = useState<ParakeetCapability | null>(null);
@@ -93,7 +79,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
   }, []);
 
   const refreshCapability = useCallback(async () => {
-    if (!isTauri() || transcription.engine !== "parakeet_local") {
+    if (!isTauri()) {
       setCapability(null);
       return;
     }
@@ -107,12 +93,12 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         reason: probeError instanceof Error ? probeError.message : String(probeError),
       });
     }
-  }, [modelStatus?.installed, transcription.engine]);
+  }, [modelStatus?.installed]);
 
   useEffect(() => {
-    if (!modelStatus || transcription.engine !== "parakeet_local" || !isTauri()) return;
+    if (!modelStatus || !isTauri()) return;
     logParakeetDiagnostics(modelStatus, capability);
-  }, [modelStatus, capability, transcription.engine]);
+  }, [modelStatus, capability]);
 
   useEffect(() => {
     void refreshStatus();
@@ -182,7 +168,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     }
   };
 
-  const showModelPanel = transcription.engine === "parakeet_local" && isTauri();
+  const showModelPanel = isTauri();
   const activeProvider =
     providerLabel(modelStatus?.provider) ??
     providerLabel(capability?.provider) ??
@@ -191,25 +177,9 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
   return (
     <SettingSection
       title="Transcription"
-      description="Speech-to-text engine for clip captions"
+      description="Parakeet Local speech-to-text for clip captions"
     >
       <VStack align="stretch" gap={3}>
-        <SettingRow
-          label="Engine"
-          control={
-            <SegmentedControl
-              options={ENGINE_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              value={transcription.engine}
-              onChange={(value) =>
-                onChange({ engine: value as ClipperTranscriptionSettings["engine"] })
-              }
-            />
-          }
-        />
-
         {showModelPanel && (
           <VStack align="stretch" gap={2}>
             <Text fontSize="xs" color={theme.text.muted}>

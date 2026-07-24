@@ -11,10 +11,7 @@ export {
   prefillFaceSampleCache,
 } from "./analysis.util";
 export {
-  deriveSingleFocusTrack,
   interpolateCentroid,
-  pickPrimaryFace,
-  SMOOTHING_ALPHA,
   blendCentroid,
   createFocusStabilizer,
   stabilizeFocusCentroid,

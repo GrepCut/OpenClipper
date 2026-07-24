@@ -2,23 +2,11 @@ import { z } from "zod";
 
 import { CLIPPER_EXPORT_MANIFEST_VERSION } from "./export-files.types";
 
-const clipperCropModeSchema = z.enum([
-  "center",
-  "smart-follow",
-  "face-follow",
-  "podcast-collage",
-  "manual",
-]);
-
 const clipperSettingsSchema = z
   .object({
     reframe: z
       .object({
-        cropMode: clipperCropModeSchema,
-        facePickStrategy: z.enum(["largest", "centered"]),
-        smoothing: z.enum(["smooth", "balanced", "snappy"]),
         headroom: z.enum(["tight", "normal", "wide"]),
-        manualFocalPoint: z.object({ x: z.number(), y: z.number() }),
         showDebugFaceBoxes: z.boolean(),
       })
       .partial()
@@ -70,12 +58,6 @@ const clipperSettingsSchema = z
         outroText: z.string(),
         outroSeconds: z.number(),
         showProgressBar: z.boolean(),
-      })
-      .partial()
-      .optional(),
-    transcription: z
-      .object({
-        engine: z.enum(["api", "parakeet_local"]),
       })
       .partial()
       .optional(),

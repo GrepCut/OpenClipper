@@ -255,7 +255,6 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
               {
                 clipStartSec: metadata.transcribedClipStart ?? metadata.clipStart,
                 clipEndSec: metadata.transcribedClipEnd ?? metadata.clipEnd ?? undefined,
-                engine: metadata.transcriptionEngine,
               },
             );
             words = buildWordCuesForTranscription(transcription, clipDuration);

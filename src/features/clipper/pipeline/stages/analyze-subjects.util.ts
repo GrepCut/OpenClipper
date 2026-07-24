@@ -7,7 +7,7 @@ import { augmentFaceSamplesWithDetectedHeads } from "../../engine/reframe/collag
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { aspectRatioFromId } from "../../lib/media/video-draw.util";
 import { yieldToMain } from "../../shared/yield-to-main.util";
-import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings.util";
+import type { ClipperHeadroom } from "../../settings/settings.util";
 import {
   clipperSmartCropDataRelativePath,
   readClipperSmartCropAnalysis,
@@ -25,7 +25,6 @@ export interface AnalyzeSubjectsInput {
   clipEnd: number;
   skipSubjectAnalysis: boolean;
   enabledFormatIds?: string[];
-  smoothing?: ClipperSmoothingStrength;
   headroom?: ClipperHeadroom;
 }
 
@@ -33,7 +32,6 @@ function isValidRestoredBlob(
   blob: Awaited<ReturnType<typeof readClipperSmartCropAnalysis>>,
   start: number,
   end: number,
-  smoothing: ClipperSmoothingStrength | undefined,
 ): boolean {
   if (blob?.engine === "wasm") return false;
   return isRestoredSmartCropAnalysisValid(blob, {
@@ -41,7 +39,7 @@ function isValidRestoredBlob(
     end,
     version: AUTOFLIP_ANALYZER_VERSION,
     blobVersion: blob?.analyzerVersion,
-    smoothing: smoothing ?? "balanced",
+    smoothing: "smooth",
   });
 }
 
@@ -72,7 +70,7 @@ export async function runAnalyzeSubjectsStage(
   reporter.subjectProgress(0);
   if (input.skipSubjectAnalysis) {
     const restored = await readClipperSmartCropAnalysis(input.projectId);
-    if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd, input.smoothing)) {
+    if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd)) {
       session.smartCropAnalysis = restored;
       reporter.subjectProgress(1);
       await markClipperStepCompleted(input.projectId, "preview_ready");
@@ -136,7 +134,6 @@ export async function runAnalyzeSubjectsStage(
     trackerVersion: pending.trackerVersion,
     frameWidth,
     frameHeight,
-    smoothing: input.smoothing ?? "balanced",
     headroom: input.headroom,
     degradedReason,
     enhancedIdentityFusion: true,

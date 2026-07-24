@@ -1,25 +1,14 @@
-import type { FaceBox, FaceBoxSample } from "../../shared/face-samples.util";
-import type { ClipperFacePickStrategy, ClipperSmoothingStrength } from "../../settings/settings.util";
-import { faceToCentroid } from "./crop.util";
 import type { CentroidSample, FaceCentroid } from "../types/reframe.types";
 
 /** Lower alpha = slower/smoother EMA response to new detections. */
-export const SMOOTHING_ALPHA: Record<ClipperSmoothingStrength, number> = {
-  smooth: 0.12,
-  balanced: 0.28,
-  snappy: 0.85,
-};
+export const SMOOTHING_ALPHA = 0.12;
 
 const FOCUS_DEAD_ZONE = 0.03;
 const FOCUS_SWITCH_DISTANCE = 0.12;
 const FOCUS_SWITCH_MATCH_DISTANCE = 0.08;
 const FOCUS_SWITCH_CONFIRMATION_SAMPLES = 2;
 const FOCUS_EXTENT_DEAD_ZONE = 0.015;
-const FOCUS_MAX_SPEED_PER_SEC: Record<ClipperSmoothingStrength, number> = {
-  smooth: 0.12,
-  balanced: 0.16,
-  snappy: 0.24,
-};
+const FOCUS_MAX_SPEED_PER_SEC = 0.12;
 const FOCUS_MAX_EXTENT_SPEED_PER_SEC = 0.12;
 
 export interface FocusStabilizerState {
@@ -59,7 +48,6 @@ export function stabilizeFocusCentroid(
   state: FocusStabilizerState,
   observed: FaceCentroid,
   time: number,
-  smoothing: ClipperSmoothingStrength,
   sceneCut = false,
 ): FaceCentroid {
   if (sceneCut || !state.activeTarget || !state.displayed) {
@@ -89,10 +77,10 @@ export function stabilizeFocusCentroid(
     state.pendingSamples = 0;
   }
 
-  const target = blendCentroid(state.displayed, state.activeTarget, SMOOTHING_ALPHA[smoothing]);
+  const target = blendCentroid(state.displayed, state.activeTarget, SMOOTHING_ALPHA);
   const elapsed = Math.max(0, time - (state.lastTime ?? time));
   const distance = centroidDistance(target, state.displayed);
-  const maxDistance = FOCUS_MAX_SPEED_PER_SEC[smoothing] * elapsed;
+  const maxDistance = FOCUS_MAX_SPEED_PER_SEC * elapsed;
   const moveFactor = distance <= FOCUS_DEAD_ZONE || maxDistance <= 0
     ? 0
     : Math.min(1, maxDistance / distance);
@@ -110,54 +98,12 @@ export function stabilizeFocusCentroid(
   return stable;
 }
 
-export function pickPrimaryFace(
-  faces: FaceBox[],
-  frameW: number,
-  frameH: number,
-  strategy: ClipperFacePickStrategy,
-): FaceBox | null {
-  if (faces.length === 0) return null;
-  if (strategy === "largest") {
-    return faces.reduce((best, f) => (f.width * f.height > best.width * best.height ? f : best));
-  }
-  const cx = frameW / 2;
-  const cy = frameH / 2;
-  return faces.reduce((best, f) => {
-    const bestDist = Math.hypot(best.x + best.width / 2 - cx, best.y + best.height / 2 - cy);
-    const fDist = Math.hypot(f.x + f.width / 2 - cx, f.y + f.height / 2 - cy);
-    return fDist < bestDist ? f : best;
-  });
-}
-
 export function blendCentroid(prev: FaceCentroid, next: FaceCentroid, alpha: number): FaceCentroid {
   return {
     x: alpha * next.x + (1 - alpha) * prev.x,
     y: alpha * next.y + (1 - alpha) * prev.y,
     extent: alpha * next.extent + (1 - alpha) * prev.extent,
   };
-}
-
-/** Reduces whole-clip face samples to a single smoothed focus track (Face Follow mode). */
-export function deriveSingleFocusTrack(
-  samples: FaceBoxSample[],
-  strategy: ClipperFacePickStrategy,
-  smoothing: ClipperSmoothingStrength,
-): CentroidSample[] {
-  const track: CentroidSample[] = [];
-  const stabilizer = createFocusStabilizer();
-
-  for (const sample of samples) {
-    const face = pickPrimaryFace(sample.faces, sample.frameW, sample.frameH, strategy);
-    if (!face) {
-      if (stabilizer.displayed) track.push({ t: sample.time, ...stabilizer.displayed });
-      continue;
-    }
-    const centroid = faceToCentroid(face, sample.frameW, sample.frameH);
-    const stabilized = stabilizeFocusCentroid(stabilizer, centroid, sample.time, smoothing, sample.sceneCut);
-    track.push({ t: sample.time, ...stabilized, cut: sample.sceneCut });
-  }
-
-  return track;
 }
 
 const FALLBACK_CENTROID: CentroidSample = { t: 0, x: 0.5, y: 0.5, extent: 0 };

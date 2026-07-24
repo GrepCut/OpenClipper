@@ -2,7 +2,6 @@ import { segmentRangeFromTrimmedFile } from "../engine/segmentation";
 import { clipperLog, clipperTimer } from "../shared/logger.util";
 import { snapToKeyframe } from "../platform/native-source.util";
 import { markClipperStepCompleted } from "../persistence/pipeline-api.util";
-import type { ClipperTranscriptionEngine } from "../settings/settings.util";
 import type { ClipperProjectMetadata } from "../persistence/project-metadata.util";
 import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperGeneratedClip } from "../engine/segmentation";
@@ -127,7 +126,6 @@ export interface ConfirmRangeInput {
   end: number;
   wordsPerGroup: number;
   metadata: ClipperProjectMetadata;
-  engine: ClipperTranscriptionEngine;
 }
 
 export interface ConfirmRangeResult {
@@ -160,9 +158,7 @@ export async function runConfirmRangePipeline(
 
   const trimUnchanged =
     input.metadata.transcribedClipStart === snappedStart &&
-    input.metadata.transcribedClipEnd === end &&
-    (input.metadata.transcriptionEngine == null ||
-      input.metadata.transcriptionEngine === input.engine);
+    input.metadata.transcribedClipEnd === end;
 
   const words = await runTranscribeStage(
     session,
@@ -173,7 +169,6 @@ export async function runConfirmRangePipeline(
       clipDuration,
       trimUnchanged,
       existingWords: session.rangeWords.length > 0 ? session.rangeWords : session.words,
-      engine: input.engine,
     },
     reporter,
     options,

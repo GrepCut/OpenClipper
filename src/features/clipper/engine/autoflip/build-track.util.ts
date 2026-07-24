@@ -1,4 +1,4 @@
-import type { ClipperHeadroom, ClipperSmoothingStrength } from "../../settings/settings.util";
+import type { ClipperHeadroom } from "../../settings/settings.util";
 import type { FaceBoxSample } from "../../shared/face-samples.util";
 import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SubjectDetectionSample } from "../../shared/smart-crop.util";
 import { analyzeSceneMotion } from "./camera/scene-motion.util";
@@ -6,7 +6,7 @@ import { buildSceneTimeline, cropScenePath } from "./camera/scene-path.util";
 import { buildSalientKeyframes } from "./salience/salient-region.util";
 import { attachImportanceSignals, buildImportanceTimeline } from "./salience/importance-ranker.util";
 import { buildLayoutTracks } from "./layout";
-import { kinematicOptionsForSmoothing } from "./config/kinematic-options.util";
+import { kinematicOptionsForSmooth } from "./config/kinematic-options.util";
 import { applyActiveSpeakerPolicy } from "./identity/active-speaker.util";
 import { buildCanonicalPersonTracks } from "./identity/canonical-person.util";
 import { buildProjectCompositionMemory, compositionScoreByIdentity } from "./identity/project-composition-memory.util";
@@ -144,7 +144,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
   const frameWidth = sourceFrameWidth * contentRect.width;
   const frameHeight = sourceFrameHeight * contentRect.height;
   const sourceFrameRate = Number.isFinite(input.sourceFrameRate) && input.sourceFrameRate! > 0 ? input.sourceFrameRate! : 30;
-  const kinematicOptions = kinematicOptionsForSmoothing(input.smoothing ?? "balanced");
+  const kinematicOptions = kinematicOptionsForSmooth();
   const scenes = splitScenes(input.clipStart, input.clipEnd, input.sceneCuts, sourceFrameRate);
   const detectionsWithCachedFaces = attachFaceCacheEvidence(input.detections, input.faces, input.sceneCuts);
   const canonicalFusion = buildCanonicalPersonTracks(detectionsWithCachedFaces);
@@ -310,7 +310,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     trackerVersion: input.trackerVersion,
     clipStart: input.clipStart,
     clipEnd: input.clipEnd,
-    cameraSmoothing: input.smoothing ?? "balanced",
+    cameraSmoothing: "smooth",
     targetAspectRatio: primaryTrack.targetAspectRatio,
     contentRect,
     solidBackgroundColor: undefined,

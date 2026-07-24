@@ -1,4 +1,3 @@
-import { apiClient } from "../shared/utils/api-client.util";
 import {
   localRecordGet,
   localRecordPut,
@@ -10,7 +9,6 @@ import type {
   ParakeetTranscriptionProgress,
   ParakeetTranscriptionResult,
   Transcription,
-  TranscriptionEngine,
 } from "./types/transcription.types";
 import { debugLogger } from "../shared/utils/noop-logger.util";
 import { invoke } from "@tauri-apps/api/core";
@@ -31,11 +29,10 @@ const latestKey = (mediaFileId: string) => `${mediaFileId}:latest`;
 const rangeCacheKey = (
   start?: number,
   end?: number,
-  engine: TranscriptionEngine = "api",
 ) =>
   start == null || end == null
-    ? `full:${engine}`
-    : `${start.toFixed(3)}-${end.toFixed(3)}:${engine}`;
+    ? "full:parakeet_local"
+    : `${start.toFixed(3)}-${end.toFixed(3)}:parakeet_local`;
 
 async function cacheTranscription(
   projectId: string,
@@ -93,23 +90,14 @@ export const transcriptionService = {
     projectId: string,
     options?: {
       signal?: AbortSignal;
-      summarize?: boolean;
-      audioDurationSeconds?: number;
       clipStartSec?: number;
       clipEndSec?: number;
-      sourceFingerprint?: string;
-      engine?: TranscriptionEngine;
       /** Mono 16 kHz PCM used by local Parakeet without a browser decode round trip. */
       pcm16k?: Float32Array;
       onParakeetProgress?: (progress: ParakeetTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
-    const engine = options?.engine ?? "api";
-    const cacheKey = rangeCacheKey(
-      options?.clipStartSec,
-      options?.clipEndSec,
-      engine,
-    );
+    const cacheKey = rangeCacheKey(options?.clipStartSec, options?.clipEndSec);
     const cached = await localRecordGet<Transcription>(
       NAMESPACE,
       exactKey(mediaFileId, cacheKey),
@@ -121,92 +109,35 @@ export const transcriptionService = {
       mediaFileId,
       projectId,
       cacheKey,
-      engine,
+      engine: "parakeet_local",
       fileSize: file.size,
     });
 
     try {
-      if (engine === "parakeet_local") {
-        if (!isTauri()) {
-          throw new Error("Lokalna transkrypcja wymaga aplikacji desktopowej.");
-        }
-        if (!options?.pcm16k?.length) {
-          throw new Error(
-            "Local transcription audio is unavailable. Try selecting the clip range again.",
-          );
-        }
-        const audioPath = await prepareWavPathForParakeet(
-          options.pcm16k,
-          projectId,
-        );
-        if (options?.signal?.aborted) {
-          throw new DOMException("Conversion aborted", "AbortError");
-        }
-        const result = await runTauriNativeJob<
-          ParakeetTranscriptionProgress,
-          ParakeetTranscriptionResult
-        >({
-          jobId: createTauriNativeJobId("parakeet"),
-          startCommand: "start_parakeet_transcription",
-          args: {
-            request: { audioPath, language: "pl" },
-          },
-          signal: options?.signal,
-          onProgress: (progress) => options?.onParakeetProgress?.(progress),
-        });
-        const transcription = mapParakeetResultToTranscription(
-          result,
-          mediaFileId,
-        );
-        debugLogger.log("transcription", "parakeet transcription success", {
-          mediaFileId,
-          durationMs: Date.now() - startTime,
-        });
-        return cacheTranscription(
-          projectId,
-          mediaFileId,
-          cacheKey,
-          transcription,
+      if (!isTauri()) {
+        throw new Error("Lokalna transkrypcja wymaga aplikacji desktopowej.");
+      }
+      if (!options?.pcm16k?.length) {
+        throw new Error(
+          "Local transcription audio is unavailable. Try selecting the clip range again.",
         );
       }
-
-      const formData = new FormData();
-      formData.append("clientMediaId", mediaFileId);
-      formData.append("clientProjectId", projectId);
-      formData.append("cacheKey", cacheKey);
-      formData.append(
-        "sourceFingerprint",
-        options?.sourceFingerprint ??
-          `${file.name}:${file.size}:${file.lastModified}`,
-      );
-      formData.append("sourceName", file.name);
-      formData.append("sourceSizeBytes", String(file.size));
-      formData.append("summarize", options?.summarize ? "true" : "false");
-      if (options?.audioDurationSeconds != null) {
-        formData.append(
-          "audioDurationSeconds",
-          String(options.audioDurationSeconds),
-        );
+      const audioPath = await prepareWavPathForParakeet(options.pcm16k, projectId);
+      if (options?.signal?.aborted) {
+        throw new DOMException("Conversion aborted", "AbortError");
       }
-      if (options?.clipStartSec != null)
-        formData.append("clipStartSec", String(options.clipStartSec));
-      if (options?.clipEndSec != null)
-        formData.append("clipEndSec", String(options.clipEndSec));
-      formData.append("file", file);
-
-      const response = await apiClient.post<Transcription>(
-        "/transcription/clipper",
-        formData,
-        {
-          timeout: 1_800_000,
-          signal: options?.signal,
-        },
-      );
-      const transcription: Transcription = {
-        ...response.data,
-        engine: "api",
-      };
-      debugLogger.log("transcription", "api transcription success", {
+      const result = await runTauriNativeJob<
+        ParakeetTranscriptionProgress,
+        ParakeetTranscriptionResult
+      >({
+        jobId: createTauriNativeJobId("parakeet"),
+        startCommand: "start_parakeet_transcription",
+        args: { request: { audioPath, language: "pl" } },
+        signal: options?.signal,
+        onProgress: (progress) => options?.onParakeetProgress?.(progress),
+      });
+      const transcription = mapParakeetResultToTranscription(result, mediaFileId);
+      debugLogger.log("transcription", "parakeet transcription success", {
         mediaFileId,
         durationMs: Date.now() - startTime,
       });
@@ -219,7 +150,7 @@ export const transcriptionService = {
     } catch (error: unknown) {
       debugLogger.log("transcription", "transcription failed", {
         mediaFileId,
-        engine,
+        engine: "parakeet_local",
         durationMs: Date.now() - startTime,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -232,17 +163,12 @@ export const transcriptionService = {
     options?: {
       clipStartSec?: number;
       clipEndSec?: number;
-      engine?: TranscriptionEngine;
     },
   ): Promise<Transcription> => {
     const key = options
       ? exactKey(
           mediaFileId,
-          rangeCacheKey(
-            options.clipStartSec,
-            options.clipEndSec,
-            options.engine,
-          ),
+          rangeCacheKey(options.clipStartSec, options.clipEndSec),
         )
       : latestKey(mediaFileId);
     const transcription = await localRecordGet<Transcription>(NAMESPACE, key);
@@ -299,7 +225,6 @@ export const transcriptionService = {
     mediaFileId: string;
     projectId: string;
     language?: string;
-    engine?: TranscriptionEngine;
     segments: Transcription["segments"];
     words?: Transcription["words"];
   }): Promise<Transcription> => {
@@ -307,14 +232,14 @@ export const transcriptionService = {
       id: crypto.randomUUID(),
       mediaFileId: payload.mediaFileId,
       language: payload.language,
-      engine: payload.engine,
+      engine: "parakeet_local",
       segments: payload.segments,
       words: payload.words,
     };
     return cacheTranscription(
       payload.projectId,
       payload.mediaFileId,
-      `full:${payload.engine ?? "api"}`,
+      "full:parakeet_local",
       transcription,
     );
   },

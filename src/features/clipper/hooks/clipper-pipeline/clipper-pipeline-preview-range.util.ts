@@ -125,7 +125,6 @@ export async function preparePreviewFromRange(
     wordsPerGroup: captionWordsPerGroup,
     targetLengthSec: segmentLength,
     enabledFormatIds: settings.formats.enabledFormatIds,
-    smoothing: settings.reframe.smoothing,
     skipFaceDetect: options.skipFaceDetect,
     skipSubjectAnalysis: options.skipSubjectAnalysis,
     skipTrim: options.skipTrim,
