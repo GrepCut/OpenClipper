@@ -28,6 +28,7 @@ export {
   layoutGeometry,
   MAX_SPLIT_VIEWPORT_OVERLAP,
   cropAroundBox,
+  framingCenterYFraction,
   nominalCropSize,
   splitViewportsAreDistinct,
   strictAspectViewport,
@@ -41,6 +42,7 @@ export {
   groupUnionLexicographicOk,
   buildGroupUnionLayout,
 } from "./group-union-layout.util";
+export { buildEmergencyPrimaryCrop, primaryCoverageOf } from "./emergency-primary-crop.util";
 export { buildViewports } from "./viewport-builder.util";
 export { buildLayoutTracks } from "./layout-planner.util";
 export { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";

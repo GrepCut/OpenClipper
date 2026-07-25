@@ -70,9 +70,10 @@ export function drawClipperFrame(
   );
 
   const showDebug = isPreview && render.settings.reframe.showDebugFaceBoxes && formatDef.mode === "crop";
+  const contentRect = render.smartCropAnalysis?.contentRect;
 
   if (plannedLayout) {
-    drawClipperLayoutFrame(formatDef, ctx, frame, source, output, plannedLayout);
+    drawClipperLayoutFrame(formatDef, ctx, frame, source, output, plannedLayout, contentRect);
   } else {
     const autoFlipRender = resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t);
     const cropRect = autoFlipRender?.cropRect;
@@ -84,6 +85,7 @@ export function drawClipperFrame(
       output,
       cropRect,
       autoFlipRender?.solidBackgroundColor,
+      contentRect,
     );
 
     if (showDebug && cropRect) {

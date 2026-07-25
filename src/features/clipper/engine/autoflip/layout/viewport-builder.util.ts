@@ -116,5 +116,5 @@ export function buildViewports(
     return ordered.map((region, index) => cropAroundBox(region.contentBox, sourceAspect, aspects[index]!));
   }
   const union = unionAll(required.map((region) => region.contentBox)) ?? required[0]!.contentBox;
-  return [expandBox(union, 0.12)];
+  return [strictAspectViewport(expandBox(union, 0.12), sourceAspect, targetAspect)];
 }

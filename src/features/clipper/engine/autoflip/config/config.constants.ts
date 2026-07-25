@@ -1,6 +1,6 @@
-// v33 keeps a confirmed conversation layout through detector dropouts without
-// allowing held panels to renew or confirm split evidence.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v35-no-landscape-split-and-gap-10pct";
+// v37: prefer face/speaker as primary when any face evidence exists so
+// emergency-primary-crop does not lock onto a back-of-head silhouette.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v37-prefer-face-primary";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v5-yolox-s-scrfd10g-tiled";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;

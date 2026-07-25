@@ -273,7 +273,7 @@ export interface ClipperLayoutSample {
   targetEvidence?: TargetEvidence;
   /** Run 9 counterfactual rescue ladder, persisted for offline replay/audit. */
   candidateVariants?: Array<{
-    kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "stable-split-3";
+    kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "emergency-primary-crop" | "stable-split-v2" | "stable-split-v3" | "stable-split-3";
     mode: ClipperLayoutMode;
     viewports: NormalizedBox[];
     requiredCoverage: number[];

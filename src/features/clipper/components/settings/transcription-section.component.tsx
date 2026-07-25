@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Button, HStack, Progress, Text, VStack } from "@chakra-ui/react";
+import { HStack, Progress, Text, VStack } from "@chakra-ui/react";
+import { Download, Trash2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
+import { OutlinedActionButton } from "../../../../shared/components/buttons/outlined-action-button.component";
 import { transcriptionService } from "../../../../services/transcription.service";
 import type {
   ParakeetCapability,
@@ -206,14 +208,22 @@ export const TranscriptionSection: React.FC = () => {
 
             <HStack gap={2}>
               {!modelStatus?.installed && (
-                <Button size="sm" onClick={() => void handleDownload()} loading={downloading}>
+                <OutlinedActionButton
+                  startIcon={<Download size={16} />}
+                  onClick={() => void handleDownload()}
+                  loading={downloading}
+                >
                   Download model
-                </Button>
+                </OutlinedActionButton>
               )}
               {modelStatus?.installed && !downloading && (
-                <Button size="sm" variant="outline" onClick={() => void handleDelete()}>
+                <OutlinedActionButton
+                  tone="danger"
+                  startIcon={<Trash2 size={16} />}
+                  onClick={() => void handleDelete()}
+                >
                   Delete model
-                </Button>
+                </OutlinedActionButton>
               )}
             </HStack>
           </VStack>

@@ -1,6 +1,7 @@
 import type { ClipperLayoutMode, NormalizedBox } from "../../../shared/smart-crop.util";
 import { viewportArea } from "../camera/shot-smoothing.util";
 import { requiredRegions } from "./arbiter.util";
+import { framingCenterYFraction } from "./viewport-geometry.util";
 
 const EPSILON = 1e-9;
 
@@ -83,7 +84,7 @@ function fitAspectViewport(
   const maximumY = Math.min(1 - height, expanded.y);
   if (minimumX > maximumX + 1e-9 || minimumY > maximumY + 1e-9) return null;
   const centerX = expanded.x + expanded.width / 2;
-  const centerY = expanded.y + expanded.height * 0.44;
+  const centerY = expanded.y + expanded.height * framingCenterYFraction(expanded, height);
   return {
     x: Math.max(minimumX, Math.min(maximumX, centerX - width / 2)),
     y: Math.max(minimumY, Math.min(maximumY, centerY - height / 2)),

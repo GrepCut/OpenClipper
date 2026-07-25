@@ -6,11 +6,56 @@ import type { SubtitleStyle } from '../../lib/captions/subtitle-render.util';
 import type { CaptionGroup } from "../../lib/media/transcription-export.util";
 import { drawPrimaryPlusTwoFrame, drawVerticalSplitFrame } from "../../lib/media/video-draw.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
+import type { NormalizedBox } from "../../shared/smart-crop.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
 import { cropRectForCentroid } from "../reframe";
 import type { ClipperCropRect } from "../types/reframe.types";
 import type { ClipperFrameContext, ResolvedClipperLayout } from "../types/render.types";
 import { sourceTimeToLocalTime } from "../segmentation/clip-time.util";
+
+/** Intersect a pixel crop with the active content area (excludes source letterbox). */
+function clampCropToContentRect(
+  crop: ClipperCropRect,
+  content: NormalizedBox | undefined,
+  source: FrameEffectSize,
+): ClipperCropRect {
+  if (!content) return crop;
+  if (content.x <= 1e-6 && content.y <= 1e-6 && content.width >= 1 - 1e-6 && content.height >= 1 - 1e-6) {
+    return crop;
+  }
+  const left = content.x * source.width;
+  const top = content.y * source.height;
+  const right = (content.x + content.width) * source.width;
+  const bottom = (content.y + content.height) * source.height;
+  const sx = Math.max(crop.sx, left);
+  const sy = Math.max(crop.sy, top);
+  const ex = Math.min(crop.sx + crop.sw, right);
+  const ey = Math.min(crop.sy + crop.sh, bottom);
+  if (ex - sx < 2 || ey - sy < 2) return crop;
+  return { sx, sy, sw: ex - sx, sh: ey - sy };
+}
+
+/** Cover-crop a source rect to the output aspect, then full-bleed draw (never letterbox). */
+function drawCropFullBleed(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  frame: CanvasImageSource,
+  cropRect: ClipperCropRect,
+  output: FrameEffectSize,
+): void {
+  const targetRatio = output.width / Math.max(1, output.height);
+  let { sx, sy, sw, sh } = cropRect;
+  const ratio = sw / Math.max(1, sh);
+  if (ratio > targetRatio + 0.001) {
+    const next = sh * targetRatio;
+    sx += (sw - next) / 2;
+    sw = next;
+  } else if (ratio < targetRatio - 0.001) {
+    const next = sw / targetRatio;
+    sy += (sh - next) / 2;
+    sh = next;
+  }
+  ctx.drawImage(frame, sx, sy, sw, sh, 0, 0, output.width, output.height);
+}
 
 /** Draws an explicit v3 crop/split/contain decision. */
 export function drawClipperLayoutFrame(
@@ -20,16 +65,17 @@ export function drawClipperLayoutFrame(
   source: FrameEffectSize,
   output: FrameEffectSize,
   layout: ResolvedClipperLayout,
+  contentRect?: NormalizedBox,
 ): void {
   if (layout.transitionFrom && layout.transitionProgress != null) {
-    drawLayoutContent(formatDef, ctx, frame, source, output, layout.transitionFrom);
+    drawLayoutContent(formatDef, ctx, frame, source, output, layout.transitionFrom, contentRect);
     ctx.save();
     ctx.globalAlpha = layout.transitionProgress;
-    drawLayoutContent(formatDef, ctx, frame, source, output, layout);
+    drawLayoutContent(formatDef, ctx, frame, source, output, layout, contentRect);
     ctx.restore();
     return;
   }
-  drawLayoutContent(formatDef, ctx, frame, source, output, layout);
+  drawLayoutContent(formatDef, ctx, frame, source, output, layout, contentRect);
 }
 
 function drawLayoutContent(
@@ -39,6 +85,7 @@ function drawLayoutContent(
   source: FrameEffectSize,
   output: FrameEffectSize,
   layout: Pick<ResolvedClipperLayout, "mode" | "viewports" | "solidBackgroundColor">,
+  contentRect?: NormalizedBox,
 ): void {
   if (layout.mode !== "split" || layout.viewports.length < 2) {
     drawClipperPlatformFrame(
@@ -49,6 +96,7 @@ function drawLayoutContent(
       output,
       layout.viewports[0],
       layout.solidBackgroundColor,
+      contentRect,
     );
     return;
   }
@@ -60,7 +108,7 @@ function drawLayoutContent(
   drawVerticalSplitFrame(ctx, frame, output, top!, bottom!);
 }
 
-/** Draws one crop/pad-framed frame — no captions/branding. */
+/** Draws one crop-framed frame — always cover-fills the output (never letterbox). */
 export function drawClipperPlatformFrame(
   formatDef: ClipperFormatDef,
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -69,36 +117,20 @@ export function drawClipperPlatformFrame(
   output: FrameEffectSize,
   cropRect?: ClipperCropRect,
   solidBackgroundColor?: { r: number; g: number; b: number },
+  contentRect?: NormalizedBox,
 ): void {
+  void formatDef;
+  void solidBackgroundColor;
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, output.width, output.height);
 
   if (cropRect) {
-    const cropRatio = cropRect.sw / Math.max(1, cropRect.sh);
-    const outputRatio = output.width / output.height;
-    if (Math.abs(cropRatio - outputRatio) > 0.001) {
-      const scale = Math.max(output.width / cropRect.sw, output.height / cropRect.sh);
-      const drawWidth = cropRect.sw * scale;
-      const drawHeight = cropRect.sh * scale;
-      ctx.drawImage(frame, cropRect.sx, cropRect.sy, cropRect.sw, cropRect.sh, (output.width - drawWidth) / 2, (output.height - drawHeight) / 2, drawWidth, drawHeight);
-      return;
-    }
-    ctx.drawImage(
-      frame,
-      cropRect.sx,
-      cropRect.sy,
-      cropRect.sw,
-      cropRect.sh,
-      0,
-      0,
-      output.width,
-      output.height,
-    );
+    drawCropFullBleed(ctx, frame, clampCropToContentRect(cropRect, contentRect, source), output);
     return;
   }
 
   const rect = cropRectForCentroid(source.width, source.height, 0.5, 0.5, output.width / output.height, "normal");
-  ctx.drawImage(frame, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, output.width, output.height);
+  drawCropFullBleed(ctx, frame, clampCropToContentRect(rect, contentRect, source), output);
 }
 
 export function drawClipperCaptions(

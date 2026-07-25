@@ -106,6 +106,8 @@ const CONVERSATION_PAIR_HOLD_SEC = 0.5;
 const CONVERSATION_SLOT_MAX_CENTER_DELTA = 0.12;
 const GROUP_THIRD_MIN_AREA_RATIO = 0.5;
 const TARGET_RETENTION_MARGIN = 0.04;
+/** Approx. 9:16 crop width on 16:9 source — pairs wider than this cannot share one portrait frame. */
+const PORTRAIT_PAIR_MAX_WIDTH = 0.32;
 
 function boxArea(box: NormalizedBox): number {
   return Math.max(0, box.width) * Math.max(0, box.height);
@@ -200,6 +202,34 @@ function rememberConversationPair(
   };
 }
 
+/** Face/speaker kind, or any cluster that already carries face evidence. */
+export function isFaceLike(region: Pick<ImportanceRegion, "kind" | "sources">): boolean {
+  return region.kind === "face"
+    || region.kind === "speaker"
+    || region.sources.includes("face")
+    || region.sources.includes("active-speaker");
+}
+
+/** When a clear face exists, primary must come from that pool — not a back-of-head. */
+export function preferFacePrimaryPool(eligible: ImportanceRegion[]): ImportanceRegion[] {
+  const facePool = eligible.filter(isFaceLike);
+  return facePool.length ? facePool : eligible;
+}
+
+function pairFitsPortraitCrop(a: ImportanceRegion, b: ImportanceRegion): boolean {
+  const left = Math.min(a.contentBox.x, b.contentBox.x);
+  const right = Math.max(a.contentBox.x + a.contentBox.width, b.contentBox.x + b.contentBox.width);
+  return right - left <= PORTRAIT_PAIR_MAX_WIDTH;
+}
+
+/** Crowd bodies must not become required co-targets beside a clear face star. */
+function shouldPromoteSecondary(primary: ImportanceRegion, secondary: ImportanceRegion): boolean {
+  if (isFaceLike(primary) && !isFaceLike(secondary) && !pairFitsPortraitCrop(primary, secondary)) {
+    return false;
+  }
+  return true;
+}
+
 function isMeaningfulThirdPerson(pair: [ImportanceRegion, ImportanceRegion], third: ImportanceRegion | undefined): boolean {
   if (!third || !isHumanRegion(third)) return false;
   const largerPairArea = Math.max(boxArea(pair[0].contentBox), boxArea(pair[1].contentBox));
@@ -283,7 +313,10 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
   const semantic = ordered.filter((candidate) => candidate.source !== "motion");
   // Raw frame difference is context for an observed subject, never a subject.
   if (!semantic.length) throw new Error("motion-only importance cluster");
-  const focus = semantic[0]!;
+  // A face landmark / active-speaker signal beats a larger pose head or
+  // face_full-as-head box so the cluster kind stays face-like for framing.
+  const faceFocus = semantic.find((candidate) => candidate.kind === "face" || candidate.kind === "speaker");
+  const focus = faceFocus ?? semantic[0]!;
   const sources = [...new Set(ordered.map((candidate) => candidate.source))];
   const semanticEvidence = 1 - semantic.reduce((remaining, candidate) => remaining * (1 - candidate.evidence), 1);
   const motionBoost = ordered.some((candidate) => candidate.source === "motion") ? 0.12 : 0;
@@ -474,16 +507,18 @@ function rankFrame(
       targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified"),
     };
   }
+  const primaryPool = preferFacePrimaryPool(eligible);
   const priorPrimary = previous.find((region) => region.role === "primary" && region.trust !== "unverified-person");
   const retainedPrimary = priorPrimary
-    ? eligible.find((region) => region.id === priorPrimary.id
-      && targetSelectionScore(region, maximumFocusArea) >= targetSelectionScore(eligible[0]!, maximumFocusArea) - TARGET_RETENTION_MARGIN)
+    ? primaryPool.find((region) => region.id === priorPrimary.id
+      && targetSelectionScore(region, maximumFocusArea) >= targetSelectionScore(primaryPool[0]!, maximumFocusArea) - TARGET_RETENTION_MARGIN)
     : undefined;
   const rememberedPair = rememberedConversationPair(eligible, time, conversationPairState);
-  const primary = rememberedPair?.find((region) => region.id === retainedPrimary?.id)
-    ?? rememberedPair?.[0]
+  const rememberedPrimary = rememberedPair?.find((region) => primaryPool.some((candidate) => candidate.id === region.id));
+  const primary = rememberedPair?.find((region) => region.id === retainedPrimary?.id && primaryPool.some((c) => c.id === region.id))
+    ?? rememberedPrimary
     ?? retainedPrimary
-    ?? eligible[0]!;
+    ?? primaryPool[0]!;
   primary.role = "primary";
   primary.required = true;
 
@@ -512,13 +547,16 @@ function rankFrame(
     return { regions: ranked, targetEvidence: evidenceSummary(ranked, qualifiedTemporalIds, "qualified") };
   }
 
-  const secondary = rememberedPair?.find((region) => region.id !== primary.id)
+  const secondaryCandidate = rememberedPair?.find((region) => region.id !== primary.id)
     ?? eligible.find((region) =>
       region.id !== primary.id
       && region.importanceScore >= 0.5
       && region.importanceScore >= primary.importanceScore * 0.68
       && overlapFractionOfSmaller(region.contentBox, primary.contentBox) < 0.7,
     );
+  const secondary = secondaryCandidate && shouldPromoteSecondary(primary, secondaryCandidate)
+    ? secondaryCandidate
+    : undefined;
   if (secondary) {
     secondary.role = "secondary";
     secondary.required = true;

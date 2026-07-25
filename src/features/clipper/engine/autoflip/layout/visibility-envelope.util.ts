@@ -2,7 +2,7 @@ import type { ImportanceRegion, ImportanceRegionSample, NormalizedBox } from "..
 import { clamp } from "../../../lib/math.util";
 import { importanceGeometry } from "../salience/importance-ranker.util";
 import { coveredFraction, requiredRegions } from "./arbiter.util";
-import { nominalCropSize } from "./viewport-geometry.util";
+import { framingCenterYFraction, nominalCropSize } from "./viewport-geometry.util";
 import type { VisibilityControllerParams } from "../../types/autoflip-layout.types";
 
 const EPSILON = 1e-9;
@@ -44,7 +44,7 @@ export function fitViewport(
   if (minimumX > maximumX + EPSILON || minimumY > maximumY + EPSILON) return null;
   const center = preferredCenter ?? {
     x: anchor.x + anchor.width / 2,
-    y: anchor.y + anchor.height * 0.44,
+    y: anchor.y + anchor.height * framingCenterYFraction(anchor, height),
   };
   return {
     x: clamp(center.x - width / 2, minimumX, maximumX),

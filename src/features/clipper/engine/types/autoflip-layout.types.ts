@@ -86,7 +86,14 @@ export interface VisibilityControllerState {
 }
 
 export interface VisibilityVariant {
-  kind: "run8-baseline" | "shifted-crop" | "wider-crop" | "stable-split-v2" | "stable-split-v3" | "stable-split-3";
+  kind:
+    | "run8-baseline"
+    | "shifted-crop"
+    | "wider-crop"
+    | "emergency-primary-crop"
+    | "stable-split-v2"
+    | "stable-split-v3"
+    | "stable-split-3";
   mode: ClipperLayoutMode;
   viewports: NormalizedBox[];
   requiredCoverage: number[];

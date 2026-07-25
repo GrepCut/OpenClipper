@@ -6,6 +6,7 @@ import {
   centerDistance,
   containsBox,
   expandBox,
+  framingCenterYFraction,
   nominalCropSize,
   viewportScale,
 } from "./viewport-geometry.util";
@@ -29,7 +30,7 @@ function viewportAtScale(
   const height = nominal.height * scale;
   if (guard.width > width + EPSILON || guard.height > height + EPSILON) return null;
   const desiredX = anchor.x + anchor.width / 2 - width / 2;
-  const desiredY = anchor.y + anchor.height * centerYFraction - height / 2;
+  const desiredY = anchor.y + anchor.height * framingCenterYFraction(anchor, height, centerYFraction) - height / 2;
   const minimumX = Math.max(0, guard.x + guard.width - width);
   const maximumX = Math.min(1 - width, guard.x);
   const minimumY = Math.max(0, guard.y + guard.height - height);
@@ -124,7 +125,11 @@ export function visibilityConstrainedViewport(
 
   const anchorPoint = {
     x: anchor.x + anchor.width / 2,
-    y: anchor.y + anchor.height * params.centerYFraction,
+    y: anchor.y + anchor.height * framingCenterYFraction(
+      anchor,
+      Math.max(...candidates.map((candidate) => candidate.height)),
+      params.centerYFraction,
+    ),
     width: 0,
     height: 0,
   };

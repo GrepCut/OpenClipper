@@ -81,7 +81,7 @@ export function fitSeparatedSplitPanels(
       const height = nominal.height * clampedScale;
       const faceCenter = {
         x: region.box.x + region.box.width / 2,
-        y: region.box.y + region.box.height * 0.5,
+        y: region.box.y + region.box.height * framingCenterYFraction(region.box, height),
       };
 
       if (region.contentBox.width > width + EPSILON || region.contentBox.height > height + EPSILON) {
@@ -139,13 +139,35 @@ export function boxFitsStrictCrop(box: NormalizedBox, sourceAspect: number, targ
   return expanded.width <= nominal.width + EPSILON && expanded.height <= nominal.height + EPSILON;
 }
 
+export const HEADROOM_CENTER_Y = 0.44;
+export const CENTER_Y = 0.5;
+
+/**
+ * Headroom only when it cannot expose empty/letterbox at the top of the
+ * output. Full-height crops and top-pinned placements must stay centered.
+ */
+export function framingCenterYFraction(
+  subjectBox: NormalizedBox,
+  cropHeight: number,
+  headroomFraction = HEADROOM_CENTER_Y,
+): number {
+  // Full-height portrait crop: no vertical room — bias only creates empty top.
+  if (cropHeight >= 1 - EPSILON) return CENTER_Y;
+  // Subject already at the top of the source: nothing real above to lean into.
+  if (subjectBox.y < 0.04) return CENTER_Y;
+  // Headroom would pin the crop to the top edge → black/empty bar risk.
+  const desiredTop = subjectBox.y + subjectBox.height * headroomFraction - cropHeight / 2;
+  if (desiredTop <= 0.02) return CENTER_Y;
+  return headroomFraction;
+}
+
 export function cropAroundBox(
   box: NormalizedBox,
   sourceAspect: number,
   targetAspect: number,
   minimumScale = 0.3,
   padding = 0.18,
-  centerYFraction = 0.44,
+  centerYFraction = HEADROOM_CENTER_Y,
 ): NormalizedBox {
   const nominal = nominalCropSize(sourceAspect, targetAspect);
   const expanded = expandBox(box, padding);
@@ -157,7 +179,7 @@ export function cropAroundBox(
   const width = nominal.width * scale;
   const height = nominal.height * scale;
   const centerX = box.x + box.width / 2;
-  const centerY = box.y + box.height * centerYFraction;
+  const centerY = box.y + box.height * framingCenterYFraction(box, height, centerYFraction);
   return {
     x: clamp(centerX - width / 2, 0, 1 - width),
     y: clamp(centerY - height / 2, 0, 1 - height),
@@ -190,8 +212,7 @@ export function strictAspectViewport(
 
 export function centerViewportOnBox(viewport: NormalizedBox, box: NormalizedBox): NormalizedBox {
   const centerX = box.x + box.width / 2;
-  // A slight upward bias preserves natural headroom for both faces and bodies.
-  const centerY = box.y + box.height * 0.44;
+  const centerY = box.y + box.height * framingCenterYFraction(box, viewport.height);
   return {
     ...viewport,
     x: clamp(centerX - viewport.width / 2, 0, 1 - viewport.width),

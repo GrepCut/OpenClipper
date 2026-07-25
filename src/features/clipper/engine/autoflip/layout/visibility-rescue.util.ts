@@ -3,7 +3,7 @@ import type {
   ImportanceRegionSample,
   NormalizedBox,
 } from "../../../shared/smart-crop.util";
-import { fitSeparatedSplitPanels, nominalCropSize, splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
+import { fitSeparatedSplitPanels, framingCenterYFraction, nominalCropSize, splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
 import type {
   VisibilityControllerDecision,
   VisibilityControllerParams,
@@ -11,6 +11,7 @@ import type {
   VisibilityVariant,
 } from "../../types/autoflip-layout.types";
 import { LEGACY_VISIBILITY_PARAMS } from "./visibility-controller.constants";
+import { buildEmergencyPrimaryCrop, primaryCoverageOf } from "./emergency-primary-crop.util";
 import {
   buildVisibilityEnvelopes,
   coverage,
@@ -239,12 +240,14 @@ export function planVisibilityRescue(input: {
   const lookaheadUnion = union(lookaheadEnvelopes.map((region) => region.contentBox)) ?? requiredUnion;
   // A safe AutoFlip crop only guarantees that the person remains visible; it
   // can still leave them at one side of the frame. For a single confirmed
-  // primary, compose against the current subject horizontally. Keep the
-  // vertical look-ahead bias so headroom and vertical motion remain stable.
+  // primary, compose against the current subject horizontally. Vertical
+  // headroom applies only when the crop can show real content above.
+  const lookAheadCenterY = lookaheadUnion.y
+    + lookaheadUnion.height * framingCenterYFraction(lookaheadUnion, input.baselineViewport.height);
   const centeredSingleCandidate = singlePrimary
     ? fitViewport(requiredUnion, input.baselineViewport.width, input.baselineViewport.height, {
       x: requiredUnion.x + requiredUnion.width / 2,
-      y: lookaheadUnion.y + lookaheadUnion.height * 0.44,
+      y: lookAheadCenterY,
     })
     : null;
   const stabilizedSingleViewport = centeredSingleCandidate && envelopes[0]
@@ -263,7 +266,7 @@ export function planVisibilityRescue(input: {
   if (centeredSingle) variants.push(centeredSingle);
   const shifted = fitViewport(requiredUnion, input.baselineViewport.width, input.baselineViewport.height, {
     x: lookaheadUnion.x + lookaheadUnion.width / 2,
-    y: lookaheadUnion.y + lookaheadUnion.height * 0.44,
+    y: lookAheadCenterY,
   });
   if (shifted) variants.push(variant("shifted-crop", "single-crop", [shifted], envelopes));
 
@@ -274,6 +277,14 @@ export function planVisibilityRescue(input: {
   );
   const wider = cropForEnvelope(requiredUnion, input.sourceAspect, input.targetAspect, Math.min(1, currentScale + 0.08));
   if (wider) variants.push(variant("wider-crop", "single-crop", [wider], envelopes));
+
+  // When the required union cannot share one crop (or baseline already misses
+  // the star), frame the primary box alone instead of keeping a bad baseline.
+  const primaryRegion = envelopes.find((region) => region.role === "primary") ?? envelopes[0]!;
+  const emergencyPrimary = (emergency || !shifted)
+    ? buildEmergencyPrimaryCrop(primaryRegion, input.baselineViewport, envelopes)
+    : null;
+  if (emergencyPrimary) variants.push(emergencyPrimary);
 
   // Split screen is not permitted for landscape/wide formats (targetAspect > 1.0).
   const allowSplitForAspect = input.targetAspect <= 1.0;
@@ -334,10 +345,19 @@ export function planVisibilityRescue(input: {
     : baselineSafe
     ? baseline
     : preferSingleForSquare
-      ? (safeCommonCrop ?? splitCandidate ?? baseline)
-      : (safeCommonCrop ?? splitCandidate ?? baseline);
+      ? (safeCommonCrop ?? splitCandidate ?? emergencyPrimary ?? baseline)
+      : (safeCommonCrop ?? splitCandidate ?? emergencyPrimary ?? baseline);
   if (preferSingleForSquare && (safeCommonCrop || baselineSafe)) {
     selected = primaryCenterSafe ? centeredSingle : baselineSafe ? baseline : safeCommonCrop ?? baseline;
+  }
+  // Last resort: never leave the primary mostly out of frame when a tight
+  // primary crop is available (music-video star + crowd / wide pair).
+  if (
+    emergencyPrimary
+    && primaryCoverageOf(selected!, envelopes, primaryRegion.id) < EMERGENCY_PRIMARY_COVERAGE
+    && primaryCoverageOf(emergencyPrimary, envelopes, primaryRegion.id) >= EMERGENCY_PRIMARY_COVERAGE
+  ) {
+    selected = emergencyPrimary;
   }
 
   // A single-person frame can be a transient detector loss.  The split is
@@ -367,7 +387,14 @@ export function planVisibilityRescue(input: {
       input.state.pendingSince = time;
     }
     if (!resumesKnownPair && time - (input.state.pendingSince ?? time) < (params.splitPendingSec ?? 1.5)) {
-      selected = safeCommonCrop ?? baseline;
+      selected = safeCommonCrop ?? emergencyPrimary ?? baseline;
+      if (
+        emergencyPrimary
+        && primaryCoverageOf(selected, envelopes, primaryRegion.id) < EMERGENCY_PRIMARY_COVERAGE
+        && primaryCoverageOf(emergencyPrimary, envelopes, primaryRegion.id) >= EMERGENCY_PRIMARY_COVERAGE
+      ) {
+        selected = emergencyPrimary;
+      }
     }
   } else if (selected.mode !== "split") {
     input.state.pendingSince = null;
@@ -424,8 +451,25 @@ export function planVisibilityRescue(input: {
     })) ?? [];
   }
   input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
+  if (
+    emergencyPrimary
+    && primaryCoverageOf(selected, envelopes, primaryRegion.id) < EMERGENCY_PRIMARY_COVERAGE
+    && primaryCoverageOf(emergencyPrimary, envelopes, primaryRegion.id) >= EMERGENCY_PRIMARY_COVERAGE
+  ) {
+    selected = emergencyPrimary;
+    input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
+    if (input.state.activeMode === "split") {
+      input.state.activeMode = "single-crop";
+      input.state.activeViewportCount = 1;
+      input.state.modeSince = time;
+      input.state.lastSplitViewports = [];
+      input.state.machineState = "common";
+    }
+  }
   const reason = selected === centeredSingle
     ? "primary-horizontal-center"
+    : selected.kind === "emergency-primary-crop"
+    ? "emergency-primary-crop"
     : selected.kind === "shifted-crop"
     ? "visibility-shift"
     : selected.kind === "wider-crop"
