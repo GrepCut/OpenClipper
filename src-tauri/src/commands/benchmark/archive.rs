@@ -198,6 +198,7 @@ pub(crate) async fn import_staged_dataset(
         name: Set(manifest.dataset.name.clone()),
         description: Set(manifest.dataset.description.clone()),
         dataset_role: Set(manifest.dataset.dataset_role.clone()),
+        remembered_run_id: Set(None),
         created_at: Set(now.clone()),
         updated_at: Set(now.clone()),
     }

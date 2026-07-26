@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Box, HStack, Progress, Text, VStack, useDisclosure } from "@chakra-ui/react";
+import { Box, HStack, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { ArrowRight, Pencil } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
@@ -11,9 +11,8 @@ import { formatHumanDuration, formatShortDate } from "../../../shared/utils/time
 
 function datasetStatusLabel(dataset: TestDatasetSummary): string {
   if (dataset.clipCount === 0) return "Empty";
-  if (dataset.annotatedClipCount === 0) return "Needs annotation";
-  if (dataset.annotatedClipCount < dataset.clipCount) return "Annotating";
-  return "Ready to benchmark";
+  if (dataset.rememberedRun) return "Baseline set";
+  return "Needs baseline";
 }
 
 interface TestDatasetListRowProps {
@@ -29,8 +28,6 @@ export function TestDatasetListRow({
   const { theme, mode } = useTheme();
   const editModal = useDisclosure();
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
-  const progressPercent =
-    dataset.clipCount > 0 ? (dataset.annotatedClipCount / dataset.clipCount) * 100 : 0;
 
   const handleOpen = useCallback(() => {
     navigate(`/clipper/tests/${dataset.id}`);
@@ -67,20 +64,9 @@ export function TestDatasetListRow({
                 {datasetStatusLabel(dataset)}
               </Box>
               <Text fontSize="xs" color={theme.text.muted}>
-                {dataset.annotatedClipCount}/{dataset.clipCount} annotated · {formatHumanDuration(dataset.totalDuration)}
+                {dataset.clipCount} clip{dataset.clipCount === 1 ? "" : "s"} · {formatHumanDuration(dataset.totalDuration)}
               </Text>
             </HStack>
-
-            <Box w="full" maxW="280px">
-              <Progress.Root value={progressPercent} size="xs">
-                <Progress.Track
-                  bg={mode === "dark" ? theme.surface.active : theme.border.secondary}
-                  borderRadius="full"
-                >
-                  <Progress.Range bg={colors.purple.medium} borderRadius="full" />
-                </Progress.Track>
-              </Progress.Root>
-            </Box>
           </VStack>
 
           <VStack

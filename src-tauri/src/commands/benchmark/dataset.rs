@@ -70,6 +70,19 @@ pub async fn test_dataset_update_role(
 }
 
 #[tauri::command]
+pub async fn test_dataset_remember_run(
+    db: State<'_, LocalDb>,
+    dataset_id: String,
+    run_id: String,
+) -> Result<test_dataset::Model, String> {
+    validate_id(&dataset_id)?;
+    validate_id(&run_id)?;
+    TestRepository::remember_dataset_run(&db.database, dataset_id, run_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn test_dataset_delete(
     app: AppHandle,
     db: State<'_, LocalDb>,

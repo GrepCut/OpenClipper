@@ -87,6 +87,21 @@ pub async fn benchmark_result_list(
 }
 
 #[tauri::command]
+pub fn read_test_dataset_artifact(
+    app: AppHandle,
+    dataset_id: String,
+    relative_path: String,
+) -> Result<String, String> {
+    validate_id(&dataset_id)?;
+    validate_relative_path(&relative_path)?;
+    let path = test_dataset_root(&app, &dataset_id)?.join(&relative_path);
+    if !path.is_file() {
+        return Err(format!("Artifact was not found: {}", relative_path));
+    }
+    fs::read_to_string(&path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn write_test_run_artifact(
     app: AppHandle,
     dataset_id: String,

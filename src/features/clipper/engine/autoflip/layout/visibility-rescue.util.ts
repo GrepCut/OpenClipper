@@ -38,6 +38,32 @@ const SINGLE_TARGET_HOLD_SEC = 0.6;
 const SINGLE_CAMERA_DEAD_ZONE = 0.03;
 const SINGLE_CAMERA_MAX_SPEED_PER_SEC = 0.16;
 const SINGLE_CAMERA_MAX_ACCELERATION_PER_SEC2 = 0.4;
+/** Faster than normal, still blocks layout teleports (~2.5/s). */
+const EMERGENCY_CAMERA_MAX_SPEED_PER_SEC = 0.40;
+const EMERGENCY_CAMERA_MAX_ACCELERATION_PER_SEC2 = 1.0;
+const REVERSE_BRAKE_MULT = 2;
+/** Nominal layout sample period — used when seeding a same-frame ease step. */
+const LAYOUT_SAMPLE_DT_SEC = 0.2;
+
+function signNonZero(value: number): number {
+  if (value > EPSILON) return 1;
+  if (value < -EPSILON) return -1;
+  return 0;
+}
+
+function clampAxisVelocity(
+  previous: number,
+  desired: number,
+  maxSpeed: number,
+  maxAccelDelta: number,
+): number {
+  const reversing = signNonZero(previous) !== 0
+    && signNonZero(desired) !== 0
+    && signNonZero(previous) !== signNonZero(desired);
+  const budget = reversing ? maxAccelDelta * REVERSE_BRAKE_MULT : maxAccelDelta;
+  return Math.max(-maxSpeed, Math.min(maxSpeed,
+    Math.max(previous - budget, Math.min(previous + budget, desired))));
+}
 
 function splitThreePanelAspects(targetAspect: number): [number, number, number] {
   // Portrait: primary full-width above two half-width panels. Square and
@@ -83,25 +109,18 @@ function stabilizeSinglePrimaryViewport(
   time: number,
   emergency: boolean,
 ): NormalizedBox | null {
-  if (emergency) {
-    state.singlePrimaryId = primaryId;
-    state.pendingSinglePrimaryId = null;
-    state.pendingSinglePrimarySince = null;
-    state.singleViewport = candidate;
-    state.singleVelocity = { x: 0, y: 0 };
-    state.singleLastUpdatedAt = time;
-    return candidate;
-  }
-
+  // Emergency no longer teleports — same kinematic path with higher caps.
   if (state.singlePrimaryId !== primaryId) {
-    if (state.pendingSinglePrimaryId !== primaryId) {
-      state.pendingSinglePrimaryId = primaryId;
-      state.pendingSinglePrimarySince = time;
-    }
-    if (time - (state.pendingSinglePrimarySince ?? time) < SINGLE_TARGET_HOLD_SEC) {
-      state.singleVelocity = { x: 0, y: 0 };
-      state.singleLastUpdatedAt = time;
-      return state.singleViewport;
+    if (!emergency) {
+      if (state.pendingSinglePrimaryId !== primaryId) {
+        state.pendingSinglePrimaryId = primaryId;
+        state.pendingSinglePrimarySince = time;
+      }
+      if (time - (state.pendingSinglePrimarySince ?? time) < SINGLE_TARGET_HOLD_SEC) {
+        state.singleVelocity = { x: 0, y: 0 };
+        state.singleLastUpdatedAt = time;
+        return state.singleViewport;
+      }
     }
     state.singlePrimaryId = primaryId;
     state.pendingSinglePrimaryId = null;
@@ -124,13 +143,15 @@ function stabilizeSinglePrimaryViewport(
     return current;
   }
 
+  const maxSpeed = emergency ? EMERGENCY_CAMERA_MAX_SPEED_PER_SEC : SINGLE_CAMERA_MAX_SPEED_PER_SEC;
+  const maxAccel = emergency
+    ? EMERGENCY_CAMERA_MAX_ACCELERATION_PER_SEC2
+    : SINGLE_CAMERA_MAX_ACCELERATION_PER_SEC2;
   const desiredVelocity = { x: dx / elapsed, y: dy / elapsed };
-  const maxVelocityDelta = SINGLE_CAMERA_MAX_ACCELERATION_PER_SEC2 * elapsed;
+  const maxVelocityDelta = maxAccel * elapsed;
   const velocity = {
-    x: Math.max(-SINGLE_CAMERA_MAX_SPEED_PER_SEC, Math.min(SINGLE_CAMERA_MAX_SPEED_PER_SEC,
-      Math.max(state.singleVelocity.x - maxVelocityDelta, Math.min(state.singleVelocity.x + maxVelocityDelta, desiredVelocity.x)))),
-    y: Math.max(-SINGLE_CAMERA_MAX_SPEED_PER_SEC, Math.min(SINGLE_CAMERA_MAX_SPEED_PER_SEC,
-      Math.max(state.singleVelocity.y - maxVelocityDelta, Math.min(state.singleVelocity.y + maxVelocityDelta, desiredVelocity.y)))),
+    x: clampAxisVelocity(state.singleVelocity.x, desiredVelocity.x, maxSpeed, maxVelocityDelta),
+    y: clampAxisVelocity(state.singleVelocity.y, desiredVelocity.y, maxSpeed, maxVelocityDelta),
   };
   const width = candidate.width;
   const height = candidate.height;
@@ -143,6 +164,52 @@ function stabilizeSinglePrimaryViewport(
   state.singleVelocity = velocity;
   state.singleLastUpdatedAt = time;
   return viewport;
+}
+
+function seedSingleFromSplitPanel(state: VisibilityControllerState, time: number): void {
+  const panel = state.lastSplitViewports[0];
+  if (!panel) return;
+  state.singleViewport = { ...panel };
+  state.singleVelocity = { x: 0, y: 0 };
+  // Allow one integration step toward the new single target this sample.
+  state.singleLastUpdatedAt = time - LAYOUT_SAMPLE_DT_SEC;
+}
+
+function easeFinalSingleCrop(input: {
+  state: VisibilityControllerState;
+  selected: VisibilityVariant;
+  centeredSingle: VisibilityVariant | null;
+  primaryId: string;
+  baseline: NormalizedBox;
+  envelopes: ImportanceRegion[];
+  time: number;
+  emergency: boolean;
+  splitSeed: boolean;
+}): VisibilityVariant {
+  const { state, selected, centeredSingle, primaryId, baseline, envelopes, time, emergency } = input;
+  if (selected.mode !== "single-crop" || !selected.viewports[0]) return selected;
+
+  if (input.splitSeed) seedSingleFromSplitPanel(state, time);
+
+  // Already eased this sample via centeredSingle — keep unless we seeded from split
+  // or the selection jumped to a different single target (emergency / baseline).
+  if (selected === centeredSingle && !input.splitSeed) return selected;
+
+  // Same-frame re-ease toward a new target: rewind the clock one sample.
+  if (state.singleLastUpdatedAt != null && state.singleLastUpdatedAt >= time - 1e-9) {
+    state.singleLastUpdatedAt = time - LAYOUT_SAMPLE_DT_SEC;
+  }
+
+  const eased = stabilizeSinglePrimaryViewport(
+    state,
+    primaryId,
+    selected.viewports[0],
+    baseline,
+    time,
+    emergency || selected.kind === "emergency-primary-crop",
+  );
+  if (!eased) return selected;
+  return variant(selected.kind, "single-crop", [eased], envelopes);
 }
 
 /**
@@ -450,22 +517,47 @@ export function planVisibilityRescue(input: {
       focusBox: { ...subject.focusBox },
     })) ?? [];
   }
-  input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
+
+  // Capture split→single seed before emergency force clears lastSplitViewports.
+  // activeMode may already be single-crop after the commit above — use currentKey.
+  let splitSeed = selected.mode === "single-crop"
+    && currentKey.startsWith("split:")
+    && input.state.lastSplitViewports.length > 0;
+
   if (
     emergencyPrimary
     && primaryCoverageOf(selected, envelopes, primaryRegion.id) < EMERGENCY_PRIMARY_COVERAGE
     && primaryCoverageOf(emergencyPrimary, envelopes, primaryRegion.id) >= EMERGENCY_PRIMARY_COVERAGE
   ) {
+    if (currentKey.startsWith("split:") && input.state.lastSplitViewports[0]) {
+      splitSeed = true;
+    }
     selected = emergencyPrimary;
-    input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
-    if (input.state.activeMode === "split") {
+    if (currentKey.startsWith("split:") || input.state.activeMode === "split") {
+      // Seed from the on-screen primary panel before clearing split state.
+      if (splitSeed) seedSingleFromSplitPanel(input.state, time);
       input.state.activeMode = "single-crop";
       input.state.activeViewportCount = 1;
       input.state.modeSince = time;
       input.state.lastSplitViewports = [];
       input.state.machineState = "common";
+      splitSeed = false; // already seeded
     }
   }
+
+  selected = easeFinalSingleCrop({
+    state: input.state,
+    selected,
+    centeredSingle,
+    primaryId: primaryRegion.id,
+    baseline: input.baselineViewport,
+    envelopes,
+    time,
+    emergency,
+    splitSeed,
+  });
+  input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
+
   const reason = selected === centeredSingle
     ? "primary-horizontal-center"
     : selected.kind === "emergency-primary-crop"

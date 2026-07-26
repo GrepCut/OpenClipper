@@ -62,8 +62,16 @@ export function computeBenchmarkColumnStats(results: BenchmarkResult[]): Benchma
     ),
     sampleCount: completed.length,
     portrait9x16: {
-      coverage: summarizeValues(portrait.map((result) => result.metricsJson.meanCoverageFraction)),
-      coverageHit: summarizeValues(portrait.map((result) => result.metricsJson.coverageHitRate)),
+      coverage: summarizeValues(
+        portrait
+          .map((result) => result.metricsJson.meanCoverageFraction)
+          .filter((value): value is number => value != null),
+      ),
+      coverageHit: summarizeValues(
+        portrait
+          .map((result) => result.metricsJson.coverageHitRate)
+          .filter((value): value is number => value != null),
+      ),
       dualAllCovered: summarizeValues(
         portrait
           .map((result) => result.metricsJson.dualTargetAllCoveredRate)

@@ -23,6 +23,8 @@ export const testDataService = {
     invoke<TestDataset>("test_dataset_update", { id, name, description: description || null }),
   updateDatasetRole: (id: string, datasetRole: "tuning" | "holdout") =>
     invoke<TestDataset>("test_dataset_update_role", { id, datasetRole }),
+  rememberDatasetRun: (datasetId: string, runId: string) =>
+    invoke<TestDataset>("test_dataset_remember_run", { datasetId, runId }),
   updateClipCohorts: (id: string, cohortTagsJson: string) =>
     invoke<TestClip>("test_clip_update_cohorts", { id, cohortTagsJson }),
   deleteDataset: (id: string) => invoke<void>("test_dataset_delete", { id }),
@@ -106,6 +108,8 @@ export const benchmarkPersistenceService = {
     relativePath,
     contents,
   }),
+  readArtifact: (datasetId: string, relativePath: string) =>
+    invoke<string>("read_test_dataset_artifact", { datasetId, relativePath }),
   exportRunMissFrames: (runId: string) =>
     invoke<{ exportDir: string; frameCount: number; resultCount: number }>(
       "export_benchmark_run_miss_frames",

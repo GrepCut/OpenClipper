@@ -279,6 +279,7 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
         samples.push({ t: time, crop: intoSourceRect({ x: (1 - width) / 2, y: (1 - height) / 2, width, height }, contentRect) });
       }
     }
+    // Zero-phase EMA (λ=3) + kinematic caps — offline, no causal follow lag.
     const smoothedSamples = smoothShotCropSamples(samples, input.sceneCuts);
     aspectTracks[formatId] = {
       targetAspectRatio,

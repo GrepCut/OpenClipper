@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, HStack, Progress, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { Archive, FolderOpen, Play, Plus, StopCircle } from "lucide-react";
+import { Archive, BookmarkCheck, FolderOpen, GitCompare, Play, Plus, StopCircle } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppLoader } from "../../../shared/components/app-loader.component";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
@@ -9,12 +9,15 @@ import { appToast } from "../../../shared/utils/toast.service";
 import { useTheme } from "../../../theme";
 import { ClipperLayout } from "../../clipper/components/clipper-layout.component";
 import { executeBenchmarkRun, type BenchmarkRunnerProgress } from "../benchmark/benchmark-runner.util";
-import { BENCHMARK_COHORTS } from "../benchmark/cohort-tags.util";
 import { CreateTestClipModal } from "../components/create-test-clip-modal.component";
 import { BenchmarkRunsPanel } from "../components/benchmark-runs-panel.component";
 import { TestClipListRow } from "../components/test-clip-list-row.component";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
-import type { BenchmarkResult, BenchmarkRun, TestClip, TestDataset, TestKeyframe } from "../test.types";
+import type { BenchmarkResult, BenchmarkRun, DriftSummary, TestClip, TestDataset } from "../test.types";
+
+function formatMatchPct(value: number | undefined): string {
+  return value == null ? "—" : `${Math.round(value * 1000) / 10}%`;
+}
 
 export function TestDatasetPage() {
   const { datasetId = "" } = useParams();
@@ -28,6 +31,8 @@ export function TestDatasetPage() {
   const [results, setResults] = useState<BenchmarkResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<BenchmarkRunnerProgress | null>(null);
+  const [lastDriftSummary, setLastDriftSummary] = useState<DriftSummary | null>(null);
+  const [running, setRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -54,45 +59,73 @@ export function TestDatasetPage() {
     void benchmarkPersistenceService.listResults(selectedRunId).then(setResults).catch(() => setResults([]));
   }, [selectedRunId]);
 
-  const annotationCounts = useMemo(() => new Map(clips.map((clip) => [clip.id, clip.annotationRevision])), [clips]);
+  const rememberedRun = useMemo(
+    () => runs.find((run) => run.id === dataset?.rememberedRunId) ?? null,
+    [dataset?.rememberedRunId, runs],
+  );
 
-  const runBenchmark = async () => {
-    if (abortRef.current) return;
-    const entries = await Promise.all(clips.map(async (clip) => [clip.id, await testDataService.getAnnotations(clip.id)] as const));
-    const annotations = Object.fromEntries(entries) as Record<string, TestKeyframe[]>;
-    const ready = clips.filter((clip) => annotations[clip.id]?.length);
-    if (!ready.length) {
-      appToast.error("No annotated clips", "Add at least one keyframe before running the benchmark.");
+  const runProcessing = async (mode: "process" | "check") => {
+    if (abortRef.current || clips.length === 0) return;
+    if (mode === "check" && !dataset?.rememberedRunId) {
+      appToast.error("No remembered baseline", "Run processing, then Remember a completed run before Check.");
       return;
     }
     const controller = new AbortController();
     abortRef.current = controller;
+    setRunning(true);
     try {
-      const run = await executeBenchmarkRun({
+      const { run, driftSummary } = await executeBenchmarkRun({
         datasetId,
-        clips: ready,
-        annotations,
+        clips,
         signal: controller.signal,
+        mode,
+        rememberedRunId: dataset?.rememberedRunId,
         onProgress: setProgress,
       });
       if (run.status === "failed") {
-        appToast.error("Benchmark failed", run.error ?? run.status);
+        appToast.error("Run failed", run.error ?? run.status);
       } else if (run.error) {
-        appToast.warning("Benchmark finished with errors", run.error);
+        appToast.warning("Run finished with errors", run.error);
+      } else if (mode === "check" && driftSummary) {
+        setLastDriftSummary(driftSummary);
+        appToast.success(
+          "Check finished",
+          `${formatMatchPct(driftSummary.matchPct)} metadata match (${formatMatchPct(driftSummary.driftPct)} drift)`,
+        );
       } else {
-        appToast.success("Benchmark finished", run.status);
+        appToast.success("Processing finished", run.status);
       }
       setSelectedRunId(run.id);
       await load();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        appToast.info("Benchmark cancelled");
+        appToast.info("Run cancelled");
       } else {
-        appToast.error("Benchmark failed", String(error));
+        appToast.error("Run failed", String(error));
       }
     } finally {
       abortRef.current = null;
+      setRunning(false);
       setProgress(null);
+    }
+  };
+
+  const rememberSelectedRun = async () => {
+    if (!selectedRunId) {
+      appToast.error("No run selected", "Select a completed run to remember.");
+      return;
+    }
+    const selected = runs.find((run) => run.id === selectedRunId);
+    if (!selected || selected.status !== "completed") {
+      appToast.error("Run not ready", "Only completed runs can be remembered.");
+      return;
+    }
+    try {
+      await testDataService.rememberDatasetRun(datasetId, selectedRunId);
+      appToast.success("Baseline remembered", new Date(selected.createdAt).toLocaleString());
+      await load();
+    } catch (error) {
+      appToast.error("Could not remember run", String(error));
     }
   };
 
@@ -110,26 +143,20 @@ export function TestDatasetPage() {
   if (loading) return <ClipperLayout><AppLoader /></ClipperLayout>;
   if (!dataset) return <ClipperLayout><Text>Test dataset was not found.</Text></ClipperLayout>;
 
+  const isRunning = running;
+
   return (
     <ClipperLayout backLink={{ label: "Back to test datasets", onClick: () => navigate("/clipper?tab=tests") }}>
       <VStack align="stretch" gap={7}>
         <HStack justify="space-between" align="start" gap={4} flexWrap="wrap">
           <VStack align="start" gap={1}>
             <Text fontSize="3xl" fontWeight="bold">{dataset.name}</Text>
-            <Text color={theme.text.muted}>{dataset.description || "Manual framing reference dataset"}</Text>
-            <HStack gap={2} flexWrap="wrap">
-              <Text fontSize="sm" color={theme.text.muted}>Role:</Text>
-              <select
-                value={dataset.datasetRole ?? "tuning"}
-                onChange={(event) => {
-                  const datasetRole = event.target.value as "tuning" | "holdout";
-                  void testDataService.updateDatasetRole(datasetId, datasetRole).then(load);
-                }}
-              >
-                <option value="tuning">tuning</option>
-                <option value="holdout">holdout</option>
-              </select>
-            </HStack>
+            <Text color={theme.text.muted}>{dataset.description || "Smart Follow metadata regression dataset"}</Text>
+            <Text fontSize="sm" color={theme.text.muted}>
+              {rememberedRun
+                ? `Remembered baseline: ${new Date(rememberedRun.createdAt).toLocaleString()}`
+                : "No remembered baseline yet"}
+            </Text>
           </VStack>
           <HStack gap={2} flexWrap="wrap">
             <OutlinedActionButton startIcon={<FolderOpen size={16} />} onClick={() => void testDataService.openDatasetDir(datasetId)}>Open folder</OutlinedActionButton>
@@ -141,13 +168,37 @@ export function TestDatasetPage() {
         <Box p={5} border="1px solid" borderColor={theme.dashboard.border} borderRadius="2xl" bg={theme.background.card}>
           <HStack justify="space-between" gap={4} flexWrap="wrap">
             <VStack align="start" gap={1}>
-              <Text fontWeight="bold">Production tracking benchmark</Text>
-              <Text fontSize="sm" color={theme.text.muted}>Runs Smart Follow for 9:16, 1:1, 4:5 and 16:9 using immutable annotation snapshots.</Text>
+              <Text fontWeight="bold">Metadata regression</Text>
+              <Text fontSize="sm" color={theme.text.muted}>
+                Run processes clips and stores crop metadata. Remember pins a baseline. Check compares the next run and reports metadata match.
+              </Text>
             </VStack>
-            {abortRef.current ? (
+            {isRunning ? (
               <Button colorPalette="red" onClick={() => abortRef.current?.abort()}><StopCircle /> Cancel</Button>
             ) : (
-              <OutlinedActionButton startIcon={<Play size={16} />} onClick={() => void runBenchmark()}>Run annotated clips</OutlinedActionButton>
+              <HStack gap={2} flexWrap="wrap">
+                <OutlinedActionButton
+                  startIcon={<Play size={16} />}
+                  disabled={clips.length === 0}
+                  onClick={() => void runProcessing("process")}
+                >
+                  Run
+                </OutlinedActionButton>
+                <OutlinedActionButton
+                  startIcon={<GitCompare size={16} />}
+                  disabled={clips.length === 0 || !dataset.rememberedRunId}
+                  onClick={() => void runProcessing("check")}
+                >
+                  Check
+                </OutlinedActionButton>
+                <OutlinedActionButton
+                  startIcon={<BookmarkCheck size={16} />}
+                  disabled={!selectedRunId}
+                  onClick={() => void rememberSelectedRun()}
+                >
+                  Remember
+                </OutlinedActionButton>
+              </HStack>
             )}
           </HStack>
           {progress ? (
@@ -155,6 +206,13 @@ export function TestDatasetPage() {
               <HStack justify="space-between"><Text fontSize="sm">{progress.clipName}: {progress.phase}</Text><Text fontSize="sm">{progress.clipIndex + 1}/{progress.clipCount}</Text></HStack>
               <Progress.Root value={progress.ratio * 100}><Progress.Track><Progress.Range /></Progress.Track></Progress.Root>
             </VStack>
+          ) : null}
+          {lastDriftSummary ? (
+            <HStack gap={4} mt={4} flexWrap="wrap">
+              <Text fontSize="sm" color={theme.text.muted}>Latest check:</Text>
+              <Text fontSize="sm" fontWeight="semibold">{formatMatchPct(lastDriftSummary.matchPct)} match</Text>
+              <Text fontSize="sm" color={theme.text.muted}>{formatMatchPct(lastDriftSummary.driftPct)} drift</Text>
+            </HStack>
           ) : null}
         </Box>
 
@@ -164,18 +222,11 @@ export function TestDatasetPage() {
             <TestClipListRow
               key={clip.id}
               clip={clip}
-              isAnnotated={Boolean(annotationCounts.get(clip.id))}
               onOpen={() => navigate(`/clipper/tests/${datasetId}/clips/${clip.id}`)}
               onDelete={async () => {
                 if (!window.confirm(`Delete test clip “${clip.name}”?`)) return;
                 await testDataService.deleteClip(clip.id);
                 await load();
-              }}
-              onEditCohorts={() => {
-                const hint = `Valid: ${BENCHMARK_COHORTS.join(", ")}`;
-                const next = window.prompt(`Cohort tags JSON array.\n${hint}`, clip.cohortTagsJson ?? "[]");
-                if (next == null) return;
-                void testDataService.updateClipCohorts(clip.id, next).then(load);
               }}
             />
           ))}
@@ -184,6 +235,7 @@ export function TestDatasetPage() {
         <BenchmarkRunsPanel
           runs={runs}
           selectedRunId={selectedRunId}
+          rememberedRunId={dataset.rememberedRunId ?? null}
           onSelectRun={setSelectedRunId}
           results={results}
           clips={clips}
@@ -194,9 +246,8 @@ export function TestDatasetPage() {
         open={createClip.open}
         datasetId={datasetId}
         onClose={createClip.onClose}
-        onCreated={(clip) => {
+        onCreated={() => {
           void load();
-          navigate(`/clipper/tests/${datasetId}/clips/${clip.id}`);
         }}
       />
     </ClipperLayout>

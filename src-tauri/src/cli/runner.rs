@@ -201,10 +201,18 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
     println!();
     println!("Benchmark {} ({})", summary.status, summary.run_id);
     println!("Dataset: {} ({})", summary.dataset_name, summary.dataset_id);
+    println!("Mode: {}", summary.mode);
     println!(
         "Clips: {} completed, {} failed",
         summary.completed_clips, summary.failed_clips
     );
+    if let Some(drift) = &summary.drift_summary {
+        println!(
+            "Metadata match: {:.1}% (drift {:.1}%)",
+            drift.match_pct * 100.0,
+            drift.drift_pct * 100.0
+        );
+    }
     if let Some(error) = &summary.error {
         println!("Run error: {error}");
     }
@@ -216,39 +224,27 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
         println!("Miss frames: {count} JPEG(s) in {path}");
     }
     for clip in &summary.clips {
-        if clip.aspects.is_empty() {
+        if let Some(match_pct) = clip.match_pct {
+            let drift_pct = clip.drift_pct.unwrap_or(1.0 - match_pct);
             println!(
-                "- {} [{}] {}",
+                "- {} match={:.1}% drift={:.1}% [{}]",
                 clip.clip_name,
-                clip.status,
-                clip.error.as_deref().unwrap_or("no aspect results")
+                match_pct * 100.0,
+                drift_pct * 100.0,
+                clip.status
             );
-            continue;
-        }
-        for aspect in &clip.aspects {
-            let coverage_hit = aspect
-                .coverage_hit_rate
-                .map(|value| format!("{:.1}%", value * 100.0))
-                .unwrap_or_else(|| "—".to_string());
-            let median_cov = aspect
-                .median_coverage_fraction
-                .map(|value| format!("{:.1}%", value * 100.0))
-                .unwrap_or_else(|| "—".to_string());
-            let coverage = aspect
-                .mean_coverage_fraction
-                .map(|value| format!("{:.1}%", value * 100.0))
-                .unwrap_or_else(|| "—".to_string());
-            let dual_covered = aspect
-                .dual_target_all_covered_rate
-                .map(|value| format!("{:.1}%", value * 100.0))
-                .unwrap_or_else(|| "—".to_string());
+        } else {
             println!(
-                "- {} {} coverageHit={coverage_hit} coverage={coverage} dualCovered={dual_covered} medianCov={median_cov} [{}]",
-                clip.clip_name, aspect.aspect_id, aspect.status
+                "- {} frames={} [{}]",
+                clip.clip_name,
+                clip.frame_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "—".to_string()),
+                clip.status
             );
-            if let Some(error) = &aspect.error {
-                println!("    {error}");
-            }
+        }
+        if let Some(error) = &clip.error {
+            println!("    {error}");
         }
     }
 }

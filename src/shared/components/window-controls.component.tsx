@@ -84,6 +84,7 @@ export const WindowControls: React.FC<WindowControlsProps> = ({
       style={{
         display: "flex",
         alignItems: "stretch",
+        alignSelf: "stretch",
         height: "100%",
         flexShrink: 0,
         minWidth: "138px",
@@ -159,8 +160,10 @@ const ControlButton: React.FC<ControlButtonProps> = ({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        boxSizing: "border-box",
         width: "46px",
         height: "100%",
+        minHeight: "100%",
         border: "none",
         outline: "none",
         cursor: "pointer",
@@ -168,6 +171,8 @@ const ControlButton: React.FC<ControlButtonProps> = ({
         color: hovered && hoverColor ? hoverColor : textColor,
         transition: "background 0.15s ease, color 0.15s ease",
         padding: 0,
+        margin: 0,
+        lineHeight: 0,
       }}
     >
       {children}

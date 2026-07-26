@@ -1,6 +1,5 @@
-// v37: prefer face/speaker as primary when any face evidence exists so
-// emergency-primary-crop does not lock onto a back-of-head silhouette.
-export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v37-prefer-face-primary";
+// v42: ease emergency single-crop (no teleport); seed from split panel on exit.
+export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v42-ease-emergency-crop";
 /** The graph-compatible object model identity. */
 export const AUTOFLIP_MODEL_ID = "clipper-vision-v5-yolox-s-scrfd10g-tiled";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;

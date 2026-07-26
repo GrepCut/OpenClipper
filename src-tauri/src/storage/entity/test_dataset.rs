@@ -13,6 +13,8 @@ pub struct Model {
     pub description: Option<String>,
     #[sea_orm(default_value = "tuning", column_type = "Text")]
     pub dataset_role: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub remembered_run_id: Option<String>,
     #[sea_orm(indexed, column_type = "Text")]
     pub created_at: String,
     #[sea_orm(indexed, column_type = "Text")]

@@ -1,5 +1,5 @@
 import { evaluateGroundTruth } from "./ground-truth.util";
-import type { BenchmarkMetrics, TestKeyframe, TestTarget } from "../test.types";
+import type { LegacyBenchmarkMetrics, TestKeyframe, TestTarget } from "../test.types";
 import type { ClipperLayoutMode } from "../../clipper/shared/smart-crop.util";
 import { COVERAGE_HIT_THRESHOLD, coverageOfTarget } from "./target-geometry.util";
 
@@ -51,7 +51,7 @@ export function calculateBenchmarkMetrics(input: {
   frames: BenchmarkFrameInput[];
   sourceWidth: number;
   sourceHeight: number;
-}): { metrics: BenchmarkMetrics; details: BenchmarkFrameDetail[] } {
+}): { metrics: LegacyBenchmarkMetrics; details: BenchmarkFrameDetail[] } {
   let targetObservationCount = 0;
   let coveredTargetCount = 0;
   let allTargetsCoveredFrameCount = 0;

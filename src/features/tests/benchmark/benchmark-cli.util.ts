@@ -1,30 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import { executeBenchmarkRun } from "./benchmark-runner.util";
-import { computeCohortStats } from "./cohort-stats.util";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
-import type { BenchmarkResult, BenchmarkRun, TestClip, TestDataset, TestKeyframe } from "../test.types";
+import type { BenchmarkResult, BenchmarkRun, DriftSummary, TestClip, TestDataset } from "../test.types";
 
 export interface BenchmarkCliRequest {
   datasetId: string;
   jsonOutput: boolean;
-}
-
-export interface BenchmarkCliAspectSummary {
-  aspectId: string;
-  status: string;
-  coverageHitRate: number | null;
-  meanCoverageFraction: number | null;
-  dualTargetAllCoveredRate: number | null;
-  layoutModeRates: Record<"single-crop" | "split" | "contain", number> | null;
-  medianCoverageFraction: number | null;
-  error: string | null;
+  check: boolean;
+  remember: boolean;
 }
 
 export interface BenchmarkCliClipSummary {
   clipId: string;
   clipName: string;
   status: string;
-  aspects: BenchmarkCliAspectSummary[];
+  matchPct: number | null;
+  driftPct: number | null;
+  frameCount: number | null;
   error: string | null;
 }
 
@@ -34,20 +26,20 @@ export interface BenchmarkCliSummary {
   datasetRole?: "tuning" | "holdout";
   runId: string;
   status: string;
+  mode: "process" | "check";
   completedClips: number;
   failedClips: number;
   manifestPath: string | null;
-  cohortStats?: ReturnType<typeof computeCohortStats>;
-  missFramesExportDir?: string | null;
-  missFramesCount?: number | null;
+  driftSummary: DriftSummary | null;
   error: string | null;
   clips: BenchmarkCliClipSummary[];
 }
 
+const PRIMARY_ASPECT_ID = "9-16";
+
 export async function loadBenchmarkRunInput(datasetId: string): Promise<{
   dataset: TestDataset;
   clips: TestClip[];
-  annotations: Record<string, TestKeyframe[]>;
 }> {
   const [dataset, clips] = await Promise.all([
     testDataService.getDataset(datasetId),
@@ -56,15 +48,10 @@ export async function loadBenchmarkRunInput(datasetId: string): Promise<{
   if (!dataset) {
     throw new Error(`Test dataset ${datasetId} was not found.`);
   }
-  const entries = await Promise.all(
-    clips.map(async (clip) => [clip.id, await testDataService.getAnnotations(clip.id)] as const),
-  );
-  const annotations = Object.fromEntries(entries) as Record<string, TestKeyframe[]>;
-  const ready = clips.filter((clip) => annotations[clip.id]?.length);
-  if (!ready.length) {
-    throw new Error("No annotated clips found. Add at least one keyframe before running the benchmark.");
+  if (!clips.length) {
+    throw new Error("No clips found. Add at least one clip before running.");
   }
-  return { dataset, clips: ready, annotations };
+  return { dataset, clips };
 }
 
 function summarizeResults(
@@ -72,6 +59,8 @@ function summarizeResults(
   run: BenchmarkRun,
   clips: TestClip[],
   results: BenchmarkResult[],
+  mode: "process" | "check",
+  driftSummary: DriftSummary | null,
 ): BenchmarkCliSummary {
   const resultsByClip = new Map<string, BenchmarkResult[]>();
   for (const result of results) {
@@ -82,40 +71,32 @@ function summarizeResults(
 
   const clipSummaries: BenchmarkCliClipSummary[] = clips.map((clip) => {
     const clipResults = resultsByClip.get(clip.id) ?? [];
-    if (!clipResults.length) {
+    const primary = clipResults.find((result) => result.aspectId === PRIMARY_ASPECT_ID);
+    if (!primary) {
       return {
         clipId: clip.id,
         clipName: clip.name,
         status: "failed",
-        aspects: [],
-        error: "No benchmark results were recorded for this clip.",
+        matchPct: null,
+        driftPct: null,
+        frameCount: null,
+        error: "No metadata results were recorded for this clip.",
       };
     }
-    const aspects = clipResults.map((result) => ({
-      aspectId: result.aspectId,
-      status: result.status,
-      coverageHitRate: result.metricsJson.coverageHitRate ?? null,
-      meanCoverageFraction: result.metricsJson.meanCoverageFraction ?? null,
-      dualTargetAllCoveredRate: result.metricsJson.dualTargetAllCoveredRate ?? null,
-      layoutModeRates: result.metricsJson.layoutModeRates ?? null,
-      medianCoverageFraction: result.metricsJson.medianCoverageFraction ?? null,
-      error: result.error,
-    }));
-    const failed = clipResults.some((result) => result.status === "failed");
+    const failed = primary.status === "failed";
     return {
       clipId: clip.id,
       clipName: clip.name,
       status: failed ? "failed" : "completed",
-      aspects,
-      error: failed
-        ? clipResults.find((result) => result.error)?.error ?? null
-        : null,
+      matchPct: primary.metricsJson.matchPct ?? null,
+      driftPct: primary.metricsJson.driftPct ?? null,
+      frameCount: primary.metricsJson.frameCount ?? primary.metricsJson.comparedFrames ?? null,
+      error: failed ? primary.error : null,
     };
   });
 
   const completedClips = clipSummaries.filter((clip) => clip.status === "completed").length;
   const failedClips = clipSummaries.length - completedClips;
-  const cohortStats = computeCohortStats(results, clips);
 
   return {
     datasetId: dataset.id,
@@ -123,31 +104,40 @@ function summarizeResults(
     datasetRole: dataset.datasetRole,
     runId: run.id,
     status: run.status,
+    mode,
     completedClips,
     failedClips,
     manifestPath: null,
-    cohortStats,
+    driftSummary,
     error: run.error,
     clips: clipSummaries,
   };
 }
 
 export async function runBenchmarkCli(request: BenchmarkCliRequest): Promise<void> {
-  const { dataset, clips, annotations } = await loadBenchmarkRunInput(request.datasetId);
+  const { dataset, clips } = await loadBenchmarkRunInput(request.datasetId);
+  if (request.check && !dataset.rememberedRunId) {
+    throw new Error("No remembered baseline. Run processing, then Remember a completed run before Check.");
+  }
+  const mode = request.check ? "check" : "process";
   const controller = new AbortController();
-  const run = await executeBenchmarkRun({
+  const { run, driftSummary } = await executeBenchmarkRun({
     datasetId: request.datasetId,
     clips,
-    annotations,
     signal: controller.signal,
+    mode,
+    rememberedRunId: dataset.rememberedRunId,
     onProgress: ({ clipIndex, clipCount, clipName, phase }) => {
       void invoke("log_benchmark_cli_progress", {
         message: `[${clipIndex + 1}/${clipCount}] ${clipName}: ${phase}`,
       }).catch(() => {});
     },
   });
+  if (request.remember && run.status === "completed") {
+    await testDataService.rememberDatasetRun(request.datasetId, run.id);
+  }
   const results = await benchmarkPersistenceService.listResults(run.id);
-  const summary = summarizeResults(dataset, run, clips, results);
+  const summary = summarizeResults(dataset, run, clips, results, mode, driftSummary);
   await invoke("finish_benchmark_cli_command", { summary });
 }
 

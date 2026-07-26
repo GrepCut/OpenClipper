@@ -16,8 +16,12 @@ static BENCHMARK_CLI_ACTIVE: AtomicBool = AtomicBool::new(false);
 struct CliArgs {
     #[arg(long, short = 'h', help = "Show this help")]
     help: bool,
-    #[arg(long, help = "Run annotated clips in a test dataset headlessly")]
+    #[arg(long, help = "Run clips in a test dataset headlessly")]
     benchmark_run: Option<String>,
+    #[arg(long, help = "Compare output against the remembered baseline")]
+    check: bool,
+    #[arg(long, help = "Pin the completed run as the dataset baseline")]
+    remember: bool,
     #[arg(
         long,
         num_args = 0..=1,
@@ -42,6 +46,8 @@ pub struct BenchmarkCliRequest {
     pub dataset_id: String,
     pub json_output: bool,
     pub extract_miss_frames: bool,
+    pub check: bool,
+    pub remember: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -57,8 +63,21 @@ pub struct BenchmarkCliClipSummary {
     pub clip_id: String,
     pub clip_name: String,
     pub status: String,
-    pub aspects: Vec<BenchmarkCliAspectSummary>,
+    pub match_pct: Option<f64>,
+    pub drift_pct: Option<f64>,
+    pub frame_count: Option<usize>,
     pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarkCliDriftSummary {
+    pub baseline_run_id: String,
+    pub primary_aspect_id: String,
+    pub match_pct: f64,
+    pub drift_pct: f64,
+    pub matching_frames: usize,
+    pub compared_frames: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,11 +100,13 @@ pub struct BenchmarkCliSummary {
     pub dataset_name: String,
     pub run_id: String,
     pub status: String,
+    pub mode: String,
     pub completed_clips: usize,
     pub failed_clips: usize,
     pub manifest_path: Option<String>,
     pub miss_frames_export_dir: Option<String>,
     pub miss_frames_count: Option<usize>,
+    pub drift_summary: Option<BenchmarkCliDriftSummary>,
     pub error: Option<String>,
     pub clips: Vec<BenchmarkCliClipSummary>,
 }
@@ -146,6 +167,8 @@ pub fn parse_args() -> Option<CliRequest> {
         dataset_id: normalize_dataset_arg(&dataset_id),
         json_output: args.json,
         extract_miss_frames: args.extract_miss_frames.is_some(),
+        check: args.check,
+        remember: args.remember,
     }))
 }
 

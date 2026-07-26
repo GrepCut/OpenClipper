@@ -106,8 +106,12 @@ const CONVERSATION_PAIR_HOLD_SEC = 0.5;
 const CONVERSATION_SLOT_MAX_CENTER_DELTA = 0.12;
 const GROUP_THIRD_MIN_AREA_RATIO = 0.5;
 const TARGET_RETENTION_MARGIN = 0.04;
-/** Approx. 9:16 crop width on 16:9 source — pairs wider than this cannot share one portrait frame. */
-const PORTRAIT_PAIR_MAX_WIDTH = 0.32;
+/** Face area must be at least this fraction of the best eligible (~linear size 1/4). */
+const FACE_PRIMARY_MIN_AREA_RATIO = 1 / 16;
+/** Face landmark may override top cluster signal only when it overlaps that subject. */
+const FACE_FOCUS_MIN_OVERLAP = 0.3;
+/** Pair is too wide for a shared crop when union is wider than primary by this factor. */
+const PAIR_MAX_PRIMARY_WIDTH_FACTOR = 2.5;
 
 function boxArea(box: NormalizedBox): number {
   return Math.max(0, box.width) * Math.max(0, box.height);
@@ -210,21 +214,35 @@ export function isFaceLike(region: Pick<ImportanceRegion, "kind" | "sources">): 
     || region.sources.includes("active-speaker");
 }
 
-/** When a clear face exists, primary must come from that pool — not a back-of-head. */
+/**
+ * Prefer a face/speaker primary only when it is large enough relative to the
+ * best eligible subject. Tiny/background faces must not displace a larger
+ * person just because any face evidence exists.
+ */
 export function preferFacePrimaryPool(eligible: ImportanceRegion[]): ImportanceRegion[] {
+  if (!eligible.length) return eligible;
   const facePool = eligible.filter(isFaceLike);
-  return facePool.length ? facePool : eligible;
+  if (!facePool.length) return eligible;
+  const bestArea = boxArea(eligible[0]!.box);
+  const competitive = facePool.filter((face) =>
+    boxArea(face.box) >= bestArea * FACE_PRIMARY_MIN_AREA_RATIO);
+  return competitive.length ? competitive : eligible;
 }
 
-function pairFitsPortraitCrop(a: ImportanceRegion, b: ImportanceRegion): boolean {
-  const left = Math.min(a.contentBox.x, b.contentBox.x);
-  const right = Math.max(a.contentBox.x + a.contentBox.width, b.contentBox.x + b.contentBox.width);
-  return right - left <= PORTRAIT_PAIR_MAX_WIDTH;
+/** Pair shares one crop when their union is not much wider than the primary alone. */
+function pairFitsSharedCrop(primary: ImportanceRegion, secondary: ImportanceRegion): boolean {
+  const left = Math.min(primary.contentBox.x, secondary.contentBox.x);
+  const right = Math.max(
+    primary.contentBox.x + primary.contentBox.width,
+    secondary.contentBox.x + secondary.contentBox.width,
+  );
+  const primaryWidth = Math.max(1e-9, primary.contentBox.width);
+  return right - left <= primaryWidth * PAIR_MAX_PRIMARY_WIDTH_FACTOR;
 }
 
 /** Crowd bodies must not become required co-targets beside a clear face star. */
 function shouldPromoteSecondary(primary: ImportanceRegion, secondary: ImportanceRegion): boolean {
-  if (isFaceLike(primary) && !isFaceLike(secondary) && !pairFitsPortraitCrop(primary, secondary)) {
+  if (isFaceLike(primary) && !isFaceLike(secondary) && !pairFitsSharedCrop(primary, secondary)) {
     return false;
   }
   return true;
@@ -313,10 +331,14 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
   const semantic = ordered.filter((candidate) => candidate.source !== "motion");
   // Raw frame difference is context for an observed subject, never a subject.
   if (!semantic.length) throw new Error("motion-only importance cluster");
-  // A face landmark / active-speaker signal beats a larger pose head or
-  // face_full-as-head box so the cluster kind stays face-like for framing.
+  // A face landmark may beat a larger pose head only when it overlaps that
+  // subject — weak SCRFD hits elsewhere in the frame stay secondary.
+  const topSemantic = semantic[0]!;
   const faceFocus = semantic.find((candidate) => candidate.kind === "face" || candidate.kind === "speaker");
-  const focus = faceFocus ?? semantic[0]!;
+  const focus = faceFocus
+    && overlapFractionOfSmaller(faceFocus.box, topSemantic.box) >= FACE_FOCUS_MIN_OVERLAP
+    ? faceFocus
+    : topSemantic;
   const sources = [...new Set(ordered.map((candidate) => candidate.source))];
   const semanticEvidence = 1 - semantic.reduce((remaining, candidate) => remaining * (1 - candidate.evidence), 1);
   const motionBoost = ordered.some((candidate) => candidate.source === "motion") ? 0.12 : 0;

@@ -159,7 +159,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
             ) : null}
 
             {isTauri() ? (
-              <HStack gap={1} flexShrink={0}>
+              <HStack gap={1} flexShrink={0} alignSelf="stretch" alignItems="center">
                 {headerActions}
                 <AccountHeaderAction />
                 <WindowControls

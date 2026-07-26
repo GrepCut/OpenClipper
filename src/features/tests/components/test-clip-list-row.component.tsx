@@ -9,7 +9,7 @@ import type { TestClip } from "../test.types";
 
 interface TestClipListRowProps {
   clip: TestClip;
-  isAnnotated: boolean;
+  isAnnotated?: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onEditCohorts?: () => void;
@@ -17,7 +17,7 @@ interface TestClipListRowProps {
 
 export function TestClipListRow({
   clip,
-  isAnnotated,
+  isAnnotated = false,
   onOpen,
   onDelete,
   onEditCohorts,
@@ -44,25 +44,19 @@ export function TestClipListRow({
           </SecondaryMainTitle>
 
           <HStack gap={2} flexWrap="wrap">
-            <Box
-              px={2}
-              py={0.5}
-              borderRadius="full"
-              bg={
-                isAnnotated
-                  ? mode === "dark"
-                    ? theme.brand.purpleSoftAlpha12
-                    : theme.brand.toggleActiveBg
-                  : mode === "dark"
-                    ? theme.background.secondary
-                    : theme.background.tertiary
-              }
-              color={isAnnotated ? colors.purple.medium : theme.text.muted}
-              fontSize="xs"
-              fontWeight="semibold"
-            >
-              {isAnnotated ? "Annotated" : "Draft"}
-            </Box>
+            {isAnnotated ? (
+              <Box
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                bg={mode === "dark" ? theme.brand.purpleSoftAlpha12 : theme.brand.toggleActiveBg}
+                color={colors.purple.medium}
+                fontSize="xs"
+                fontWeight="semibold"
+              >
+                Annotated
+              </Box>
+            ) : null}
             <Text fontSize="xs" color={theme.text.muted}>
               {clip.duration.toFixed(1)} s · {clip.width}×{clip.height}
             </Text>

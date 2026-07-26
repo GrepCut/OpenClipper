@@ -6,8 +6,28 @@ export interface TestDataset {
   description: string | null;
   /** tuning = strojenie/replay; holdout = promocja tylko (handoff §5.1). */
   datasetRole?: "tuning" | "holdout";
+  rememberedRunId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ClipDriftSummary {
+  clipId: string;
+  aspectId: string;
+  matchPct: number;
+  driftPct: number;
+  matchingFrames: number;
+  comparedFrames: number;
+}
+
+export interface DriftSummary {
+  baselineRunId: string;
+  primaryAspectId: string;
+  matchPct: number;
+  driftPct: number;
+  matchingFrames: number;
+  comparedFrames: number;
+  perClip: ClipDriftSummary[];
 }
 
 export interface TestDatasetSummary extends TestDataset {
@@ -15,6 +35,7 @@ export interface TestDatasetSummary extends TestDataset {
   annotatedClipCount: number;
   totalDuration: number;
   latestRun: BenchmarkRun | null;
+  rememberedRun: BenchmarkRun | null;
 }
 
 export interface TestClip {
@@ -71,19 +92,23 @@ export interface BenchmarkRun {
 }
 
 export interface BenchmarkMetrics {
-  frameCount: number;
-  targetObservationCount: number;
-  coveredTargetCount: number;
-  allTargetsCoveredFrameCount: number;
-  coverageHitCount: number;
-  dualTargetFrameCount: number;
-  dualTargetAllCoveredFrameCount: number;
-  meanCoverageFraction: number;
-  allTargetsCoveredFrameRate: number;
-  coverageHitRate: number;
-  dualTargetAllCoveredRate: number | null;
-  medianCoverageFraction: number | null;
-  p5CoverageFraction: number | null;
+  frameCount?: number;
+  matchPct?: number;
+  driftPct?: number;
+  matchingFrames?: number;
+  comparedFrames?: number;
+  targetObservationCount?: number;
+  coveredTargetCount?: number;
+  allTargetsCoveredFrameCount?: number;
+  coverageHitCount?: number;
+  dualTargetFrameCount?: number;
+  dualTargetAllCoveredFrameCount?: number;
+  meanCoverageFraction?: number;
+  allTargetsCoveredFrameRate?: number;
+  coverageHitRate?: number;
+  dualTargetAllCoveredRate?: number | null;
+  medianCoverageFraction?: number | null;
+  p5CoverageFraction?: number | null;
   singleTargetFrameCount?: number;
   singleTargetMeanCoverageFraction?: number | null;
   singleTargetCoverageHitRate?: number | null;
@@ -101,6 +126,23 @@ export interface BenchmarkMetrics {
   missLedger?: Record<"no-evidence" | "identity-mismatch" | "layout-uncovered" | "late-transition" | "interpolation-loss", number>;
   processingMs?: number;
   realtimeFactor?: number;
+}
+
+/** Legacy benchmark metrics with required coverage fields (replay tooling). */
+export interface LegacyBenchmarkMetrics extends BenchmarkMetrics {
+  frameCount: number;
+  targetObservationCount: number;
+  coveredTargetCount: number;
+  allTargetsCoveredFrameCount: number;
+  coverageHitCount: number;
+  dualTargetFrameCount: number;
+  dualTargetAllCoveredFrameCount: number;
+  meanCoverageFraction: number;
+  allTargetsCoveredFrameRate: number;
+  coverageHitRate: number;
+  dualTargetAllCoveredRate: number | null;
+  medianCoverageFraction: number | null;
+  p5CoverageFraction: number | null;
 }
 
 export interface BenchmarkResult {

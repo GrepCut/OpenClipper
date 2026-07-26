@@ -15,7 +15,7 @@ import {
 } from "../../../clipper/engine/autoflip/layout";
 import type { SemanticFramingParams } from "../../../clipper/engine/autoflip/layout";
 import type { VisibilityControllerParams } from "../../../clipper/engine/autoflip/layout";
-import type { BenchmarkMetrics, TestKeyframe } from "../../test.types";
+import type { LegacyBenchmarkMetrics, TestKeyframe } from "../../test.types";
 import { TEST_ASPECTS } from "../../test.types";
 import type { BenchmarkFrameDetail } from "../metrics.util";
 
@@ -79,9 +79,9 @@ export function recordedArbiterParams(
 }
 
 export interface RecordedStrategyComparison {
-  selected: BenchmarkMetrics;
-  baseline: BenchmarkMetrics;
-  semanticCandidate: BenchmarkMetrics;
+  selected: LegacyBenchmarkMetrics;
+  baseline: LegacyBenchmarkMetrics;
+  semanticCandidate: LegacyBenchmarkMetrics;
 }
 
 export interface RunManifest {

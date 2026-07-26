@@ -25,7 +25,7 @@ import {
 } from "../../../clipper/engine/autoflip/layout";
 import { REPLAY_METRIC_TOLERANCE } from "./replay-tolerance.util";
 import { calculateBenchmarkMetrics, type BenchmarkFrameDetail, type BenchmarkFrameInput } from "../metrics.util";
-import type { BenchmarkMetrics, TestKeyframe } from "../../test.types";
+import type { LegacyBenchmarkMetrics, TestKeyframe } from "../../test.types";
 import type { ClipArtifacts, RecordedAutoflipDebug } from "./replay-io.util";
 import { calculateReplayOracles, type ReplayOracleReport } from "./replay-oracles.util";
 
@@ -202,11 +202,11 @@ export function composeFrames(
 export interface ClipReplayResult {
   clipId: string;
   clipName: string;
-  metrics: BenchmarkMetrics;
+  metrics: LegacyBenchmarkMetrics;
   strategyCounts: Record<string, number>;
   reasonCounts: Record<string, number>;
   counterfactualCounts: Record<string, number>;
-  counterfactualMetrics: Record<string, BenchmarkMetrics>;
+  counterfactualMetrics: Record<string, LegacyBenchmarkMetrics>;
   oracles: ReplayOracleReport;
 }
 
@@ -214,7 +214,7 @@ export function scoreClip(
   frames: BenchmarkFrameInput[],
   keyframes: TestKeyframe[],
   dims: { width: number; height: number },
-): BenchmarkMetrics {
+): LegacyBenchmarkMetrics {
   return calculateBenchmarkMetrics({
     keyframes,
     frames,
@@ -258,7 +258,7 @@ export function replayClip(
       counterfactualCounts[candidate.kind] = (counterfactualCounts[candidate.kind] ?? 0) + 1;
     }
   }
-  const counterfactualMetrics: Record<string, BenchmarkMetrics> = {};
+  const counterfactualMetrics: Record<string, LegacyBenchmarkMetrics> = {};
   const kinds: VisibilityVariant["kind"][] = [
     "run8-baseline",
     "shifted-crop",

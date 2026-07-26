@@ -54,6 +54,7 @@ pub struct TestDatasetSummary {
     pub annotated_clip_count: usize,
     pub total_duration: f64,
     pub latest_run: Option<benchmark_run::Model>,
+    pub remembered_run: Option<benchmark_run::Model>,
 }
 
 pub struct TestRepository;
@@ -94,6 +95,22 @@ impl TestRepository {
         for run in runs {
             latest_runs.entry(run.dataset_id.clone()).or_insert(run);
         }
+        let remembered_run_ids: Vec<String> = datasets
+            .iter()
+            .filter_map(|dataset| dataset.remembered_run_id.clone())
+            .collect();
+        let remembered_runs = if remembered_run_ids.is_empty() {
+            Vec::new()
+        } else {
+            benchmark_run::Entity::find()
+                .filter(benchmark_run::Column::Id.is_in(remembered_run_ids))
+                .all(db)
+                .await?
+        };
+        let remembered_runs_by_id: HashMap<String, benchmark_run::Model> = remembered_runs
+            .into_iter()
+            .map(|run| (run.id.clone(), run))
+            .collect();
         let mut clips_by_dataset: HashMap<String, Vec<&test_clip::Model>> = HashMap::new();
         for clip in &clips {
             clips_by_dataset
@@ -117,6 +134,10 @@ impl TestRepository {
                         .filter(|clip| annotated_clip_ids.contains(&clip.id))
                         .count(),
                     latest_run: latest_runs.remove(&dataset.id),
+                    remembered_run: dataset
+                        .remembered_run_id
+                        .as_ref()
+                        .and_then(|run_id| remembered_runs_by_id.get(run_id).cloned()),
                     dataset,
                 }
             })
@@ -139,6 +160,7 @@ impl TestRepository {
             name: Set(name.to_owned()),
             description: Set(description.filter(|value| !value.trim().is_empty())),
             dataset_role: Set("tuning".into()),
+            remembered_run_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
         };
@@ -178,6 +200,31 @@ impl TestRepository {
             .ok_or_else(|| DbError::message("Test dataset was not found."))?;
         let mut active: test_dataset::ActiveModel = existing.into();
         active.dataset_role = Set(role.to_owned());
+        active.updated_at = Set(Utc::now().to_rfc3339());
+        Ok(active.update(db).await?)
+    }
+
+    pub async fn remember_dataset_run(
+        db: &DatabaseConnection,
+        dataset_id: String,
+        run_id: String,
+    ) -> DbResult<test_dataset::Model> {
+        let run = benchmark_run::Entity::find_by_id(&run_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Benchmark run was not found."))?;
+        if run.dataset_id != dataset_id {
+            return Err(DbError::message("Run does not belong to this dataset."));
+        }
+        if run.status != "completed" {
+            return Err(DbError::message("Only completed runs can be remembered."));
+        }
+        let existing = test_dataset::Entity::find_by_id(dataset_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| DbError::message("Test dataset was not found."))?;
+        let mut active: test_dataset::ActiveModel = existing.into();
+        active.remembered_run_id = Set(Some(run_id));
         active.updated_at = Set(Utc::now().to_rfc3339());
         Ok(active.update(db).await?)
     }
