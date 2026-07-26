@@ -39,8 +39,8 @@ impl GeneralizationShadowRunner {
         _scene_cut: bool,
         _motion_saliency: Option<(NormalizedBox, f32)>,
         _person_count: usize,
-    ) -> bool {
-        false
+    ) -> Option<f64> {
+        None
     }
 
     pub fn finish(self) -> Option<GeneralizationShadowDiagnostics> {

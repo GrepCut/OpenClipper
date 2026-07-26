@@ -9,7 +9,6 @@ use super::vision_logic::{AutoFlipFaceDetection, NormalizedBox, PoseSubject, Sub
 // graph. At 3.5 FPS a downhill rider can cross a portrait crop between two
 // observations before ByteTrack has enough evidence to confirm it.
 pub(crate) const DETECTION_FPS: f64 = 5.0;
-pub(crate) const HISTOGRAM_FPS: f64 = 5.0;
 pub(crate) const FACE_BUCKET_INTERVAL: f64 = 0.5;
 pub(crate) const QUEUE_CAPACITY: usize = 16;
 /// Frames evaluated per WinML call. Workers batch greedily (whatever is

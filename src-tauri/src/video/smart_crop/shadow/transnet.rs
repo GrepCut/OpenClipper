@@ -9,6 +9,9 @@ use super::types::{TransNetCalibration, TransNetShadowSample};
 #[cfg(windows)]
 use crate::video::smart_crop::vision::{NativeVisionError, VisionModel, WinMlModel};
 
+/// Suppress repeat fires while many-frame probability stays high across a dissolve.
+const TRANSNET_MIN_CUT_SPACING: f64 = 0.2;
+
 #[cfg(windows)]
 pub(super) struct TransNetShadow {
     model: WinMlModel,
@@ -16,6 +19,7 @@ pub(super) struct TransNetShadow {
     times: Vec<f64>,
     scene_cuts: Vec<bool>,
     samples: Vec<TransNetShadowSample>,
+    last_cut_time: f64,
 }
 
 #[cfg(windows)]
@@ -28,9 +32,11 @@ impl TransNetShadow {
             times: Vec::with_capacity(TRANSNET_WINDOW),
             scene_cuts: Vec::with_capacity(TRANSNET_WINDOW),
             samples: Vec::new(),
+            last_cut_time: f64::NEG_INFINITY,
         })
     }
 
+    /// Returns the cut timestamp at the window center when a new cut is detected.
     pub(super) fn push_frame(
         &mut self,
         rgb: &[u8],
@@ -38,29 +44,34 @@ impl TransNetShadow {
         height: usize,
         time: f64,
         scene_cut: bool,
-    ) -> bool {
+    ) -> Option<f64> {
         self.times.push(time);
         self.scene_cuts.push(scene_cut);
         resize_rgb_to_transnet(rgb, width, height, &mut self.buffer);
         if self.times.len() < TRANSNET_WINDOW {
-            return false;
+            return None;
         }
-        let mut cut = false;
+        let mut cut_time = None;
         if let Ok((single, many)) = self.evaluate_window() {
             let center = TRANSNET_WINDOW / 2;
-            cut = many[center] >= TRANSNET_CUT_THRESHOLD;
+            let center_time = self.times[center];
+            let is_cut = many[center] >= TRANSNET_CUT_THRESHOLD;
             self.samples.push(TransNetShadowSample {
-                time: self.times[center],
+                time: center_time,
                 single_frame_probability: single[center],
                 many_frame_probability: many[center],
                 histogram_scene_cut: self.scene_cuts[center],
             });
+            if is_cut && center_time - self.last_cut_time >= TRANSNET_MIN_CUT_SPACING {
+                self.last_cut_time = center_time;
+                cut_time = Some(center_time);
+            }
         }
         self.times.remove(0);
         self.scene_cuts.remove(0);
         let plane = TRANSNET_HEIGHT * TRANSNET_WIDTH * 3;
         self.buffer.drain(..plane);
-        cut
+        cut_time
     }
 
     fn evaluate_window(&mut self) -> Result<(Vec<f32>, Vec<f32>), NativeVisionError> {

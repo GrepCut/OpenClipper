@@ -116,8 +116,8 @@ impl GeneralizationShadowRunner {
         scene_cut: bool,
         _motion_saliency: Option<(NormalizedBox, f32)>,
         _person_count: usize,
-    ) -> bool {
-        let mut transnet_cut = false;
+    ) -> Option<f64> {
+        let mut transnet_cut = None;
         if let Some(transnet) = self.transnet.as_mut() {
             transnet_cut = transnet.push_frame(rgb, width, height, time, scene_cut);
         }

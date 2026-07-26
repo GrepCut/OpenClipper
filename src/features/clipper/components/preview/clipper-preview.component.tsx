@@ -68,10 +68,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
   );
 
   const handleSidePanelTabChange = useCallback((tab: SidePanelTab) => {
-    if (tab === "framing") {
-      setSidePanelTab("framing");
-      return;
-    }
     if (tab === "ai") {
       if (guardAccount && !guardAccount()) return;
       onClipSourceModeChange("ai");
@@ -120,7 +116,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     [smartCropAnalysis],
   );
 
-  const { videoRef, canvasRefs, previewRegionRef, previewTimeSec, togglePlay, seekToTranscriptTime } =
+  const { videoRef, canvasRefs, previewRegionRef, togglePlay, seekToTranscriptTime } =
     useClipperPreviewPlayback({
       rangeTrimmedVideoUrl,
       activeClipIndex,
@@ -180,9 +176,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
           seekToTranscriptTime={seekToTranscriptTime}
           sidePanelTab={sidePanelTab}
           onSidePanelTabChange={handleSidePanelTabChange}
-          smartCropAnalysis={smartCropAnalysis}
-          previewTimeSec={previewTimeSec}
-          primaryFormat={primaryFormat}
         />
       </Box>
 

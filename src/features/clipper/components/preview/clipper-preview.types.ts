@@ -10,7 +10,6 @@ import type {
 } from "../../persistence/ai-clip-api.util";
 import type { AutoPartsSegmentLengthSec } from "../../persistence/project-metadata.util";
 import type { ClipperSettings } from "../../settings/settings.util";
-import type { ClipperSmartCropBlob } from "../../shared/smart-crop.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
 import type { ClipperClipPreview, ClipperPipelineState, ClipSourceMode } from "../../shared/state.util";
 import type { SidePanelTab } from "./clipper-preview.constants";
@@ -112,9 +111,6 @@ export interface ClipperPreviewSidePanelProps extends ClipperPreviewProps {
   seekToTranscriptTime: (clipIndex: number, sourceTimeSec: number) => void;
   sidePanelTab: SidePanelTab;
   onSidePanelTabChange: (tab: SidePanelTab) => void;
-  smartCropAnalysis: ClipperSmartCropBlob | null | undefined;
-  previewTimeSec: number;
-  primaryFormat: ClipperFormatDef | undefined;
 }
 
 export interface ClipperPreviewFormatsFooterProps {

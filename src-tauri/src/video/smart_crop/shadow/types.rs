@@ -11,11 +11,11 @@ pub struct GeneralizationShadowConfig {
 
 impl GeneralizationShadowConfig {
     pub fn resolve() -> Self {
-        let enable_shadow = std::env::var("CLIPPER_ENABLE_SHADOW")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+        let enable_shadow = env_flag("CLIPPER_ENABLE_SHADOW");
+        // Production cut fuse without enabling OSNet/ViNet shadow diagnostics.
+        let use_transnet_cuts = env_flag("CLIPPER_USE_TRANSNET_CUTS");
         Self {
-            transnet: enable_shadow,
+            transnet: enable_shadow || use_transnet_cuts,
             osnet: enable_shadow,
             vinet: enable_shadow,
         }
@@ -24,6 +24,12 @@ impl GeneralizationShadowConfig {
     pub fn any_enabled(&self) -> bool {
         self.transnet || self.osnet || self.vinet
     }
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 #[derive(Clone, Debug, Serialize)]

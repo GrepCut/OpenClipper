@@ -6,7 +6,7 @@ use super::super::decode::{copy_rgb, rotate_rgb, sample_due};
 use super::super::diagnostics;
 use super::super::internal::{
     AnalysisFrame, FaceJob, FaceJobKind, ObjectJob, ObjectJobKind, DETECTION_FPS,
-    FACE_BUCKET_INTERVAL, HISTOGRAM_FPS,
+    FACE_BUCKET_INTERVAL,
 };
 use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::NativeVisionError;
@@ -15,6 +15,27 @@ use super::setup::PipelineSetup;
 use super::types::{NativeVisionProgress, RgbColor, StaticFeatureSample};
 use crate::video::ffmpeg::border::detect_border_features;
 use crate::video::ffmpeg::histogram::compute_autoflip_histogram_raw;
+
+/// Near-duplicate cut stamps (histogram + TransNet) collapse into one entry.
+const SCENE_CUT_DEDUPE_SEC: f64 = 0.15;
+/// TransNet scores the window center; only latch `pending_scene_cut` when that
+/// center is near the current detection sample.
+const TRANSNET_PENDING_SLACK_SEC: f64 = 0.3;
+
+fn record_scene_cut(state: &mut DecodeFrameState, time: f64, set_pending: bool) {
+    let is_dup = state
+        .scene_cut_timestamps
+        .iter()
+        .rev()
+        .take(4)
+        .any(|stamp| (time - stamp).abs() < SCENE_CUT_DEDUPE_SEC);
+    if !is_dup {
+        state.scene_cut_timestamps.push(time);
+    }
+    if set_pending {
+        state.pending_scene_cut = true;
+    }
+}
 
 pub(crate) fn process_decoded_frame(
     state: &mut DecodeFrameState,
@@ -51,7 +72,8 @@ pub(crate) fn process_decoded_frame(
     let relative = timestamp - meta.start_time;
     state.frame_timestamps.push(relative);
 
-    if sample_due(timestamp, &mut state.next_histogram, HISTOGRAM_FPS) {
+    // Shot boundary on every decoded frame (AutoFlip cadence); ML stays sparse.
+    {
         let started = Instant::now();
         state
             .histogram_scaler
@@ -65,8 +87,13 @@ pub(crate) fn process_decoded_frame(
             meta.histogram_width as usize,
             meta.histogram_height as usize,
         );
-        if state.shot_detector.push(relative, histogram) {
-            state.scene_cut_timestamps.push(relative);
+        let hist_rgb = copy_rgb(
+            &state.histogram_frame,
+            meta.histogram_width,
+            meta.histogram_height,
+        );
+        if state.shot_detector.push(relative, histogram, hist_rgb) {
+            record_scene_cut(state, relative, true);
         }
         state.histogram_sample_count += 1;
         state.t_histogram += started.elapsed().as_micros();
@@ -102,7 +129,7 @@ pub(crate) fn process_decoded_frame(
         meta.rotation,
     );
     state.t_copy_rotate += started.elapsed().as_micros();
-    let transnet_scene_cut = shadow_runner.push_frame(
+    let transnet_cut_time = shadow_runner.push_frame(
         &rgb,
         width as usize,
         height as usize,
@@ -111,13 +138,13 @@ pub(crate) fn process_decoded_frame(
         None,
         0,
     );
-    if transnet_scene_cut {
-        state.scene_cut_timestamps.push(relative);
-        state.pending_scene_cut = true;
+    if let Some(cut_time) = transnet_cut_time {
+        let near_now = (relative - cut_time).abs() <= TRANSNET_PENDING_SLACK_SEC;
+        record_scene_cut(state, cut_time, near_now);
     }
     let border = if state.sample_count < 3
         || state.pending_scene_cut
-        || transnet_scene_cut
+        || transnet_cut_time.is_some()
         || state.last_border_features.is_none()
     {
         let started = Instant::now();

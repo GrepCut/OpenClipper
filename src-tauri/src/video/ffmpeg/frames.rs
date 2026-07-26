@@ -8,10 +8,16 @@ pub(crate) fn ensure_ffmpeg_init() -> Result<(), String> {
     ffmpeg::init().map_err(|e| format!("FFmpeg init error: {e}"))
 }
 
+/// Mean |Δ|/255 on packed RGB that counts as a hard cut when OR-fused with
+/// AutoFlip histogram correlation. Tuned above typical within-shot pans;
+/// `min_cut_spacing` still suppresses flash double-fires.
+const FRAME_DIFF_CUT_THRESHOLD: f64 = 0.18;
+
 /// Streaming form used by the unified decoder: AutoFlip evaluates a shot
 /// boundary on every decoded frame, while ML detection remains sparse.
 pub(crate) struct AutoFlipShotBoundaryDetector {
     previous: Option<[u32; 64]>,
+    previous_rgb: Option<Vec<u8>>,
     motions: std::collections::VecDeque<f64>,
     history_size: usize,
     min_cut_spacing: f64,
@@ -34,14 +40,23 @@ impl AutoFlipShotBoundaryDetector {
     fn with_history_size(history_size: usize, min_cut_spacing: f64) -> Self {
         Self {
             previous: None,
+            previous_rgb: None,
             motions: std::collections::VecDeque::new(),
             history_size: history_size.max(2),
             min_cut_spacing,
-            last_cut: 0.0,
+            last_cut: f64::NEG_INFINITY,
         }
     }
 
-    pub(crate) fn push(&mut self, timestamp: f64, current: [u32; 64]) -> bool {
+    /// Histogram correlation (AutoFlip) OR mean absolute frame difference.
+    /// `rgb` is packed RGB24 matching the histogram scale size.
+    pub(crate) fn push(&mut self, timestamp: f64, current: [u32; 64], rgb: Vec<u8>) -> bool {
+        let mean_abs_diff = match self.previous_rgb.as_deref() {
+            Some(prev) => mean_abs_diff_norm(prev, &rgb),
+            None => 0.0,
+        };
+        self.previous_rgb = Some(rgb);
+
         let Some(last) = self.previous.replace(current) else {
             return false;
         };
@@ -62,22 +77,101 @@ impl AutoFlipShotBoundaryDetector {
         };
         let motion = 1.0 - correlation;
         self.motions.push_front(motion);
-        if self.motions.len() < self.history_size {
-            return false;
-        }
-        let current_max = self.motions.iter().copied().fold(0.0_f64, f64::max);
-        let shot_measure = if current_max > 0.0 {
-            motion / current_max
+        let hist_ready = self.motions.len() >= self.history_size;
+        let hist_change = if hist_ready {
+            let current_max = self.motions.iter().copied().fold(0.0_f64, f64::max);
+            let shot_measure = if current_max > 0.0 {
+                motion / current_max
+            } else {
+                0.0
+            };
+            self.motions.pop_back();
+            (shot_measure > 10.0 && motion > 0.05) || motion > 0.3
         } else {
-            0.0
+            false
         };
-        let is_change = (shot_measure > 10.0 && motion > 0.05) || motion > 0.3;
-        self.motions.pop_back();
+        let diff_change = mean_abs_diff >= FRAME_DIFF_CUT_THRESHOLD;
+        let is_change = hist_change || diff_change;
         if is_change && timestamp - self.last_cut >= self.min_cut_spacing {
             self.last_cut = timestamp;
             return true;
         }
         false
+    }
+}
+
+fn mean_abs_diff_norm(a: &[u8], b: &[u8]) -> f64 {
+    if a.is_empty() || a.len() != b.len() {
+        return 0.0;
+    }
+    let sum: u64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(left, right)| (*left as i16 - *right as i16).unsigned_abs() as u64)
+        .sum();
+    (sum as f64 / a.len() as f64) / 255.0
+}
+
+#[cfg(test)]
+mod shot_boundary_tests {
+    use super::{mean_abs_diff_norm, AutoFlipShotBoundaryDetector, FRAME_DIFF_CUT_THRESHOLD};
+
+    fn solid_hist(r_bin: usize, g_bin: usize) -> [u32; 64] {
+        let mut hist = [0u32; 64];
+        hist[r_bin.min(7) * 8 + g_bin.min(7)] = 10_000;
+        hist
+    }
+
+    fn solid_rgb(width: usize, height: usize, r: u8, g: u8, b: u8) -> Vec<u8> {
+        let mut out = vec![0u8; width * height * 3];
+        for pixel in out.chunks_exact_mut(3) {
+            pixel[0] = r;
+            pixel[1] = g;
+            pixel[2] = b;
+        }
+        out
+    }
+
+    #[test]
+    fn identical_frames_do_not_fire() {
+        let mut detector = AutoFlipShotBoundaryDetector::for_sample_rate(30.0);
+        let hist = solid_hist(2, 2);
+        let rgb = solid_rgb(8, 8, 40, 40, 40);
+        assert!(!detector.push(0.0, hist, rgb.clone()));
+        for index in 1..20 {
+            assert!(
+                !detector.push(index as f64 / 30.0, hist, rgb.clone()),
+                "false cut at sample {index}"
+            );
+        }
+    }
+
+    #[test]
+    fn hard_hist_change_fires_once() {
+        let mut detector = AutoFlipShotBoundaryDetector::for_sample_rate(30.0);
+        let dark = solid_hist(0, 0);
+        let bright = solid_hist(7, 7);
+        let dark_rgb = solid_rgb(8, 8, 0, 0, 0);
+        let bright_rgb = solid_rgb(8, 8, 255, 255, 255);
+        assert!(!detector.push(0.0, dark, dark_rgb.clone()));
+        // Warm the motion window with near-identical frames.
+        for index in 1..10 {
+            assert!(!detector.push(index as f64 / 30.0, dark, dark_rgb.clone()));
+        }
+        assert!(detector.push(10.0 / 30.0, bright, bright_rgb));
+        // Spacing hysteresis: immediate second fire suppressed.
+        assert!(!detector.push(11.0 / 30.0, dark, dark_rgb));
+    }
+
+    #[test]
+    fn frame_diff_threshold_matches_constant() {
+        let a = solid_rgb(4, 4, 0, 0, 0);
+        let b = solid_rgb(4, 4, 40, 40, 40);
+        let diff = mean_abs_diff_norm(&a, &b);
+        assert!((diff - 40.0 / 255.0).abs() < 1e-9);
+        assert!(diff < FRAME_DIFF_CUT_THRESHOLD);
+        let c = solid_rgb(4, 4, 60, 60, 60);
+        assert!(mean_abs_diff_norm(&a, &c) > FRAME_DIFF_CUT_THRESHOLD);
     }
 }
 

@@ -6,7 +6,6 @@ import {
   getOutlinedActionSurfaceProps,
 } from "../../../../shared/components/buttons/outlined-action-button.component";
 import { ClipperClipsSection } from "../clipper-clips-section.component";
-import { FramingDecisionsPanel } from "./framing-decisions-panel.component";
 import { SIDE_PANEL_TAB_OPTIONS, TOOLBAR_ACTION_BUTTON_PROPS } from "./clipper-preview.constants";
 import type { ClipperPreviewSidePanelProps } from "./clipper-preview.types";
 
@@ -50,11 +49,6 @@ export function ClipperPreviewSidePanel({
   onOpenRenderQueue,
   sidePanelTab,
   onSidePanelTabChange,
-  smartCropAnalysis,
-  previewTimeSec,
-  primaryFormat,
-  projectId,
-  rangeTrimmedVideoUrl,
 }: ClipperPreviewSidePanelProps) {
   return (
     <Box
@@ -125,54 +119,42 @@ export function ClipperPreviewSidePanel({
       </HStack>
 
       <Box flex="1" minH={0} overflow="hidden" display="flex" flexDirection="column">
-        {sidePanelTab === "framing" ? (
-          <FramingDecisionsPanel
-            analysis={smartCropAnalysis}
-            formatId={primaryFormat?.id}
-            formatLabel={primaryFormat?.label}
-            projectId={projectId}
-            time={previewTimeSec}
-            theme={theme}
-            onSeek={(t) => seekToTranscriptTime(activeClipIndex, t)}
-          />
-        ) : (
-          <ClipperClipsSection
-            clipPreviews={clipPreviews}
-            autoPartsClipPreviews={safeAutoPartsPreviews}
-            aiClipPreviews={safeAiPreviews}
-            clipSourceMode={clipSourceMode}
-            activeClipIndex={activeClipIndex}
-            onSelectClip={onSelectClip}
-            onDeleteAiClip={onDeleteAiClip}
-            onDeleteAutoPartsClip={onDeleteAutoPartsClip}
-            aiChatMessages={aiChatMessages}
-            aiChatLoading={aiChatLoading}
-            aiChatError={aiChatError}
-            aiChatThinking={aiChatThinking}
-            aiChatProgressChars={aiChatProgressChars}
-            aiChatModel={aiChatModel}
-            onAiChatModelChange={onAiChatModelChange}
-            onSendAiChatMessage={onSendAiChatMessage}
-            onLoadAiChatHistory={onLoadAiChatHistory}
-            onNewAiChat={onNewAiChat}
-            aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
-            rangeWords={state.rangeWords}
-            collageRegions={collageRegions}
-            disabledCollageRegionIds={disabledCollageRegionIds}
-            onToggleCollageRegion={onToggleCollageRegion}
-            onSeekToTranscriptTime={seekToTranscriptTime}
-            autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}
-            onAutoPartsSegmentLengthChange={onAutoPartsSegmentLengthChange}
-            onResetAutoParts={onResetAutoParts}
-            autoPartsResegmenting={autoPartsResegmenting}
-            onEditClipTranscript={onEditClipTranscript}
-            onUndoClipEdit={onUndoClipEdit}
-            onRedoClipEdit={onRedoClipEdit}
-            canUndoClipEdit={canUndoClipEdit}
-            canRedoClipEdit={canRedoClipEdit}
-            lastEditedTranscriptRange={lastEditedTranscriptRange}
-          />
-        )}
+        <ClipperClipsSection
+          clipPreviews={clipPreviews}
+          autoPartsClipPreviews={safeAutoPartsPreviews}
+          aiClipPreviews={safeAiPreviews}
+          clipSourceMode={clipSourceMode}
+          activeClipIndex={activeClipIndex}
+          onSelectClip={onSelectClip}
+          onDeleteAiClip={onDeleteAiClip}
+          onDeleteAutoPartsClip={onDeleteAutoPartsClip}
+          aiChatMessages={aiChatMessages}
+          aiChatLoading={aiChatLoading}
+          aiChatError={aiChatError}
+          aiChatThinking={aiChatThinking}
+          aiChatProgressChars={aiChatProgressChars}
+          aiChatModel={aiChatModel}
+          onAiChatModelChange={onAiChatModelChange}
+          onSendAiChatMessage={onSendAiChatMessage}
+          onLoadAiChatHistory={onLoadAiChatHistory}
+          onNewAiChat={onNewAiChat}
+          aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
+          rangeWords={state.rangeWords}
+          collageRegions={collageRegions}
+          disabledCollageRegionIds={disabledCollageRegionIds}
+          onToggleCollageRegion={onToggleCollageRegion}
+          onSeekToTranscriptTime={seekToTranscriptTime}
+          autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}
+          onAutoPartsSegmentLengthChange={onAutoPartsSegmentLengthChange}
+          onResetAutoParts={onResetAutoParts}
+          autoPartsResegmenting={autoPartsResegmenting}
+          onEditClipTranscript={onEditClipTranscript}
+          onUndoClipEdit={onUndoClipEdit}
+          onRedoClipEdit={onRedoClipEdit}
+          canUndoClipEdit={canUndoClipEdit}
+          canRedoClipEdit={canRedoClipEdit}
+          lastEditedTranscriptRange={lastEditedTranscriptRange}
+        />
       </Box>
     </Box>
   );

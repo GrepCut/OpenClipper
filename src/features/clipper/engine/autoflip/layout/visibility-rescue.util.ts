@@ -108,7 +108,19 @@ function stabilizeSinglePrimaryViewport(
   baseline: NormalizedBox,
   time: number,
   emergency: boolean,
+  snap = false,
 ): NormalizedBox | null {
+  // Hard cuts teleport; within-shot emergency still eases (v42).
+  if (snap) {
+    state.singlePrimaryId = primaryId;
+    state.pendingSinglePrimaryId = null;
+    state.pendingSinglePrimarySince = null;
+    state.singleViewport = { ...candidate };
+    state.singleVelocity = { x: 0, y: 0 };
+    state.singleLastUpdatedAt = time;
+    return state.singleViewport;
+  }
+
   // Emergency no longer teleports — same kinematic path with higher caps.
   if (state.singlePrimaryId !== primaryId) {
     if (!emergency) {
@@ -185,18 +197,19 @@ function easeFinalSingleCrop(input: {
   time: number;
   emergency: boolean;
   splitSeed: boolean;
+  snap: boolean;
 }): VisibilityVariant {
-  const { state, selected, centeredSingle, primaryId, baseline, envelopes, time, emergency } = input;
+  const { state, selected, centeredSingle, primaryId, baseline, envelopes, time, emergency, snap } = input;
   if (selected.mode !== "single-crop" || !selected.viewports[0]) return selected;
 
   if (input.splitSeed) seedSingleFromSplitPanel(state, time);
 
-  // Already eased this sample via centeredSingle — keep unless we seeded from split
+  // Already eased/snapped this sample via centeredSingle — keep unless we seeded from split
   // or the selection jumped to a different single target (emergency / baseline).
   if (selected === centeredSingle && !input.splitSeed) return selected;
 
   // Same-frame re-ease toward a new target: rewind the clock one sample.
-  if (state.singleLastUpdatedAt != null && state.singleLastUpdatedAt >= time - 1e-9) {
+  if (!snap && state.singleLastUpdatedAt != null && state.singleLastUpdatedAt >= time - 1e-9) {
     state.singleLastUpdatedAt = time - LAYOUT_SAMPLE_DT_SEC;
   }
 
@@ -207,6 +220,7 @@ function easeFinalSingleCrop(input: {
     baseline,
     time,
     emergency || selected.kind === "emergency-primary-crop",
+    snap,
   );
   if (!eased) return selected;
   return variant(selected.kind, "single-crop", [eased], envelopes);
@@ -325,6 +339,7 @@ export function planVisibilityRescue(input: {
       input.baselineViewport,
       time,
       emergency,
+      sample.cut === true,
     )
     : null;
   const centeredSingle = stabilizedSingleViewport
@@ -555,6 +570,7 @@ export function planVisibilityRescue(input: {
     time,
     emergency,
     splitSeed,
+    snap: sample.cut === true,
   });
   input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
 
