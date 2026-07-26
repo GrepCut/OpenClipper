@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../shared/hooks/use-auth.hook";
 import { rememberAuthReturnPath } from "../../shared/auth/auth-return-path.util";
 import { useTheme } from "../../theme";
+import { clipperTheme } from "../clipper/shared/theme.util";
 
 export function AccountHeaderAction() {
   const { theme } = useTheme();
@@ -36,15 +37,27 @@ export function AccountHeaderAction() {
     return (
       <Box
         as="button"
-        {...common}
+        display="inline-flex"
+        alignItems="center"
+        gap={1.5}
+        px={3}
+        py={1}
+        borderRadius="full"
+        fontSize="xs"
+        fontWeight="700"
+        letterSpacing="-0.01em"
+        color="white"
+        bg={clipperTheme.accent}
+        cursor="pointer"
+        transition="all 0.2s ease"
+        title="Log in to use integrations"
         onClick={() => {
           rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
           navigate("/auth");
         }}
-        _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
-        title="Log in to use integrations"
+        _hover={{ filter: "brightness(1.08)" }}
       >
-        <LogIn size={16} />
+        <LogIn size={14} />
         <Text display={{ base: "none", md: "block" }}>Log in</Text>
       </Box>
     );

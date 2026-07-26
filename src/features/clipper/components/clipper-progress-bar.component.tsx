@@ -5,7 +5,8 @@ import { clipperTheme } from "../shared/theme.util";
 
 interface ClipperProgressBarProps {
   label: string;
-  value: number;
+  /** 0..1 progress, or null for indeterminate. */
+  value: number | null;
   /** Optional trailing note (e.g. "~12s remaining") shown next to the percentage. */
   caption?: string;
 }
@@ -16,7 +17,10 @@ export const ClipperProgressBar: React.FC<ClipperProgressBarProps> = ({
   caption,
 }) => {
   const { theme } = useClipperUi();
-  const percent = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  const indeterminate = value == null;
+  const percent = indeterminate
+    ? null
+    : Math.round(Math.max(0, Math.min(1, value)) * 100);
 
   return (
     <Box w="full">
@@ -30,9 +34,11 @@ export const ClipperProgressBar: React.FC<ClipperProgressBarProps> = ({
               {caption}
             </Text>
           )}
-          <Text fontSize="sm" color={clipperTheme.accentLight}>
-            {percent}%
-          </Text>
+          {!indeterminate && (
+            <Text fontSize="sm" color={clipperTheme.accentLight}>
+              {percent}%
+            </Text>
+          )}
         </HStack>
       </HStack>
       <Progress.Root value={percent} size="sm">

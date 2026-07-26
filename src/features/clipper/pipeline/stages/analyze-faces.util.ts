@@ -45,6 +45,7 @@ export async function runAnalyzeFacesStage(
     reporter.stage("analyzing-faces", "Restoring face analysis from disk…");
     reporter.faceProgress(0);
     reporter.stageProgress(null);
+    reporter.stageDetail(null, null);
 
     const endReadFace = clipperTimer(`pipeline[${runId}]: resume face-read`);
     const blob = await readClipperFaceDetections(projectId, runId);
@@ -82,6 +83,7 @@ export async function runAnalyzeFacesStage(
     if (!faceDetectSkipped) {
       reporter.faceProgress(0);
       reporter.stageProgress(null);
+      reporter.stageDetail(null, null);
     }
 
     if (!session.faceActionBenchmark) {

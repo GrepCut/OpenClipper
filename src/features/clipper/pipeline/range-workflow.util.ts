@@ -7,6 +7,7 @@ import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperGeneratedClip } from "../engine/segmentation";
 import type { PipelineReporter } from "./reporter.util";
 import { createFaceCache, syncSessionActiveClips, type ClipperSession } from "./session.util";
+import { transcriptionService } from "../../../services/transcription.service";
 import { runAnalyzeFacesStage } from "./stages/analyze-faces.util";
 import { runAnalyzeSubjectsStage } from "./stages/analyze-subjects.util";
 import { runTranscribeStage } from "./stages/transcribe.util";
@@ -142,6 +143,9 @@ export async function runConfirmRangePipeline(
   options: { signal: AbortSignal },
 ): Promise<ConfirmRangeResult> {
   session.faceCache = createFaceCache(session, reporter);
+
+  // Warm Parakeet ORT while we snap/trim so "Loading speech model" is often a no-op.
+  void transcriptionService.loadParakeetModel().catch(() => {});
 
   const snappedStart = await snapToKeyframe(session.sourceFile, input.start);
   reporter.stageProgress(0.1);

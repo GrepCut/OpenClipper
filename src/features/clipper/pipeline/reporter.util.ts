@@ -4,6 +4,8 @@ import type { ClipperStage } from "../shared/stages.util";
 export interface PipelineReporter {
   stage(stage: ClipperStage, message?: string): void;
   stageProgress(ratio: number | null): void;
+  /** Detail/sub-phase bar; pass `progress: null` for indeterminate, both null to clear. */
+  stageDetail(label: string | null, progress: number | null): void;
   faceProgress(ratio: number | null): void;
   subjectProgress(ratio: number | null): void;
   /** Smoothed seconds-remaining estimate for the active native extraction; `null` when unknown/not applicable. */

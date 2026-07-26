@@ -116,8 +116,11 @@ export const ClipperProcessing: React.FC<ClipperProcessingProps> = ({ state }) =
         />
       )}
 
-      {state.stage === "transcribing" && state.stageProgress != null && (
-        <ClipperProgressBar label="Transcribing speech" value={state.stageProgress} />
+      {state.stage === "transcribing" && state.stageDetailLabel != null && (
+        <ClipperProgressBar
+          label={state.stageDetailLabel}
+          value={state.stageDetailProgress}
+        />
       )}
 
       {(state.stage === "analyzing-faces" || state.stage === "analyzing-subjects") && (

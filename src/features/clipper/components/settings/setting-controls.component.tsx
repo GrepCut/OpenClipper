@@ -8,6 +8,7 @@ interface SettingSectionProps {
   title: string;
   description?: string;
   defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }
 
@@ -15,10 +16,19 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
   title,
   description,
   defaultOpen = false,
+  onOpenChange,
   children,
 }) => {
   const { theme } = useClipperUi();
   const [open, setOpen] = useState(defaultOpen);
+
+  const handleToggle = () => {
+    setOpen((current) => {
+      const next = !current;
+      onOpenChange?.(next);
+      return next;
+    });
+  };
 
   return (
     <Box
@@ -35,7 +45,7 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
         alignItems="center"
         justifyContent="space-between"
         cursor="pointer"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         _hover={{
           "& [data-section-title]": { color: clipperTheme.accentLight },
           "& [data-section-chevron]": { color: clipperTheme.accentLight },

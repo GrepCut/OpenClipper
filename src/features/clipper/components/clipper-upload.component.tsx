@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
 import { FiUploadCloud } from "react-icons/fi";
 import { clipperTheme } from "../shared/theme.util";
@@ -9,10 +9,22 @@ import { isTauri } from "../../../shared/utils/platform.util";
 interface ClipperUploadProps {
   onFile: (file: File) => void;
   disabled?: boolean;
+  /** Fill remaining viewport and center content (main idle state). */
+  fill?: boolean;
 }
 
-export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }) => {
-  const { theme, panelShadow } = useClipperUi();
+/** Longer dashes than CSS `border: dashed` — stroke-dasharray controls length. */
+function dashedBorderImage(stroke: string, radiusPx: number) {
+  const s = encodeURIComponent(stroke);
+  return `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='${radiusPx}' ry='${radiusPx}' stroke='${s}' stroke-width='2' stroke-dasharray='28 16' stroke-linecap='round'/%3e%3c/svg%3e")`;
+}
+
+export const ClipperUpload: React.FC<ClipperUploadProps> = ({
+  onFile,
+  disabled,
+  fill = false,
+}) => {
+  const { theme } = useClipperUi();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -26,10 +38,15 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
   );
 
   const chooseNativeFile = useCallback(async () => {
-    const path = await open({ multiple: false, filters: [{ name: "Video", extensions: ["mp4", "mov", "webm", "mkv", "m4v"] }] });
+    const path = await open({
+      multiple: false,
+      filters: [{ name: "Video", extensions: ["mp4", "mov", "webm", "mkv", "m4v"] }],
+    });
     if (!path || Array.isArray(path)) return;
     const name = path.split(/[\\/]/).pop() || "video.mp4";
-    const file = new File([], name, { type: "video/" + (name.split(".").pop() || "mp4") }) as File & { path: string };
+    const file = new File([], name, { type: "video/" + (name.split(".").pop() || "mp4") }) as File & {
+      path: string;
+    };
     file.path = path;
     onFile(file);
   }, [onFile]);
@@ -47,26 +64,30 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
     if (disabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        const target = e.target as HTMLElement | null;
-        const isInput =
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.tagName === "SELECT" ||
-            target.isContentEditable);
-        if (isInput) return;
+      if (e.key !== "Enter") return;
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      if (isInput) return;
 
-        e.preventDefault();
-        chooseFile();
-      }
+      e.preventDefault();
+      chooseFile();
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [disabled, chooseFile]);
+
+  const stroke = dragActive ? clipperTheme.accentGlow : theme.surface.focus;
+  const radiusPx = 28;
+  const borderImage = useMemo(() => dashedBorderImage(stroke, radiusPx), [stroke]);
+  const idleBg = fill ? "transparent" : theme.surface.inset;
+  const activeBg = `rgba(${clipperTheme.accentTintRgb},0.1)`;
+  const hoverBg = `rgba(${clipperTheme.accentTintRgb},0.06)`;
 
   return (
     <Box
@@ -89,12 +110,15 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
       flexDirection="column"
       alignItems="center"
       justifyContent="center"
-      minH={{ base: "220px", md: "280px" }}
-      borderRadius="3xl"
-      border="2px dashed"
-      borderColor={dragActive ? clipperTheme.accentGlow : theme.surface.focus}
-      bg={dragActive ? `rgba(${clipperTheme.accentTintRgb},0.12)` : theme.surface.inset}
-      boxShadow={panelShadow}
+      w="full"
+      minH={fill ? { base: "calc(100dvh - 130px)", md: "calc(100dvh - 150px)" } : { base: "220px", md: "280px" }}
+      h={fill ? { base: "calc(100dvh - 130px)", md: "calc(100dvh - 150px)" } : undefined}
+      borderRadius={`${radiusPx}px`}
+      border="none"
+      bgColor={dragActive ? activeBg : idleBg}
+      backgroundImage={borderImage}
+      backgroundSize="100% 100%"
+      backgroundRepeat="no-repeat"
       cursor="pointer"
       onClick={(event: React.MouseEvent) => {
         if (!isTauri()) return;
@@ -106,10 +130,10 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
         e.preventDefault();
         chooseFile();
       }}
-      transition="all 0.2s ease"
+      transition="background-color 0.2s ease, opacity 0.2s ease"
       _hover={{
-        borderColor: clipperTheme.accentGlow,
-        bg: `rgba(${clipperTheme.accentTintRgb},0.08)`,
+        bgColor: hoverBg,
+        backgroundImage: dashedBorderImage(clipperTheme.accentGlow, radiusPx),
       }}
     >
       <input
@@ -119,22 +143,18 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({ onFile, disabled }
         hidden
         onChange={(e) => emit(e.target.files)}
       />
-      <VStack gap={3} px={6} textAlign="center">
-        <Box
-          p={4}
-          borderRadius="full"
-          bg={`rgba(${clipperTheme.accentTintRgb},0.15)`}
-          color={clipperTheme.accentLight}
-        >
-          <FiUploadCloud size={36} />
+      <VStack gap={4} px={8} textAlign="center">
+        <Box color={clipperTheme.accentLight}>
+          <FiUploadCloud size={84} />
         </Box>
-        <Text fontSize="xl" fontWeight="semibold" color={theme.text.primary}>
-          Drop your long video here
-        </Text>
-        <Text fontSize="sm" color={theme.text.muted} maxW="420px">
-          We&apos;ll transcribe it, clip the first 60 seconds, burn captions, and export
-          Instagram, TikTok &amp; YouTube formats — right in your browser.
-        </Text>
+        <VStack gap={1.5}>
+          <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="semibold" color={theme.text.primary} letterSpacing="-0.01em">
+            Drop your video here
+          </Text>
+          <Text fontSize="sm" color={theme.text.muted}>
+            Click or drag to start clipping
+          </Text>
+        </VStack>
       </VStack>
     </Box>
   );

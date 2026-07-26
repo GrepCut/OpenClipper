@@ -125,7 +125,8 @@ fn select_model_source<'a>(
 }
 
 fn is_dev_model_ready(model_dir: &Path) -> bool {
-    is_model_installed(model_dir) && verify_manifest(model_dir).is_ok()
+    // Existence only — full SHA verify belongs in download/install, not resolve/status.
+    is_model_installed(model_dir)
 }
 
 fn try_migrate_legacy_cache(cache_dir: &Path, legacy_dir: &Path) -> Option<()> {
@@ -156,11 +157,11 @@ pub struct ResolvedModelLocation {
 
 impl ResolvedModelLocation {
     fn new(path: PathBuf, source: &'static str) -> Self {
-        let manifest_valid = is_model_installed(&path) && verify_manifest(&path).is_ok();
+        // ponytail: skip SHA-256 of ~671MB ONNX on every status/resolve; verify only on download/install
         Self {
             path,
             source,
-            manifest_valid,
+            manifest_valid: false,
         }
     }
 }
@@ -179,10 +180,9 @@ pub fn model_status(
     let location = resolve_model_location(app)?;
     let installed = is_model_installed(&location.path);
     log::info!(
-        "Parakeet model status: installed={installed} source={} path={} manifest_valid={} loaded={loaded} provider={:?}",
+        "Parakeet model status: installed={installed} source={} path={} loaded={loaded} provider={:?}",
         location.source,
         location.path.display(),
-        location.manifest_valid,
         provider
     );
     Ok(ParakeetModelStatus {
@@ -195,11 +195,8 @@ pub fn model_status(
         },
         provider,
         source: Some(location.source.to_string()),
-        manifest_valid: if installed {
-            Some(location.manifest_valid)
-        } else {
-            None
-        },
+        // Not verified on status path (would SHA-hash ~671 MB).
+        manifest_valid: None,
     })
 }
 

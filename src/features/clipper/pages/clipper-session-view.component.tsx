@@ -43,7 +43,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
       step={visibility.showLoadingUi ? undefined : step}
       backLink={visibility.layoutBackLink}
     >
-      {visibility.showUpload && <ClipperUpload onFile={handleFile} />}
+      {visibility.showUpload && <ClipperUpload onFile={handleFile} fill />}
 
       {state.stage === "trimming" && sourceUrl && !rangeLocked && (
         <ClipperTrimSelect

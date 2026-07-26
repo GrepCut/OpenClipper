@@ -10,10 +10,15 @@ use std::sync::Arc;
 use tauri::{AppHandle, State, WebviewWindow};
 
 #[tauri::command]
-pub fn get_parakeet_model_status(
+pub async fn get_parakeet_model_status(
     service: State<'_, Arc<ParakeetService>>,
 ) -> Result<ParakeetModelStatus, String> {
-    model_status(&service.app, service.is_loaded(), service.active_provider())
+    let service = service.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        model_status(&service.app, service.is_loaded(), service.active_provider())
+    })
+    .await
+    .map_err(|error| format!("Status task failed: {error}"))?
 }
 
 #[tauri::command]

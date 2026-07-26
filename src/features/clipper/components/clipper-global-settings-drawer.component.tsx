@@ -44,6 +44,7 @@ export const ClipperGlobalSettingsDrawer: React.FC<ClipperGlobalSettingsDrawerPr
             maxH="100dvh"
           >
             <Drawer.Header
+              position="relative"
               borderBottom="1px solid"
               borderColor={theme.dashboard.border}
               flexShrink={0}
@@ -57,18 +58,20 @@ export const ClipperGlobalSettingsDrawer: React.FC<ClipperGlobalSettingsDrawerPr
                   Applied to new clip projects
                 </Text>
               </VStack>
-              <Drawer.CloseTrigger asChild position="absolute" top={3} right={3}>
-                <IconButton
-                  aria-label="Close settings"
-                  size="sm"
-                  variant="ghost"
-                  borderRadius="lg"
-                  color={theme.text.muted}
-                  _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
-                >
-                  <X size={18} />
-                </IconButton>
-              </Drawer.CloseTrigger>
+              <IconButton
+                aria-label="Close settings"
+                position="absolute"
+                top={3}
+                right={3}
+                size="sm"
+                variant="ghost"
+                borderRadius="lg"
+                color={theme.text.muted}
+                onClick={() => onOpenChange(false)}
+                _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
+              >
+                <X size={18} />
+              </IconButton>
             </Drawer.Header>
 
             <Drawer.Body flex="1" overflowY="auto" px={4} py={4} css={scrollbarCss}>

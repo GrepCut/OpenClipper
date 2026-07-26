@@ -16,6 +16,7 @@ const FLUSH_INTERVAL_MS = 150;
  */
 export function createThrottledReporter(inner: PipelineReporter): PipelineReporter {
   let pendingStageProgress: number | null | undefined;
+  let pendingStageDetail: { label: string | null; progress: number | null } | undefined;
   let pendingFaceProgress: number | null | undefined;
   let pendingSubjectProgress: number | null | undefined;
   let pendingEta: number | null | undefined;
@@ -30,6 +31,10 @@ export function createThrottledReporter(inner: PipelineReporter): PipelineReport
     if (pendingStageProgress !== undefined) {
       inner.stageProgress(pendingStageProgress);
       pendingStageProgress = undefined;
+    }
+    if (pendingStageDetail !== undefined) {
+      inner.stageDetail(pendingStageDetail.label, pendingStageDetail.progress);
+      pendingStageDetail = undefined;
     }
     if (pendingFaceProgress !== undefined) {
       inner.faceProgress(pendingFaceProgress);
@@ -72,6 +77,22 @@ export function createThrottledReporter(inner: PipelineReporter): PipelineReport
       pendingStageProgress = ratio;
       if (isTerminal(ratio)) flush();
       else schedule();
+    },
+    stageDetail: (label, progress) => {
+      const prev = pendingStageDetail;
+      pendingStageDetail = { label, progress };
+      // Paint immediately on first update, label change, indeterminate, clear, or completion.
+      if (
+        label == null ||
+        progress == null ||
+        progress >= 1 ||
+        prev === undefined ||
+        prev.label !== label
+      ) {
+        flush();
+      } else {
+        schedule();
+      }
     },
     faceProgress: (ratio) => {
       pendingFaceProgress = ratio;

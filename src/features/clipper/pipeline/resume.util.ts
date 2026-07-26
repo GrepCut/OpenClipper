@@ -28,6 +28,8 @@ export const EMPTY_CLIPPER_PIPELINE_STATE: ClipperPipelineState = {
   subjectAnalysisProgress: null,
   analysisEtaSeconds: null,
   stageProgress: null,
+  stageDetailLabel: null,
+  stageDetailProgress: null,
 };
 
 export interface ResumeLoadedInput {

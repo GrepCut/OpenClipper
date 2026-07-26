@@ -188,6 +188,7 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
               borderTopRadius={{ base: "2xl", lg: 0 }}
             >
               <Drawer.Header
+                position="relative"
                 borderBottom="1px solid"
                 borderColor={theme.dashboard.border}
                 flexShrink={0}
@@ -201,18 +202,21 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
                     Applies to all clips
                   </Text>
                 </VStack>
-                <Drawer.CloseTrigger asChild position="absolute" top={3} right={3}>
-                  <IconButton
-                    aria-label="Close settings"
-                    size="sm"
-                    variant="ghost"
-                    borderRadius="lg"
-                    color={theme.text.muted}
-                    _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
-                  >
-                    <X size={18} />
-                  </IconButton>
-                </Drawer.CloseTrigger>
+                <IconButton
+                  aria-label="Close settings"
+                  position="absolute"
+                  top={3}
+                  right={3}
+                  zIndex={1}
+                  size="sm"
+                  variant="ghost"
+                  borderRadius="lg"
+                  color={theme.text.muted}
+                  onClick={() => onOpenChange(false)}
+                  _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
+                >
+                  <X size={18} />
+                </IconButton>
               </Drawer.Header>
 
               <Drawer.Body

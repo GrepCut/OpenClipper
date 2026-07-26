@@ -15,6 +15,11 @@ export function createReporter(
       patchPipelineState(setState, (draft) => {
         draft.stageProgress = ratio;
       }),
+    stageDetail: (label, progress) =>
+      patchPipelineState(setState, (draft) => {
+        draft.stageDetailLabel = label;
+        draft.stageDetailProgress = progress;
+      }),
     faceProgress: (ratio) =>
       patchPipelineState(setState, (draft) => {
         draft.faceAnalysisProgress = ratio;

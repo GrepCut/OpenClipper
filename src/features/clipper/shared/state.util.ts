@@ -71,6 +71,10 @@ export interface ClipperPipelineState {
   analysisEtaSeconds: number | null;
   /** 0..1 progress for the active pipeline stage (upload, transcribe, trim prep), or null. */
   stageProgress: number | null;
+  /** Label for the detail/sub-phase progress bar (transcribe only); null when unused. */
+  stageDetailLabel: string | null;
+  /** 0..1 detail progress, or null when indeterminate / unused. */
+  stageDetailProgress: number | null;
 }
 
 /** Words shown per caption group before switching to the next on-screen phrase (fallback default). */

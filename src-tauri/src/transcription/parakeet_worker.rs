@@ -1,6 +1,5 @@
 use super::model_manager::{is_model_installed, resolve_model_dir};
-use super::parakeet_probe::{default_thread_count, select_provider};
-use super::parakeet_provider::ParakeetProvider;
+use super::parakeet_probe::{default_thread_count, load_preferred, select_provider};
 use super::types::{
     ParakeetTranscriptionProgress, ParakeetTranscriptionResult, TranscriptionError,
 };
@@ -72,9 +71,7 @@ impl ParakeetService {
             return Err(TranscriptionError::ModelNotInstalled);
         }
 
-        let provider_name = select_provider(&model_dir, self.num_threads);
-        let provider =
-            ParakeetProvider::load_with_provider(&model_dir, &provider_name, self.num_threads)?;
+        let (provider, provider_name) = load_preferred(&model_dir, self.num_threads)?;
         let (job_tx, job_rx): (Sender<ParakeetJob>, Receiver<ParakeetJob>) =
             crossbeam_channel::unbounded();
 
@@ -122,9 +119,12 @@ impl ParakeetService {
             return Ok((false, None, false));
         }
 
-        let provider = select_provider(&model_dir, self.num_threads);
-        let available =
-            super::parakeet_probe::smoke_provider(&model_dir, &provider, self.num_threads);
+        let (provider, already_smoked) = select_provider(&model_dir, self.num_threads);
+        let available = if already_smoked {
+            true
+        } else {
+            super::parakeet_probe::smoke_provider(&model_dir, &provider, self.num_threads)
+        };
         Ok((available, Some(provider), true))
     }
 
@@ -141,7 +141,9 @@ impl ParakeetService {
         cancelled: Arc<AtomicBool>,
         progress_tx: Option<Sender<ParakeetTranscriptionProgress>>,
     ) -> Result<ParakeetTranscriptionResult, TranscriptionError> {
+        emit_loading_progress(&progress_tx, 0.0);
         self.ensure_worker()?;
+        emit_loading_progress(&progress_tx, 1.0);
 
         let job_tx = {
             let state = self
@@ -182,5 +184,19 @@ impl ParakeetService {
             *provider = None;
         }
         self.loaded.store(false, Ordering::Release);
+    }
+}
+
+fn emit_loading_progress(
+    progress_tx: &Option<Sender<ParakeetTranscriptionProgress>>,
+    ratio: f64,
+) {
+    if let Some(tx) = progress_tx {
+        let _ = tx.send(ParakeetTranscriptionProgress {
+            phase: "loading".into(),
+            chunk_index: 0,
+            chunk_count: 0,
+            ratio,
+        });
     }
 }

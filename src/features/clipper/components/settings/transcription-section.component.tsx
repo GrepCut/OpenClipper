@@ -1,13 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { HStack, Progress, Text, VStack } from "@chakra-ui/react";
 import { Download, Trash2 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { OutlinedActionButton } from "../../../../shared/components/buttons/outlined-action-button.component";
 import { transcriptionService } from "../../../../services/transcription.service";
-import type {
-  ParakeetCapability,
-  ParakeetModelStatus,
-} from "../../../../services/types/transcription.types";
+import type { ParakeetModelStatus } from "../../../../services/types/transcription.types";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import { isTauri } from "../../../../shared/utils/platform.util";
 import { clipperLog, clipperWarn } from "../../shared/logger.util";
@@ -21,6 +18,15 @@ interface ModelDownloadEvent {
   error?: string | null;
 }
 
+const EMPTY_MODEL_STATUS: ParakeetModelStatus = {
+  installed: false,
+  loaded: false,
+  path: null,
+  provider: null,
+  source: null,
+  manifestValid: null,
+};
+
 function providerLabel(provider?: string | null): string | null {
   if (!provider) return null;
   if (provider === "directml") return "GPU (DirectML)";
@@ -28,27 +34,14 @@ function providerLabel(provider?: string | null): string | null {
   return provider;
 }
 
-function logParakeetDiagnostics(
-  status: ParakeetModelStatus,
-  capability: ParakeetCapability | null,
-): void {
+function logParakeetDiagnostics(status: ParakeetModelStatus): void {
   clipperLog("settings/transcription: parakeet model check", {
     installed: status.installed,
     loaded: status.loaded,
     source: status.source ?? "unknown",
     path: status.path ?? null,
-    manifestValid: status.manifestValid ?? null,
-    provider: status.provider ?? capability?.provider ?? null,
-    probeAvailable: capability?.available ?? null,
-    probeReason: capability?.reason ?? null,
+    provider: status.provider ?? null,
   });
-
-  if (status.installed && status.manifestValid === false) {
-    clipperWarn("settings/transcription: model files present but manifest SHA mismatch", {
-      path: status.path ?? null,
-      source: status.source ?? null,
-    });
-  }
 
   if (!status.installed) {
     clipperWarn("settings/transcription: parakeet model not found", {
@@ -61,59 +54,75 @@ function logParakeetDiagnostics(
 export const TranscriptionSection: React.FC = () => {
   const { theme } = useClipperUi();
   const [modelStatus, setModelStatus] = useState<ParakeetModelStatus | null>(null);
-  const [capability, setCapability] = useState<ParakeetCapability | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
-  const refreshStatus = useCallback(async () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const refreshStatus = useCallback(async (): Promise<ParakeetModelStatus | null> => {
     if (!isTauri()) {
-      setModelStatus({ installed: false, loaded: false, path: null, provider: null, source: null, manifestValid: null });
-      setCapability(null);
-      return;
+      if (isMountedRef.current) {
+        setModelStatus(EMPTY_MODEL_STATUS);
+      }
+      return EMPTY_MODEL_STATUS;
     }
     try {
       const status = await transcriptionService.getParakeetModelStatus();
-      setModelStatus(status);
+      if (isMountedRef.current) {
+        setModelStatus(status);
+      }
+      return status;
     } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : String(statusError));
+      if (isMountedRef.current) {
+        setError(statusError instanceof Error ? statusError.message : String(statusError));
+      }
+      return null;
     }
   }, []);
 
-  const refreshCapability = useCallback(async () => {
-    if (!isTauri()) {
-      setCapability(null);
-      return;
-    }
-    try {
-      const probe = await transcriptionService.probeParakeet();
-      setCapability(probe);
-    } catch (probeError) {
-      setCapability({
-        available: false,
-        modelInstalled: modelStatus?.installed ?? false,
-        reason: probeError instanceof Error ? probeError.message : String(probeError),
-      });
-    }
-  }, [modelStatus?.installed]);
-
   useEffect(() => {
     if (!modelStatus || !isTauri()) return;
-    logParakeetDiagnostics(modelStatus, capability);
-  }, [modelStatus, capability]);
+    logParakeetDiagnostics(modelStatus);
+  }, [modelStatus]);
 
   useEffect(() => {
-    void refreshStatus();
-  }, [refreshStatus]);
-
-  useEffect(() => {
-    void refreshCapability();
-  }, [refreshCapability, modelStatus?.installed]);
+    let cancelled = false;
+    void (async () => {
+      if (!isTauri()) {
+        if (!cancelled && isMountedRef.current) {
+          setModelStatus(EMPTY_MODEL_STATUS);
+        }
+        return;
+      }
+      try {
+        const status = await transcriptionService.getParakeetModelStatus();
+        if (!cancelled && isMountedRef.current) {
+          setModelStatus(status);
+        }
+      } catch (statusError) {
+        if (!cancelled && isMountedRef.current) {
+          setError(statusError instanceof Error ? statusError.message : String(statusError));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) return;
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
     void listen<ModelDownloadEvent>("model-download", (event) => {
+      if (cancelled || !isMountedRef.current) return;
       const payload = event.payload;
       if (!payload.path.includes("nemo-parakeet") && !payload.path.includes("parakeet")) {
         return;
@@ -128,7 +137,6 @@ export const TranscriptionSection: React.FC = () => {
         setDownloading(false);
         setDownloadProgress(1);
         void refreshStatus();
-        void refreshCapability();
         return;
       }
       setDownloading(true);
@@ -136,12 +144,17 @@ export const TranscriptionSection: React.FC = () => {
         setDownloadProgress(payload.received / payload.total);
       }
     }).then((dispose) => {
+      if (cancelled) {
+        dispose();
+        return;
+      }
       unlisten = dispose;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
-  }, [refreshCapability, refreshStatus]);
+  }, [refreshStatus]);
 
   const handleDownload = async () => {
     setError(null);
@@ -149,13 +162,13 @@ export const TranscriptionSection: React.FC = () => {
     setDownloadProgress(0);
     try {
       await transcriptionService.downloadParakeetModel();
-      await transcriptionService.loadParakeetModel();
       await refreshStatus();
-      await refreshCapability();
     } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : String(downloadError));
-      setDownloading(false);
-      setDownloadProgress(null);
+      if (isMountedRef.current) {
+        setError(downloadError instanceof Error ? downloadError.message : String(downloadError));
+        setDownloading(false);
+        setDownloadProgress(null);
+      }
     }
   };
 
@@ -164,17 +177,15 @@ export const TranscriptionSection: React.FC = () => {
     try {
       await transcriptionService.deleteParakeetModel();
       await refreshStatus();
-      setCapability(null);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+      if (isMountedRef.current) {
+        setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+      }
     }
   };
 
   const showModelPanel = isTauri();
-  const activeProvider =
-    providerLabel(modelStatus?.provider) ??
-    providerLabel(capability?.provider) ??
-    (capability?.available === false ? "CPU fallback" : null);
+  const activeProvider = providerLabel(modelStatus?.provider);
 
   return (
     <SettingSection
@@ -191,12 +202,6 @@ export const TranscriptionSection: React.FC = () => {
                   ? `Model installed — loads on first transcription${activeProvider ? ` — ${activeProvider}` : ""}`
                   : "Model not installed (~671 MB)"}
             </Text>
-
-            {capability && !capability.available && capability.reason && (
-              <Text fontSize="xs" color={theme.text.muted}>
-                {capability.reason}
-              </Text>
-            )}
 
             {downloading && (
               <Progress.Root value={downloadProgress != null ? downloadProgress * 100 : null} size="sm">

@@ -106,7 +106,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
         flexShrink={0}
         {...titleBarHandlers}
       >
-        <Box w="full" py={isTauri() ? 0 : 4} px={4}>
+        <Box w="full" py={isTauri() ? 0 : 4} pl={4} pr={isTauri() ? 0 : 4}>
           <HStack
             justify="space-between"
             position="relative"

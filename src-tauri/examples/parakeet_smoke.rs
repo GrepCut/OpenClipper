@@ -21,7 +21,7 @@ fn main() {
     let model_dir = &args[1];
     let wav_path = &args[2];
     let threads = default_thread_count();
-    let provider = select_provider(std::path::Path::new(model_dir), threads);
+    let (provider, _) = select_provider(std::path::Path::new(model_dir), threads);
 
     println!("Loading model from: {model_dir}");
     println!("Provider: {provider} (threads={threads})");

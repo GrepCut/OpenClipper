@@ -80,6 +80,8 @@ export function useClipperPipelineSessionActions(
           sourceDuration: duration,
           sourceFileName: file.name,
           stageProgress: null,
+          stageDetailLabel: null,
+          stageDetailProgress: null,
         }));
       } catch (error) {
         if (controller.signal.aborted) return;
