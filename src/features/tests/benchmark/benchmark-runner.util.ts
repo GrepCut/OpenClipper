@@ -19,9 +19,7 @@ export interface BenchmarkRunnerProgress {
 
 export type BenchmarkRunMode = "process" | "check";
 
-const PRIMARY_ASPECT_ID = "9-16";
-
-function frameMetaJsonl(frames: Array<{ timestampUs: number; layoutMode: string; viewports: unknown[]; reasonCodes?: string[] }>): string {
+function frameMetaJsonl(frames: Array<{ timestampUs: number; layoutMode: string; panels: unknown[] }>): string {
   return frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n";
 }
 
@@ -31,8 +29,13 @@ async function loadBaselineFrames(
   clipId: string,
   aspectId: string,
 ): Promise<ReturnType<typeof parseFrameMetaJsonl>> {
-  const relativePath = `runs/${baselineRunId}/clips/${clipId}/${aspectId}.jsonl`;
-  const contents = await benchmarkPersistenceService.readArtifact(datasetId, relativePath);
+  const relativePath = `runs/${baselineRunId}/clips/${clipId}/${aspectId}.crop.jsonl`;
+  let contents: string;
+  try {
+    contents = await benchmarkPersistenceService.readArtifact(datasetId, relativePath);
+  } catch {
+    throw new Error("Remembered baseline uses the legacy metadata format. Run processing and Remember a new baseline.");
+  }
   return parseFrameMetaJsonl(contents);
 }
 
@@ -51,10 +54,10 @@ export async function executeBenchmarkRun(input: {
   }
 
   const config = {
-    schemaVersion: 3,
+    schemaVersion: 4,
+    cropSnapshotSchema: "crop-geometry-v1",
     mode,
     analyzer: "production-smart-follow",
-    primaryAspectId: PRIMARY_ASPECT_ID,
     baselineRunId,
     aspects: TEST_ASPECTS.map(({ id, formatId, ratio }) => ({ id, formatId, ratio })),
     sampling: "decoded-frame-presentation-timestamps",
@@ -123,7 +126,7 @@ export async function executeBenchmarkRun(input: {
           );
         }
         for (const aspect of output.aspects) {
-          const relativePath = `clips/${clip.id}/${aspect.aspectId}.jsonl`;
+          const relativePath = `clips/${clip.id}/${aspect.aspectId}.crop.jsonl`;
           const detailsPath = await benchmarkPersistenceService.writeArtifact(
             input.datasetId,
             run.id,
@@ -140,9 +143,11 @@ export async function executeBenchmarkRun(input: {
             );
             const comparison = compareFrameMetadata(baselineFrames, aspect.frames);
             resultMetrics = {
-              matchPct: comparison.matchPct,
-              driftPct: comparison.driftPct,
-              matchingFrames: comparison.matchingFrames,
+              matchesBaseline: comparison.matchesBaseline,
+              mse: comparison.mse,
+              maxFrameMse: comparison.maxFrameMse,
+              changedFrameCount: comparison.changedFrameCount,
+              structuralMismatchCount: comparison.structuralMismatchCount,
               comparedFrames: comparison.comparedFrames,
             };
             perClipDrift.push({
@@ -180,11 +185,7 @@ export async function executeBenchmarkRun(input: {
     }
 
     const driftSummary = mode === "check" && baselineRunId
-      ? buildDriftSummary({
-        baselineRunId,
-        primaryAspectId: PRIMARY_ASPECT_ID,
-        perClip: perClipDrift.filter((entry) => entry.aspectId === PRIMARY_ASPECT_ID),
-      })
+      ? buildDriftSummary({ baselineRunId, perClip: perClipDrift })
       : null;
 
     const manifestPath = await benchmarkPersistenceService.writeArtifact(

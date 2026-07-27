@@ -6,6 +6,7 @@ export {
 export { renderClipperFormat } from "./format.util";
 export { resolveAutoFlipCropRect, resolveAutoFlipCropRender } from "./crop-resolvers.util";
 export { resolveClipperLayoutRender } from "./layout-resolvers.util";
+export { resolveClipperFrameGeometry } from "./frame-geometry.util";
 export type {
   ClipperClipWindow,
   ClipperFrameContext,

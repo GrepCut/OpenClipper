@@ -15,8 +15,8 @@ import { TestClipListRow } from "../components/test-clip-list-row.component";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
 import type { BenchmarkResult, BenchmarkRun, DriftSummary, TestClip, TestDataset } from "../test.types";
 
-function formatMatchPct(value: number | undefined): string {
-  return value == null ? "—" : `${Math.round(value * 1000) / 10}%`;
+function formatMse(value: number | null | undefined): string {
+  return value == null ? "—" : value.toExponential(3);
 }
 
 export function TestDatasetPage() {
@@ -88,10 +88,8 @@ export function TestDatasetPage() {
         appToast.warning("Run finished with errors", run.error);
       } else if (mode === "check" && driftSummary) {
         setLastDriftSummary(driftSummary);
-        appToast.success(
-          "Check finished",
-          `${formatMatchPct(driftSummary.matchPct)} metadata match (${formatMatchPct(driftSummary.driftPct)} drift)`,
-        );
+        if (driftSummary.matchesBaseline) appToast.success("Check finished", `Crop geometry matches (MSE ${formatMse(driftSummary.mse)}).`);
+        else appToast.warning("Check found crop changes", `MSE ${formatMse(driftSummary.mse)}, ${driftSummary.changedFrameCount} changed frame(s).`);
       } else {
         appToast.success("Processing finished", run.status);
       }
@@ -151,7 +149,7 @@ export function TestDatasetPage() {
         <HStack justify="space-between" align="start" gap={4} flexWrap="wrap">
           <VStack align="start" gap={1}>
             <Text fontSize="3xl" fontWeight="bold">{dataset.name}</Text>
-            <Text color={theme.text.muted}>{dataset.description || "Smart Follow metadata regression dataset"}</Text>
+            <Text color={theme.text.muted}>{dataset.description || "Smart Follow crop regression dataset"}</Text>
             <Text fontSize="sm" color={theme.text.muted}>
               {rememberedRun
                 ? `Remembered baseline: ${new Date(rememberedRun.createdAt).toLocaleString()}`
@@ -168,9 +166,9 @@ export function TestDatasetPage() {
         <Box p={5} border="1px solid" borderColor={theme.dashboard.border} borderRadius="2xl" bg={theme.background.card}>
           <HStack justify="space-between" gap={4} flexWrap="wrap">
             <VStack align="start" gap={1}>
-              <Text fontWeight="bold">Metadata regression</Text>
+              <Text fontWeight="bold">Crop/reframing regression</Text>
               <Text fontSize="sm" color={theme.text.muted}>
-                Run processes clips and stores crop metadata. Remember pins a baseline. Check compares the next run and reports metadata match.
+                Run stores final crop geometry. Remember pins a baseline. Check compares crop positions and reframing with MSE.
               </Text>
             </VStack>
             {isRunning ? (
@@ -210,8 +208,8 @@ export function TestDatasetPage() {
           {lastDriftSummary ? (
             <HStack gap={4} mt={4} flexWrap="wrap">
               <Text fontSize="sm" color={theme.text.muted}>Latest check:</Text>
-              <Text fontSize="sm" fontWeight="semibold">{formatMatchPct(lastDriftSummary.matchPct)} match</Text>
-              <Text fontSize="sm" color={theme.text.muted}>{formatMatchPct(lastDriftSummary.driftPct)} drift</Text>
+              <Text fontSize="sm" fontWeight="semibold">{lastDriftSummary.matchesBaseline ? "Geometry matches" : "Geometry changed"}</Text>
+              <Text fontSize="sm" color={theme.text.muted}>MSE {formatMse(lastDriftSummary.mse)}</Text>
             </HStack>
           ) : null}
         </Box>

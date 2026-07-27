@@ -14,18 +14,21 @@ export interface TestDataset {
 export interface ClipDriftSummary {
   clipId: string;
   aspectId: string;
-  matchPct: number;
-  driftPct: number;
-  matchingFrames: number;
+  matchesBaseline: boolean;
+  mse: number | null;
+  maxFrameMse: number | null;
+  changedFrameCount: number;
+  structuralMismatchCount: number;
   comparedFrames: number;
 }
 
 export interface DriftSummary {
   baselineRunId: string;
-  primaryAspectId: string;
-  matchPct: number;
-  driftPct: number;
-  matchingFrames: number;
+  matchesBaseline: boolean;
+  mse: number | null;
+  maxFrameMse: number | null;
+  changedFrameCount: number;
+  structuralMismatchCount: number;
   comparedFrames: number;
   perClip: ClipDriftSummary[];
 }
@@ -93,9 +96,11 @@ export interface BenchmarkRun {
 
 export interface BenchmarkMetrics {
   frameCount?: number;
-  matchPct?: number;
-  driftPct?: number;
-  matchingFrames?: number;
+  matchesBaseline?: boolean;
+  mse?: number | null;
+  maxFrameMse?: number | null;
+  changedFrameCount?: number;
+  structuralMismatchCount?: number;
   comparedFrames?: number;
   targetObservationCount?: number;
   coveredTargetCount?: number;

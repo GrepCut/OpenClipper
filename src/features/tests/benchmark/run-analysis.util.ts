@@ -9,7 +9,7 @@ import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/identi
 import { DEFAULT_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout";
 import { resolveClipCohorts } from "./cohort-tags.util";
 import { DEFAULT_VISIBILITY_PARAMS } from "../../clipper/engine/autoflip/layout";
-import { resolveClipperLayoutRender } from "../../clipper/engine/render/index";
+import { resolveClipperFrameGeometry } from "../../clipper/engine/render/frame-geometry.util";
 import { canonicalFormatDims, getClipperFormatDef } from "../../clipper/shared/formats.util";
 import type { TestClip } from "../test.types";
 import { TEST_ASPECTS } from "../test.types";
@@ -36,19 +36,6 @@ export interface TestBenchmarkAnalysisOutput {
   degradedReason: string | null;
   autoflipDebug: unknown;
   nativeMetrics: Record<string, unknown> | null;
-}
-
-function normalizedViewport(
-  crop: { sx: number; sy: number; sw: number; sh: number },
-  width: number,
-  height: number,
-): FrameMeta["viewports"][number] {
-  return {
-    x: crop.sx / width,
-    y: crop.sy / height,
-    width: crop.sw / width,
-    height: crop.sh / height,
-  };
 }
 
 function nominalFrameTimestamps(duration: number, frameRate: number): number[] {
@@ -111,16 +98,20 @@ export async function runTestBenchmarkAnalysis(input: {
     : nominalFrameTimestamps(input.clip.duration, summary.sourceFrameRate);
   const source = { width: input.clip.width, height: input.clip.height };
   const aspects = TEST_ASPECTS.map<TestBenchmarkAspectOutput>((aspect, aspectIndex) => {
-    getClipperFormatDef(aspect.formatId);
-    canonicalFormatDims(getClipperFormatDef(aspect.formatId)!);
+    const format = getClipperFormatDef(aspect.formatId)!;
+    const outputDims = canonicalFormatDims(format);
     const frames = timestamps.map((timestamp) => {
-      const plannedLayout = resolveClipperLayoutRender(blob, aspect.formatId, source, timestamp);
+      const geometry = resolveClipperFrameGeometry(format, source, outputDims, timestamp, {
+        smartCropAnalysis: blob,
+        disabledCollageRegionIds: [],
+      });
       return {
         timestampUs: Math.round(timestamp * 1_000_000),
-        layoutMode: plannedLayout?.mode ?? "single-crop",
-        viewports: (plannedLayout?.viewports ?? []).map((viewport) =>
-          normalizedViewport(viewport, source.width, source.height)),
-        reasonCodes: plannedLayout?.reasonCodes,
+        layoutMode: geometry.mode,
+        panels: geometry.panels.map((panel) => ({
+          source: { x: panel.source.sx / source.width, y: panel.source.sy / source.height, width: panel.source.sw / source.width, height: panel.source.sh / source.height },
+          destination: { x: panel.destination.x / outputDims.width, y: panel.destination.y / outputDims.height, width: panel.destination.width / outputDims.width, height: panel.destination.height / outputDims.height },
+        })),
       } satisfies FrameMeta;
     });
     input.onProgress?.({

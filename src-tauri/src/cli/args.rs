@@ -63,8 +63,8 @@ pub struct BenchmarkCliClipSummary {
     pub clip_id: String,
     pub clip_name: String,
     pub status: String,
-    pub match_pct: Option<f64>,
-    pub drift_pct: Option<f64>,
+    pub matches_baseline: Option<bool>,
+    pub mse: Option<f64>,
     pub frame_count: Option<usize>,
     pub error: Option<String>,
 }
@@ -73,10 +73,11 @@ pub struct BenchmarkCliClipSummary {
 #[serde(rename_all = "camelCase")]
 pub struct BenchmarkCliDriftSummary {
     pub baseline_run_id: String,
-    pub primary_aspect_id: String,
-    pub match_pct: f64,
-    pub drift_pct: f64,
-    pub matching_frames: usize,
+    pub matches_baseline: bool,
+    pub mse: Option<f64>,
+    pub max_frame_mse: Option<f64>,
+    pub changed_frame_count: usize,
+    pub structural_mismatch_count: usize,
     pub compared_frames: usize,
 }
 

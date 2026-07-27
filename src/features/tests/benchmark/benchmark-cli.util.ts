@@ -14,8 +14,8 @@ export interface BenchmarkCliClipSummary {
   clipId: string;
   clipName: string;
   status: string;
-  matchPct: number | null;
-  driftPct: number | null;
+  matchesBaseline: boolean | null;
+  mse: number | null;
   frameCount: number | null;
   error: string | null;
 }
@@ -77,8 +77,8 @@ function summarizeResults(
         clipId: clip.id,
         clipName: clip.name,
         status: "failed",
-        matchPct: null,
-        driftPct: null,
+        matchesBaseline: null,
+        mse: null,
         frameCount: null,
         error: "No metadata results were recorded for this clip.",
       };
@@ -88,8 +88,8 @@ function summarizeResults(
       clipId: clip.id,
       clipName: clip.name,
       status: failed ? "failed" : "completed",
-      matchPct: primary.metricsJson.matchPct ?? null,
-      driftPct: primary.metricsJson.driftPct ?? null,
+      matchesBaseline: primary.metricsJson.matchesBaseline ?? null,
+      mse: primary.metricsJson.mse ?? null,
       frameCount: primary.metricsJson.frameCount ?? primary.metricsJson.comparedFrames ?? null,
       error: failed ? primary.error : null,
     };

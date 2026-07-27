@@ -8,15 +8,8 @@ import type { ClipperFormatDef } from "../../shared/formats.util";
 import { canonicalFormatDims } from "../../shared/formats.util";
 import type { ClipperResolutionCap, ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFrameContext } from "../types/render.types";
-import { resolveFrameLayoutBranch } from "./frame-layout-branch.util";
-import { deriveRegionsFromLayoutTracks, findActiveRegion } from "../reframe/collage";
-import { resolveAutoFlipCropRender } from "./crop-resolvers.util";
-import { resolveClipperLayoutRender } from "./layout-resolvers.util";
-import {
-  drawClipperCaptions,
-  drawClipperLayoutFrame,
-  drawClipperPlatformFrame,
-} from "./canvas-draw.util";
+import { drawClipperCaptions } from "./canvas-draw.util";
+import { resolveClipperFrameGeometry } from "./frame-geometry.util";
 
 function applyResolutionCap(
   dims: FrameEffectSize,
@@ -52,38 +45,12 @@ export function drawClipperFrame(
   t: number,
   render: ClipperFrameContext,
 ): void {
-  const needsTracking = formatNeedsFaceTracking(formatDef, render.settings);
-  const resolvedPlannedLayout = formatDef.mode === "crop"
-    ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t)
-    : undefined;
-  const collageRegions = needsTracking
-    ? deriveRegionsFromLayoutTracks(render.smartCropAnalysis)
-    : [];
-
-  const activeRegion = needsTracking ? findActiveRegion(collageRegions, t) : null;
-  const { plannedLayout } = resolveFrameLayoutBranch(
-    resolvedPlannedLayout,
-    activeRegion,
-    render.disabledCollageRegionIds,
-  );
-
-  const contentRect = render.smartCropAnalysis?.contentRect;
-
-  if (plannedLayout) {
-    drawClipperLayoutFrame(formatDef, ctx, frame, source, output, plannedLayout, contentRect);
-  } else {
-    const autoFlipRender = resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t);
-    const cropRect = autoFlipRender?.cropRect;
-    drawClipperPlatformFrame(
-      formatDef,
-      ctx,
-      frame,
-      source,
-      output,
-      cropRect,
-      autoFlipRender?.solidBackgroundColor,
-      contentRect,
-    );
+  const geometry = resolveClipperFrameGeometry(formatDef, source, output, t, render);
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, output.width, output.height);
+  for (const panel of geometry.panels) {
+    const { source: crop, destination } = panel;
+    ctx.drawImage(frame, crop.sx, crop.sy, crop.sw, crop.sh, destination.x, destination.y, destination.width, destination.height);
   }
 
   drawClipperCaptions(formatDef, ctx, output, t, render);

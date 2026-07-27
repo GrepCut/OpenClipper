@@ -208,9 +208,9 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
     );
     if let Some(drift) = &summary.drift_summary {
         println!(
-            "Metadata match: {:.1}% (drift {:.1}%)",
-            drift.match_pct * 100.0,
-            drift.drift_pct * 100.0
+            "Crop geometry: {} (MSE {})",
+            if drift.matches_baseline { "matches" } else { "changed" },
+            drift.mse.map(|value| format!("{value:.3e}")).unwrap_or_else(|| "—".to_string())
         );
     }
     if let Some(error) = &summary.error {
@@ -224,13 +224,12 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
         println!("Miss frames: {count} JPEG(s) in {path}");
     }
     for clip in &summary.clips {
-        if let Some(match_pct) = clip.match_pct {
-            let drift_pct = clip.drift_pct.unwrap_or(1.0 - match_pct);
+        if let Some(matches) = clip.matches_baseline {
             println!(
-                "- {} match={:.1}% drift={:.1}% [{}]",
+                "- {} geometry={} mse={} [{}]",
                 clip.clip_name,
-                match_pct * 100.0,
-                drift_pct * 100.0,
+                if matches { "matches" } else { "changed" },
+                clip.mse.map(|value| format!("{value:.3e}")).unwrap_or_else(|| "—".to_string()),
                 clip.status
             );
         } else {
