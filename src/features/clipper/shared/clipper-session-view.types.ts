@@ -1,5 +1,5 @@
 import type { Project } from "../../../services/projects.service";
-import type { ClipperLayoutBackLink } from "../components/clipper-layout.component";
+import type { ClipperLayoutBackLink } from "../../../shared/components/back-link.component";
 import type { ClipperLoadedProject } from "../hooks/use-clipper-project-loader.hook";
 
 export interface ClipperSessionViewProps {

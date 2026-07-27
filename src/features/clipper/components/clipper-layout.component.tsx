@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, HStack, Image, Text } from "@chakra-ui/react";
-import { Link as RouterLink, useLocation } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { BackLink, type ClipperLayoutBackLink } from "../../../shared/components/back-link.component";
 import { WindowControls } from "../../../shared/components/window-controls.component";
 import { useTauriTitleBarHandlers } from "../../../shared/hooks/use-tauri-title-bar-handlers.hook";
 import { asset } from "../../../shared/utils/asset.util";
@@ -15,10 +15,7 @@ export interface ClipperLayoutStep {
   title: string;
 }
 
-export interface ClipperLayoutBackLink {
-  label: string;
-  onClick: () => void;
-}
+export type { ClipperLayoutBackLink } from "../../../shared/components/back-link.component";
 
 interface ClipperLayoutProps {
   children: React.ReactNode;
@@ -64,31 +61,9 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
   };
 
   const backLinkElement = backLink ? (
-    <HStack
-      as="button"
-      gap={2}
-      color={theme.text.muted}
-      fontSize="sm"
-      flexShrink={0}
-      onClick={backLink.onClick}
-      _hover={{ color: theme.brand.purpleLight }}
-    >
-      <ArrowLeft size={16} />
-      <Text whiteSpace="nowrap">{backLink.label}</Text>
-    </HStack>
+    <BackLink label={backLink.label} onClick={backLink.onClick} />
   ) : (
-    <RouterLink to={backTo} style={{ textDecoration: "none" }}>
-      <HStack
-        gap={2}
-        color={theme.text.muted}
-        fontSize="sm"
-        flexShrink={0}
-        _hover={{ color: theme.brand.purpleLight }}
-      >
-        <ArrowLeft size={16} />
-        <Text whiteSpace="nowrap">{backLabel}</Text>
-      </HStack>
-    </RouterLink>
+    <BackLink label={backLabel} to={backTo} />
   );
 
   return (

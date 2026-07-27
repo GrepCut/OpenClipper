@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Center, Text, VStack } from "@chakra-ui/react";
+import { Box, Center, Text, VStack } from "@chakra-ui/react";
 import { useNavigate, useParams } from "react-router-dom";
 import { projectsService, type Project } from "../../../services/projects.service";
+import { BackLink } from "../../../shared/components/back-link.component";
 import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { ClipperLayout } from "../components/clipper-layout.component";
 import { ClipperProjectLoadingPanel } from "../components/clipper-project-loading-panel.component";
@@ -45,9 +46,7 @@ function ClipperSessionContent({
           <Text color={theme.text.muted} mb={5}>
             {loader.error ?? "Unknown error"}
           </Text>
-          <Button onClick={() => navigate("/clipper")} borderRadius="2xl">
-            Back to clips
-          </Button>
+          <BackLink label="Back to clips" onClick={() => navigate("/clipper")} />
         </Box>
       </ClipperLayout>
     );
@@ -124,9 +123,7 @@ export function ClipperSessionPage() {
             {projectError ? (
               <VStack gap={4}>
                 <Text color={theme.status.danger}>{projectError}</Text>
-                <Button onClick={() => navigate("/clipper")} borderRadius="2xl">
-                  Back to clips
-                </Button>
+                <BackLink label="Back to clips" onClick={() => navigate("/clipper")} />
               </VStack>
             ) : (
               <ClipperProjectLoadingPanel status={fetchLoadingStatus} />

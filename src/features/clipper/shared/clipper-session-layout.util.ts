@@ -1,4 +1,5 @@
-import type { ClipperLayoutBackLink, ClipperLayoutStep } from "../components/clipper-layout.component";
+import type { ClipperLayoutBackLink } from "../../../shared/components/back-link.component";
+import type { ClipperLayoutStep } from "../components/clipper-layout.component";
 import type {
   ClipperSessionLayoutState,
   ClipperSessionVisibilityInput,
