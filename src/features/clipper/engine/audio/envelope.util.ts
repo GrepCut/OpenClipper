@@ -17,6 +17,58 @@ export function computeRmsEnvelope(
   return { hopSec: hopSamples / sampleRate, startSec: 0, values };
 }
 
+export interface RmsEnvelopeAccumulator {
+  hopSamples: number;
+  values: number[];
+  sumSquares: number;
+  sampleCount: number;
+}
+
+export function createRmsEnvelopeAccumulator(
+  sampleRate: number,
+  hopSec = 0.01,
+): RmsEnvelopeAccumulator {
+  return {
+    hopSamples: Math.max(1, Math.round(sampleRate * hopSec)),
+    values: [],
+    sumSquares: 0,
+    sampleCount: 0,
+  };
+}
+
+export function appendRmsSamples(
+  accumulator: RmsEnvelopeAccumulator,
+  samples: Float32Array,
+): void {
+  for (const sample of samples) {
+    accumulator.sumSquares += sample * sample;
+    accumulator.sampleCount++;
+    if (accumulator.sampleCount === accumulator.hopSamples) {
+      accumulator.values.push(
+        Math.sqrt(accumulator.sumSquares / accumulator.sampleCount),
+      );
+      accumulator.sumSquares = 0;
+      accumulator.sampleCount = 0;
+    }
+  }
+}
+
+export function finishRmsEnvelope(
+  accumulator: RmsEnvelopeAccumulator,
+  sampleRate: number,
+): RmsEnvelope {
+  if (accumulator.sampleCount > 0) {
+    accumulator.values.push(
+      Math.sqrt(accumulator.sumSquares / accumulator.sampleCount),
+    );
+  }
+  return {
+    hopSec: accumulator.hopSamples / sampleRate,
+    startSec: 0,
+    values: Float32Array.from(accumulator.values),
+  };
+}
+
 export function refineBoundaryToSilence(
   env: RmsEnvelope,
   tSec: number,

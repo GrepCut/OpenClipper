@@ -472,4 +472,5 @@ mod tile_tests {
         };
         assert!(quality_face_tiles(&frame).is_empty());
     }
+
 }

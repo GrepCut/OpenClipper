@@ -62,6 +62,7 @@ fn verify_sherpa_directml_libs() {
 
     let marker = lib_dir.join("sherpa-onnx-c-api.lib");
     if marker.is_file() {
+        sync_sherpa_directml_dlls(&lib_dir);
         println!(
             "cargo:warning=Parakeet DirectML: using sherpa-onnx libs from {}",
             lib_dir.display()
@@ -74,6 +75,47 @@ fn verify_sherpa_directml_libs() {
          Run: npm run sherpa:directml — then cargo clean && npm run tauri:dev.",
         lib_dir.display()
     );
+}
+
+/// Cargo links against the custom DirectML import libraries, but Windows loads
+/// DLLs from beside the executable. Keep that directory in sync so a stale
+/// CPU-only sherpa-onnx.dll cannot silently win at runtime.
+fn sync_sherpa_directml_dlls(lib_dir: &Path) {
+    let Ok(out_dir) = std::env::var("OUT_DIR") else {
+        return;
+    };
+    let Some(profile_dir) = Path::new(&out_dir).ancestors().nth(3) else {
+        println!("cargo:warning=Cannot locate the Cargo profile directory for DirectML DLL staging");
+        return;
+    };
+
+    let entries = match fs::read_dir(lib_dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            println!("cargo:warning=Cannot read DirectML library directory {}: {error}", lib_dir.display());
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let source = entry.path();
+        let is_dll = source
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"));
+        if !is_dll {
+            continue;
+        }
+        println!("cargo:rerun-if-changed={}", source.display());
+        let destination = profile_dir.join(entry.file_name());
+        if let Err(error) = fs::copy(&source, &destination) {
+            println!(
+                "cargo:warning=Cannot stage DirectML DLL {} to {}: {error}",
+                source.display(),
+                destination.display()
+            );
+        }
+    }
 }
 
 fn main() {

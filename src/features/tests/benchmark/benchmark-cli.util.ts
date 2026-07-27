@@ -17,6 +17,9 @@ export interface BenchmarkCliClipSummary {
   matchesBaseline: boolean | null;
   mse: number | null;
   frameCount: number | null;
+  processingMs: number | null;
+  realtimeFactor: number | null;
+  speedup: number | null;
   error: string | null;
 }
 
@@ -80,6 +83,9 @@ function summarizeResults(
         matchesBaseline: null,
         mse: null,
         frameCount: null,
+        processingMs: null,
+        realtimeFactor: null,
+        speedup: null,
         error: "No metadata results were recorded for this clip.",
       };
     }
@@ -91,6 +97,9 @@ function summarizeResults(
       matchesBaseline: primary.metricsJson.matchesBaseline ?? null,
       mse: primary.metricsJson.mse ?? null,
       frameCount: primary.metricsJson.frameCount ?? primary.metricsJson.comparedFrames ?? null,
+      processingMs: primary.metricsJson.processingMs ?? null,
+      realtimeFactor: primary.metricsJson.realtimeFactor ?? null,
+      speedup: primary.metricsJson.speedup ?? null,
       error: failed ? primary.error : null,
     };
   });

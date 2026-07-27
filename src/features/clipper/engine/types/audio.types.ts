@@ -1,7 +1,8 @@
 export interface PreparedTranscriptionAudio {
-  file: File;
-  /** Mono PCM captured after Mediabunny's 16 kHz remix/resample transform. */
-  pcm16k: Float32Array;
+  /** Ready-to-write mono 16 kHz PCM WAV for the native recognizer. */
+  wavBytes: Uint8Array;
+  /** Calculated while decoding, avoiding retention of all PCM samples. */
+  audioEnvelope: RmsEnvelope;
 }
 
 export interface RmsEnvelope {

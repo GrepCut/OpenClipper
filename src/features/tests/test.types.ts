@@ -131,6 +131,8 @@ export interface BenchmarkMetrics {
   missLedger?: Record<"no-evidence" | "identity-mismatch" | "layout-uncovered" | "late-transition" | "interpolation-loss", number>;
   processingMs?: number;
   realtimeFactor?: number;
+  /** Remembered baseline analysis time divided by the current analysis time. */
+  speedup?: number | null;
 }
 
 /** Legacy benchmark metrics with required coverage fields (replay tooling). */

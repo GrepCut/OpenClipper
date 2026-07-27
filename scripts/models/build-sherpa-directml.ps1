@@ -8,6 +8,7 @@ $OutputRoot = Join-Path $RepoRoot "third_party\sherpa-onnx-directml"
 $SourceDir = Join-Path $OutputRoot "sherpa-onnx"
 $BuildDir = Join-Path $OutputRoot "build"
 $InstallDir = Join-Path $OutputRoot "install"
+$PatchFile = Join-Path $RepoRoot "scripts\models\patches\sherpa-onnx-directml-adapter.patch"
 
 function Ensure-SherpaSource {
     if (-not (Test-Path $SourceDir)) {
@@ -17,7 +18,26 @@ function Ensure-SherpaSource {
     Push-Location $SourceDir
     try {
         git fetch --depth 1 origin "refs/tags/v$Version"
+        # Undo only our local patch before switching tags. Other local edits
+        # still make checkout fail instead of being overwritten.
+        if (Select-String -Path "sherpa-onnx\csrc\session.cc" -Pattern "OPEN_CLIPPER_DIRECTML_DEVICE_ID" -Quiet) {
+            git apply --reverse $PatchFile
+        }
         git checkout "v$Version"
+    } finally {
+        Pop-Location
+    }
+}
+
+function Apply-OpenClipperDirectMlPatch {
+    if (-not (Test-Path $PatchFile)) {
+        throw "Missing DirectML adapter patch: $PatchFile"
+    }
+    Push-Location $SourceDir
+    try {
+        if (-not (Select-String -Path "sherpa-onnx\csrc\session.cc" -Pattern "OPEN_CLIPPER_DIRECTML_DEVICE_ID" -Quiet)) {
+            git apply $PatchFile
+        }
     } finally {
         Pop-Location
     }
@@ -27,6 +47,7 @@ Write-Host "Building sherpa-onnx v$Version with DirectML..."
 Write-Host "Output: $InstallDir"
 
 Ensure-SherpaSource
+Apply-OpenClipperDirectMlPatch
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
 
 Push-Location $BuildDir

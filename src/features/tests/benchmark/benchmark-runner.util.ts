@@ -39,6 +39,20 @@ async function loadBaselineFrames(
   return parseFrameMetaJsonl(contents);
 }
 
+async function loadBaselineProcessingMs(
+  datasetId: string,
+  baselineRunId: string,
+  clipId: string,
+): Promise<number | null> {
+  const contents = await benchmarkPersistenceService.readArtifact(
+    datasetId,
+    `runs/${baselineRunId}/manifest.json`,
+  );
+  const manifest = JSON.parse(contents) as { clips?: Array<{ clipId?: string; processingMs?: unknown }> };
+  const value = manifest.clips?.find((entry) => entry.clipId === clipId)?.processingMs;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export async function executeBenchmarkRun(input: {
   datasetId: string;
   clips: TestClip[];
@@ -125,6 +139,9 @@ export async function executeBenchmarkRun(input: {
             JSON.stringify(output.nativeMetrics, null, 2),
           );
         }
+        const baselineProcessingMs = mode === "check" && baselineRunId
+          ? await loadBaselineProcessingMs(input.datasetId, baselineRunId, clip.id)
+          : null;
         for (const aspect of output.aspects) {
           const relativePath = `clips/${clip.id}/${aspect.aspectId}.crop.jsonl`;
           const detailsPath = await benchmarkPersistenceService.writeArtifact(
@@ -133,7 +150,13 @@ export async function executeBenchmarkRun(input: {
             relativePath,
             frameMetaJsonl(aspect.frames),
           );
-          let resultMetrics: Record<string, unknown> = { frameCount: aspect.frames.length };
+          let resultMetrics: Record<string, unknown> = {
+            frameCount: aspect.frames.length,
+            processingMs: output.processingMs,
+            realtimeFactor: output.processingMs > 0
+              ? (clip.duration * 1000) / output.processingMs
+              : null,
+          };
           if (mode === "check" && baselineRunId) {
             const baselineFrames = await loadBaselineFrames(
               input.datasetId,
@@ -149,6 +172,13 @@ export async function executeBenchmarkRun(input: {
               changedFrameCount: comparison.changedFrameCount,
               structuralMismatchCount: comparison.structuralMismatchCount,
               comparedFrames: comparison.comparedFrames,
+              processingMs: output.processingMs,
+              realtimeFactor: output.processingMs > 0
+                ? (clip.duration * 1000) / output.processingMs
+                : null,
+              speedup: baselineProcessingMs != null && output.processingMs > 0
+                ? baselineProcessingMs / output.processingMs
+                : null,
             };
             perClipDrift.push({
               clipId: clip.id,

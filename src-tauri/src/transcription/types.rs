@@ -24,6 +24,7 @@ pub struct ParakeetTranscriptionResult {
     pub duration_ms: u64,
     pub processing_time_ms: u64,
     pub engine: String,
+    pub provider: String,
     pub words: Vec<TranscriptionWord>,
     pub segments: Vec<TranscriptionSegment>,
 }
@@ -55,6 +56,7 @@ pub struct ParakeetTranscriptionProgress {
     pub chunk_index: usize,
     pub chunk_count: usize,
     pub ratio: f64,
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

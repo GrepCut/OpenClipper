@@ -54,7 +54,7 @@ export {
   shouldKeepShortSplitRun,
   withShortSplitConfidenceReason,
 } from "./short-split-policy.util";
-export { interpolateLayoutSample, resolveLayoutTrack } from "./interpolation.util";
+export { interpolateLayoutSample, precedingLayoutSampleIndex, resolveLayoutTrack } from "./interpolation.util";
 export type {
   ArbiterDecision,
   ArbiterParams,

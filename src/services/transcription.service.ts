@@ -13,7 +13,6 @@ import type {
 import { debugLogger } from "../shared/utils/noop-logger.util";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../shared/utils/platform.util";
-import { encodeMono16kWav } from "../features/clipper/lib/media/write-mono16k-wav.util";
 import { ensureClipperProjectDataDir } from "../features/clipper/persistence/project-data-files.util";
 import {
   createTauriNativeJobId,
@@ -66,10 +65,9 @@ function mapParakeetResultToTranscription(
 }
 
 async function prepareWavPathForParakeet(
-  pcm16k: Float32Array,
+  wavBytes: Uint8Array,
   projectId: string,
 ): Promise<string> {
-  const wavBytes = encodeMono16kWav(pcm16k);
   await ensureClipperProjectDataDir(projectId);
   await invoke("write_clipper_project_data_raw", wavBytes, {
     headers: {
@@ -85,15 +83,13 @@ async function prepareWavPathForParakeet(
 
 export const transcriptionService = {
   transcribe: async (
-    file: File,
+    wavBytes: Uint8Array,
     mediaFileId: string,
     projectId: string,
     options?: {
       signal?: AbortSignal;
       clipStartSec?: number;
       clipEndSec?: number;
-      /** Mono 16 kHz PCM used by local Parakeet without a browser decode round trip. */
-      pcm16k?: Float32Array;
       onParakeetProgress?: (progress: ParakeetTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
@@ -110,19 +106,19 @@ export const transcriptionService = {
       projectId,
       cacheKey,
       engine: "parakeet_local",
-      fileSize: file.size,
+      wavBytes: wavBytes.byteLength,
     });
 
     try {
       if (!isTauri()) {
         throw new Error("Lokalna transkrypcja wymaga aplikacji desktopowej.");
       }
-      if (!options?.pcm16k?.length) {
+      if (!wavBytes.byteLength) {
         throw new Error(
           "Local transcription audio is unavailable. Try selecting the clip range again.",
         );
       }
-      const audioPath = await prepareWavPathForParakeet(options.pcm16k, projectId);
+      const audioPath = await prepareWavPathForParakeet(wavBytes, projectId);
       if (options?.signal?.aborted) {
         throw new DOMException("Conversion aborted", "AbortError");
       }
@@ -140,6 +136,8 @@ export const transcriptionService = {
       debugLogger.log("transcription", "parakeet transcription success", {
         mediaFileId,
         durationMs: Date.now() - startTime,
+        provider: result.provider,
+        inferenceMs: result.processingTimeMs,
       });
       return cacheTranscription(
         projectId,

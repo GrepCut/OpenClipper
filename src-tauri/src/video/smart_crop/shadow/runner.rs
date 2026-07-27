@@ -121,7 +121,12 @@ impl GeneralizationShadowRunner {
         if let Some(transnet) = self.transnet.as_mut() {
             transnet_cut = transnet.push_frame(rgb, width, height, time, scene_cut);
         }
-        self.store_frame_thumb(time, rgb, width, height);
+        // The thumbnail exists solely for deferred OSNet ReID.  In the normal
+        // production configuration every shadow model is disabled, so copying
+        // it on every analysis sample was pure allocation/copy work.
+        if self.config.osnet {
+            self.store_frame_thumb(time, rgb, width, height);
+        }
         if self.config.vinet {
             let sample = if let Some(vinet) = self.vinet.as_mut() {
                 vinet.push_frame(rgb, width, height, time)

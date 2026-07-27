@@ -107,6 +107,8 @@ impl PipelineSetup {
             eta_seconds: None,
             face_sample: None,
             subject_sample: None,
+            face_samples: None,
+            subject_samples: None,
             queued_detections: 0,
         })?;
 

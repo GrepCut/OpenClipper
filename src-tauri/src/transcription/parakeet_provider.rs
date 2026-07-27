@@ -17,6 +17,7 @@ pub const MAX_DECODE_CHUNK_SECONDS: usize = 30;
 
 pub struct ParakeetProvider {
     recognizer: OfflineRecognizer,
+    provider_name: String,
 }
 
 impl ParakeetProvider {
@@ -49,7 +50,10 @@ impl ParakeetProvider {
             ))
         })?;
 
-        Ok(Self { recognizer })
+        Ok(Self {
+            recognizer,
+            provider_name: provider.to_string(),
+        })
     }
 
     pub fn smoke_decode(&self, sample_rate: i32, samples: &[f32]) -> bool {
@@ -150,6 +154,7 @@ impl ParakeetProvider {
                     chunk_index,
                     chunk_count,
                     ratio: completed as f64 / chunk_count as f64,
+                    provider: Some(self.provider_name.clone()),
                 })
                 .map_err(TranscriptionError::Inference)?;
             }
@@ -166,11 +171,20 @@ impl ParakeetProvider {
             text_parts.join(" ")
         };
 
+        let processing_time_ms = started.elapsed().as_millis() as u64;
+        let audio_seconds = duration_ms as f64 / 1000.0;
+        log::info!(
+            "Parakeet: provider={} audio_seconds={audio_seconds:.2} chunks={chunk_count} processing_ms={processing_time_ms} real_time_factor={:.3}",
+            self.provider_name,
+            processing_time_ms as f64 / duration_ms.max(1) as f64,
+        );
+
         Ok(ParakeetTranscriptionResult {
             text,
             duration_ms,
-            processing_time_ms: started.elapsed().as_millis() as u64,
+            processing_time_ms,
             engine: "parakeet_local".to_string(),
+            provider: self.provider_name.clone(),
             words,
             segments,
         })

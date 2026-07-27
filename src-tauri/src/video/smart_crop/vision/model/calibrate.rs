@@ -11,10 +11,12 @@ use super::WinMlModel;
 use crate::video::smart_crop::diagnostics;
 
 impl WinMlModel {
-    /// Benchmarks fp32-CPU, fp32-DirectX, and (when present) fp16-DirectX
-    /// with cheap single-frame sessions and returns the fastest
-    /// (model, config); the ranking carries over to the retained batch
-    /// session. fp16 parity with fp32 is validated offline by
+    /// Prefers the high-performance DirectX device whenever WinML can create
+    /// a working session. The retained production session evaluates batches,
+    /// while this calibration uses one frame; selecting CPU because it wins a
+    /// tiny single-frame benchmark leaves the GPU idle during real detection.
+    /// CPU is therefore only a compatibility fallback. fp16 parity with fp32
+    /// is validated offline by
     /// scripts/models/make_derived_clipper_vision_models.py.
     pub(super) fn calibrate(
         fp32_path: &Path,
@@ -76,6 +78,45 @@ impl WinMlModel {
         };
 
         let fp32_model = load_model(fp32_path)?;
+        let mut fp16_winner = None;
+        let directx_fp32 = SessionConfig {
+            device: NativeVisionDevice::DirectXHighPerformance,
+            precision: ModelPrecision::Float32,
+        };
+        let mut best_gpu = None;
+        if let Some(times) = try_config(&fp32_model, directx_fp32) {
+            best_gpu = Some((directx_fp32, times));
+        }
+        if let Some(fp16_path) = fp16_path {
+            if let Ok(fp16_model) = load_model(fp16_path) {
+                let directx_fp16 = SessionConfig {
+                    device: NativeVisionDevice::DirectXHighPerformance,
+                    precision: ModelPrecision::Float16,
+                };
+                if let Some(times) = try_config(&fp16_model, directx_fp16) {
+                    if best_gpu.as_ref().is_none_or(|(_, best_times)| times[2] < best_times[2]) {
+                        best_gpu = Some((directx_fp16, times));
+                        fp16_winner = Some(fp16_model);
+                    } else {
+                        let _ = fp16_model.Close();
+                    }
+                } else {
+                    let _ = fp16_model.Close();
+                }
+            }
+        }
+        if let Some((config, times)) = best_gpu {
+            diagnostics::append(
+                "winml-calibrate",
+                &format!("selected GPU config={config:?} median_us={}", times[2]),
+            );
+            if let Some(model) = fp16_winner {
+                let _ = fp32_model.Close();
+                return Ok((model, config));
+            }
+            return Ok((fp32_model, config));
+        }
+
         let cpu_config = SessionConfig {
             device: NativeVisionDevice::Cpu,
             precision: ModelPrecision::Float32,
@@ -89,47 +130,8 @@ impl WinMlModel {
         let cpu_times = cpu_times?;
         diagnostics::append(
             "winml-calibrate",
-            &format!("config={cpu_config:?} times_us={cpu_times:?}"),
+            &format!("DirectX unavailable; selected CPU config={cpu_config:?} median_us={}", cpu_times[2]),
         );
-
-        let mut best = (cpu_config, cpu_times);
-        let mut fp16_winner = None;
-        let directx_fp32 = SessionConfig {
-            device: NativeVisionDevice::DirectXHighPerformance,
-            precision: ModelPrecision::Float32,
-        };
-        if let Some(times) = try_config(&fp32_model, directx_fp32) {
-            if times[2] < best.1[2] {
-                best = (directx_fp32, times);
-            }
-        }
-        if let Some(fp16_path) = fp16_path {
-            if let Ok(fp16_model) = load_model(fp16_path) {
-                let directx_fp16 = SessionConfig {
-                    device: NativeVisionDevice::DirectXHighPerformance,
-                    precision: ModelPrecision::Float16,
-                };
-                if let Some(times) = try_config(&fp16_model, directx_fp16) {
-                    if times[2] < best.1[2] {
-                        best = (directx_fp16, times);
-                        fp16_winner = Some(fp16_model);
-                    } else {
-                        let _ = fp16_model.Close();
-                    }
-                } else {
-                    let _ = fp16_model.Close();
-                }
-            }
-        }
-        diagnostics::append(
-            "winml-calibrate",
-            &format!("selected config={:?} median_us={}", best.0, best.1[2]),
-        );
-        if let Some(model) = fp16_winner {
-            let _ = fp32_model.Close();
-            Ok((model, best.0))
-        } else {
-            Ok((fp32_model, best.0))
-        }
+        Ok((fp32_model, cpu_config))
     }
 }

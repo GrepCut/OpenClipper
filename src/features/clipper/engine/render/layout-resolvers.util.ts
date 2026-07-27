@@ -4,7 +4,7 @@ import {
   interpolateLayoutSample,
   isShortCandidateSplitRun,
   isShortSelectedSplitRun,
-  precedingIndex,
+  precedingLayoutSampleIndex,
   resolveLayoutTrack,
   restoreShortSplitCandidate,
   shouldKeepShortSplitRun,
@@ -24,7 +24,7 @@ export function resolveClipperLayoutRender(
   const track = resolveLayoutTrack(blob.layoutTracks, formatId);
   const sample = interpolateLayoutSample(track, time);
   if (!sample?.viewports.length) return undefined;
-  const rawIndex = track ? precedingIndex(track.samples.map((item) => ({ time: item.t })), time) : 0;
+  const rawIndex = track ? precedingLayoutSampleIndex(track.samples, time) : 0;
   const rawSample = track?.samples[rawIndex];
   const selectedShortSplit = track != null && isShortSelectedSplitRun(track.samples, rawIndex);
   const keepSelectedSplit = selectedShortSplit && shouldKeepShortSplitRun(track!.samples, rawIndex);

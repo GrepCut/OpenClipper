@@ -66,6 +66,9 @@ pub struct StaticFeatureSample {
 pub struct NativeVisionMetrics {
     pub(crate) decode_duration_ms: u64,
     pub(crate) inference_duration_ms: u64,
+    pub(crate) analysis_duration_ms: u64,
+    pub(crate) merge_duration_ms: u64,
+    pub(crate) result_chunk_count: usize,
     pub(crate) drain_duration_ms: u64,
     pub(crate) face_inference_ms: u64,
     pub(crate) object_inference_ms: u64,
@@ -132,5 +135,11 @@ pub struct NativeVisionProgress {
     pub(crate) face_sample: Option<NativeFaceSample>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) subject_sample: Option<NativeSubjectSample>,
+    /// Ordered result chunks amortise the Rust -> WebView bridge without
+    /// changing the detector/tracker data delivered to the frontend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) face_samples: Option<Vec<NativeFaceSample>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) subject_samples: Option<Vec<NativeSubjectSample>>,
     pub(crate) queued_detections: usize,
 }

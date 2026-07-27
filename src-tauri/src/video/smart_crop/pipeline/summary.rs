@@ -15,6 +15,7 @@ pub(crate) fn build_summary(
     merged: MergeOutput,
     tracking_enabled: bool,
     shadow_diagnostics: Option<GeneralizationShadowDiagnostics>,
+    analysis_duration_ms: u64,
     progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<NativeVisionSummary, NativeVisionError> {
     let state = &session.state;
@@ -34,6 +35,8 @@ pub(crate) fn build_summary(
         eta_seconds: Some(0.0),
         face_sample: None,
         subject_sample: None,
+        face_samples: None,
+        subject_samples: None,
         queued_detections: 0,
     })?;
     Ok(NativeVisionSummary {
@@ -70,6 +73,9 @@ pub(crate) fn build_summary(
         metrics: NativeVisionMetrics {
             decode_duration_ms: decode_stats.decode_duration_ms,
             inference_duration_ms: merged.inference_duration_ms,
+            analysis_duration_ms,
+            merge_duration_ms: merged.merge_duration_ms,
+            result_chunk_count: merged.result_chunk_count,
             drain_duration_ms,
             face_inference_ms: merged.face_inference_ms,
             object_inference_ms: merged.object_inference_ms,

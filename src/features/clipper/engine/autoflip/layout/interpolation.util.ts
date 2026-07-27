@@ -6,7 +6,6 @@ import type {
 import {
   coveredFraction,
   interpolateBox,
-  precedingIndex,
 } from "./arbiter.util";
 import { interpolateCameraBox } from "../camera/trajectory-interpolation.util";
 import { splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
@@ -29,13 +28,32 @@ export function resolveLayoutTrack(
   return tracks?.[formatId] ?? tracks?.default ?? null;
 }
 
+/**
+ * Binary-searches persisted layout samples without materialising a second
+ * `{ time }` array for every rendered frame.  Rendering calls this thousands
+ * of times for one immutable track, so avoiding that allocation is a
+ * meaningful hot-path win while retaining the exact old ordering semantics.
+ */
+export function precedingLayoutSampleIndex(samples: ClipperLayoutSample[], time: number): number {
+  if (!samples.length || time <= samples[0]!.t) return 0;
+  if (samples.length === 1 || time >= samples.at(-1)!.t) return samples.length - 1;
+  let low = 1;
+  let high = samples.length - 1;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (samples[middle]!.t <= time) low = middle + 1;
+    else high = middle;
+  }
+  return samples[low]!.t <= time ? low : low - 1;
+}
+
 /** Interpolates camera geometry but never blends across a cut or a layout-mode change. */
 export function interpolateLayoutSample(
   track: ClipperLayoutTrack | null,
   time: number,
 ): ClipperLayoutSample | null {
   if (!track?.samples.length) return null;
-  const index = precedingIndex(track.samples.map((sample) => ({ ...sample, time: sample.t })), time);
+  const index = precedingLayoutSampleIndex(track.samples, time);
   const previous = track.samples[index]!;
   const next = track.samples[index + 1];
   if (!next || next.cut || next.mode !== previous.mode || next.viewports.length !== previous.viewports.length || !samePanelOwners(previous, next)) {

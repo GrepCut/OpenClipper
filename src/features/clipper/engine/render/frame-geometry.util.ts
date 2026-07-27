@@ -20,6 +20,22 @@ export interface ClipperFrameGeometry {
   panels: ClipperFramePanelGeometry[];
 }
 
+// A smart-crop blob is immutable for the lifetime of a render/session.  The
+// split-region derivation used to rescan its complete layout track on every
+// decoded frame, even though the result cannot change between frames.
+const layoutRegionCache = new WeakMap<object, ReturnType<typeof deriveRegionsFromLayoutTracks>>();
+
+function cachedLayoutRegions(
+  smartCropAnalysis: ClipperSmartCropBlob | null | undefined,
+): ReturnType<typeof deriveRegionsFromLayoutTracks> {
+  if (!smartCropAnalysis) return [];
+  const cached = layoutRegionCache.get(smartCropAnalysis);
+  if (cached) return cached;
+  const regions = deriveRegionsFromLayoutTracks(smartCropAnalysis);
+  layoutRegionCache.set(smartCropAnalysis, regions);
+  return regions;
+}
+
 function clampToContent(crop: ClipperCropRect, content: NormalizedBox | undefined, source: FrameEffectSize): ClipperCropRect {
   if (!content || (content.x <= 1e-6 && content.y <= 1e-6 && content.width >= 1 - 1e-6 && content.height >= 1 - 1e-6)) return crop;
   const left = content.x * source.width;
@@ -58,7 +74,7 @@ function splitDestinations(count: number, output: FrameEffectSize): ClipperFrame
 /** Exact crop/panel geometry consumed by the canvas renderer, without captions. */
 export function resolveClipperFrameGeometry(formatDef: ClipperFormatDef, source: FrameEffectSize, output: FrameEffectSize, t: number, render: { smartCropAnalysis?: ClipperSmartCropBlob | null; disabledCollageRegionIds: string[] }): ClipperFrameGeometry {
   const resolved = formatDef.mode === "crop" ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t) : undefined;
-  const regions = formatDef.mode === "crop" ? deriveRegionsFromLayoutTracks(render.smartCropAnalysis) : [];
+  const regions = formatDef.mode === "crop" ? cachedLayoutRegions(render.smartCropAnalysis) : [];
   const { plannedLayout } = resolveFrameLayoutBranch(resolved, findActiveRegion(regions, t), render.disabledCollageRegionIds);
   if (plannedLayout?.mode === "split" && plannedLayout.viewports.length >= 2) {
     const viewports = plannedLayout.viewports.slice(0, 3);

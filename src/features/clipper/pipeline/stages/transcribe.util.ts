@@ -1,6 +1,5 @@
 import { transcriptionService } from "../../../../services/transcription.service";
 import {
-  computeRmsEnvelope,
   extractClipAudioForTranscription,
   type PreparedTranscriptionAudio,
 } from "../../engine/audio";
@@ -92,18 +91,10 @@ export async function runTranscribeStage(
     throw new DOMException("Conversion aborted", "AbortError");
 
   if (!session.audioEnvelope) {
-    try {
-      session.audioEnvelope = computeRmsEnvelope(transcriptionAudio.pcm16k, 16_000);
-      clipperLog("transcribe: RMS envelope ready", {
-        hops: session.audioEnvelope.values.length,
-      });
-    } catch (error) {
-      session.audioEnvelope = null;
-      clipperLog(
-        "transcribe: RMS envelope unavailable; continuing without silence snap",
-        { error: String(error) },
-      );
-    }
+    session.audioEnvelope = transcriptionAudio.audioEnvelope;
+    clipperLog("transcribe: RMS envelope ready", {
+      hops: session.audioEnvelope.values.length,
+    });
   }
 
   reporter.stageProgress(PREPARE_WEIGHT);
@@ -111,24 +102,29 @@ export async function runTranscribeStage(
   reporter.stage("transcribing", "Loading speech model…");
 
   const transcription = await transcriptionService.transcribe(
-    transcriptionAudio.file,
+    transcriptionAudio.wavBytes,
     session.mediaFileId,
     input.projectId,
     {
       signal: options.signal,
       clipStartSec: snappedStart,
       clipEndSec: end,
-      pcm16k: transcriptionAudio.pcm16k,
       onParakeetProgress: (progress) => {
+        const runtime =
+          progress.provider === "directml"
+            ? "GPU (DirectML)"
+            : progress.provider === "cpu"
+              ? "CPU fallback"
+              : "speech model";
         if (progress.phase === "loading") {
           if (progress.ratio >= 1) {
             reporter.stageProgress(LOAD_END);
-            reporter.stageDetail("Transcribing speech", null);
-            reporter.stage("transcribing", "Transcribing speech…");
+            reporter.stageDetail(`Transcribing with ${runtime}`, null);
+            reporter.stage("transcribing", `Transcribing with ${runtime}…`);
           } else {
             reporter.stageProgress(PREPARE_WEIGHT);
-            reporter.stageDetail("Loading speech model", null);
-            reporter.stage("transcribing", "Loading speech model…");
+            reporter.stageDetail(`Loading ${runtime}`, null);
+            reporter.stage("transcribing", `Loading ${runtime}…`);
           }
           return;
         }
@@ -143,14 +139,14 @@ export async function runTranscribeStage(
         reporter.stageProgress(LOAD_END + progress.ratio * INFER_WEIGHT);
         const chunkLabel =
           progress.chunkCount > 0
-            ? `Transcribing chunk ${progress.chunkIndex + 1}/${progress.chunkCount}`
-            : "Transcribing speech";
+            ? `Transcribing with ${runtime}, chunk ${progress.chunkIndex + 1}/${progress.chunkCount}`
+            : `Transcribing with ${runtime}`;
         reporter.stageDetail(chunkLabel, progress.ratio);
         reporter.stage(
           "transcribing",
           progress.chunkCount > 0
-            ? `Transcribing (Parakeet, chunk ${progress.chunkIndex + 1}/${progress.chunkCount})…`
-            : "Transcribing speech…",
+            ? `Transcribing (${runtime}, chunk ${progress.chunkIndex + 1}/${progress.chunkCount})…`
+            : `Transcribing with ${runtime}…`,
         );
       },
     },

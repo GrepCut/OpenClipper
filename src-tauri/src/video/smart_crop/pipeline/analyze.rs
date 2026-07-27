@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::super::diagnostics;
 use super::super::vision::NativeVisionError;
@@ -20,6 +21,7 @@ pub fn analyze(
     tracking_enabled: bool,
     mut progress: impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<NativeVisionSummary, NativeVisionError> {
+    let analysis_started = Instant::now();
     diagnostics::start(&file_path, start_time, end_time, tracking_enabled);
     let result = (|| {
         if end_time <= start_time {
@@ -109,6 +111,7 @@ pub fn analyze(
             merged,
             tracking_enabled,
             shadow_diagnostics,
+            analysis_started.elapsed().as_millis() as u64,
             &mut progress,
         )
     })();

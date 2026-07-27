@@ -272,6 +272,8 @@ pub(crate) fn process_decoded_frame(
             eta_seconds: None,
             face_sample: None,
             subject_sample: None,
+            face_samples: None,
+            subject_samples: None,
             queued_detections: state.sample_count,
         })
         .is_err()

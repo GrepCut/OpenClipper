@@ -38,6 +38,7 @@ pub struct ParakeetService {
 
 impl ParakeetService {
     pub fn new(app: AppHandle) -> Arc<Self> {
+        super::directml_adapter::configure_preferred_adapter();
         Arc::new(Self {
             app,
             num_threads: default_thread_count(),
@@ -146,9 +147,10 @@ impl ParakeetService {
             .transcription_gate
             .lock()
             .map_err(|_| TranscriptionError::Inference("Transcription lock poisoned".into()))?;
-        emit_loading_progress(&progress_tx, 0.0);
+        emit_loading_progress(&progress_tx, 0.0, None);
         self.ensure_worker()?;
-        emit_loading_progress(&progress_tx, 1.0);
+        let provider_name = self.active_provider();
+        emit_loading_progress(&progress_tx, 1.0, provider_name.clone());
 
         let result = (|| {
             let job_tx = {
@@ -188,9 +190,9 @@ impl ParakeetService {
         // joining the thread makes Rust drop it before we return to the UI,
         // releasing ONNX Runtime / DirectML resources instead of retaining
         // VRAM for the rest of the app session.
-        emit_releasing_progress(&progress_tx, 0.0);
+        emit_releasing_progress(&progress_tx, 0.0, provider_name.clone());
         self.unload_worker();
-        emit_releasing_progress(&progress_tx, 1.0);
+        emit_releasing_progress(&progress_tx, 1.0, provider_name);
         result
     }
 
@@ -214,20 +216,22 @@ impl ParakeetService {
                 log::warn!("Parakeet worker stopped after a panic");
             }
         }
-        if let Ok(mut provider) = self.provider_name.lock() {
-            *provider = None;
-        }
         self.loaded.store(false, Ordering::Release);
     }
 }
 
-fn emit_loading_progress(progress_tx: &Option<Sender<ParakeetTranscriptionProgress>>, ratio: f64) {
+fn emit_loading_progress(
+    progress_tx: &Option<Sender<ParakeetTranscriptionProgress>>,
+    ratio: f64,
+    provider: Option<String>,
+) {
     if let Some(tx) = progress_tx {
         let _ = tx.send(ParakeetTranscriptionProgress {
             phase: "loading".into(),
             chunk_index: 0,
             chunk_count: 0,
             ratio,
+            provider,
         });
     }
 }
@@ -235,6 +239,7 @@ fn emit_loading_progress(progress_tx: &Option<Sender<ParakeetTranscriptionProgre
 fn emit_releasing_progress(
     progress_tx: &Option<Sender<ParakeetTranscriptionProgress>>,
     ratio: f64,
+    provider: Option<String>,
 ) {
     if let Some(tx) = progress_tx {
         let _ = tx.send(ParakeetTranscriptionProgress {
@@ -242,6 +247,7 @@ fn emit_releasing_progress(
             chunk_index: 0,
             chunk_count: 0,
             ratio,
+            provider,
         });
     }
 }

@@ -33,7 +33,14 @@ pub(crate) struct MergeOutput {
     pub tracked_subject_count: usize,
     pub predicted_subject_count: usize,
     pub inference_duration_ms: u64,
+    pub merge_duration_ms: u64,
+    pub result_chunk_count: usize,
 }
+
+/// A Tauri `eval` per detected frame is disproportionately expensive on long
+/// clips. Keep chunks small enough for responsive cancellation/UI updates,
+/// while preserving the original sample order and payload exactly.
+const PROGRESS_RESULT_BATCH: usize = 32;
 
 pub(crate) fn merge_samples(
     sample_count: usize,
@@ -42,6 +49,7 @@ pub(crate) fn merge_samples(
     tracking_enabled: bool,
     progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<MergeOutput, NativeVisionError> {
+    let merge_started = Instant::now();
     let preserve_raw_pose_observations = sample_count > 0
         && spool.pose_nonempty_count * 10 >= sample_count * 3
         && spool.face_nonempty_count * 10 < sample_count * 3;
@@ -79,6 +87,9 @@ pub(crate) fn merge_samples(
     let mut pose_tracker = ByteTracker::new();
     let mut tracked_subject_count = 0usize;
     let mut predicted_subject_count = 0usize;
+    let mut pending_face_samples = Vec::with_capacity(PROGRESS_RESULT_BATCH / 2);
+    let mut pending_subject_samples = Vec::with_capacity(PROGRESS_RESULT_BATCH);
+    let mut result_chunk_count = 0usize;
     for index in 0..sample_count {
         if index == 0 || index % 25 == 0 || index + 1 == sample_count {
             diagnostics::append(
@@ -224,16 +235,28 @@ pub(crate) fn merge_samples(
             face_samples.push(sample);
         }
         subject_samples.push(subject.clone());
-        let percent = 90 + ((index + 1) * 10 / sample_count.max(1));
-        progress(NativeVisionProgress {
-            phase: "inferencing",
-            percent,
-            timestamp_sec: face.time,
-            eta_seconds: None,
-            face_sample,
-            subject_sample: Some(subject),
-            queued_detections: sample_count - index - 1,
-        })?;
+        if let Some(sample) = face_sample {
+            pending_face_samples.push(sample);
+        }
+        pending_subject_samples.push(subject);
+        let is_last = index + 1 == sample_count;
+        if pending_subject_samples.len() >= PROGRESS_RESULT_BATCH || is_last {
+            result_chunk_count += 1;
+            let percent = 90 + ((index + 1) * 10 / sample_count.max(1));
+            progress(NativeVisionProgress {
+                phase: "inferencing",
+                percent,
+                timestamp_sec: face.time,
+                eta_seconds: None,
+                face_sample: None,
+                subject_sample: None,
+                face_samples: (!pending_face_samples.is_empty())
+                    .then(|| std::mem::take(&mut pending_face_samples)),
+                subject_samples: (!pending_subject_samples.is_empty())
+                    .then(|| std::mem::take(&mut pending_subject_samples)),
+                queued_detections: sample_count - index - 1,
+            })?;
+        }
     }
     diagnostics::append(
         "merge",
@@ -262,6 +285,8 @@ pub(crate) fn merge_samples(
         tracked_subject_count,
         predicted_subject_count,
         inference_duration_ms,
+        merge_duration_ms: merge_started.elapsed().as_millis() as u64,
+        result_chunk_count,
     })
 }
 

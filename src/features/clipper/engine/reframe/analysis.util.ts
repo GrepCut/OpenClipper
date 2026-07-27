@@ -25,6 +25,8 @@ interface NativeVisionProgress {
   queuedDetections: number;
   faceSample?: FaceBoxSample;
   subjectSample?: import("../../shared/smart-crop.util").SubjectDetectionSample;
+  faceSamples?: FaceBoxSample[];
+  subjectSamples?: import("../../shared/smart-crop.util").SubjectDetectionSample[];
 }
 
 function clipperByteTrackTrackingMode(): "bytetrack-v2" | "off" {
@@ -50,6 +52,8 @@ async function detectWinMlMedia(
   const onNativeProgress = (progress: NativeVisionProgress) => {
     if (progress.faceSample) faceSamples.push(progress.faceSample);
     if (progress.subjectSample) subjectSamples.push(progress.subjectSample);
+    if (progress.faceSamples?.length) faceSamples.push(...progress.faceSamples);
+    if (progress.subjectSamples?.length) subjectSamples.push(...progress.subjectSamples);
     onProgress?.(Math.max(0, Math.min(1, progress.percent / 100)));
     onEta?.(progress.etaSeconds);
     if (progress.phase !== lastNativePhase) {

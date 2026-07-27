@@ -41,6 +41,9 @@ export type NativeVisionDevice = "directx-high-performance" | "cpu";
 export interface NativeVisionMetrics {
   decodeDurationMs: number;
   inferenceDurationMs: number;
+  analysisDurationMs: number;
+  mergeDurationMs: number;
+  resultChunkCount: number;
   drainDurationMs: number;
   faceInferenceMs: number;
   objectInferenceMs: number;

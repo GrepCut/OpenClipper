@@ -41,6 +41,7 @@ export interface ParakeetTranscriptionProgress {
   chunkIndex: number;
   chunkCount: number;
   ratio: number;
+  provider?: string | null;
 }
 
 export interface ParakeetTranscriptionResult {
@@ -48,6 +49,7 @@ export interface ParakeetTranscriptionResult {
   durationMs: number;
   processingTimeMs: number;
   engine: string;
+  provider: string;
   words: TranscriptionWord[];
   segments: TranscriptionSegment[];
 }
