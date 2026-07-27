@@ -43,8 +43,6 @@ export interface ClipperPreviewProps {
   getFrameContext: () => ClipperFrameContext | null;
   sourceFileName: string | null;
   isRendering?: boolean;
-  exportCount?: number;
-  onViewExports?: () => void;
   onOpenRenderQueue: () => void;
   /** Blocks AI tab when account is not available; returns false when blocked. */
   guardAccount?: () => boolean;
@@ -116,8 +114,4 @@ export interface ClipperPreviewSidePanelProps extends ClipperPreviewProps {
 export interface ClipperPreviewFormatsFooterProps {
   secondaryFormats: ClipperFormatDef[];
   canvasRefs: React.MutableRefObject<Record<string, HTMLCanvasElement | null>>;
-  exportCount: number;
-  isRendering: boolean;
-  onViewExports?: () => void;
-  outlineButton: Record<string, unknown>;
 }

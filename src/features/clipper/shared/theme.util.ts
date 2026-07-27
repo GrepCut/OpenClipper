@@ -5,15 +5,15 @@ import { colors } from "../../../theme/colors.util";
 const purple = colors.purple;
 const brand = colors.dark.brand;
 
-/** Purple palette aligned with `client/src/theme` for the `/clipper` product surface. */
+/** Blue palette aligned with clipper logo for the `/clipper` product surface. */
 export const clipperTheme: FeatureTheme = {
   eyebrow: "/ clipper",
   accent: purple.medium,
-  accentHover: "#8B5CF6",
+  accentHover: "#00C3FF",
   accentLight: brand.purpleSoft,
-  accentGlow: "#A78BFA",
+  accentGlow: "#00C3FF",
   accentSoftBg: purple.accent2,
-  accentTintRgb: "118,84,224",
+  accentTintRgb: "30,144,255",
   gradientFrom: purple.medium,
   gradientTo: purple.accent1,
   presetSelectedBg: purple.accent1,
@@ -24,6 +24,6 @@ export const clipperTheme: FeatureTheme = {
   checkboxBorder: brand.purpleSoft,
   contentLink: brand.purpleSoft,
   contentAccent: purple.medium,
-  ctaTintRgb: "118,84,224",
+  ctaTintRgb: "30,144,255",
   cardAccents: [...PURPLE_CARD_ACCENTS],
 };

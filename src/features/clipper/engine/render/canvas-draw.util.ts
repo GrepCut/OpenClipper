@@ -129,7 +129,7 @@ export function drawClipperPlatformFrame(
     return;
   }
 
-  const rect = cropRectForCentroid(source.width, source.height, 0.5, 0.5, output.width / output.height, "normal");
+  const rect = cropRectForCentroid(source.width, source.height, 0.5, 0.5, output.width / output.height);
   drawCropFullBleed(ctx, frame, clampCropToContentRect(rect, contentRect, source), output);
 }
 
@@ -162,28 +162,4 @@ export function drawClipperCaptions(
   };
 
   drawPhraseAnimatedCaption(ctx, render.captionGroups, captionTime, output.width, output.height, style, extra);
-}
-
-export function drawDebugFocusMarker(
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  output: FrameEffectSize,
-  cropRect: ClipperCropRect,
-  source: FrameEffectSize,
-  centroid: { x: number; y: number },
-): void {
-  const px = ((centroid.x * source.width - cropRect.sx) / cropRect.sw) * output.width;
-  const py = ((centroid.y * source.height - cropRect.sy) / cropRect.sh) * output.height;
-  ctx.save();
-  ctx.strokeStyle = "#22D3EE";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(px, py, output.width * 0.04, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(px - 10, py);
-  ctx.lineTo(px + 10, py);
-  ctx.moveTo(px, py - 10);
-  ctx.lineTo(px, py + 10);
-  ctx.stroke();
-  ctx.restore();
 }

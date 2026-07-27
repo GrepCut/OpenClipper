@@ -5,13 +5,6 @@ import { CLIPPER_EXPORT_MANIFEST_VERSION } from "./export-files.types";
 
 const clipperSettingsSchema = z
   .object({
-    reframe: z
-      .object({
-        headroom: z.enum(["tight", "normal", "wide"]),
-        showDebugFaceBoxes: z.boolean(),
-      })
-      .partial()
-      .optional(),
     captions: z
       .object({
         enabled: z.boolean(),
@@ -45,20 +38,6 @@ const clipperSettingsSchema = z
         normalize: z.boolean(),
         normalizePreset: z.string(),
         peakCeiling: z.number(),
-      })
-      .partial()
-      .optional(),
-    branding: z
-      .object({
-        watermarkDataUrl: z.string().nullable(),
-        watermarkCorner: z.enum(["top-left", "top-right", "bottom-left", "bottom-right"]),
-        watermarkScale: z.number(),
-        watermarkOpacity: z.number(),
-        introText: z.string(),
-        introSeconds: z.number(),
-        outroText: z.string(),
-        outroSeconds: z.number(),
-        showProgressBar: z.boolean(),
       })
       .partial()
       .optional(),

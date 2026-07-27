@@ -21,6 +21,8 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
   const session = useClipperSessionView({ project, token, loaded });
   const {
     state,
+    settings,
+    updateSettings,
     confirmRange,
     rerenderFormat,
     refreshExportHistory,
@@ -33,8 +35,10 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     visibility,
     resumeLoadingStatus,
     isRendering,
+    exportCount,
     sessionResults,
     renderQueue,
+    goToExports,
     publish,
   } = session;
 
@@ -79,12 +83,18 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
         <ClipperRenderQueueSetup
           clipPreviews={state.clipPreviews}
           rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl!}
+          formats={settings.formats}
+          onChangeFormats={(patch) =>
+            updateSettings((prev) => ({ ...prev, formats: { ...prev.formats, ...patch } }))
+          }
           getClipFormatIds={renderQueue.getClipFormatIds}
           onToggleClipFormat={renderQueue.toggleClipFormat}
           onSetFormatForAll={renderQueue.setFormatForAllClips}
           onSetAllFormatsForClip={renderQueue.setAllFormatsForClip}
           isRendering={isRendering}
           onRender={renderQueue.startQueuedRender}
+          exportCount={exportCount}
+          onViewExports={goToExports}
         />
       )}
 

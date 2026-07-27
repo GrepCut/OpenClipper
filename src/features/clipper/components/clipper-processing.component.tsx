@@ -34,15 +34,6 @@ function uiStepKeyForStage(stage: ClipperPipelineState["stage"]): UiStepKey | "t
   return stage;
 }
 
-function combinedAnalysisProgress(state: ClipperPipelineState): number {
-  const face = state.faceAnalysisProgress ?? 0;
-  const subject = state.subjectAnalysisProgress ?? 0;
-  if (state.stage === "analyzing-subjects") {
-    return 0.92 + subject * 0.08;
-  }
-  return face * 0.92;
-}
-
 function formatEta(seconds: number | null): string | undefined {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 1) return undefined;
   if (seconds < 60) return `~${Math.round(seconds)}s remaining`;
@@ -66,6 +57,11 @@ function stepStatus(
 
 export const ClipperProcessing: React.FC<ClipperProcessingProps> = ({ state }) => {
   const { theme } = useClipperUi();
+  const showDetailBar =
+    (state.stage === "transcribing" ||
+      state.stage === "analyzing-faces" ||
+      state.stage === "analyzing-subjects") &&
+    state.stageDetailLabel != null;
 
   return (
     <VStack align="stretch" gap={6}>
@@ -116,18 +112,15 @@ export const ClipperProcessing: React.FC<ClipperProcessingProps> = ({ state }) =
         />
       )}
 
-      {state.stage === "transcribing" && state.stageDetailLabel != null && (
+      {showDetailBar && (
         <ClipperProgressBar
-          label={state.stageDetailLabel}
+          label={state.stageDetailLabel!}
           value={state.stageDetailProgress}
-        />
-      )}
-
-      {(state.stage === "analyzing-faces" || state.stage === "analyzing-subjects") && (
-        <ClipperProgressBar
-          label="Detecting faces & tracking action"
-          value={combinedAnalysisProgress(state)}
-          caption={state.stage === "analyzing-faces" ? formatEta(state.analysisEtaSeconds) : undefined}
+          caption={
+            state.stage === "analyzing-faces"
+              ? formatEta(state.analysisEtaSeconds)
+              : undefined
+          }
         />
       )}
     </VStack>

@@ -177,8 +177,16 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
         </Box>
       </Box>
 
-      <Box flex="1" overflowY="auto" css={scrollbarCss}>
-        <Box w="full" py={{ base: 6, md: 8 }} px={4}>
+      <Box flex="1" overflowY="auto" css={scrollbarCss} display="flex" flexDirection="column" minH={0}>
+        <Box
+          w="full"
+          py={{ base: 6, md: 8 }}
+          px={4}
+          flex="1"
+          display="flex"
+          flexDirection="column"
+          minH={0}
+        >
           {children}
         </Box>
       </Box>

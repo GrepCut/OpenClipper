@@ -3,10 +3,10 @@ import { Box } from '@chakra-ui/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../../theme';
 
-const SWITCH_ON_BG = '#6C35E8';
-const SWITCH_ON_BORDER = '#5B21B6';
-const SWITCH_ON_HOVER_BG = '#5B21B6';
-const SWITCH_ON_GLOW = 'rgba(108, 53, 232, 0.25)';
+const SWITCH_ON_BG = '#007BFF';
+const SWITCH_ON_BORDER = '#0056B3';
+const SWITCH_ON_HOVER_BG = '#0056B3';
+const SWITCH_ON_GLOW = 'rgba(0, 123, 255, 0.25)';
 
 interface ModernSwitchProps {
     checked: boolean;

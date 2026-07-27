@@ -42,9 +42,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     onUpdateSettings,
     getFrameContext,
     sourceFileName,
-    isRendering = false,
-    exportCount = 0,
-    onViewExports,
     onOpenRenderQueue,
     guardAccount,
     disabledCollageRegionIds,
@@ -61,7 +58,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     lastEditedTranscriptRange,
   } = props;
 
-  const { theme, outlineButton } = useClipperUi();
+  const { theme } = useClipperUi();
   const { open: settingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>(
     clipSourceMode === "ai" ? "ai" : "auto-parts",
@@ -182,10 +179,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       <ClipperPreviewFormatsFooter
         secondaryFormats={secondaryFormats}
         canvasRefs={canvasRefs}
-        exportCount={exportCount}
-        isRendering={isRendering}
-        onViewExports={onViewExports}
-        outlineButton={outlineButton}
       />
 
       <ClipperSettingsDrawer
@@ -193,8 +186,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
         onOpenChange={(nextOpen) => (nextOpen ? onSettingsOpen() : onSettingsClose())}
         settings={settings}
         words={activeClip?.words ?? []}
-        hasDetectedFaces={state.hasDetectedFaces}
-        hasTwoSpeakers={state.hasTwoSpeakers}
         onUpdateSettings={onUpdateSettings}
       />
     </VStack>

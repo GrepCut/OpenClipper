@@ -16,7 +16,6 @@ import {
   drawClipperCaptions,
   drawClipperLayoutFrame,
   drawClipperPlatformFrame,
-  drawDebugFocusMarker,
 } from "./canvas-draw.util";
 
 function applyResolutionCap(
@@ -52,7 +51,6 @@ export function drawClipperFrame(
   output: FrameEffectSize,
   t: number,
   render: ClipperFrameContext,
-  isPreview = false,
 ): void {
   const needsTracking = formatNeedsFaceTracking(formatDef, render.settings);
   const resolvedPlannedLayout = formatDef.mode === "crop"
@@ -69,7 +67,6 @@ export function drawClipperFrame(
     render.disabledCollageRegionIds,
   );
 
-  const showDebug = isPreview && render.settings.reframe.showDebugFaceBoxes && formatDef.mode === "crop";
   const contentRect = render.smartCropAnalysis?.contentRect;
 
   if (plannedLayout) {
@@ -87,14 +84,6 @@ export function drawClipperFrame(
       autoFlipRender?.solidBackgroundColor,
       contentRect,
     );
-
-    if (showDebug && cropRect) {
-      const centroid = {
-        x: (cropRect.sx + cropRect.sw / 2) / source.width,
-        y: (cropRect.sy + cropRect.sh / 2) / source.height,
-      };
-      drawDebugFocusMarker(ctx, output, cropRect, source, centroid);
-    }
   }
 
   drawClipperCaptions(formatDef, ctx, output, t, render);
@@ -128,7 +117,7 @@ export function drawClipperPreviewFrame(
   ctx.save();
   resetContext(ctx, displayW, displayH);
   try {
-    drawClipperFrame(formatDef, ctx, frame, source, output, timestampSec, render, true);
+    drawClipperFrame(formatDef, ctx, frame, source, output, timestampSec, render);
   } finally {
     ctx.restore();
   }

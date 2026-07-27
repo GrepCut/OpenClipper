@@ -1,14 +1,10 @@
 import { clamp } from "../../lib/math.util";
 import type { FaceBox } from "../../shared/face-samples.util";
 import type { NormalizedBox } from "../../shared/smart-crop.util";
-import type { ClipperHeadroom } from "../../settings/settings.util";
 import type { ClipperCropRect, FaceCentroid } from "../types/reframe.types";
 
-const HEADROOM_ZOOM_FACTOR: Record<ClipperHeadroom, number> = {
-  tight: 2.4,
-  normal: 3.6,
-  wide: 5.2,
-};
+/** Former "normal" headroom zoom — fixed now that user headroom setting was removed. */
+const HEADROOM_ZOOM_FACTOR = 3.6;
 
 const MIN_ZOOM_SCALE = 0.28;
 
@@ -35,7 +31,6 @@ export function cropRectForCentroid(
   cx: number,
   cy: number,
   targetRatio: number,
-  headroom: ClipperHeadroom,
   extent?: number,
 ): ClipperCropRect {
   const { sw: naturalSw, sh: naturalSh } = naturalCoverCrop(srcW, srcH, targetRatio);
@@ -45,7 +40,7 @@ export function cropRectForCentroid(
   if (extent != null && extent > 0) {
     const frameDiagonal = Math.hypot(srcW, srcH);
     const naturalDiagonal = Math.hypot(naturalSw, naturalSh);
-    const desiredDiagonal = extent * frameDiagonal * HEADROOM_ZOOM_FACTOR[headroom];
+    const desiredDiagonal = extent * frameDiagonal * HEADROOM_ZOOM_FACTOR;
     const scale = naturalDiagonal > 0 ? clamp(desiredDiagonal / naturalDiagonal, MIN_ZOOM_SCALE, 1) : 1;
     sw = naturalSw * scale;
     sh = naturalSh * scale;

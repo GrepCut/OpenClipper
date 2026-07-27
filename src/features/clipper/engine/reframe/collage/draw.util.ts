@@ -1,5 +1,4 @@
 import { drawVerticalSplitFrame, evenInt } from "../../../lib/media/video-draw.util";
-import type { ClipperHeadroom } from "../../../settings/settings.util";
 import type { FrameEffectSize } from "../../../lib/media/video-frame-effect.util";
 import { cropRectForCentroid, interpolateCentroid } from "../index";
 import type { CollageTracks } from "../../types/collage.types";
@@ -13,7 +12,6 @@ export function resolvePodcastCollageLayout(
   output: FrameEffectSize,
   tracks: CollageTracks,
   t: number,
-  headroom: ClipperHeadroom,
 ): PodcastCollageLayout {
   const halfH = evenInt(output.height / 2);
   const bottomH = output.height - halfH;
@@ -28,7 +26,6 @@ export function resolvePodcastCollageLayout(
       topCentroid.x,
       topCentroid.y,
       output.width / halfH,
-      headroom,
       topCentroid.extent,
     ),
     bottomCrop: cropRectForCentroid(
@@ -37,7 +34,6 @@ export function resolvePodcastCollageLayout(
       bottomCentroid.x,
       bottomCentroid.y,
       output.width / bottomH,
-      headroom,
       bottomCentroid.extent,
     ),
   };
@@ -55,7 +51,6 @@ export function drawPodcastCollageFrame(
   output: FrameEffectSize,
   tracks: CollageTracks,
   t: number,
-  headroom: ClipperHeadroom,
   showDivider: boolean,
 ): void {
   ctx.fillStyle = "#000000";
@@ -66,7 +61,6 @@ export function drawPodcastCollageFrame(
     output,
     tracks,
     t,
-    headroom,
   );
 
   drawVerticalSplitFrame(

@@ -22,9 +22,9 @@ export interface FeatureTheme {
 }
 
 export const PURPLE_CARD_ACCENTS = [
-  "#6C35E8",
-  "#8B5CF6",
-  "#A78BFA",
-  "#7C3AED",
-  "#9333EA",
+  "#0056B3",
+  "#007BFF",
+  "#1E90FF",
+  "#00C3FF",
+  "#4DB8FF",
 ] as const;

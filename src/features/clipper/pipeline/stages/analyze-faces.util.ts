@@ -31,6 +31,26 @@ export interface AnalyzeFacesStageInput {
   runId: string;
 }
 
+/** Maps WinML native phases to the same stageDetail UX used by transcription. */
+function stageDetailForNativePhase(
+  phase: string,
+  ratio: number,
+): { label: string; progress: number | null } {
+  switch (phase) {
+    case "initializing":
+      return { label: "Initializing vision", progress: null };
+    case "decoding":
+      return { label: "Decoding video", progress: ratio };
+    case "draining":
+      return { label: "Finishing detections", progress: ratio };
+    case "inferencing":
+    case "complete":
+      return { label: "Detecting faces & tracking action", progress: ratio };
+    default:
+      return { label: "Detecting faces & tracking action", progress: ratio };
+  }
+}
+
 /** Runs or restores whole-clip face pre-analysis and persists results. */
 export async function runAnalyzeFacesStage(
   session: ClipperSession,
@@ -45,7 +65,7 @@ export async function runAnalyzeFacesStage(
     reporter.stage("analyzing-faces", "Restoring face analysis from disk…");
     reporter.faceProgress(0);
     reporter.stageProgress(null);
-    reporter.stageDetail(null, null);
+    reporter.stageDetail("Restoring face analysis", null);
 
     const endReadFace = clipperTimer(`pipeline[${runId}]: resume face-read`);
     const blob = await readClipperFaceDetections(projectId, runId);
@@ -65,6 +85,7 @@ export async function runAnalyzeFacesStage(
         () => ({ sampleCount: blob.samples.length }),
       );
       faceDetectSkipped = true;
+      reporter.stageDetail("Restoring face analysis", 1);
       clipperLog(`pipeline[${runId}]: restored face cache`, {
         sampleCount: blob.samples.length,
       });
@@ -83,8 +104,9 @@ export async function runAnalyzeFacesStage(
     if (!faceDetectSkipped) {
       reporter.faceProgress(0);
       reporter.stageProgress(null);
-      reporter.stageDetail(null, null);
     }
+    reporter.stageDetail("Initializing vision", null);
+    let lastNativePhase = "initializing";
 
     if (!session.faceActionBenchmark) {
       session.faceActionBenchmark = new FaceActionBenchmark();
@@ -109,9 +131,18 @@ export async function runAnalyzeFacesStage(
       nativeSource: { filePath: nativePath, startTime: snappedStart, endTime: end },
       ingestFaces: !faceDetectSkipped,
       onPhase: (message) => reporter.stage("analyzing-faces", message),
-      onNativePhase: (phase) => benchmark.enterPhase(phase),
+      onNativePhase: (phase) => {
+        benchmark.enterPhase(phase);
+        // "winml" is a synthetic start marker from prefill — not a UI sub-phase.
+        if (phase === "winml") return;
+        lastNativePhase = phase;
+        const detail = stageDetailForNativePhase(phase, 0);
+        reporter.stageDetail(detail.label, detail.progress);
+      },
       onProgress: (ratio) => {
         if (!faceDetectSkipped) reporter.faceProgress(ratio);
+        const detail = stageDetailForNativePhase(lastNativePhase, ratio);
+        reporter.stageDetail(detail.label, detail.progress);
       },
       onEta: (etaSeconds) => reporter.eta(etaSeconds),
     });
@@ -185,6 +216,9 @@ export async function runAnalyzeFacesStage(
   if (input.skipSubjectAnalysis && session.faceActionBenchmark) {
     await writeClipperFaceActionBenchmark(projectId, session.faceActionBenchmark.toTxt());
     session.faceActionBenchmark = null;
+  }
+  if (input.skipSubjectAnalysis) {
+    reporter.stageDetail(null, null);
   }
   return { faceDetectSkipped };
 }

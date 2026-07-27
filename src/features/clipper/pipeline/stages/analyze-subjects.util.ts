@@ -7,7 +7,6 @@ import { augmentFaceSamplesWithDetectedHeads } from "../../engine/reframe/collag
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { aspectRatioFromId } from "../../lib/media/video-draw.util";
 import { yieldToMain } from "../../shared/yield-to-main.util";
-import type { ClipperHeadroom } from "../../settings/settings.util";
 import {
   clipperSmartCropDataRelativePath,
   readClipperSmartCropAnalysis,
@@ -31,7 +30,6 @@ export interface AnalyzeSubjectsInput {
   clipEnd: number;
   skipSubjectAnalysis: boolean;
   enabledFormatIds?: string[];
-  headroom?: ClipperHeadroom;
 }
 
 function isValidRestoredBlob(
@@ -146,6 +144,7 @@ export async function runAnalyzeSubjectsStage(
   reporter.stage("analyzing-subjects", "Restoring smart crop analysis…");
   reporter.subjectProgress(0);
   if (input.skipSubjectAnalysis) {
+    reporter.stageDetail("Restoring smart crop analysis", null);
     const restored = await readClipperSmartCropAnalysis(input.projectId);
     if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd)) {
       session.smartCropAnalysis = restored;
@@ -162,8 +161,10 @@ export async function runAnalyzeSubjectsStage(
       }
       session.faceRenderCache = null;
       reporter.subjectProgress(1);
+      reporter.stageDetail("Restoring smart crop analysis", 1);
       await markClipperStepCompleted(input.projectId, "preview_ready");
       await writeFaceActionBenchmarkIfPresent(session, input.projectId);
+      reporter.stageDetail(null, null);
       return;
     }
   }
@@ -172,6 +173,7 @@ export async function runAnalyzeSubjectsStage(
     { stepKey: "analyze_subjects", status: "active", progress: 0 },
   ]);
   reporter.stage("analyzing-subjects", "Building AutoFlip reframe track…");
+  reporter.stageDetail("Building AutoFlip reframe track", null);
 
   const benchmark = session.faceActionBenchmark;
   benchmark?.enterPhase("subject-detection-await");
@@ -198,12 +200,12 @@ export async function runAnalyzeSubjectsStage(
     await markClipperStepCompleted(input.projectId, "preview_ready");
     reporter.subjectProgress(1);
     await writeFaceActionBenchmarkIfPresent(session, input.projectId);
+    reporter.stageDetail(null, null);
     return;
   }
 
   reporter.subjectProgress(0.95);
-  // Let React paint the transition out of the 92% native-analysis bucket
-  // before the synchronous track build starts.
+  // Let React paint the indeterminate AutoFlip label before the sync build.
   await yieldToMain();
   if (options.signal.aborted) {
     throw new DOMException("Conversion aborted", "AbortError");
@@ -227,7 +229,6 @@ export async function runAnalyzeSubjectsStage(
     trackerVersion: pending?.trackerVersion,
     frameWidth,
     frameHeight,
-    headroom: input.headroom,
     degradedReason,
     enhancedIdentityFusion: true,
   });
@@ -249,7 +250,9 @@ export async function runAnalyzeSubjectsStage(
   });
   await markClipperStepCompleted(input.projectId, "preview_ready");
   reporter.subjectProgress(1);
+  reporter.stageDetail("Building AutoFlip reframe track", 1);
   await writeFaceActionBenchmarkIfPresent(session, input.projectId);
+  reporter.stageDetail(null, null);
 }
 
 async function writeFaceActionBenchmarkIfPresent(session: ClipperSession, projectId: string): Promise<void> {

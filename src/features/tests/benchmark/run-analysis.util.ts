@@ -11,7 +11,6 @@ import { resolveClipCohorts } from "./cohort-tags.util";
 import { DEFAULT_VISIBILITY_PARAMS } from "../../clipper/engine/autoflip/layout";
 import { resolveClipperLayoutRender } from "../../clipper/engine/render/index";
 import { canonicalFormatDims, getClipperFormatDef } from "../../clipper/shared/formats.util";
-import { DEFAULT_CLIPPER_SETTINGS } from "../../clipper/settings/settings.util";
 import type { TestClip } from "../test.types";
 import { TEST_ASPECTS } from "../test.types";
 import type { FrameMeta } from "./metadata-drift.types";
@@ -101,7 +100,6 @@ export async function runTestBenchmarkAnalysis(input: {
     trackerVersion: summary.trackerVersion,
     frameWidth: input.clip.width,
     frameHeight: input.clip.height,
-    headroom: DEFAULT_CLIPPER_SETTINGS.reframe.headroom,
     degradedReason: degradedReason ?? undefined,
     collectDebug: true,
     enhancedIdentityFusion: true,

@@ -1,4 +1,3 @@
-import type { ClipperHeadroom } from "../../settings/settings.util";
 import type { FaceBoxSample } from "../../shared/face-samples.util";
 import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SubjectDetectionSample } from "../../shared/smart-crop.util";
 import { analyzeSceneMotion } from "./camera/scene-motion.util";

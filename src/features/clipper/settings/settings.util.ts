@@ -5,19 +5,10 @@ import type {
 } from '../lib/captions/subtitle-render.util';
 import { clamp } from '../lib/math.util';
 
-export type ClipperHeadroom = "tight" | "normal" | "wide";
-
 export type ClipperCaptionBoxStyle = "solid" | "outline" | "none";
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
-
-export type ClipperWatermarkCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
-
-export interface ClipperReframeSettings {
-  headroom: ClipperHeadroom;
-  showDebugFaceBoxes: boolean;
-}
 
 export interface ClipperCaptionSettings {
   enabled: boolean;
@@ -51,24 +42,10 @@ export interface ClipperAudioSettings {
   peakCeiling: number;
 }
 
-export interface ClipperBrandingSettings {
-  watermarkDataUrl: string | null;
-  watermarkCorner: ClipperWatermarkCorner;
-  watermarkScale: number;
-  watermarkOpacity: number;
-  introText: string;
-  introSeconds: number;
-  outroText: string;
-  outroSeconds: number;
-  showProgressBar: boolean;
-}
-
 export interface ClipperSettings {
-  reframe: ClipperReframeSettings;
   captions: ClipperCaptionSettings;
   formats: ClipperFormatSettings;
   audio: ClipperAudioSettings;
-  branding: ClipperBrandingSettings;
   /** Last duration preset picked on the trim-select stage, remembered across uploads. */
   lastDurationPresetSec: number;
 }
@@ -85,10 +62,6 @@ export const CLIPPER_DURATION_PRESETS: { label: string; seconds: number }[] = [
 export const CLIPPER_MIN_CLIP_SECONDS = 3;
 
 export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
-  reframe: {
-    headroom: "normal",
-    showDebugFaceBoxes: false,
-  },
   captions: {
     enabled: true,
     fontFamily: "arial",
@@ -116,17 +89,6 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     normalizePreset: "streaming",
     peakCeiling: -1,
   },
-  branding: {
-    watermarkDataUrl: null,
-    watermarkCorner: "bottom-right",
-    watermarkScale: 0.16,
-    watermarkOpacity: 0.85,
-    introText: "",
-    introSeconds: 2,
-    outroText: "",
-    outroSeconds: 2,
-    showProgressBar: false,
-  },
   lastDurationPresetSec: 60,
 };
 
@@ -140,14 +102,6 @@ export function clampWordsPerGroup(value: number): number {
 
 export function clampFadeSeconds(value: number): number {
   return clamp(value, 0, 10);
-}
-
-export function clampOverlaySeconds(value: number): number {
-  return clamp(value, 0, 10);
-}
-
-export function clampWatermarkScale(value: number): number {
-  return clamp(value, 0.05, 0.4);
 }
 
 export function clampPeakCeiling(value: number): number {
@@ -164,13 +118,10 @@ export function mergeClipperSettings(
   partial: Partial<ClipperSettings> | null | undefined,
 ): ClipperSettings {
   if (!partial) return base;
-  const reframe = { ...base.reframe, ...partial.reframe };
   return {
-    reframe,
     captions: { ...base.captions, ...partial.captions },
     formats: { ...base.formats, ...partial.formats },
     audio: { ...base.audio, ...partial.audio },
-    branding: { ...base.branding, ...partial.branding },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };
 }

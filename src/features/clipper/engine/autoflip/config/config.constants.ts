@@ -17,12 +17,6 @@ export const AUTOFLIP_MIN_ZOOM_SCALE = 0.65;
 export const AUTOFLIP_MIN_ZOOM_SCENE_SEC = 8;
 /** Matched-aspect footage needs only a short, stable observation to reframe. */
 export const AUTOFLIP_MATCHED_ASPECT_MIN_ZOOM_SCENE_SEC = 1;
-/** Focus-band diagonal → desired window diagonal multiplier, per headroom setting. */
-export const AUTOFLIP_ZOOM_MARGIN: Record<"tight" | "normal" | "wide", number> = {
-  tight: 2.8,
-  normal: 3.6,
-  wide: 4.8,
-};
 
 export type {
   FocusPoint,

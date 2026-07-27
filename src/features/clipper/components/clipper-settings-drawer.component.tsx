@@ -131,8 +131,6 @@ interface ClipperSettingsDrawerProps {
   onOpenChange: (open: boolean) => void;
   settings: ClipperSettings;
   words: WordCue[];
-  hasDetectedFaces: boolean | null;
-  hasTwoSpeakers: boolean | null;
   onUpdateSettings: (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => void;
 }
 
@@ -141,8 +139,6 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
   onOpenChange,
   settings,
   words,
-  hasDetectedFaces,
-  hasTwoSpeakers,
   onUpdateSettings,
 }) => {
   const { theme, scrollbarCss } = useClipperUi();
@@ -230,8 +226,7 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
                   <ClipperSettingsPanel
                     settings={settings}
                     words={words}
-                    hasDetectedFaces={hasDetectedFaces}
-                    hasTwoSpeakers={hasTwoSpeakers}
+                    hideTranscript
                     onUpdateSettings={onUpdateSettings}
                   />
                 </Box>

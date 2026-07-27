@@ -1,5 +1,4 @@
 import { Box, Spinner, Text } from "@chakra-ui/react";
-import { LogIn, LogOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../shared/hooks/use-auth.hook";
 import { rememberAuthReturnPath } from "../../shared/auth/auth-return-path.util";
@@ -57,8 +56,7 @@ export function AccountHeaderAction() {
         }}
         _hover={{ filter: "brightness(1.08)" }}
       >
-        <LogIn size={14} />
-        <Text display={{ base: "none", md: "block" }}>Log in</Text>
+        Log in
       </Box>
     );
   }
@@ -71,8 +69,7 @@ export function AccountHeaderAction() {
       _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
       title={`Sign out (${user.email})`}
     >
-      <LogOut size={16} />
-      <Text display={{ base: "none", md: "block" }} maxW="180px" truncate>
+      <Text maxW="180px" truncate>
         {user.email || "Sign out"}
       </Text>
     </Box>

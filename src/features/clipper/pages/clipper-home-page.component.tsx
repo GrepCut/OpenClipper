@@ -19,6 +19,7 @@ import {
   type ClipperHomeTab,
 } from "../components/clipper-home-nav-toggle.component";
 import { ClipperIntegrationsView } from "../components/clipper-integrations-view.component";
+import { ClipperHomeSettingsView } from "../components/clipper-home-settings-view.component";
 import { CreateClipperProjectModal } from "./create-clipper-project-modal.component";
 import { ClipperTauriGate } from "./clipper-tauri-gate.component";
 import { openClipperProjectsDir } from "../persistence/project-data-files.util";
@@ -26,15 +27,6 @@ import { ProjectsPagination } from "../components/projects-pagination.component"
 import { useTheme } from "../../../theme";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
-import {
-  ClipperGlobalSettingsDrawer,
-  ClipperHomeHeaderActions,
-} from "../components/clipper-global-settings-drawer.component";
-import {
-  loadClipperSettings,
-  saveClipperSettings,
-} from "../settings/settings-storage.util";
-import type { ClipperSettings } from "../settings/settings.util";
 import { TestsHomeView } from "../../tests/components/tests-home-view.component";
 
 const ITEMS_PER_PAGE = 10;
@@ -47,19 +39,17 @@ export function ClipperHomePage() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [defaultSettings, setDefaultSettings] = useState<ClipperSettings>(() =>
-    loadClipperSettings(),
-  );
   const { open: isCreateOpen, onOpen: onCreateOpen, onClose: onCreateClose } = useDisclosure();
-  const {
-    open: isSettingsOpen,
-    onOpen: onSettingsOpen,
-    onClose: onSettingsClose,
-  } = useDisclosure();
 
   useEffect(() => {
     const requested = searchParams.get("tab");
-    if (requested !== "integrations" && requested !== "tests") return;
+    if (
+      requested !== "integrations" &&
+      requested !== "tests" &&
+      requested !== "settings"
+    ) {
+      return;
+    }
     setActiveTab(requested);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("tab");
@@ -106,39 +96,22 @@ export function ClipperHomePage() {
     }
   }, []);
 
-  const updateDefaultSettings = useCallback(
-    (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => {
-      setDefaultSettings((prev) => {
-        const next =
-          typeof updater === "function"
-            ? (updater as (p: ClipperSettings) => ClipperSettings)(prev)
-            : updater;
-        saveClipperSettings(next);
-        return next;
-      });
-    },
-    [],
-  );
-
   return (
     <ClipperTauriGate>
       <ClipperLayout
         headerStartExtra={
           <ClipperHomeNavToggle value={activeTab} onChange={setActiveTab} />
         }
-        headerActions={
-          <ClipperHomeHeaderActions
-            onOpenSettings={onSettingsOpen}
-          />
-        }
       >
         {activeTab === "integrations" ? (
           <ClipperIntegrationsView />
         ) : activeTab === "tests" ? (
           <TestsHomeView />
+        ) : activeTab === "settings" ? (
+          <ClipperHomeSettingsView />
         ) : (
-          <VStack align="stretch" gap={8}>
-            <HStack justify="space-between" align="start" flexWrap="wrap" gap={4}>
+          <VStack align="stretch" gap={8} flex="1" minH={0}>
+            <HStack justify="space-between" align="start" flexWrap="wrap" gap={4} flexShrink={0}>
               <VStack align="start" gap={2} maxW="640px">
                 <SecondaryMainTitle
                   fontSize={{ base: "2xl", md: "3xl" }}
@@ -173,7 +146,7 @@ export function ClipperHomePage() {
             </HStack>
 
             {loading ? (
-              <Center py={16}>
+              <Center py={16} flex="1">
                 <AppLoader />
               </Center>
             ) : projects.length === 0 ? (
@@ -184,6 +157,11 @@ export function ClipperHomePage() {
                 borderColor={theme.dashboard.border}
                 textAlign="center"
                 bg={theme.background.card}
+                flex="1"
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                justifyContent="center"
               >
                 <Text color={theme.text.primary} fontWeight="semibold" mb={2}>
                   No Clipper projects yet
@@ -194,7 +172,6 @@ export function ClipperHomePage() {
                 <OutlinedActionButton
                   width="100%"
                   maxW="320px"
-                  mx="auto"
                   justifyContent="center"
                   startIcon={<Plus size={16} />}
                   onClick={onCreateOpen}
@@ -231,13 +208,6 @@ export function ClipperHomePage() {
             setCurrentPage(1);
             void loadProjects();
           }}
-        />
-
-        <ClipperGlobalSettingsDrawer
-          open={isSettingsOpen}
-          onOpenChange={(open) => (open ? onSettingsOpen() : onSettingsClose())}
-          settings={defaultSettings}
-          onUpdateSettings={updateDefaultSettings}
         />
       </ClipperLayout>
     </ClipperTauriGate>

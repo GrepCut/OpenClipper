@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Box, Button, Checkbox, HStack, Text, VStack } from "@chakra-ui/react";
-import { Minus } from "lucide-react";
+import { Clapperboard, Minus } from "lucide-react";
+import { MainButton } from "../../../shared/components/buttons/main-button.component";
 import { CLIPPER_FORMAT_DEFS, getClipperCardFrameSize } from "../shared/formats.util";
 import { clipperError } from "../shared/logger.util";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperClipPreview } from "../shared/state.util";
+import type { ClipperFormatSettings } from "../settings/settings.util";
 import { formatDurationMmSs } from "../../../shared/utils/time.util";
+import { ExportFormatControls } from "./settings/platforms-section.component";
 
 const THUMB_WIDTH = 101;
 const THUMB_HEIGHT = 180; // 9:16
@@ -164,25 +167,33 @@ type TriState = boolean | "indeterminate";
 interface ClipperRenderQueueSetupProps {
   clipPreviews: ClipperClipPreview[];
   rangeTrimmedVideoUrl: string;
+  formats: ClipperFormatSettings;
+  onChangeFormats: (patch: Partial<ClipperFormatSettings>) => void;
   getClipFormatIds: (clipIndex: number) => string[];
   onToggleClipFormat: (clipIndex: number, formatId: string) => void;
   onSetFormatForAll: (formatId: string, enabled: boolean) => void;
   onSetAllFormatsForClip: (clipIndex: number, enabled: boolean) => void;
   isRendering: boolean;
   onRender: () => void;
+  exportCount?: number;
+  onViewExports?: () => void;
 }
 
 export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = ({
   clipPreviews,
   rangeTrimmedVideoUrl,
+  formats,
+  onChangeFormats,
   getClipFormatIds,
   onToggleClipFormat,
   onSetFormatForAll,
   onSetAllFormatsForClip,
   isRendering,
   onRender,
+  exportCount = 0,
+  onViewExports,
 }) => {
-  const { theme, panelShadow } = useClipperUi();
+  const { theme, panelShadow, outlineButton } = useClipperUi();
 
   const thumbCanvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const thumbSpecs = useMemo<ClipThumbSpec[]>(
@@ -229,19 +240,46 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
             Choose which formats to render for each clip.
           </Text>
         </Box>
-        <Button
-          size="lg"
-          borderRadius="2xl"
-          bg={clipperTheme.accent}
-          color={theme.text.onBrand}
-          px={8}
-          _hover={{ bg: clipperTheme.accentHover }}
-          onClick={onRender}
-          loading={isRendering}
-          disabled={totalOutputs === 0}
-        >
-          {isRendering ? "Rendering…" : renderLabel}
-        </Button>
+        <HStack gap={3} flexWrap="wrap">
+          {(exportCount > 0 || isRendering) && onViewExports ? (
+            <Button
+              size="lg"
+              variant="outline"
+              borderRadius="2xl"
+              h="44px"
+              onClick={onViewExports}
+              {...outlineButton}
+            >
+              Your exports{exportCount > 0 ? ` (${exportCount})` : ""}
+            </Button>
+          ) : null}
+          <MainButton
+            h="44px"
+            px={6}
+            fontSize="sm"
+            fontWeight="semibold"
+            borderRadius="full"
+            display="inline-flex"
+            alignItems="center"
+            gap={2}
+            bg={`linear-gradient(to right, ${clipperTheme.gradientFrom}, ${clipperTheme.gradientTo})`}
+            color={theme.text.onBrand}
+            boxShadow={`0 0 16px rgba(${clipperTheme.ctaTintRgb}, 0.28)`}
+            _hover={{
+              filter: "brightness(1.08)",
+              transform: "translateY(-1px)",
+              boxShadow: `0 4px 20px rgba(${clipperTheme.ctaTintRgb}, 0.4)`,
+              _disabled: { transform: "none", filter: "none", boxShadow: "none" },
+            }}
+            _disabled={{ opacity: 0.45, cursor: "not-allowed", boxShadow: "none" }}
+            onClick={onRender}
+            loading={isRendering}
+            disabled={totalOutputs === 0}
+          >
+            {!isRendering ? <Clapperboard size={18} strokeWidth={2} /> : null}
+            {isRendering ? "Rendering…" : renderLabel}
+          </MainButton>
+        </HStack>
       </HStack>
 
       <VStack
@@ -264,7 +302,7 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
               <Checkbox.Root
                 key={def.id}
                 size="sm"
-                colorPalette="purple"
+                colorPalette="blue"
                 checked={checked}
                 onCheckedChange={() => onSetFormatForAll(def.id, checked !== true)}
               >
@@ -281,6 +319,10 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
             );
           })}
         </HStack>
+
+        <Box pt={4} borderTop="1px solid" borderColor={theme.border.primary}>
+          <ExportFormatControls formats={formats} onChange={onChangeFormats} layout="bar" />
+        </Box>
       </VStack>
 
       <VStack align="stretch" gap={2}>
@@ -411,7 +453,7 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
                   <Checkbox.Root
                     key={def.id}
                     size="sm"
-                    colorPalette="purple"
+                    colorPalette="blue"
                     checked={selectedIds.includes(def.id)}
                     onCheckedChange={() => onToggleClipFormat(preview.clip.index, def.id)}
                   >

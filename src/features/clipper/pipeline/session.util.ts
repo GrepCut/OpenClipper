@@ -82,7 +82,7 @@ export interface ClipperSession {
   keyframeTimestamps?: number[];
   captionGroupsCache: { wordsPerGroup: number; clip: ClipperGeneratedClip; groups: import("../lib/media/transcription-export.util").CaptionGroup[] } | null;
   faceRenderCache: {
-    reframeKey: string;
+    collageRegionKey: string;
     sampleRevision: number;
     /** Invalidates when AutoFlip layout tracks change (marker source of truth). */
     layoutKey: string;
@@ -105,10 +105,9 @@ export function normalizeClipperSession(session: ClipperSession): ClipperSession
   return session;
 }
 
-/** Cache key for derived face-render tracks from reframe settings + the session's region overrides. */
-export function reframeCacheKey(settings: ClipperSettings, disabledCollageRegionIds: string[]): string {
-  const { headroom } = settings.reframe;
-  return `${headroom}|${[...disabledCollageRegionIds].sort().join(",")}`;
+/** Cache key for derived face-render tracks from the session's collage region overrides. */
+export function collageRegionCacheKey(disabledCollageRegionIds: string[]): string {
+  return [...disabledCollageRegionIds].sort().join(",");
 }
 
 /** Cache key for layout-derived collage regions (AutoFlip split markers). */
@@ -147,19 +146,18 @@ export function createFaceCache(
 /** Resolves or rebuilds cached focus/collage tracks for frame drawing. */
 export function resolveFaceRender(
   session: ClipperSession,
-  settings: ClipperSettings,
 ): ClipperFrameContext["faceRender"] {
   const cache = session.faceCache;
   if (!cache) return undefined;
 
   const disabledCollageRegionIds = session.disabledCollageRegionIds ?? [];
-  const reframeKey = reframeCacheKey(settings, disabledCollageRegionIds);
+  const collageRegionKey = collageRegionCacheKey(disabledCollageRegionIds);
   const sampleRevision = cache.sampleRevision;
   const layoutKey = layoutRegionsCacheKey(session.smartCropAnalysis);
   let cached = session.faceRenderCache;
   if (
     !cached ||
-    cached.reframeKey !== reframeKey ||
+    cached.collageRegionKey !== collageRegionKey ||
     cached.sampleRevision !== sampleRevision ||
     cached.layoutKey !== layoutKey
   ) {
@@ -168,7 +166,7 @@ export function resolveFaceRender(
     // Single source of truth: AutoFlip layoutTracks (same as preview split).
     const collageRegions = deriveRegionsFromLayoutTracks(session.smartCropAnalysis);
     cached = {
-      reframeKey,
+      collageRegionKey,
       sampleRevision,
       layoutKey,
       collageTracks: buildCollageTracksForRegions(
@@ -219,7 +217,7 @@ export function buildFrameContext(
     settings,
     captionGroups: cached.groups,
     faceCache: session.faceCache,
-    faceRender: resolveFaceRender(session, settings),
+    faceRender: resolveFaceRender(session),
     smartCropAnalysis: session.smartCropAnalysis,
     disabledCollageRegionIds: session.disabledCollageRegionIds ?? [],
     segments: clip.segments,

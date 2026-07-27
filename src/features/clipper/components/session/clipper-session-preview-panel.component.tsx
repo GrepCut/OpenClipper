@@ -18,7 +18,6 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     project,
     state,
     settings,
-    exportCount,
     updateSettings,
     getFrameContext,
     setActiveClipIndex,
@@ -51,7 +50,6 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     canUseAccountFeatures,
     publish,
     renderQueue,
-    goToExports,
   } = session;
 
   const guardAccount = useCallback(() => {
@@ -116,8 +114,6 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         getFrameContext={getFrameContext}
         sourceFileName={state.sourceFileName}
         isRendering={isRendering}
-        exportCount={exportCount}
-        onViewExports={goToExports}
         onOpenRenderQueue={renderQueue.openRenderQueue}
         guardAccount={guardAccount}
         disabledCollageRegionIds={disabledCollageRegionIds}

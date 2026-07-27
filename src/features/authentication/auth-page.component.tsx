@@ -17,29 +17,29 @@ import { asset } from "../../shared/utils/asset.util";
 const MotionBox = motion.create(Box);
 
 const BACK_LINES_CONFIG = [
-  { height: "1px", top: "5%", width: "200px", duration: 1.2, delay: 0.1, repeatDelay: 0.6, color: "rgba(139, 92, 246, 0.3)", blur: 2 },
+  { height: "1px", top: "5%", width: "200px", duration: 1.2, delay: 0.1, repeatDelay: 0.6, color: "rgba(30, 144, 255, 0.3)", blur: 2 },
   { height: "1px", top: "18%", width: "180px", duration: 1.3, delay: 0.8, repeatDelay: 0.7, color: "rgba(59, 130, 246, 0.3)", blur: 2 },
   { height: "1px", top: "35%", width: "220px", duration: 1.1, delay: 1.5, repeatDelay: 0.5, color: "rgba(236, 72, 153, 0.3)", blur: 2 },
   { height: "1px", top: "62%", width: "190px", duration: 1.25, delay: 0.4, repeatDelay: 0.8, color: "rgba(6, 182, 212, 0.3)", blur: 2 },
-  { height: "1px", top: "85%", width: "210px", duration: 1.15, delay: 1.1, repeatDelay: 0.6, color: "rgba(168, 85, 247, 0.3)", blur: 2 },
-  { height: "2px", top: "10%", width: "280px", duration: 0.9, delay: 0.3, repeatDelay: 0.4, color: "rgba(139, 92, 246, 0.5)", blur: 1 },
+  { height: "1px", top: "85%", width: "210px", duration: 1.15, delay: 1.1, repeatDelay: 0.6, color: "rgba(0, 195, 255, 0.3)", blur: 2 },
+  { height: "2px", top: "10%", width: "280px", duration: 0.9, delay: 0.3, repeatDelay: 0.4, color: "rgba(30, 144, 255, 0.5)", blur: 1 },
   { height: "2px", top: "22%", width: "320px", duration: 0.85, delay: 1.0, repeatDelay: 0.35, color: "rgba(6, 182, 212, 0.5)", blur: 1 },
   { height: "2px", top: "40%", width: "300px", duration: 0.95, delay: 0.6, repeatDelay: 0.45, color: "rgba(236, 72, 153, 0.5)", blur: 1 },
   { height: "2px", top: "55%", width: "260px", duration: 0.88, delay: 1.4, repeatDelay: 0.4, color: "rgba(59, 130, 246, 0.5)", blur: 1 },
-  { height: "2px", top: "72%", width: "290px", duration: 0.92, delay: 0.2, repeatDelay: 0.5, color: "rgba(168, 85, 247, 0.5)", blur: 1 },
-  { height: "4px", top: "8%", width: "400px", duration: 0.6, delay: 0.15, repeatDelay: 0.25, color: "rgba(139, 92, 246, 0.8)", blur: 0 },
+  { height: "2px", top: "72%", width: "290px", duration: 0.92, delay: 0.2, repeatDelay: 0.5, color: "rgba(0, 195, 255, 0.5)", blur: 1 },
+  { height: "4px", top: "8%", width: "400px", duration: 0.6, delay: 0.15, repeatDelay: 0.25, color: "rgba(30, 144, 255, 0.8)", blur: 0 },
   { height: "3px", top: "28%", width: "380px", duration: 0.65, delay: 0.7, repeatDelay: 0.3, color: "rgba(236, 72, 153, 0.75)", blur: 0 },
   { height: "4px", top: "45%", width: "420px", duration: 0.55, delay: 0.4, repeatDelay: 0.2, color: "rgba(6, 182, 212, 0.8)", blur: 0 },
   { height: "3px", top: "60%", width: "360px", duration: 0.68, delay: 1.2, repeatDelay: 0.28, color: "rgba(59, 130, 246, 0.75)", blur: 0 },
 ];
 
 const FRONT_LINES_CONFIG = [
-  { height: "4px", top: "78%", width: "440px", duration: 0.58, delay: 0.55, repeatDelay: 0.22, color: "rgba(168, 85, 247, 0.6)", blur: 0 },
+  { height: "4px", top: "78%", width: "440px", duration: 0.58, delay: 0.55, repeatDelay: 0.22, color: "rgba(0, 195, 255, 0.6)", blur: 0 },
   { height: "3px", top: "92%", width: "390px", duration: 0.62, delay: 1.0, repeatDelay: 0.26, color: "rgba(34, 211, 238, 0.6)", blur: 0 },
   { height: "3px", top: "15%", width: "350px", duration: 0.5, delay: 0.9, repeatDelay: 0.8, color: "rgba(255, 255, 255, 0.4)", blur: 0, glow: true },
   { height: "3px", top: "50%", width: "380px", duration: 0.48, delay: 0.25, repeatDelay: 0.9, color: "rgba(255, 255, 255, 0.4)", blur: 0, glow: true },
   { height: "3px", top: "82%", width: "340px", duration: 0.52, delay: 1.5, repeatDelay: 0.85, color: "rgba(255, 255, 255, 0.4)", blur: 0, glow: true },
-  { height: "2px", top: "35%", width: "320px", duration: 0.55, delay: 0.35, repeatDelay: 0.7, color: "rgba(139, 92, 246, 0.5)", blur: 0, glow: true },
+  { height: "2px", top: "35%", width: "320px", duration: 0.55, delay: 0.35, repeatDelay: 0.7, color: "rgba(30, 144, 255, 0.5)", blur: 0, glow: true },
   { height: "2px", top: "65%", width: "360px", duration: 0.52, delay: 1.1, repeatDelay: 0.65, color: "rgba(6, 182, 212, 0.5)", blur: 0, glow: true },
 ];
 

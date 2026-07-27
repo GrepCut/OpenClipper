@@ -6,7 +6,6 @@ import {
 } from "../cache.util";
 import { cropRectForCentroid, faceToCentroid } from "../crop.util";
 import { createFocusStabilizer, stabilizeFocusCentroid } from "../tracking.util";
-import type { ClipperHeadroom } from "../../../settings/settings.util";
 import type { FaceBox, FaceBoxSample } from "../../../shared/face-samples.util";
 import type {
   CollageAspectEligibility,
@@ -326,13 +325,12 @@ function splitCropsAreDistinct(
   frameW: number,
   frameH: number,
   outputAspectRatio: number,
-  headroom: ClipperHeadroom,
 ): boolean {
   const panelAspectRatio = outputAspectRatio * 2;
   const left = faceToCentroid(pair.left, frameW, frameH);
   const right = faceToCentroid(pair.right, frameW, frameH);
-  const leftCrop = cropRectForCentroid(frameW, frameH, left.x, left.y, panelAspectRatio, headroom, left.extent);
-  const rightCrop = cropRectForCentroid(frameW, frameH, right.x, right.y, panelAspectRatio, headroom, right.extent);
+  const leftCrop = cropRectForCentroid(frameW, frameH, left.x, left.y, panelAspectRatio, left.extent);
+  const rightCrop = cropRectForCentroid(frameW, frameH, right.x, right.y, panelAspectRatio, right.extent);
   return overlapFractionOfSmaller(
     { x: leftCrop.sx, y: leftCrop.sy, width: leftCrop.sw, height: leftCrop.sh },
     { x: rightCrop.sx, y: rightCrop.sy, width: rightCrop.sw, height: rightCrop.sh },
@@ -357,7 +355,6 @@ function closeEligibilityWindow(
 export function deriveCollageAspectEligibility(
   samples: FaceBoxSample[],
   regions: CollageRegion[],
-  headroom: ClipperHeadroom,
 ): CollageAspectEligibility {
   const result: CollageAspectEligibility = { "16-9": [], "9-16": [], "1-1": [], "4-5": [] };
 
@@ -380,7 +377,7 @@ export function deriveCollageAspectEligibility(
         const fitsInSingle = aspectId === "1-1" && pair != null && facesFitSingleCrop(pair, sample.frameW, sample.frameH, ratio);
         const qualifies = pair != null
           && !fitsInSingle
-          && splitCropsAreDistinct(pair, sample.frameW, sample.frameH, ratio, headroom);
+          && splitCropsAreDistinct(pair, sample.frameW, sample.frameH, ratio);
 
         if (qualifies) {
           qualifyingRun++;

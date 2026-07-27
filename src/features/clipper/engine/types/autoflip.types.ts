@@ -1,4 +1,3 @@
-import type { ClipperHeadroom } from "../../settings/settings.util";
 import type { FaceBoxSample } from "../../shared/face-samples.util";
 import type {
   AutoFlipStaticFeatureSample,
@@ -102,8 +101,6 @@ export interface BuildAutoFlipTrackInput {
   targetAspectRatios?: Record<string, number>;
   frameWidth?: number;
   frameHeight?: number;
-  /** Reserved for framing margins; the crop window itself never zooms below nominal. */
-  headroom?: ClipperHeadroom;
   degradedReason?: string;
   hasSolidColorBackground?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };

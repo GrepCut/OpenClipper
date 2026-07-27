@@ -1,4 +1,3 @@
-import { DEFAULT_CLIPPER_SETTINGS } from "../../clipper/settings/settings.util";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
 import type { BenchmarkRun, DriftSummary, TestClip } from "../test.types";
 import { TEST_ASPECTS } from "../test.types";
@@ -57,7 +56,6 @@ export async function executeBenchmarkRun(input: {
     analyzer: "production-smart-follow",
     primaryAspectId: PRIMARY_ASPECT_ID,
     baselineRunId,
-    settings: DEFAULT_CLIPPER_SETTINGS.reframe,
     aspects: TEST_ASPECTS.map(({ id, formatId, ratio }) => ({ id, formatId, ratio })),
     sampling: "decoded-frame-presentation-timestamps",
     createdAt: new Date().toISOString(),
