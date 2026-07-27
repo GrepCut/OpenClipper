@@ -80,7 +80,15 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
       {visibility.showPreview && <ClipperSessionPreviewPanel session={session} />}
 
       {visibility.showQueueSetup && (
-        <ClipperRenderQueueSetup
+        <>
+          {state.error ? (
+            <Box mb={4} p={4} borderRadius="xl" {...errorPanel}>
+              <Text color={theme.status.danger} fontSize="sm">
+                {state.error}
+              </Text>
+            </Box>
+          ) : null}
+          <ClipperRenderQueueSetup
           clipPreviews={state.clipPreviews}
           rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl!}
           formats={settings.formats}
@@ -96,10 +104,19 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           exportCount={exportCount}
           onViewExports={goToExports}
         />
+        </>
       )}
 
       {visibility.showQueueProgress && (
-        <ClipperRenderQueue
+        <>
+          {state.error ? (
+            <Box mb={4} p={4} borderRadius="xl" {...errorPanel}>
+              <Text color={theme.status.danger} fontSize="sm">
+                {state.error}
+              </Text>
+            </Box>
+          ) : null}
+          <ClipperRenderQueue
           state={state}
           clipPreviews={state.clipPreviews}
           formatIdsByClip={renderQueue.formatIdsByClip}
@@ -109,6 +126,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onPublish={publish.openPublishDialog}
           onRerenderFormat={(formatId, clipIndex) => void rerenderFormat(formatId, clipIndex)}
         />
+        </>
       )}
 
       {visibility.showExports && (

@@ -6,7 +6,7 @@ import {
   resolveClipFormatIds,
   sanitizeRenderQueueSelections,
 } from "../shared/render-queue-utils.util";
-import type { QueuePhase } from "../shared/clipper-session-view.types";
+import type { SessionViewMode } from "../shared/clipper-session-view.types";
 import type { ClipperLoadedProject } from "./use-clipper-project-loader.hook";
 import type { ClipperClipPreview } from "../shared/state.util";
 
@@ -17,10 +17,9 @@ export interface UseClipperRenderQueueOptions {
   clipPreviews: ClipperClipPreview[];
   enabledFormatIds: string[];
   isRendering: boolean;
-  sessionResultsLength: number;
-  view: "preview" | "queue" | "exports";
-  setView: (view: "preview" | "queue" | "exports") => void;
-  renderExports: (formatIdsByClip: Record<number, string[]>) => Promise<void>;
+  view: SessionViewMode;
+  setView: (view: SessionViewMode) => void;
+  renderExports: (formatIdsByClip: Record<number, string[]>) => Promise<boolean>;
 }
 
 export function useClipperRenderQueue({
@@ -29,13 +28,9 @@ export function useClipperRenderQueue({
   clipIndices,
   clipPreviews,
   enabledFormatIds,
-  isRendering,
-  sessionResultsLength,
-  view,
   setView,
   renderExports,
 }: UseClipperRenderQueueOptions) {
-  const [queuePhase, setQueuePhase] = useState<QueuePhase>("setup");
   const [clipFormatSelections, setClipFormatSelections] = useState<Record<number, string[]>>({});
   const skipRenderQueueSaveRef = useRef(true);
   const renderQueueHydratedRef = useRef(false);
@@ -45,20 +40,7 @@ export function useClipperRenderQueue({
     renderQueueHydratedRef.current = false;
     clipsReadyForQueueRef.current = false;
     skipRenderQueueSaveRef.current = true;
-    setQueuePhase("setup");
   }, [projectId]);
-
-  useEffect(() => {
-    if (queuePhase === "progress" && !isRendering && sessionResultsLength > 0) {
-      setQueuePhase("complete");
-    }
-  }, [isRendering, queuePhase, sessionResultsLength]);
-
-  useEffect(() => {
-    if (view === "queue" && isRendering) {
-      setQueuePhase("progress");
-    }
-  }, [isRendering, view]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -149,18 +131,20 @@ export function useClipperRenderQueue({
   );
 
   const openRenderQueue = useCallback(() => {
-    setQueuePhase("setup");
     setView("queue");
   }, [setView]);
 
   const startQueuedRender = useCallback(() => {
-    setQueuePhase("progress");
-    setView("queue");
-    void renderExports(formatIdsByClip);
+    setView("rendering");
+    void (async () => {
+      const started = await renderExports(formatIdsByClip);
+      if (!started) {
+        setView("queue");
+      }
+    })();
   }, [formatIdsByClip, renderExports, setView]);
 
   return {
-    queuePhase,
     getClipFormatIds,
     toggleClipFormat,
     setFormatForAllClips,

@@ -23,7 +23,7 @@ function getClipperLeftScrollbarCss(theme: Theme) {
   return {
     ...getClipperScrollbarCss(theme),
     direction: "rtl" as const,
-    overflowY: "scroll" as const,
+    overflowY: "auto" as const,
     overscrollBehavior: "contain" as const,
   };
 }

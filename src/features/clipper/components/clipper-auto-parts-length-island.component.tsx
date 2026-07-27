@@ -58,9 +58,9 @@ export function ClipperAutoPartsLengthIsland({
       <HStack
         justify="center"
         align="center"
-        gap={2}
-        px={2}
-        pb={2}
+        gap={3}
+        px={4}
+        pb={4}
         pointerEvents="none"
       >
         <Box
@@ -73,8 +73,8 @@ export function ClipperAutoPartsLengthIsland({
           borderColor={theme.border.primary}
           bg={theme.background.tertiary}
           boxShadow={theme.shadow.panel}
-          px={3}
-          py={2}
+          px={3.5}
+          py={2.5}
           display="flex"
           alignItems="center"
           gap={2.5}

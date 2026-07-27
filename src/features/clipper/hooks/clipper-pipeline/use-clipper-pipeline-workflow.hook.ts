@@ -73,7 +73,8 @@ export function useClipperPipelineWorkflow(
       setAutoPartsSegmentLengthSec,
       setDisabledCollageRegionIds,
       setState,
-      settings,
+      settings.captions.wordsPerGroup,
+      settings.formats.enabledFormatIds,
     ],
   );
 

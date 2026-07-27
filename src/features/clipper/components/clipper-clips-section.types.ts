@@ -45,7 +45,7 @@ export interface ClipperClipsSectionProps {
 }
 
 export const CLIPS_LIST_FADE_HEIGHT = "56px";
-export const AUTO_PARTS_LENGTH_OVERLAY_PAD = "72px";
+export const AUTO_PARTS_LENGTH_OVERLAY_PAD = "80px";
 
 export function clipSelectorTranscriptProps(
   rangeWords: WordCue[],

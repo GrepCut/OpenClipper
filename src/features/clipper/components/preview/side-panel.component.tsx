@@ -59,7 +59,7 @@ export function ClipperPreviewSidePanel({
       top={{ lg: 0 }}
       right={{ lg: 0 }}
       bottom={{ lg: 0 }}
-      left={{ lg: "calc(42% + var(--chakra-spacing-10))" }}
+      left={{ lg: "calc(42% + var(--chakra-spacing-12))" }}
       h={{ base: "65vh", lg: "auto" }}
       maxH={{ base: "65vh", lg: "none" }}
       display="flex"
@@ -68,15 +68,16 @@ export function ClipperPreviewSidePanel({
       border="1px solid"
       borderColor={theme.border.primary}
       borderRadius="28px"
-      bg="transparent"
+      bg={theme.background.card}
+      boxShadow={theme.shadow.panel}
     >
       <HStack
         flexShrink={0}
-        px={2}
-        pt={2}
-        pb={3}
+        px={4}
+        pt={3}
+        pb={4}
         justify="space-between"
-        gap={3}
+        gap={4}
         flexWrap="wrap"
         align="center"
       >

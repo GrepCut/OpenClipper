@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { FiUploadCloud } from "react-icons/fi";
+import { UploadCloud } from "lucide-react";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -145,7 +145,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
       />
       <VStack gap={4} px={8} textAlign="center">
         <Box color={clipperTheme.accentLight}>
-          <FiUploadCloud size={84} />
+          <UploadCloud size={84} />
         </Box>
         <VStack gap={1.5}>
           <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="semibold" color={theme.text.primary} letterSpacing="-0.01em">

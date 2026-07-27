@@ -32,9 +32,9 @@ export const ExportFormatControls: React.FC<ExportFormatControlsProps> = ({
 
   if (layout === "bar") {
     return (
-      <HStack gap={4} flexWrap="wrap" align="flex-end">
-        <VStack align="stretch" gap={1.5} minW="160px">
-          <Text fontSize="xs" color={theme.text.onBrandMuted}>
+      <>
+        <VStack align="stretch" gap={1.5} flexShrink={0} minW="160px">
+          <Text fontSize="xs" color={theme.text.onBrandMuted} lineHeight="1">
             Quality
           </Text>
           <SegmentedControl
@@ -43,8 +43,8 @@ export const ExportFormatControls: React.FC<ExportFormatControlsProps> = ({
             onChange={(v) => onChange({ quality: v })}
           />
         </VStack>
-        <VStack align="stretch" gap={1.5} minW="180px">
-          <Text fontSize="xs" color={theme.text.onBrandMuted}>
+        <VStack align="stretch" gap={1.5} flexShrink={0} minW="180px">
+          <Text fontSize="xs" color={theme.text.onBrandMuted} lineHeight="1">
             Resolution cap
           </Text>
           <SegmentedControl
@@ -53,7 +53,7 @@ export const ExportFormatControls: React.FC<ExportFormatControlsProps> = ({
             onChange={(v) => onChange({ resolutionCap: v })}
           />
         </VStack>
-      </HStack>
+      </>
     );
   }
 

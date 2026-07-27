@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { Box, Button, Checkbox, HStack, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, Checkbox, Flex, HStack, Text, VStack } from "@chakra-ui/react";
 import { Clapperboard, Minus } from "lucide-react";
 import { MainButton } from "../../../shared/components/buttons/main-button.component";
 import { CLIPPER_FORMAT_DEFS, getClipperCardFrameSize } from "../shared/formats.util";
@@ -193,7 +193,7 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
   exportCount = 0,
   onViewExports,
 }) => {
-  const { theme, panelShadow, outlineButton } = useClipperUi();
+  const { theme, outlineButton } = useClipperUi();
 
   const thumbCanvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const thumbSpecs = useMemo<ClipThumbSpec[]>(
@@ -285,44 +285,45 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
       <VStack
         align="stretch"
         gap={4}
-        p={{ base: 4, md: 6 }}
-        borderRadius="2xl"
+        p={{ base: 4, md: 5 }}
+        borderRadius="xl"
         border="1px solid"
         borderColor={theme.border.primary}
         bg={theme.surface.inset}
-        boxShadow={panelShadow}
       >
-        <HStack gap={4} flexWrap="wrap" align="center">
-          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-            All clips
-          </Text>
-          {CLIPPER_FORMAT_DEFS.map((def) => {
-            const checked = globalStateFor(def.id);
-            return (
-              <Checkbox.Root
-                key={def.id}
-                size="sm"
-                colorPalette="blue"
-                checked={checked}
-                onCheckedChange={() => onSetFormatForAll(def.id, checked !== true)}
-              >
-                <Checkbox.HiddenInput />
-                <Checkbox.Control>
-                  <Checkbox.Indicator indeterminate={<Minus size={12} />} />
-                </Checkbox.Control>
-                <Checkbox.Label>
-                  <Text fontSize="sm" color={theme.text.onBrandMuted}>
-                    {def.label}
-                  </Text>
-                </Checkbox.Label>
-              </Checkbox.Root>
-            );
-          })}
-        </HStack>
+        <HStack gap={6} flexWrap="wrap" align="flex-start" w="full">
+          <VStack align="stretch" gap={1.5} flex="1" minW={{ base: "full", lg: "280px" }}>
+            <Text fontSize="xs" color={theme.text.onBrandMuted} lineHeight="1">
+              All clips
+            </Text>
+            <Flex minH="32px" align="center" flexWrap="wrap" gap={3}>
+              {CLIPPER_FORMAT_DEFS.map((def) => {
+                const checked = globalStateFor(def.id);
+                return (
+                  <Checkbox.Root
+                    key={def.id}
+                    size="sm"
+                    colorPalette="blue"
+                    checked={checked}
+                    onCheckedChange={() => onSetFormatForAll(def.id, checked !== true)}
+                  >
+                    <Checkbox.HiddenInput />
+                    <Checkbox.Control>
+                      <Checkbox.Indicator indeterminate={<Minus size={12} />} />
+                    </Checkbox.Control>
+                    <Checkbox.Label>
+                      <Text fontSize="sm" color={theme.text.onBrandMuted}>
+                        {def.label}
+                      </Text>
+                    </Checkbox.Label>
+                  </Checkbox.Root>
+                );
+              })}
+            </Flex>
+          </VStack>
 
-        <Box pt={4} borderTop="1px solid" borderColor={theme.border.primary}>
           <ExportFormatControls formats={formats} onChange={onChangeFormats} layout="bar" />
-        </Box>
+        </HStack>
       </VStack>
 
       <VStack align="stretch" gap={2}>

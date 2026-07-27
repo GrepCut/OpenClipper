@@ -1,8 +1,7 @@
-import type { ClipperLayoutStep } from "../components/clipper-layout.component";
+import type { ClipperLayoutBackLink, ClipperLayoutStep } from "../components/clipper-layout.component";
 import type {
   ClipperSessionLayoutState,
   ClipperSessionVisibilityInput,
-  QueuePhase,
   SessionViewMode,
 } from "./clipper-session-view.types";
 import type { ClipperStage } from "./stages.util";
@@ -24,10 +23,31 @@ function isPreviewReadyStage(stage: ClipperStage): boolean {
   return PREVIEW_READY_STAGES.includes(stage);
 }
 
+/** Map session sub-routes → view mode. `/rendering` must be checked before `/render`. */
+export function parseClipperSessionView(pathname: string, projectId: string): SessionViewMode {
+  const base = `/clipper/${projectId}`;
+  if (pathname === `${base}/exports` || pathname.startsWith(`${base}/exports/`)) return "exports";
+  if (pathname === `${base}/rendering` || pathname.startsWith(`${base}/rendering/`)) {
+    return "rendering";
+  }
+  if (pathname === `${base}/render` || pathname.startsWith(`${base}/render/`)) return "queue";
+  return "preview";
+}
+
+export function clipperSessionPath(
+  projectId: string,
+  view: SessionViewMode = "preview",
+): string {
+  if (view === "exports") return `/clipper/${projectId}/exports`;
+  if (view === "rendering") return `/clipper/${projectId}/rendering`;
+  if (view === "queue") return `/clipper/${projectId}/render`;
+  return `/clipper/${projectId}`;
+}
+
 export function resolveClipperSessionStep(
   stage: ClipperStage,
   view: SessionViewMode,
-  queuePhase: QueuePhase,
+  isRendering: boolean,
 ): ClipperLayoutStep | undefined {
   switch (stage) {
     case "trimming":
@@ -41,17 +61,15 @@ export function resolveClipperSessionStep(
     case "rendering":
     case "done":
       if (view === "exports") return { title: "Your exports" };
-      if (view === "queue") {
+      if (view === "rendering") {
         return {
           current: 3,
           total: 3,
-          title:
-            queuePhase === "progress"
-              ? "Rendering…"
-              : queuePhase === "complete"
-                ? "Render complete"
-                : "Render queue",
+          title: isRendering ? "Rendering…" : "Render complete",
         };
+      }
+      if (view === "queue") {
+        return { current: 3, total: 3, title: "Render queue" };
       }
       return { current: 3, total: 3, title: "Preview & customize" };
     case "error":
@@ -67,13 +85,13 @@ export function resolveClipperSessionVisibility(
   const {
     stage,
     view,
-    queuePhase,
     exportCount,
     loaded,
     clipPreviewsLength,
     autoPartsClipPreviewsLength,
     rangeTrimmedVideoUrl,
     onBackToPreview,
+    onBackToRenderQueue,
   } = input;
 
   const clipCount = autoPartsClipPreviewsLength ?? clipPreviewsLength;
@@ -81,22 +99,26 @@ export function resolveClipperSessionVisibility(
   const isRestoringSession =
     loaded?.resumePlan.target === "restoring" && !hasPreview && stage !== "error";
   const isPreparing = isPreparingStage(stage);
+  const previewReady = hasPreview && isPreviewReadyStage(stage);
 
   const showUpload = stage === "idle" && !isRestoringSession;
   const showRestoreLoader = isRestoringSession;
   const showFreshProcessing = isPreparing && !hasPreview && !isRestoringSession;
   const showLoadingUi = showRestoreLoader || showFreshProcessing;
-  const canShowExports = hasPreview && exportCount > 0;
-  const showPreview = hasPreview && view === "preview" && isPreviewReadyStage(stage);
-  const showQueue = hasPreview && view === "queue" && isPreviewReadyStage(stage);
-  const showExports = canShowExports && view === "exports";
-  const showQueueSetup = showQueue && queuePhase === "setup";
-  const showQueueProgress = showQueue && (queuePhase === "progress" || queuePhase === "complete");
+  const showPreview = previewReady && view === "preview";
+  const showQueueSetup = previewReady && view === "queue";
+  const showQueueProgress = previewReady && view === "rendering";
+  const showExports =
+    !showLoadingUi && view === "exports" && (previewReady || exportCount > 0);
 
-  const layoutBackLink =
-    showExports || showQueue
-      ? { label: "Back to preview", onClick: onBackToPreview }
-      : undefined;
+  let layoutBackLink: ClipperLayoutBackLink | undefined;
+  if (!showLoadingUi) {
+    if (view === "queue") {
+      layoutBackLink = { label: "Back to preview", onClick: onBackToPreview };
+    } else if (view === "rendering" || view === "exports") {
+      layoutBackLink = { label: "Back to render queue", onClick: onBackToRenderQueue };
+    }
+  }
 
   return {
     showUpload,
@@ -104,7 +126,7 @@ export function resolveClipperSessionVisibility(
     showFreshProcessing,
     showLoadingUi,
     showPreview,
-    showQueue,
+    showQueue: showQueueSetup,
     showExports,
     showQueueSetup,
     showQueueProgress,

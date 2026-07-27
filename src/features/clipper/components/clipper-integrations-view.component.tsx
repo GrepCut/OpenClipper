@@ -238,8 +238,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const x = socialPlatforms.x;
 
   return (
-    <VStack align="stretch" gap={8}>
-      <VStack align="start" gap={2} maxW="640px">
+    <VStack align="stretch" gap={8} w="full">
+      <VStack align="start" gap={2} w="full">
         <SecondaryMainTitle
           fontSize={{ base: "2xl", md: "3xl" }}
           fontWeight="bold"
@@ -402,27 +402,39 @@ export const ClipperIntegrationsView: React.FC = () => {
   if (!online) {
     const guest = !user || !isAuthenticated;
     return (
-      <VStack align="stretch" gap={6} maxW="680px">
+      <VStack align="stretch" gap={6} w="full">
         <SecondaryMainTitle fontSize={{ base: "2xl", md: "3xl" }} color={theme.text.primary}>
           Integrations
         </SecondaryMainTitle>
-        <Box p={6} borderRadius="2xl" border="1px solid" borderColor={theme.dashboard.border} bg={theme.background.card}>
-          <Text color={theme.text.primary} fontWeight="semibold" mb={2}>
-            {guest ? "Log in to use integrations" : "Integrations are unavailable offline"}
-          </Text>
-          <Text color={theme.text.muted} mb={5}>
-            Local projects, editing and export to disk remain available without an account.
-          </Text>
-          {guest ? (
-            <OutlinedActionButton
-              onClick={() => {
-                rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
-                navigate("/auth");
-              }}
-            >
-              Log in
-            </OutlinedActionButton>
-          ) : null}
+        <Box
+          w="full"
+          p={6}
+          borderRadius="2xl"
+          border="1px solid"
+          borderColor={theme.dashboard.border}
+          bg={theme.background.card}
+        >
+          <HStack justify="space-between" align="center" gap={4} flexWrap="wrap">
+            <VStack align="start" gap={2} flex={1} minW={0}>
+              <Text color={theme.text.primary} fontWeight="semibold">
+                {guest ? "Log in to use integrations" : "Integrations are unavailable offline"}
+              </Text>
+              <Text color={theme.text.muted}>
+                Local projects, editing and export to disk remain available without an account.
+              </Text>
+            </VStack>
+            {guest ? (
+              <OutlinedActionButton
+                flexShrink={0}
+                onClick={() => {
+                  rememberAuthReturnPath(`${location.pathname}${location.search}${location.hash}`);
+                  navigate("/auth");
+                }}
+              >
+                Log in
+              </OutlinedActionButton>
+            ) : null}
+          </HStack>
         </Box>
       </VStack>
     );

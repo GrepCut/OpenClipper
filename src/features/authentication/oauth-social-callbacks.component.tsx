@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppLoader } from "../../shared/components/app-loader.component";
-import { FiAlertCircle, FiCheckCircle } from "react-icons/fi";
 import { socialAuthService } from "../../services/social-auth.service";
 import type {
   SocialOAuthFlow,
@@ -138,19 +137,13 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
           return {
             title: "Successfully connected!",
             description: `Your ${label} account has been linked.`,
-            footerText: "Redirecting...",
-            footerIcon: FiCheckCircle,
             statusColor: theme.status.success,
-            isFooterIconRotating: false,
           };
         case "error":
           return {
             title: "Connection failed",
             description: errorMessage || "An error occurred during connection.",
-            footerText: "Redirecting back...",
-            footerIcon: FiAlertCircle,
             statusColor: theme.status.error,
-            isFooterIconRotating: false,
           };
         default:
           return {};

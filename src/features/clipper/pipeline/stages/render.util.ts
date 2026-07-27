@@ -1,5 +1,6 @@
-import { canonicalFormatDims, CLIPPER_FORMAT_DEFS, getClipperFormatDef, type ClipperFormatDef } from "../../shared/formats.util";
+import { CLIPPER_FORMAT_DEFS, getClipperFormatDef, type ClipperFormatDef } from "../../shared/formats.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
+import { resolveClipperOutputSize } from "../../engine/render/frame-draw.util";
 import { renderClipperFormat, type ClipperClipWindow } from "../../engine/render/index";
 import type { ClipperFrameContext } from "../../engine/render/index";
 import { clipperError, clipperTimer, clipperWarn } from "../../shared/logger.util";
@@ -66,7 +67,10 @@ async function renderFormatToResult(
       onProgress: options.onProgress,
     });
 
-    const { width, height } = canonicalFormatDims(formatDef);
+    const { width, height } = resolveClipperOutputSize(
+      formatDef,
+      frameContext.settings.formats.resolutionCap,
+    );
 
     if (encodeResult.kind === "disk-encoded" && sink) {
       const disk = await sink.finalize();

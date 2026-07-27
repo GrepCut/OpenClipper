@@ -66,11 +66,11 @@ export function useClipperResume({
     if (resumeKeyChanged) {
       loadedResumeKeyRef.current = resumeKey;
       resumeStartedRef.current = false;
+      setSettingsState(loaded.settings);
+      setRangeLocked(isClipperStepCompleted(loaded.steps, "confirm_range"));
     }
 
     metadataRef.current = loaded.metadata;
-    setSettingsState(loaded.settings);
-    setRangeLocked(isClipperStepCompleted(loaded.steps, "confirm_range"));
 
     const plan = planResumeExecution(loaded, loaded.metadata, loaded.resumePlan, projectId);
 

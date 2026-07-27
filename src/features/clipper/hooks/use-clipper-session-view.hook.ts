@@ -1,7 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { openClipperExportsDir } from "../persistence/export-files.util";
 import {
+  clipperSessionPath,
+  parseClipperSessionView,
   resolveClipperSessionStep,
   resolveClipperSessionVisibility,
 } from "../shared/clipper-session-layout.util";
@@ -15,11 +18,23 @@ import { useClipperSessionPublish } from "./use-clipper-session-publish.hook";
 
 export function useClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
   const auth = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const canUseAccountFeatures = Boolean(
     auth.user && auth.token && auth.isAuthenticated && auth.sessionMode === "online",
   );
 
-  const [view, setView] = useState<SessionViewMode>("preview");
+  const view = useMemo(
+    () => parseClipperSessionView(location.pathname, project.id),
+    [location.pathname, project.id],
+  );
+
+  const setView = useCallback(
+    (next: SessionViewMode) => {
+      navigate(clipperSessionPath(project.id, next));
+    },
+    [navigate, project.id],
+  );
 
   const pipeline = useClipperPipeline({ project, token, loaded });
   const {
@@ -83,7 +98,6 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     clipPreviews: state.clipPreviews,
     enabledFormatIds: settings.formats.enabledFormatIds,
     isRendering,
-    sessionResultsLength: sessionResults.length,
     view,
     setView,
     renderExports,
@@ -105,12 +119,13 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     void openClipperExportsDir(project.id).catch(() => {});
   }, [project.id]);
 
-  const goToPreview = useCallback(() => setView("preview"), []);
-  const goToExports = useCallback(() => setView("exports"), []);
+  const goToPreview = useCallback(() => setView("preview"), [setView]);
+  const goToRenderQueue = useCallback(() => setView("queue"), [setView]);
+  const goToExports = useCallback(() => setView("exports"), [setView]);
 
   const step = useMemo(
-    () => resolveClipperSessionStep(state.stage, view, renderQueue.queuePhase),
-    [state.stage, view, renderQueue.queuePhase],
+    () => resolveClipperSessionStep(state.stage, view, isRendering),
+    [state.stage, view, isRendering],
   );
 
   const visibility = useMemo(
@@ -118,24 +133,26 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
       resolveClipperSessionVisibility({
         stage: state.stage,
         view,
-        queuePhase: renderQueue.queuePhase,
+        isRendering,
         exportCount,
         loaded,
         clipPreviewsLength: state.clipPreviews.length,
         autoPartsClipPreviewsLength: state.autoPartsClipPreviews?.length,
         rangeTrimmedVideoUrl: state.rangeTrimmedVideoUrl,
         onBackToPreview: goToPreview,
+        onBackToRenderQueue: goToRenderQueue,
       }),
     [
       state.stage,
       view,
-      renderQueue.queuePhase,
+      isRendering,
       exportCount,
       loaded,
       state.clipPreviews.length,
       state.autoPartsClipPreviews?.length,
       state.rangeTrimmedVideoUrl,
       goToPreview,
+      goToRenderQueue,
     ],
   );
 

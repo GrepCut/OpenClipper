@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { MdAutoAwesome } from "react-icons/md";
+import { Sparkles } from "lucide-react";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperAiClipChat } from "./clipper-ai-clip-chat.component";
@@ -122,7 +122,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
             >
               <VStack gap={4} textAlign="center" maxW="360px">
                 <Box color={clipperTheme.accentLight} opacity={0.9}>
-                  <MdAutoAwesome size={52} />
+                  <Sparkles size={52} />
                 </Box>
                 <VStack gap={1.5}>
                   <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>

@@ -2,12 +2,11 @@ import {
   Flex,
   ButtonGroup,
   IconButton,
-  Icon,
   Pagination,
   Text,
   Box,
 } from "@chakra-ui/react";
-import { HiChevronLeft, HiChevronRight } from "react-icons/hi2";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTheme } from "../../../theme";
 import { colors } from "../../../theme/colors.util";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
@@ -50,7 +49,7 @@ export function ProjectsPagination({
                 color: colors.purple.medium,
               }}
             >
-              <Icon as={HiChevronLeft} />
+              <ChevronLeft size={18} />
             </IconButton>
           </Pagination.PrevTrigger>
 
@@ -105,7 +104,7 @@ export function ProjectsPagination({
                 color: colors.purple.medium,
               }}
             >
-              <Icon as={HiChevronRight} />
+              <ChevronRight size={18} />
             </IconButton>
           </Pagination.NextTrigger>
         </ButtonGroup>

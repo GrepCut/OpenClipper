@@ -67,6 +67,16 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
 
   const completedExports = useMemo(() => sortExportsByDate(results), [results]);
 
+  const hasPendingRenderJobs = useMemo(
+    () =>
+      Object.values(state.renderProgress).some(
+        (value) => value == null || (typeof value === "number" && value < 1),
+      ),
+    [state.renderProgress],
+  );
+
+  const showProgressUi = isRendering || hasPendingRenderJobs;
+
   const renderExportRow = (result: ClipperFormatResult) => {
     const progressKey = `${result.clipIndex}:${result.formatId}`;
     const isRerendering =
@@ -85,9 +95,41 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
     );
   };
 
+  const renderProgressRows = () =>
+    queuedPreviews.flatMap((preview) => {
+      const clipResults = resultsForClip(results, preview.clip.index);
+
+      if (isRendering && preview.renderStatus === "done" && clipResults.length > 0) {
+        return clipResults.map(renderExportRow);
+      }
+
+      const formatIds = orderedFormatIdsForClip(formatIdsByClip[preview.clip.index] ?? []);
+
+      return formatIds.flatMap((formatId) => {
+        const formatDef = getClipperFormatDef(formatId);
+        if (!formatDef) return [];
+
+        const formatProgress =
+          state.renderProgress[renderProgressKey(preview.clip.index, formatId)] ?? null;
+        const status = deriveFormatRenderStatus(preview.renderStatus, formatProgress);
+
+        return [
+          <ClipperRenderFormatProgressRow
+            key={`${preview.clip.index}:${formatId}`}
+            formatLabel={formatDef.label}
+            platform={formatDef.platform}
+            clipLabel={`Clip ${preview.clip.index + 1} ·`}
+            clipTimeRange={clipTimeLabel(preview)}
+            status={status}
+            formatProgress={formatProgress}
+          />,
+        ];
+      });
+    });
+
   return (
     <VStack align="stretch" gap={4}>
-      {isRendering ? (
+      {showProgressUi ? (
         <>
           <Box>
             <Text fontSize="lg" fontWeight="semibold" color={theme.text.primary} mb={1}>
@@ -113,40 +155,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
       ) : null}
 
       <VStack align="stretch" gap={2}>
-        {isRendering
-          ? queuedPreviews.flatMap((preview) => {
-              const clipResults = resultsForClip(results, preview.clip.index);
-
-              if (preview.renderStatus === "done" && clipResults.length > 0) {
-                return clipResults.map(renderExportRow);
-              }
-
-              const formatIds = orderedFormatIdsForClip(
-                formatIdsByClip[preview.clip.index] ?? [],
-              );
-
-              return formatIds.flatMap((formatId) => {
-                const formatDef = getClipperFormatDef(formatId);
-                if (!formatDef) return [];
-
-                const formatProgress =
-                  state.renderProgress[renderProgressKey(preview.clip.index, formatId)] ?? null;
-                const status = deriveFormatRenderStatus(preview.renderStatus, formatProgress);
-
-                return [
-                  <ClipperRenderFormatProgressRow
-                    key={`${preview.clip.index}:${formatId}`}
-                    formatLabel={formatDef.label}
-                    platform={formatDef.platform}
-                    clipLabel={`Clip ${preview.clip.index + 1} ·`}
-                    clipTimeRange={clipTimeLabel(preview)}
-                    status={status}
-                    formatProgress={formatProgress}
-                  />,
-                ];
-              });
-            })
-          : completedExports.map(renderExportRow)}
+        {showProgressUi ? renderProgressRows() : completedExports.map(renderExportRow)}
       </VStack>
     </VStack>
   );

@@ -33,6 +33,10 @@ export function AccountHeaderAction() {
   }
 
   if (!user || !isAuthenticated) {
+    if (location.pathname === "/auth") {
+      return null;
+    }
+
     return (
       <Box
         as="button"

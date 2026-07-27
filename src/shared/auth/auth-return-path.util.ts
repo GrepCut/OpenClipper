@@ -16,8 +16,13 @@ export function rememberAuthReturnPath(path: string): void {
   }
 }
 
+export function peekAuthReturnPath(fallback = "/clipper"): string {
+  const stored = sessionStorage.getItem(AUTH_RETURN_PATH_KEY);
+  return isSafeInternalReturnPath(stored) ? stored : fallback;
+}
+
 export function consumeAuthReturnPath(fallback = "/clipper"): string {
   const stored = sessionStorage.getItem(AUTH_RETURN_PATH_KEY);
   sessionStorage.removeItem(AUTH_RETURN_PATH_KEY);
-  return isSafeInternalReturnPath(stored) ? stored : fallback;
+  return peekAuthReturnPath(fallback);
 }

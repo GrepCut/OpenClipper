@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppLoader } from "../../shared/components/app-loader.component";
-import { FiAlertCircle, FiCheckCircle } from "react-icons/fi";
 import { youtubeAuthService } from "../../services/youtube-auth.service";
 import { useAuth } from "../../shared/hooks/use-auth.hook";
 import { isTauri } from "../../shared/utils/platform.util";
@@ -127,19 +126,13 @@ export function OAuthYoutubeCallback() {
         return {
           title: "Successfully connected!",
           description: "Your YouTube channel has been linked to your account.",
-          footerText: "Redirecting...",
-          footerIcon: FiCheckCircle,
           statusColor: theme.status.success,
-          isFooterIconRotating: false,
         };
       case "error":
         return {
           title: "Connection failed",
           description: errorMessage || "An error occurred during connection.",
-          footerText: "Redirecting back...",
-          footerIcon: FiAlertCircle,
           statusColor: theme.status.error,
-          isFooterIconRotating: false,
         };
       case "verifying":
         return {};

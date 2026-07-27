@@ -1,7 +1,40 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { Box } from "@chakra-ui/react";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { CLIPS_LIST_FADE_HEIGHT } from "./clipper-clips-section.types";
+
+function scrollScrollableAncestor(from: HTMLElement, deltaY: number): boolean {
+  let node: HTMLElement | null = from.parentElement;
+  while (node) {
+    const { overflowY } = getComputedStyle(node);
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      node.scrollTop += deltaY;
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
+function forwardWheelToScrollableParent(event: React.WheelEvent<HTMLElement>) {
+  const el = event.currentTarget;
+  const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+  const atTop = el.scrollTop <= 0;
+  const atBottom = el.scrollTop >= maxScroll - 1;
+  const scrollingUp = event.deltaY < 0;
+  const scrollingDown = event.deltaY > 0;
+  const canScrollInternally =
+    maxScroll > 1 && ((scrollingUp && !atTop) || (scrollingDown && !atBottom));
+
+  if (canScrollInternally) return;
+
+  if (scrollScrollableAncestor(el, event.deltaY)) {
+    event.preventDefault();
+  }
+}
 
 function ClipsListBottomFade({
   bottom = 0,
@@ -21,7 +54,7 @@ function ClipsListBottomFade({
       h={height}
       pointerEvents="none"
       zIndex={1}
-      bg={`linear-gradient(to top, ${theme.background.primary} 0%, transparent 100%)`}
+      bg={`linear-gradient(to top, ${theme.background.card} 0%, transparent 100%)`}
     />
   );
 }
@@ -41,9 +74,13 @@ export function ClipsListScroller({
   contentPaddingBottom?: number | string;
   css: Record<string, unknown>;
 }) {
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    forwardWheelToScrollableParent(event);
+  }, []);
+
   return (
     <Box position="relative" flex="1" minH={0}>
-      <Box position="absolute" inset={0} css={css}>
+      <Box position="absolute" inset={0} css={css} onWheel={handleWheel}>
         <Box css={{ direction: "ltr", minHeight: "100%" }} pb={contentPaddingBottom}>
           {children}
         </Box>

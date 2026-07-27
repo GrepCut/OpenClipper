@@ -7,7 +7,6 @@ import { useTauriTitleBarHandlers } from "../../../shared/hooks/use-tauri-title-
 import { asset } from "../../../shared/utils/asset.util";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { colors, useTheme } from "../../../theme";
-import { clipperTheme } from "../shared/theme.util";
 import { AccountHeaderAction } from "../../authentication/account-header-action.component";
 
 export interface ClipperLayoutStep {
@@ -31,6 +30,8 @@ interface ClipperLayoutProps {
   headerStartExtra?: React.ReactNode;
   /** Extra controls rendered before window controls (e.g. settings, logout). */
   headerActions?: React.ReactNode;
+  /** Remove default content padding (e.g. full-bleed auth screen). */
+  flushContent?: boolean;
 }
 
 export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
@@ -39,6 +40,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
   backLink,
   headerStartExtra,
   headerActions,
+  flushContent = false,
 }) => {
   const { theme } = useTheme();
   const location = useLocation();
@@ -129,21 +131,21 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
                 pointerEvents="none"
                 maxW="calc(100% - 280px)"
               >
-                {step.current != null && step.total != null ? (
-                  <Box
-                    px={2.5}
-                    py={0.5}
-                    borderRadius="full"
+                {step.current != null &&
+                step.total != null &&
+                step.current < step.total ? (
+                  <Text
+                    as="span"
                     fontSize="xs"
-                    fontWeight="semibold"
-                    letterSpacing="0.02em"
-                    color={clipperTheme.accent}
-                    bg={theme.brand.purpleSoftAlpha12}
+                    fontWeight="bold"
+                    letterSpacing="0.1em"
+                    textTransform="uppercase"
+                    color={theme.text.distinct}
                     whiteSpace="nowrap"
                     flexShrink={0}
                   >
                     Step {step.current} of {step.total}
-                  </Box>
+                  </Text>
                 ) : null}
                 <Text
                   color={theme.text.muted}
@@ -180,8 +182,8 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
       <Box flex="1" overflowY="auto" css={scrollbarCss} display="flex" flexDirection="column" minH={0}>
         <Box
           w="full"
-          py={{ base: 6, md: 8 }}
-          px={4}
+          py={flushContent ? 0 : { base: 6, md: 8 }}
+          px={flushContent ? 0 : 4}
           flex="1"
           display="flex"
           flexDirection="column"

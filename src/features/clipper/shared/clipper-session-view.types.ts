@@ -8,9 +8,7 @@ export interface ClipperSessionViewProps {
   loaded: ClipperLoadedProject | null;
 }
 
-export type SessionViewMode = "preview" | "queue" | "exports";
-
-export type QueuePhase = "setup" | "progress" | "complete";
+export type SessionViewMode = "preview" | "queue" | "rendering" | "exports";
 
 export interface ClipperSessionVisibility {
   showUpload: boolean;
@@ -31,11 +29,12 @@ export interface ClipperSessionLayoutState extends ClipperSessionVisibility {
 export interface ClipperSessionVisibilityInput {
   stage: import("./stages.util").ClipperStage;
   view: SessionViewMode;
-  queuePhase: QueuePhase;
+  isRendering: boolean;
   exportCount: number;
   loaded: ClipperLoadedProject | null;
   clipPreviewsLength: number;
   autoPartsClipPreviewsLength: number | undefined;
   rangeTrimmedVideoUrl: string | null;
   onBackToPreview: () => void;
+  onBackToRenderQueue: () => void;
 }

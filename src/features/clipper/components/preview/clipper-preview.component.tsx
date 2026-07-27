@@ -131,7 +131,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     });
 
   return (
-    <VStack align="stretch" gap={3}>
+    <VStack align="stretch" gap={4}>
       <Box
         position="fixed"
         width="1px"

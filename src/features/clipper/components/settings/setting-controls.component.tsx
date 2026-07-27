@@ -106,7 +106,7 @@ export function SegmentedControl<T extends string>({
   const { theme } = useClipperUi();
 
   return (
-    <HStack gap={2} flexWrap="wrap">
+    <HStack gap={2} flexWrap="wrap" minH="32px" align="center">
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -117,7 +117,7 @@ export function SegmentedControl<T extends string>({
             bg={active ? clipperTheme.accent : "transparent"}
             borderColor={theme.surface.elevated}
             color={active ? theme.text.onBrand : theme.brand.purpleText}
-            borderRadius="lg"
+            borderRadius="full"
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             _hover={{ bg: active ? clipperTheme.accentHover : `rgba(${clipperTheme.accentTintRgb},0.14)` }}

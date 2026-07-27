@@ -179,7 +179,7 @@ function AppRoutes() {
           element={<InteractiveRoute name="test-dataset"><ClipperTauriGate><TestDatasetPage /></ClipperTauriGate></InteractiveRoute>}
         />
         <Route
-          path="/clipper/:projectId"
+          path="/clipper/:projectId/*"
           element={<InteractiveRoute name="clipper-session"><ClipperSessionPage /></InteractiveRoute>}
         />
         <Route

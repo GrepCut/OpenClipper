@@ -3,16 +3,18 @@ import {
   Flex,
   Heading,
   Text,
-  Icon,
   Image,
 } from "@chakra-ui/react";
 import { motion } from "framer-motion";
-import { FcGoogle } from "react-icons/fc";
+import { Chrome } from "lucide-react";
 import { useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { MainButton } from "../../shared/components/buttons/main-button.component";
 import { authService } from "../../services/auth.service";
+import { peekAuthReturnPath } from "../../shared/auth/auth-return-path.util";
 import { asset } from "../../shared/utils/asset.util";
+import { isTauri } from "../../shared/utils/platform.util";
+import { ClipperLayout } from "../clipper/components/clipper-layout.component";
 
 const MotionBox = motion.create(Box);
 
@@ -137,7 +139,7 @@ const SpeedLinesFront = () => {
   );
 };
 
-export function AuthPage() {
+function AuthPageContent() {
   const location = useLocation();
 
   const intentToken = useMemo(
@@ -201,11 +203,31 @@ export function AuthPage() {
               transform: "translateY(-2px)",
             }}
           >
-            <Icon as={FcGoogle} w={8} h={8} mr={3} />
+            <Chrome size={32} style={{ marginRight: 12 }} />
             Continue with Google
           </MainButton>
         </Box>
       </Flex>
     </Flex>
   );
+}
+
+export function AuthPage() {
+  const navigate = useNavigate();
+
+  if (isTauri()) {
+    return (
+      <ClipperLayout
+        flushContent
+        backLink={{
+          label: "Back",
+          onClick: () => navigate(peekAuthReturnPath()),
+        }}
+      >
+        <AuthPageContent />
+      </ClipperLayout>
+    );
+  }
+
+  return <AuthPageContent />;
 }

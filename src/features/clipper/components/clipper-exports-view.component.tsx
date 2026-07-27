@@ -96,7 +96,7 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
     (platform: SocialPublishablePlatform) => {
       if (!canUseAccountFeatures) return;
       const flow = oauthFlowForPlatform(platform);
-      const returnPath = `/clipper/${projectId}?tab=exports`;
+      const returnPath = `/clipper/${projectId}/exports`;
       if (flow === "youtube") {
         void youtubeAuthService.redirectToYoutubeConnect(returnPath);
         return;

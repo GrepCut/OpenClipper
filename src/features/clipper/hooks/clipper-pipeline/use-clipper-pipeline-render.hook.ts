@@ -24,13 +24,23 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
   const { abortRef, previewUrlsRef, sessionRef, reporterRef } = refs;
 
   const renderExports = useCallback(
-    async (perClipFormatIds?: Record<number, string[]>) => {
+    async (perClipFormatIds?: Record<number, string[]>): Promise<boolean> => {
       const session = sessionRef.current;
-      if (!session?.rangeTrimmedFile && !session?.trimmedFile) return;
+      if (!session?.rangeTrimmedFile && !session?.trimmedFile) {
+        patchPipelineState(setState, (draft) => {
+          draft.error = "Source video is not ready. Return to preview and try again.";
+        });
+        return false;
+      }
 
       syncSessionActiveClips(session);
       const activeClips = getActiveClips(session);
-      if (activeClips.length === 0) return;
+      if (activeClips.length === 0) {
+        patchPipelineState(setState, (draft) => {
+          draft.error = "No clips are available to render.";
+        });
+        return false;
+      }
 
       const formatIdsForClip = (clipIndex: number): string[] =>
         perClipFormatIds?.[clipIndex] ?? settings.formats.enabledFormatIds;
@@ -42,7 +52,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
         patchPipelineState(setState, (draft) => {
           draft.error = "Select at least one export format.";
         });
-        return;
+        return false;
       }
       const renderedClipIndices = new Set(clipsToRender.map((clip) => clip.index));
 
@@ -76,7 +86,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
 
       try {
         for (const [queuePosition, clip] of clipsToRender.entries()) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) return false;
 
           const frameContext = buildFrameContext(session, settings, clip.index);
           if (!frameContext) continue;
@@ -128,7 +138,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           });
         }
 
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return false;
 
         persistMetadata({}, "done");
         patchPipelineState(setState, (draft) => {
@@ -136,8 +146,9 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           draft.stageMessage = "Your clips are ready!";
           draft.error = null;
         });
+        return true;
       } catch (error) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return false;
         clipperError("pipeline: render failed", error);
         persistMetadata({}, "preview");
         patchPipelineState(setState, (draft) => {
@@ -158,6 +169,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
             }
           }
         });
+        return false;
       }
     },
     [

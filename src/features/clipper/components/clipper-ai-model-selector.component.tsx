@@ -9,8 +9,7 @@ import {
   Icon,
   Span,
 } from "@chakra-ui/react";
-import { Brain, Zap } from "lucide-react";
-import { FiChevronUp } from "react-icons/fi";
+import { Brain, ChevronUp, Zap } from "lucide-react";
 import type { ClipperAiClipPickerModel } from "../persistence/ai-clip-api.util";
 import { useTheme } from "../../../theme";
 
@@ -123,7 +122,7 @@ export const ClipperAiModelSelector: React.FC<ClipperAiModelSelectorProps> = ({
             />
           ) : null}
         </HStack>
-        <Icon as={FiChevronUp} boxSize="10px" color="currentColor" opacity={0.7} />
+        <ChevronUp size={10} color="currentColor" opacity={0.7} />
       </Select.Trigger>
 
       <Portal>
