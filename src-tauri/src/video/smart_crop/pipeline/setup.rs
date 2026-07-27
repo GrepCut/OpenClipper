@@ -5,7 +5,7 @@ use std::thread;
 
 use super::super::diagnostics;
 use super::super::internal::{
-    FaceJob, FaceWorkerMsg, ObjectJob, ObjectWorkerMsg, WorkerResult, FACE_WORKERS,
+    FaceJob, FaceWorkerMsg, ObjectJob, ObjectWorkerMsg, FACE_WORKERS, OBJECT_FRAME_CAPACITY,
     OBJECT_WORKERS, QUEUE_CAPACITY,
 };
 use super::super::shadow::{GeneralizationShadowConfig, GeneralizationShadowRunner};
@@ -13,6 +13,7 @@ use super::super::vision::{fp16_variant_path, resource_paths, NativeVisionError}
 use super::super::workers::{
     spawn_face_policy, spawn_face_worker, spawn_object_policy, spawn_object_worker,
 };
+use super::spool::{spawn_result_spooler, SpoolOutput};
 use super::types::NativeVisionProgress;
 
 pub(crate) struct PipelineInit {
@@ -23,9 +24,12 @@ pub(crate) struct PipelineInit {
 pub(crate) struct PipelineSetup {
     pub face_msg_sender: mpsc::Sender<FaceWorkerMsg>,
     pub face_job_sender: crossbeam_channel::Sender<FaceJob>,
-    pub object_job_sender: crossbeam_channel::Sender<ObjectJob>,
+    pub object_base_job_sender: crossbeam_channel::Sender<ObjectJob>,
+    pub object_control_job_sender: crossbeam_channel::Sender<ObjectJob>,
+    pub object_frame_permit_sender: crossbeam_channel::Sender<()>,
+    pub object_frame_permit_receiver: crossbeam_channel::Receiver<()>,
     pub object_msg_sender: mpsc::Sender<ObjectWorkerMsg>,
-    pub result_receiver: mpsc::Receiver<WorkerResult>,
+    pub result_spooler: thread::JoinHandle<Result<SpoolOutput, NativeVisionError>>,
     pub face_workers: Vec<thread::JoinHandle<()>>,
     pub object_workers: Vec<thread::JoinHandle<()>>,
     pub face_policy: thread::JoinHandle<()>,
@@ -112,9 +116,21 @@ impl PipelineSetup {
         let yolox_labels: Arc<Vec<String>> = Arc::new(yolox_labels);
         let (face_job_sender, face_job_receiver) =
             crossbeam_channel::bounded::<FaceJob>(QUEUE_CAPACITY);
-        let (object_job_sender, object_job_receiver) =
+        let (object_base_job_sender, object_base_job_receiver) =
             crossbeam_channel::bounded::<ObjectJob>(QUEUE_CAPACITY);
+        let (object_control_job_sender, object_control_job_receiver) =
+            crossbeam_channel::bounded::<ObjectJob>(QUEUE_CAPACITY);
+        let (object_frame_permit_sender, object_frame_permit_receiver) =
+            crossbeam_channel::bounded::<()>(OBJECT_FRAME_CAPACITY);
+        for _ in 0..OBJECT_FRAME_CAPACITY {
+            object_frame_permit_sender
+                .send(())
+                .expect("new object-frame permit channel is connected");
+        }
         let (result_sender, result_receiver) = mpsc::channel();
+        // Drain result objects continuously to disk while FFmpeg is decoding.
+        // This replaces the former unbounded in-memory receiver.
+        let result_spooler = spawn_result_spooler(result_receiver);
         let (face_msg_sender, face_msg_receiver) = mpsc::channel();
         let (object_msg_sender, object_msg_receiver) = mpsc::channel();
         let face_workers: Vec<_> = (0..FACE_WORKERS)
@@ -133,7 +149,8 @@ impl PipelineSetup {
         let object_workers: Vec<_> = (0..OBJECT_WORKERS)
             .map(|_| {
                 spawn_object_worker(
-                    object_job_receiver.clone(),
+                    object_base_job_receiver.clone(),
+                    object_control_job_receiver.clone(),
                     object_msg_sender.clone(),
                     cancelled.clone(),
                     yolox_model_path.clone(),
@@ -146,10 +163,13 @@ impl PipelineSetup {
             .collect();
         diagnostics::append(
             "setup",
-            &format!("spawned object_workers={OBJECT_WORKERS} queue_capacity={QUEUE_CAPACITY}"),
+            &format!(
+                "spawned object_workers={OBJECT_WORKERS} base_queue_capacity={QUEUE_CAPACITY} control_queue_capacity={QUEUE_CAPACITY} frame_lifecycle_capacity={OBJECT_FRAME_CAPACITY}"
+            ),
         );
         drop(face_job_receiver);
-        drop(object_job_receiver);
+        drop(object_base_job_receiver);
+        drop(object_control_job_receiver);
         let face_policy = spawn_face_policy(
             face_msg_receiver,
             face_job_sender.clone(),
@@ -158,7 +178,7 @@ impl PipelineSetup {
         );
         let object_policy = spawn_object_policy(
             object_msg_receiver,
-            object_job_sender.clone(),
+            object_control_job_sender.clone(),
             result_sender,
             cancelled,
         );
@@ -167,9 +187,12 @@ impl PipelineSetup {
             setup: PipelineSetup {
                 face_msg_sender,
                 face_job_sender,
-                object_job_sender,
+                object_base_job_sender,
+                object_control_job_sender,
+                object_frame_permit_sender,
+                object_frame_permit_receiver,
                 object_msg_sender,
-                result_receiver,
+                result_spooler,
                 face_workers,
                 object_workers,
                 face_policy,

@@ -20,8 +20,8 @@ use super::preprocess::{
 use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
 use super::vision_logic::{
     box_iou, decode_movenet, decode_scrfd, detect_motion_saliency, map_pose_from_tile,
-    merge_pose_subjects, merge_subject_detections, weighted_face_nms, NormalizedBox,
-    RecoveryPolicy, SubjectDetection, MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE,
+    merge_pose_subjects, merge_subject_detections, weighted_face_nms, Letterbox, NormalizedBox,
+    RecoveryPolicy, SubjectDetection, MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
 
 const RECOVERY_PERSON_SCORE: f32 = 0.7;
@@ -101,6 +101,7 @@ pub(crate) fn spawn_face_worker(
         let mut model: Option<WinMlModel> = None;
         let frame_elems = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE * 3;
         let mut input = vec![-127.5 / 128.0; MAX_BATCH * frame_elems];
+        let mut output = Vec::with_capacity(9);
         let mut letterboxes = Vec::with_capacity(MAX_BATCH);
         'jobs: while let Ok(first) = jobs.recv() {
             if cancelled.load(Ordering::Relaxed) {
@@ -159,10 +160,10 @@ pub(crate) fn spawn_face_worker(
             );
             let evaluated = if let Some(current) = model.as_mut() {
                 current
-                    .evaluate(&shape, input)
-                    .map(|output| (output, current.device()))
+                    .evaluate_into(&shape, input, &mut output)
+                    .map(|()| current.device())
             } else {
-                WinMlModel::create(
+                WinMlModel::create_into(
                     VisionModel::Face,
                     &model_path,
                     Some(&fp16_model_path),
@@ -172,14 +173,15 @@ pub(crate) fn spawn_face_worker(
                     ],
                     &shape,
                     input,
+                    &mut output,
                 )
-                .map(|(created, output)| {
+                .map(|created| {
                     let device = created.device();
                     model = Some(created);
-                    (output, device)
+                    device
                 })
             };
-            match evaluated.and_then(|(output, device)| {
+            match evaluated.and_then(|device| {
                 diagnostics::append(
                     "face-worker",
                     &format!(
@@ -410,8 +412,115 @@ pub(crate) fn spawn_face_policy(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn evaluate_object_detection_batch(
+    batch: Vec<ObjectJob>,
+    base_jobs: &crossbeam_channel::Receiver<ObjectJob>,
+    yolox_evaluation_count: &mut usize,
+    yolox_model: &mut Option<WinMlModel>,
+    yolox_input: &mut Vec<f32>,
+    yolox_letterboxes: &mut Vec<Letterbox>,
+    yolox_output: &mut Vec<Vec<f32>>,
+    yolox_model_path: &std::path::Path,
+    yolox_fp16_path: &std::path::Path,
+    yolox_labels: &[String],
+    results: &mpsc::Sender<ObjectWorkerMsg>,
+    cancelled: &AtomicBool,
+) -> bool {
+    let frames: Vec<Arc<AnalysisFrame>> = batch
+        .iter()
+        .map(|job| match &job.kind {
+            ObjectJobKind::Base { frame, .. } | ObjectJobKind::Tile { frame, .. } => frame.clone(),
+            _ => unreachable!(),
+        })
+        .collect();
+    let started = Instant::now();
+    *yolox_evaluation_count += 1;
+    if *yolox_evaluation_count == 1 || *yolox_evaluation_count % 128 == 0 {
+        diagnostics::append(
+            "object-worker",
+            &format!(
+                "yolox heartbeat evaluation={} real_count={} bound={} first_index={} base_queue_remaining={}",
+                *yolox_evaluation_count,
+                batch.len(),
+                if batch.len() == 1 { 1 } else { MAX_BATCH },
+                frames[0].index,
+                base_jobs.len(),
+            ),
+        );
+    }
+    match evaluate_yolox_batch(
+        yolox_model,
+        &frames,
+        yolox_input,
+        yolox_letterboxes,
+        yolox_output,
+        yolox_model_path,
+        yolox_fp16_path,
+        yolox_labels,
+    ) {
+        Ok((outcomes, device)) => {
+            let duration_ms = started.elapsed().as_millis() as u64 / batch.len().max(1) as u64;
+            for (job, detections) in batch.into_iter().zip(outcomes) {
+                let message = match job.kind {
+                    ObjectJobKind::Base { frame, permit } => {
+                        ObjectWorkerMsg::Base(BaseObjectOutcome {
+                            frame,
+                            permit,
+                            detections,
+                            device,
+                            duration_ms,
+                        })
+                    }
+                    ObjectJobKind::Tile {
+                        base_index,
+                        offset_x,
+                        offset_y,
+                        span_x,
+                        span_y,
+                        ..
+                    } => ObjectWorkerMsg::Tile {
+                        base_index,
+                        detections: detections
+                            .into_iter()
+                            .map(|detection| {
+                                map_detection_from_tile(
+                                    detection, offset_x, offset_y, span_x, span_y,
+                                )
+                            })
+                            .collect(),
+                        duration_ms,
+                    },
+                    _ => unreachable!(),
+                };
+                if results.send(message).is_err() {
+                    return false;
+                }
+            }
+            true
+        }
+        Err(error) => {
+            diagnostics::append(
+                "object-worker",
+                &format!(
+                    "yolox failed evaluation={} real_count={} first_index={} code={} message={}",
+                    *yolox_evaluation_count,
+                    batch.len(),
+                    frames[0].index,
+                    error.code,
+                    error.message
+                ),
+            );
+            cancelled.store(true, Ordering::Relaxed);
+            let _ = results.send(ObjectWorkerMsg::Error(error));
+            false
+        }
+    }
+}
+
 pub(crate) fn spawn_object_worker(
-    jobs: crossbeam_channel::Receiver<ObjectJob>,
+    base_jobs: crossbeam_channel::Receiver<ObjectJob>,
+    control_jobs: crossbeam_channel::Receiver<ObjectJob>,
     results: mpsc::Sender<ObjectWorkerMsg>,
     cancelled: Arc<AtomicBool>,
     yolox_model_path: std::path::PathBuf,
@@ -434,14 +543,31 @@ pub(crate) fn spawn_object_worker(
         let mut pose_model: Option<WinMlModel> = None;
         let mut pose_sample_index = 0usize;
         let mut previous_motion_frame: Option<Arc<AnalysisFrame>> = None;
-        let mut pending_job: Option<ObjectJob> = None;
+        let mut pending_control_job: Option<ObjectJob> = None;
+        let mut base_jobs_open = true;
+        let mut control_jobs_open = true;
+        let yolox_frame_elements = 3 * YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
+        let mut yolox_input = vec![114.0f32; MAX_BATCH * yolox_frame_elements];
+        let mut yolox_output = Vec::with_capacity(1);
+        let mut yolox_letterboxes = Vec::with_capacity(MAX_BATCH);
+        let mut pose_input = vec![0.0f32; MOVENET_INPUT_SIZE * MOVENET_INPUT_SIZE * 3];
+        let mut pose_output = Vec::with_capacity(1);
+        let mut yolox_evaluation_count = 0usize;
+        diagnostics::append(
+            "object-worker",
+            &format!(
+                "allocated reusable yolox input bytes={}",
+                yolox_input.len() * std::mem::size_of::<f32>()
+            ),
+        );
 
         let run_movenet = |frame: &AnalysisFrame,
                            pose_model: &mut Option<WinMlModel>,
+                           pose_input: &mut Vec<f32>,
+                           pose_output: &mut Vec<Vec<f32>>,
                            pose_preprocess_time_us: &AtomicU64| {
             let pose_preprocess_started = Instant::now();
-            let mut pose_input = vec![0.0f32; MOVENET_INPUT_SIZE * MOVENET_INPUT_SIZE * 3];
-            let letterbox = prepare_movenet_into(frame, &mut pose_input);
+            let letterbox = prepare_movenet_into(frame, pose_input);
             pose_preprocess_time_us.fetch_add(
                 pose_preprocess_started.elapsed().as_micros() as u64,
                 Ordering::Relaxed,
@@ -450,138 +576,174 @@ pub(crate) fn spawn_object_worker(
             let pose_started = Instant::now();
             let evaluated_pose = if let Some(current) = pose_model.as_mut() {
                 current
-                    .evaluate(&pose_shape, &pose_input)
-                    .map(|output| (output, current.device()))
+                    .evaluate_into(&pose_shape, pose_input, pose_output)
+                    .map(|()| current.device())
             } else {
-                WinMlModel::create(
+                WinMlModel::create_into(
                     VisionModel::Pose,
                     &pose_model_path,
                     None,
                     "input",
                     &["output_0"],
                     &pose_shape,
-                    &pose_input,
+                    pose_input,
+                    pose_output,
                 )
-                .map(|(created, output)| {
+                .map(|created| {
                     let pose_device = created.device();
                     *pose_model = Some(created);
-                    (output, pose_device)
+                    pose_device
                 })
             };
-            evaluated_pose
-                .and_then(|(output, pose_device)| {
-                    if output.len() != 1 {
-                        return Err(NativeVisionError::new(
-                            "tensor_contract_mismatch",
-                            "MoveNet output count changed",
-                            true,
-                        ));
-                    }
-                    decode_movenet(&output[0], letterbox)
-                        .map(|poses| (poses, pose_device, pose_started.elapsed().as_millis() as u64))
-                        .map_err(|message| {
-                            NativeVisionError::new("tensor_contract_mismatch", message, true)
-                        })
-                })
+            evaluated_pose.and_then(|pose_device| {
+                if pose_output.len() != 1 {
+                    return Err(NativeVisionError::new(
+                        "tensor_contract_mismatch",
+                        "MoveNet output count changed",
+                        true,
+                    ));
+                }
+                decode_movenet(&pose_output[0], letterbox)
+                    .map(|poses| {
+                        (
+                            poses,
+                            pose_device,
+                            pose_started.elapsed().as_millis() as u64,
+                        )
+                    })
+                    .map_err(|message| {
+                        NativeVisionError::new("tensor_contract_mismatch", message, true)
+                    })
+            })
         };
 
         'jobs: while !cancelled.load(Ordering::Relaxed) {
-            let first = match pending_job.take() {
+            let first = match pending_control_job.take() {
                 Some(job) => job,
-                None => match jobs.recv() {
-                    Ok(job) => job,
-                    Err(_) => break,
-                },
+                None => {
+                    let mut selected = None;
+                    if control_jobs_open {
+                        match control_jobs.try_recv() {
+                            Ok(job) => selected = Some(job),
+                            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                                control_jobs_open = false;
+                            }
+                            Err(crossbeam_channel::TryRecvError::Empty) => {}
+                        }
+                    }
+                    if selected.is_none() {
+                        selected = match (control_jobs_open, base_jobs_open) {
+                            (true, true) => crossbeam_channel::select_biased! {
+                                recv(control_jobs) -> message => match message {
+                                    Ok(job) => Some(job),
+                                    Err(_) => {
+                                        control_jobs_open = false;
+                                        continue 'jobs;
+                                    }
+                                },
+                                recv(base_jobs) -> message => match message {
+                                    Ok(job) => Some(job),
+                                    Err(_) => {
+                                        base_jobs_open = false;
+                                        continue 'jobs;
+                                    }
+                                },
+                            },
+                            (true, false) => match control_jobs.recv() {
+                                Ok(job) => Some(job),
+                                Err(_) => {
+                                    control_jobs_open = false;
+                                    None
+                                }
+                            },
+                            (false, true) => match base_jobs.recv() {
+                                Ok(job) => Some(job),
+                                Err(_) => {
+                                    base_jobs_open = false;
+                                    None
+                                }
+                            },
+                            (false, false) => None,
+                        };
+                    }
+                    let Some(job) = selected else {
+                        break;
+                    };
+                    job
+                }
             };
 
             match first.kind {
-                ObjectJobKind::Base { .. } | ObjectJobKind::Tile { .. } => {
+                ObjectJobKind::Base { .. } => {
                     let mut batch = vec![first];
                     while batch.len() < MAX_BATCH {
-                        match jobs.try_recv() {
-                            Ok(job) => match job.kind {
-                                ObjectJobKind::Base { .. } | ObjectJobKind::Tile { .. } => {
-                                    batch.push(job)
-                                }
-                                other => {
-                                    pending_job = Some(ObjectJob { kind: other });
-                                    break;
-                                }
-                            },
-                            Err(_) => break,
+                        if !control_jobs.is_empty() {
+                            break;
+                        }
+                        match base_jobs.try_recv() {
+                            Ok(job) => batch.push(job),
+                            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                                base_jobs_open = false;
+                                break;
+                            }
+                            Err(crossbeam_channel::TryRecvError::Empty) => break,
                         }
                     }
-
-                    let frames: Vec<Arc<AnalysisFrame>> = batch
-                        .iter()
-                        .map(|job| match &job.kind {
-                            ObjectJobKind::Base { frame } | ObjectJobKind::Tile { frame, .. } => {
-                                frame.clone()
-                            }
-                            _ => unreachable!(),
-                        })
-                        .collect();
-                    let started = Instant::now();
-                    let decoded = evaluate_yolox_batch(
+                    if !evaluate_object_detection_batch(
+                        batch,
+                        &base_jobs,
+                        &mut yolox_evaluation_count,
                         &mut yolox_model,
-                        &frames,
+                        &mut yolox_input,
+                        &mut yolox_letterboxes,
+                        &mut yolox_output,
                         &yolox_model_path,
                         &yolox_fp16_path,
                         &yolox_labels,
-                    );
-                    match decoded {
-                        Ok((outcomes, device)) => {
-                            let duration_ms =
-                                started.elapsed().as_millis() as u64 / batch.len().max(1) as u64;
-                            for (job, detections) in batch.into_iter().zip(outcomes) {
-                                let message = match job.kind {
-                                    ObjectJobKind::Base { frame } => {
-                                        ObjectWorkerMsg::Base(BaseObjectOutcome {
-                                            frame,
-                                            detections,
-                                            device,
-                                            duration_ms,
-                                        })
-                                    }
-                                    ObjectJobKind::Tile {
-                                        base_index,
-                                        offset_x,
-                                        offset_y,
-                                        span_x,
-                                        span_y,
-                                        ..
-                                    } => ObjectWorkerMsg::Tile {
-                                        base_index,
-                                        detections: detections
-                                            .into_iter()
-                                            .map(|detection| {
-                                                map_detection_from_tile(
-                                                    detection,
-                                                    offset_x,
-                                                    offset_y,
-                                                    span_x,
-                                                    span_y,
-                                                )
-                                            })
-                                            .collect(),
-                                        duration_ms,
-                                    },
-                                    _ => continue,
-                                };
-                                if results.send(message).is_err() {
-                                    break 'jobs;
-                                }
+                        &results,
+                        &cancelled,
+                    ) {
+                        break 'jobs;
+                    }
+                }
+                ObjectJobKind::Tile { .. } => {
+                    let mut batch = vec![first];
+                    while batch.len() < MAX_BATCH {
+                        match control_jobs.try_recv() {
+                            Ok(job) if matches!(&job.kind, ObjectJobKind::Tile { .. }) => {
+                                batch.push(job);
                             }
+                            Ok(job) => {
+                                pending_control_job = Some(job);
+                                break;
+                            }
+                            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                                control_jobs_open = false;
+                                break;
+                            }
+                            Err(crossbeam_channel::TryRecvError::Empty) => break,
                         }
-                        Err(error) => {
-                            cancelled.store(true, Ordering::Relaxed);
-                            let _ = results.send(ObjectWorkerMsg::Error(error));
-                            break;
-                        }
+                    }
+                    if !evaluate_object_detection_batch(
+                        batch,
+                        &base_jobs,
+                        &mut yolox_evaluation_count,
+                        &mut yolox_model,
+                        &mut yolox_input,
+                        &mut yolox_letterboxes,
+                        &mut yolox_output,
+                        &yolox_model_path,
+                        &yolox_fp16_path,
+                        &yolox_labels,
+                        &results,
+                        &cancelled,
+                    ) {
+                        break 'jobs;
                     }
                 }
                 ObjectJobKind::Finalize {
                     frame,
+                    permit,
                     detections,
                     recovery_passes,
                     yolox_extra_ms,
@@ -620,7 +782,13 @@ pub(crate) fn spawn_object_worker(
                     pose_sample_index = pose_sample_index.wrapping_add(1);
 
                     let (poses, pose_device, pose_duration_ms) = if should_run_pose {
-                        match run_movenet(&frame, &mut pose_model, &pose_preprocess_time_us) {
+                        match run_movenet(
+                            &frame,
+                            &mut pose_model,
+                            &mut pose_input,
+                            &mut pose_output,
+                            &pose_preprocess_time_us,
+                        ) {
                             Ok(value) => value,
                             Err(error) => {
                                 cancelled.store(true, Ordering::Relaxed);
@@ -647,6 +815,7 @@ pub(crate) fn spawn_object_worker(
 
                     let message = ObjectWorkerMsg::FinalizedBase(FinalizedObjectBase {
                         frame,
+                        _permit: permit,
                         detections,
                         poses,
                         motion_signal,
@@ -670,7 +839,13 @@ pub(crate) fn spawn_object_worker(
                     span_y,
                 } => {
                     let started = Instant::now();
-                    match run_movenet(&frame, &mut pose_model, &pose_preprocess_time_us) {
+                    match run_movenet(
+                        &frame,
+                        &mut pose_model,
+                        &mut pose_input,
+                        &mut pose_output,
+                        &pose_preprocess_time_us,
+                    ) {
                         Ok((poses, _, _)) => {
                             let duration_ms = started.elapsed().as_millis() as u64;
                             let message = ObjectWorkerMsg::PoseTile {
@@ -678,9 +853,7 @@ pub(crate) fn spawn_object_worker(
                                 poses: poses
                                     .into_iter()
                                     .map(|pose| {
-                                        map_pose_from_tile(
-                                            pose, offset_x, offset_y, span_x, span_y,
-                                        )
+                                        map_pose_from_tile(pose, offset_x, offset_y, span_x, span_y)
                                     })
                                     .collect(),
                                 duration_ms,
@@ -723,21 +896,23 @@ pub(crate) fn spawn_object_policy(
         let mut had_person_track = false;
         let mut recovery_person_box: Option<NormalizedBox> = None;
 
-        let send_finalize = |outcome: BaseObjectOutcome,
-                             recovery_passes: usize,
-                             extra_ms: u64,
-                             jobs: &crossbeam_channel::Sender<ObjectJob>| {
-            jobs.send(ObjectJob {
-                kind: ObjectJobKind::Finalize {
-                    frame: outcome.frame,
-                    detections: outcome.detections,
-                    recovery_passes,
-                    yolox_extra_ms: extra_ms,
-                    yolox_duration_ms: outcome.duration_ms,
-                    device: outcome.device,
-                },
-            })
-        };
+        let send_finalize =
+            |outcome: BaseObjectOutcome,
+             recovery_passes: usize,
+             extra_ms: u64,
+             jobs: &crossbeam_channel::Sender<ObjectJob>| {
+                jobs.send(ObjectJob {
+                    kind: ObjectJobKind::Finalize {
+                        frame: outcome.frame,
+                        permit: outcome.permit,
+                        detections: outcome.detections,
+                        recovery_passes,
+                        yolox_extra_ms: extra_ms,
+                        yolox_duration_ms: outcome.duration_ms,
+                        device: outcome.device,
+                    },
+                })
+            };
 
         'policy: while total != Some(finalized) {
             if cancelled.load(Ordering::Relaxed) {
@@ -754,7 +929,17 @@ pub(crate) fn spawn_object_policy(
                     break;
                 }
                 ObjectWorkerMsg::Base(outcome) => {
-                    reorder.insert(outcome.frame.index, outcome);
+                    let index = outcome.frame.index;
+                    reorder.insert(index, outcome);
+                    if index == 0 || index % 128 == 0 {
+                        diagnostics::append(
+                            "object-policy",
+                            &format!(
+                                "base received index={index} next_index={next_index} finalized={finalized} reorder_len={} waiting_finalize={waiting_finalize}",
+                                reorder.len(),
+                            ),
+                        );
+                    }
                 }
                 ObjectWorkerMsg::Tile {
                     base_index,
@@ -786,13 +971,8 @@ pub(crate) fn spawn_object_policy(
                                 done.base.detections.len(),
                             ),
                         );
-                        if send_finalize(
-                            done.base,
-                            done.pass_count,
-                            done.extra_duration_ms,
-                            &jobs,
-                        )
-                        .is_err()
+                        if send_finalize(done.base, done.pass_count, done.extra_duration_ms, &jobs)
+                            .is_err()
                         {
                             cancelled.store(true, Ordering::Relaxed);
                             break 'policy;
@@ -845,6 +1025,15 @@ pub(crate) fn spawn_object_policy(
                     }
                     finalized += 1;
                     next_index += 1;
+                    if finalized == 1 || finalized % 64 == 0 {
+                        diagnostics::append(
+                            "object-policy",
+                            &format!(
+                                "finalized={finalized} next_index={next_index} reorder_len={} waiting_finalize={waiting_finalize}",
+                                reorder.len(),
+                            ),
+                        );
+                    }
                 }
                 ObjectWorkerMsg::PoseTile {
                     base_index,
@@ -884,6 +1073,15 @@ pub(crate) fn spawn_object_policy(
                         }
                         finalized += 1;
                         next_index += 1;
+                        if finalized == 1 || finalized % 64 == 0 {
+                            diagnostics::append(
+                                "object-policy",
+                                &format!(
+                                    "finalized={finalized} next_index={next_index} reorder_len={} waiting_finalize={waiting_finalize} after_pose_recovery=true",
+                                    reorder.len(),
+                                ),
+                            );
+                        }
                     }
                 }
             }

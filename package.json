@@ -19,7 +19,7 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "tauri:build:fast": "cross-env CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_INCREMENTAL=true CARGO_PROFILE_RELEASE_OPT_LEVEL=2 CARGO_PROFILE_RELEASE_STRIP=none tauri build --no-bundle",
+    "tauri:build:fast": "cross-env CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_INCREMENTAL=true CARGO_PROFILE_RELEASE_OPT_LEVEL=2 CARGO_PROFILE_RELEASE_STRIP=none CARGO_PROFILE_RELEASE_DEBUG=1 tauri build --no-bundle",
     "tauri:preview": "src-tauri\\target\\release\\open-clipper.exe",
     "tauri:preview:fast": "src-tauri\\target\\release\\open-clipper.exe",
     "tauri:build:preview": "npm run tauri:build && npm run tauri:preview",

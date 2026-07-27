@@ -62,7 +62,11 @@ pub fn install_panic_hook() {
 
     let previous_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        append(&format!("PANIC: {panic_info}"));
+        append(&format!(
+            "PANIC: {panic_info}; thread={:?}; backtrace={}",
+            std::thread::current().id(),
+            std::backtrace::Backtrace::force_capture()
+        ));
         previous_hook(panic_info);
     }));
 }

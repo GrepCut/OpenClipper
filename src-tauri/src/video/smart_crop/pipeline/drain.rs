@@ -1,17 +1,16 @@
-use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::super::diagnostics;
-use super::super::internal::{FaceResult, FaceWorkerMsg, ObjectResult, ObjectWorkerMsg, WorkerResult};
+use super::super::internal::{FaceWorkerMsg, ObjectWorkerMsg};
 use super::super::vision::NativeVisionError;
 use super::setup::PipelineSetup;
+use super::spool::SpoolOutput;
 use super::types::NativeVisionProgress;
 
 pub(crate) struct DrainOutput {
-    pub face_results: BTreeMap<usize, FaceResult>,
-    pub object_results: BTreeMap<usize, ObjectResult>,
+    pub spool: SpoolOutput,
     pub drain_duration_ms: u64,
     pub face_preprocess_ms: u64,
     pub pose_preprocess_ms: u64,
@@ -27,11 +26,14 @@ pub(crate) fn drain_workers(
     diagnostics::append(
         "drain",
         &format!(
-            "start sample_count={sample_count} face_workers={} object_workers={} face_queue={} object_queue={}",
+            "start sample_count={sample_count} face_workers={} object_workers={} face_queue={} object_base_queue={} object_control_queue={} object_frames_in_flight={}",
             setup.face_workers.len(),
             setup.object_workers.len(),
             setup.face_job_sender.len(),
-            setup.object_job_sender.len(),
+            setup.object_base_job_sender.len(),
+            setup.object_control_job_sender.len(),
+            setup.object_frame_permit_receiver.capacity().unwrap_or(0)
+                - setup.object_frame_permit_receiver.len(),
         ),
     );
     let _ = setup
@@ -43,7 +45,8 @@ pub(crate) fn drain_workers(
     drop(setup.face_msg_sender);
     drop(setup.object_msg_sender);
     drop(setup.face_job_sender);
-    drop(setup.object_job_sender);
+    drop(setup.object_base_job_sender);
+    drop(setup.object_control_job_sender);
     let drain_started = Instant::now();
     if progress(NativeVisionProgress {
         phase: "draining",
@@ -94,36 +97,21 @@ pub(crate) fn drain_workers(
     let face_preprocess_ms = setup.face_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
     let pose_preprocess_ms = setup.pose_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
 
-    let mut face_results = BTreeMap::new();
-    let mut object_results = BTreeMap::new();
-    let mut first_error = None;
-    for result in setup.result_receiver.try_iter() {
-        match result {
-            WorkerResult::Face(value) => {
-                face_results.insert(value.index, value);
-            }
-            WorkerResult::Object(value) => {
-                object_results.insert(value.index, value);
-            }
-            WorkerResult::Error(error) => {
-                if first_error.is_none() {
-                    first_error = Some(error);
-                }
-            }
-        }
-    }
+    diagnostics::append("drain", "joining disk result spooler");
+    let spool = setup.result_spooler.join().map_err(|_| {
+        NativeVisionError::new(
+            "analysis_storage_failed",
+            "Analysis result spooler crashed",
+            true,
+        )
+    })??;
     diagnostics::append(
         "drain",
         &format!(
-            "collected face_results={} object_results={} first_error={}",
-            face_results.len(),
-            object_results.len(),
-            first_error.is_some(),
+            "spooled face_results={} object_results={}",
+            spool.face_count, spool.object_count,
         ),
     );
-    if let Some(error) = first_error {
-        return Err(error);
-    }
     if worker_panicked {
         return Err(NativeVisionError::new(
             "evaluation_failed",
@@ -138,20 +126,18 @@ pub(crate) fn drain_workers(
             false,
         ));
     }
-    if face_results.len() != sample_count || object_results.len() != sample_count {
+    if spool.face_count != sample_count || spool.object_count != sample_count {
         return Err(NativeVisionError::new(
             "evaluation_failed",
             format!(
                 "Incomplete native result set: face {}/{sample_count}, object {}/{sample_count}",
-                face_results.len(),
-                object_results.len()
+                spool.face_count, spool.object_count
             ),
             true,
         ));
     }
     Ok(DrainOutput {
-        face_results,
-        object_results,
+        spool,
         drain_duration_ms,
         face_preprocess_ms,
         pose_preprocess_ms,

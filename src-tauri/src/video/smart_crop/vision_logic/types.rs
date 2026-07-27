@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const BLAZE_INPUT_SIZE: usize = 192;
 pub const BLAZE_ANCHOR_COUNT: usize = 2304;
@@ -12,7 +12,7 @@ pub const YOLOX_INPUT_SIZE: usize = 640;
 pub const YOLOX_PREDICTION_COUNT: usize = 8400;
 pub const YOLOX_CLASS_COUNT: usize = 80;
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizedBox {
     pub x: f32,
@@ -44,7 +44,7 @@ pub struct SubjectDetection {
     pub detector_source: Option<&'static str>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Keypoint {
     pub x: f32,
     pub y: f32,

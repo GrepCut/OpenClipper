@@ -8,10 +8,8 @@ impl_migration!(M007TestDatasetRememberedRun, 7, up);
 
 async fn up(db: &DatabaseConnection) -> Result<(), DbErr> {
     if !column_exists(db, "test_datasets", "remembered_run_id").await? {
-        db.execute_unprepared(
-            "ALTER TABLE test_datasets ADD COLUMN remembered_run_id TEXT",
-        )
-        .await?;
+        db.execute_unprepared("ALTER TABLE test_datasets ADD COLUMN remembered_run_id TEXT")
+            .await?;
     }
     Ok(())
 }

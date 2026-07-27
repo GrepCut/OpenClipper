@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 use super::super::diagnostics;
@@ -6,6 +7,7 @@ use super::super::internal::{FaceResult, ObjectResult};
 use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::{NativeVisionDevice, NativeVisionError};
 use super::super::vision_logic::{box_iou, SubjectDetection};
+use super::spool::{decode_face_record, decode_object_record, SpoolOutput};
 use super::types::{
     NativeFaceSample, NativeImportanceSignalRegion, NativeSubjectSample, NativeVisionProgress,
 };
@@ -35,25 +37,30 @@ pub(crate) struct MergeOutput {
 
 pub(crate) fn merge_samples(
     sample_count: usize,
-    mut face_results: BTreeMap<usize, FaceResult>,
-    mut object_results: BTreeMap<usize, ObjectResult>,
+    spool: &SpoolOutput,
     shadow_runner: &mut GeneralizationShadowRunner,
     tracking_enabled: bool,
     progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<MergeOutput, NativeVisionError> {
     let preserve_raw_pose_observations = sample_count > 0
-        && object_results
-            .values()
-            .filter(|result| !result.poses.is_empty())
-            .count()
-            * 10
-            >= sample_count * 3
-        && face_results
-            .values()
-            .filter(|result| !result.faces.is_empty())
-            .count()
-            * 10
-            < sample_count * 3;
+        && spool.pose_nonempty_count * 10 >= sample_count * 3
+        && spool.face_nonempty_count * 10 < sample_count * 3;
+    let mut face_lines = BufReader::new(File::open(&spool.face_path).map_err(|error| {
+        NativeVisionError::new(
+            "analysis_storage_failed",
+            format!("Cannot read face analysis spool: {error}"),
+            true,
+        )
+    })?)
+    .lines();
+    let mut object_lines = BufReader::new(File::open(&spool.object_path).map_err(|error| {
+        NativeVisionError::new(
+            "analysis_storage_failed",
+            format!("Cannot read object analysis spool: {error}"),
+            true,
+        )
+    })?)
+    .lines();
 
     let mut face_samples = Vec::new();
     let mut subject_samples = Vec::with_capacity(sample_count);
@@ -79,12 +86,16 @@ pub(crate) fn merge_samples(
                 &format!("processing sample {}/{}", index + 1, sample_count),
             );
         }
-        let face = face_results
-            .remove(&index)
-            .expect("validated ordered face result");
-        let object = object_results
-            .remove(&index)
-            .expect("validated ordered object result");
+        let face: FaceResult = decode_face_record(&read_spool_record(&mut face_lines, "face")?)?;
+        let object: ObjectResult =
+            decode_object_record(&read_spool_record(&mut object_lines, "object")?)?;
+        if face.index != index || object.index != index {
+            return Err(NativeVisionError::new(
+                "analysis_storage_failed",
+                format!("Analysis spool ordering mismatch at sample {index}"),
+                true,
+            ));
+        }
         face_device = face.device;
         object_device = object.device;
         pose_device = object.pose_device;
@@ -252,4 +263,27 @@ pub(crate) fn merge_samples(
         predicted_subject_count,
         inference_duration_ms,
     })
+}
+
+fn read_spool_record(
+    lines: &mut std::io::Lines<BufReader<File>>,
+    kind: &str,
+) -> Result<String, NativeVisionError> {
+    let line = lines
+        .next()
+        .ok_or_else(|| {
+            NativeVisionError::new(
+                "analysis_storage_failed",
+                format!("Unexpected end of {kind} analysis spool"),
+                true,
+            )
+        })?
+        .map_err(|error| {
+            NativeVisionError::new(
+                "analysis_storage_failed",
+                format!("Cannot read {kind} analysis spool: {error}"),
+                true,
+            )
+        })?;
+    Ok(line)
 }

@@ -205,11 +205,6 @@ export const transcriptionService = {
     await invoke("delete_parakeet_model");
   },
 
-  loadParakeetModel: async (): Promise<void> => {
-    if (!isTauri()) return;
-    await invoke("load_parakeet_model");
-  },
-
   probeParakeet: async (): Promise<ParakeetCapability> => {
     if (!isTauri()) {
       return {

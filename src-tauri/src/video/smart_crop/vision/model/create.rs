@@ -8,6 +8,7 @@ use super::super::session::load_model;
 use super::super::types::{
     ModelPrecision, NativeVisionDevice, NativeVisionError, SessionConfig, VisionModel,
 };
+use super::memory_guard;
 use super::WinMlModel;
 use crate::video::smart_crop::diagnostics;
 
@@ -26,15 +27,19 @@ impl WinMlModel {
         let session = Self::make_session(&model, config)?;
         Ok(Self {
             kind,
-            model,
-            session,
+            model: Some(model),
+            session: Some(session),
             single_session: None,
+            batch_context: None,
+            single_context: None,
             fp32_path: path.to_path_buf(),
             input_name: HSTRING::new(),
             output_names: output_names
                 .iter()
                 .map(|name| HSTRING::from(*name))
                 .collect(),
+            evaluation_count: 0,
+            session_generation: 1,
             _apartment: apartment,
         })
     }
@@ -48,6 +53,31 @@ impl WinMlModel {
         first_shape: &[i64],
         first_input: &[f32],
     ) -> Result<(Self, Vec<Vec<f32>>), NativeVisionError> {
+        let mut first_outputs = Vec::new();
+        let created = Self::create_into(
+            kind,
+            path,
+            fp16_path,
+            input_name,
+            output_names,
+            first_shape,
+            first_input,
+            &mut first_outputs,
+        )?;
+        Ok((created, first_outputs))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_into(
+        kind: VisionModel,
+        path: &Path,
+        fp16_path: Option<&Path>,
+        input_name: &str,
+        output_names: &[&str],
+        first_shape: &[i64],
+        first_input: &[f32],
+        first_outputs: &mut Vec<Vec<f32>>,
+    ) -> Result<Self, NativeVisionError> {
         let apartment = MtaApartment::initialize()?;
         let input_hstring = HSTRING::from(input_name);
         let output_hstrings: Vec<HSTRING> = output_names
@@ -100,6 +130,7 @@ impl WinMlModel {
             &format!("kind={kind:?} selected_config={config:?}; creating retained session"),
         );
         let session = Self::make_session(&model, config)?;
+        memory_guard::reset(&format!("retained-session-created kind={kind:?}"));
         diagnostics::append(
             "winml-create",
             &format!("kind={kind:?} retained session ready; evaluating first input"),
@@ -109,15 +140,19 @@ impl WinMlModel {
         }
         let mut created = Self {
             kind,
-            model,
-            session,
+            model: Some(model),
+            session: Some(session),
             single_session: None,
+            batch_context: None,
+            single_context: None,
             fp32_path: path.to_path_buf(),
             input_name: input_hstring,
             output_names: output_hstrings,
+            evaluation_count: 0,
+            session_generation: 1,
             _apartment: apartment,
         };
-        let first_outputs = created.evaluate(first_shape, first_input)?;
+        created.evaluate_into(first_shape, first_input, first_outputs)?;
         diagnostics::append(
             "winml-create",
             &format!(
@@ -125,6 +160,6 @@ impl WinMlModel {
                 first_outputs.iter().map(Vec::len).collect::<Vec<_>>()
             ),
         );
-        Ok((created, first_outputs))
+        Ok(created)
     }
 }

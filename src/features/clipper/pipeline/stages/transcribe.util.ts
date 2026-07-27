@@ -133,6 +133,13 @@ export async function runTranscribeStage(
           return;
         }
 
+        if (progress.phase === "releasing") {
+          reporter.stageProgress(1);
+          reporter.stageDetail("Releasing speech model", null);
+          reporter.stage("transcribing", "Releasing speech model…");
+          return;
+        }
+
         reporter.stageProgress(LOAD_END + progress.ratio * INFER_WEIGHT);
         const chunkLabel =
           progress.chunkCount > 0

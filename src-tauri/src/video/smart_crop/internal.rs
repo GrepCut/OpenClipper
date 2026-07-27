@@ -11,6 +11,10 @@ use super::vision_logic::{AutoFlipFaceDetection, NormalizedBox, PoseSubject, Sub
 pub(crate) const DETECTION_FPS: f64 = 5.0;
 pub(crate) const FACE_BUCKET_INTERVAL: f64 = 0.5;
 pub(crate) const QUEUE_CAPACITY: usize = 16;
+/// Maximum number of full-resolution RGB frames that may remain alive in the
+/// object pipeline, including detection, ordered policy, pose, recovery, and
+/// final spooling. Each base frame keeps one permit for its entire lifecycle.
+pub(crate) const OBJECT_FRAME_CAPACITY: usize = QUEUE_CAPACITY + MAX_BATCH;
 /// Frames evaluated per WinML call. Workers batch greedily (whatever is
 /// queued, up to this bound) and always pad the tensor to the bound, because
 /// sessions are compiled for exactly this batch size (see BATCH_BOUND).
@@ -55,6 +59,24 @@ pub(crate) struct AnalysisFrame {
     pub rgb: Vec<u8>,
     pub face_bucket: bool,
     pub scene_cut: bool,
+}
+
+pub(crate) struct ObjectFramePermit {
+    return_sender: crossbeam_channel::Sender<()>,
+}
+
+impl ObjectFramePermit {
+    pub(crate) fn new(return_sender: crossbeam_channel::Sender<()>) -> Self {
+        Self { return_sender }
+    }
+}
+
+impl Drop for ObjectFramePermit {
+    fn drop(&mut self) {
+        // Cleanup must never block a worker. A full channel would mean that a
+        // token was duplicated, so ignoring TrySendError::Full is safest.
+        let _ = self.return_sender.try_send(());
+    }
 }
 
 pub(crate) struct FaceResult {
@@ -145,6 +167,7 @@ pub(crate) struct ObjectJob {
 pub(crate) enum ObjectJobKind {
     Base {
         frame: Arc<AnalysisFrame>,
+        permit: ObjectFramePermit,
     },
     Tile {
         frame: Arc<AnalysisFrame>,
@@ -156,6 +179,7 @@ pub(crate) enum ObjectJobKind {
     },
     Finalize {
         frame: Arc<AnalysisFrame>,
+        permit: ObjectFramePermit,
         detections: Vec<SubjectDetection>,
         recovery_passes: usize,
         yolox_extra_ms: u64,
@@ -174,6 +198,7 @@ pub(crate) enum ObjectJobKind {
 
 pub(crate) struct BaseObjectOutcome {
     pub frame: Arc<AnalysisFrame>,
+    pub permit: ObjectFramePermit,
     pub detections: Vec<SubjectDetection>,
     pub device: NativeVisionDevice,
     pub duration_ms: u64,
@@ -181,6 +206,7 @@ pub(crate) struct BaseObjectOutcome {
 
 pub(crate) struct FinalizedObjectBase {
     pub frame: Arc<AnalysisFrame>,
+    pub _permit: ObjectFramePermit,
     pub detections: Vec<SubjectDetection>,
     pub poses: Vec<PoseSubject>,
     pub motion_signal: Option<(NormalizedBox, f32)>,
@@ -223,4 +249,30 @@ pub(crate) struct PendingPoseRecovery {
     pub remaining: usize,
     pub pass_count: usize,
     pub extra_pose_duration_ms: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ObjectFramePermit;
+
+    #[test]
+    fn object_frame_permit_returns_exactly_one_lifecycle_token() {
+        let (sender, receiver) = crossbeam_channel::bounded(2);
+        sender.send(()).unwrap();
+        sender.send(()).unwrap();
+
+        receiver.recv().unwrap();
+        let first = ObjectFramePermit::new(sender.clone());
+        receiver.recv().unwrap();
+        let second = ObjectFramePermit::new(sender);
+        assert!(receiver.try_recv().is_err());
+
+        drop(first);
+        receiver.recv().unwrap();
+        assert!(receiver.try_recv().is_err());
+
+        drop(second);
+        receiver.recv().unwrap();
+        assert!(receiver.try_recv().is_err());
+    }
 }

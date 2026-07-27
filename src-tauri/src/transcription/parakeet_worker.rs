@@ -21,7 +21,7 @@ enum WorkerState {
     Unloaded,
     Ready {
         job_tx: Sender<ParakeetJob>,
-        _handle: JoinHandle<()>,
+        handle: JoinHandle<()>,
     },
 }
 
@@ -29,6 +29,9 @@ pub struct ParakeetService {
     pub app: AppHandle,
     num_threads: i32,
     state: Mutex<WorkerState>,
+    /// Parakeet owns a sizeable DirectML session. Only one job may hold that
+    /// session, from construction through deterministic teardown.
+    transcription_gate: Mutex<()>,
     loaded: AtomicBool,
     provider_name: Mutex<Option<String>>,
 }
@@ -39,6 +42,7 @@ impl ParakeetService {
             app,
             num_threads: default_thread_count(),
             state: Mutex::new(WorkerState::Unloaded),
+            transcription_gate: Mutex::new(()),
             loaded: AtomicBool::new(false),
             provider_name: Mutex::new(None),
         })
@@ -104,10 +108,7 @@ impl ParakeetService {
             *active_provider = Some(provider_name.clone());
         }
 
-        *state = WorkerState::Ready {
-            job_tx,
-            _handle: handle,
-        };
+        *state = WorkerState::Ready { job_tx, handle };
         self.loaded.store(true, Ordering::Release);
         Ok(())
     }
@@ -141,44 +142,77 @@ impl ParakeetService {
         cancelled: Arc<AtomicBool>,
         progress_tx: Option<Sender<ParakeetTranscriptionProgress>>,
     ) -> Result<ParakeetTranscriptionResult, TranscriptionError> {
+        let _gate = self
+            .transcription_gate
+            .lock()
+            .map_err(|_| TranscriptionError::Inference("Transcription lock poisoned".into()))?;
         emit_loading_progress(&progress_tx, 0.0);
         self.ensure_worker()?;
         emit_loading_progress(&progress_tx, 1.0);
 
-        let job_tx = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| TranscriptionError::ModelLoad("Worker lock poisoned".into()))?;
-            match &*state {
-                WorkerState::Ready { job_tx, .. } => job_tx.clone(),
-                WorkerState::Unloaded => {
-                    return Err(TranscriptionError::ModelLoad(
-                        "Worker Parakeet nie jest gotowy".into(),
-                    ));
+        let result = (|| {
+            let job_tx = {
+                let state = self
+                    .state
+                    .lock()
+                    .map_err(|_| TranscriptionError::ModelLoad("Worker lock poisoned".into()))?;
+                match &*state {
+                    WorkerState::Ready { job_tx, .. } => job_tx.clone(),
+                    WorkerState::Unloaded => {
+                        return Err(TranscriptionError::ModelLoad(
+                            "Worker Parakeet nie jest gotowy".into(),
+                        ));
+                    }
                 }
-            }
-        };
+            };
 
-        let (response_tx, response_rx) = crossbeam_channel::bounded(1);
-        job_tx
-            .send(ParakeetJob {
-                audio_path,
-                cancelled,
-                progress_tx,
-                response: response_tx,
-            })
-            .map_err(|_| TranscriptionError::Inference("Worker Parakeet nie odpowiada".into()))?;
+            let (response_tx, response_rx) = crossbeam_channel::bounded(1);
+            job_tx
+                .send(ParakeetJob {
+                    audio_path,
+                    cancelled,
+                    progress_tx: progress_tx.clone(),
+                    response: response_tx,
+                })
+                .map_err(|_| {
+                    TranscriptionError::Inference("Worker Parakeet nie odpowiada".into())
+                })?;
 
-        response_rx
-            .recv_timeout(Duration::from_secs(3600))
-            .map_err(|_| TranscriptionError::Inference("Timeout transkrypcji".into()))?
-            .map_err(TranscriptionError::Inference)
+            response_rx
+                .recv_timeout(Duration::from_secs(3600))
+                .map_err(|_| TranscriptionError::Inference("Timeout transkrypcji".into()))?
+                .map_err(TranscriptionError::Inference)
+        })();
+
+        // The recognizer is owned by the worker. Closing its sender and
+        // joining the thread makes Rust drop it before we return to the UI,
+        // releasing ONNX Runtime / DirectML resources instead of retaining
+        // VRAM for the rest of the app session.
+        emit_releasing_progress(&progress_tx, 0.0);
+        self.unload_worker();
+        emit_releasing_progress(&progress_tx, 1.0);
+        result
     }
 
     pub fn unload(&self) {
-        if let Ok(mut state) = self.state.lock() {
-            *state = WorkerState::Unloaded;
+        let Ok(_gate) = self.transcription_gate.lock() else {
+            return;
+        };
+        self.unload_worker();
+    }
+
+    fn unload_worker(&self) {
+        let worker = {
+            let Ok(mut state) = self.state.lock() else {
+                return;
+            };
+            std::mem::replace(&mut *state, WorkerState::Unloaded)
+        };
+        if let WorkerState::Ready { job_tx, handle } = worker {
+            drop(job_tx);
+            if handle.join().is_err() {
+                log::warn!("Parakeet worker stopped after a panic");
+            }
         }
         if let Ok(mut provider) = self.provider_name.lock() {
             *provider = None;
@@ -187,13 +221,24 @@ impl ParakeetService {
     }
 }
 
-fn emit_loading_progress(
+fn emit_loading_progress(progress_tx: &Option<Sender<ParakeetTranscriptionProgress>>, ratio: f64) {
+    if let Some(tx) = progress_tx {
+        let _ = tx.send(ParakeetTranscriptionProgress {
+            phase: "loading".into(),
+            chunk_index: 0,
+            chunk_count: 0,
+            ratio,
+        });
+    }
+}
+
+fn emit_releasing_progress(
     progress_tx: &Option<Sender<ParakeetTranscriptionProgress>>,
     ratio: f64,
 ) {
     if let Some(tx) = progress_tx {
         let _ = tx.send(ParakeetTranscriptionProgress {
-            phase: "loading".into(),
+            phase: "releasing".into(),
             chunk_index: 0,
             chunk_count: 0,
             ratio,

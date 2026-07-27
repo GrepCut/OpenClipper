@@ -72,23 +72,22 @@ pub fn analyze(
             "drain",
             &format!(
                 "workers drained face_results={} object_results={} duration_ms={}",
-                drain.face_results.len(),
-                drain.object_results.len(),
-                drain.drain_duration_ms,
+                drain.spool.face_count, drain.spool.object_count, drain.drain_duration_ms,
             ),
         );
         let drain_duration_ms = drain.drain_duration_ms;
         let face_preprocess_ms = drain.face_preprocess_ms;
         let pose_preprocess_ms = drain.pose_preprocess_ms;
         diagnostics::append("merge", "starting tracking and result merge");
-        let merged = merge_samples(
+        let merged_result = merge_samples(
             decode_stats.sample_count,
-            drain.face_results,
-            drain.object_results,
+            &drain.spool,
             &mut shadow_runner,
             tracking_enabled,
             &mut progress,
-        )?;
+        );
+        drain.spool.cleanup();
+        let merged = merged_result?;
         diagnostics::append(
             "merge",
             &format!(
@@ -124,4 +123,56 @@ pub fn analyze(
         )),
     }
     result
+}
+
+#[cfg(all(test, windows))]
+mod windows_pipeline_soak_tests {
+    use super::*;
+    use crate::video::smart_crop::diagnostics;
+    use crate::video::smart_crop::vision::NativeVisionDevice;
+
+    #[test]
+    #[ignore = "requires OPEN_CLIPPER_PIPELINE_SOAK_VIDEO and performs a real pipeline soak"]
+    fn real_pipeline_bounds_resident_frames_and_stays_on_directml() {
+        let Ok(video_path) = std::env::var("OPEN_CLIPPER_PIPELINE_SOAK_VIDEO") else {
+            return;
+        };
+        if !Path::new(&video_path).is_file() {
+            return;
+        }
+        let resource_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let baseline = diagnostics::resource_counters().expect("Windows resource counters");
+        let summary = analyze(
+            video_path,
+            0.0,
+            300.0,
+            resource_dir,
+            cancelled,
+            true,
+            |_| Ok(()),
+        )
+        .expect("five-minute end-to-end pipeline soak");
+        let final_snapshot = diagnostics::resource_counters().expect("Windows resource counters");
+
+        assert_eq!(
+            summary.object_device,
+            NativeVisionDevice::DirectXHighPerformance
+        );
+        assert_eq!(
+            summary.face_device,
+            NativeVisionDevice::DirectXHighPerformance
+        );
+        assert!(
+            summary.subject_sample_count >= 1_400,
+            "expected approximately 1500 object samples, got {}",
+            summary.subject_sample_count
+        );
+        assert!(
+            final_snapshot.private_commit_mib <= baseline.private_commit_mib + 4 * 1024,
+            "end-to-end private commit is unexpectedly high: baseline={} final={}",
+            baseline.private_commit_mib,
+            final_snapshot.private_commit_mib
+        );
+    }
 }

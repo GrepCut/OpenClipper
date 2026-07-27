@@ -3882,6 +3882,7 @@ dependencies = [
  "vcpkg",
  "webview2-com",
  "windows",
+ "windows-collections",
 ]
 
 [[package]]

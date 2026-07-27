@@ -57,37 +57,68 @@ pub fn start_clipper_winml_analysis(
         })
         .await;
 
-        if !cancelled.load(Ordering::Acquire) {
-            match joined {
-                Ok(Ok(summary)) => {
-                    crate::video::smart_crop::diagnostics::append(
-                        "command",
-                        "emitting successful native analysis result",
-                    );
-                    let _ = emitter.result(&summary);
-                }
-                Ok(Err(error)) => {
-                    crate::video::smart_crop::diagnostics::append(
-                        "command",
-                        &format!(
-                            "emitting error code={} fatal={} message={}",
-                            error.code, error.fatal, error.message
-                        ),
-                    );
-                    let _ = emitter.error(&error);
-                }
-                Err(error) => {
-                    crate::video::smart_crop::diagnostics::append(
-                        "command",
-                        &format!("spawn_blocking join error: {error}"),
-                    );
-                    let failure = crate::video::smart_crop::vision::NativeVisionError::new(
-                        "evaluation_failed",
-                        format!("Native task join error: {error}"),
-                        true,
-                    );
-                    let _ = emitter.error(&failure);
-                }
+        match joined {
+            Ok(Ok(summary)) if !cancelled.load(Ordering::Acquire) => {
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    "emitting successful native analysis result",
+                );
+                let emitted = emitter.result(&summary);
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!("native analysis result emitted ok={}", emitted.is_ok()),
+                );
+            }
+            Ok(Ok(_)) => {
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    "successful native analysis result suppressed after cancellation",
+                );
+            }
+            Ok(Err(error)) if error.code == "cancelled" => {
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!(
+                        "native analysis cancellation acknowledged message={}",
+                        error.message
+                    ),
+                );
+            }
+            Ok(Err(error)) => {
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!(
+                        "emitting error code={} fatal={} message={}",
+                        error.code, error.fatal, error.message
+                    ),
+                );
+                let emitted = emitter.error(&error);
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!("native analysis error emitted ok={}", emitted.is_ok()),
+                );
+            }
+            Err(error) if !cancelled.load(Ordering::Acquire) => {
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!("spawn_blocking join error: {error}"),
+                );
+                let failure = crate::video::smart_crop::vision::NativeVisionError::new(
+                    "evaluation_failed",
+                    format!("Native task join error: {error}"),
+                    true,
+                );
+                let emitted = emitter.error(&failure);
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!("native task join error emitted ok={}", emitted.is_ok()),
+                );
+            }
+            Err(error) => {
+                crate::video::smart_crop::diagnostics::append(
+                    "command",
+                    &format!("spawn_blocking join error suppressed after cancellation: {error}"),
+                );
             }
         }
         finish_registry.finish(&finish_session_id, &finish_job_id);

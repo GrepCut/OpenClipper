@@ -5,6 +5,7 @@ mod decode_session;
 mod drain;
 mod merge;
 mod setup;
+mod spool;
 mod summary;
 mod types;
 pub use analyze::analyze;

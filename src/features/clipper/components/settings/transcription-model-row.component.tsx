@@ -20,7 +20,6 @@ interface TranscriptionModelRowProps {
 
 function statusLabel(badge: ModelStatusBadge): string {
   if (badge === "downloading") return "Downloading";
-  if (badge === "ready") return "Ready";
   if (badge === "installed") return "Installed";
   return "Not installed";
 }
@@ -101,7 +100,7 @@ export function TranscriptionModelRow({
               Parakeet
             </Text>
             <Text fontSize="sm" color={theme.text.muted} lineHeight="1.6" maxW="36em">
-              Local speech-to-text for clip captions. Downloaded once, shared across every project.
+              Local speech-to-text for clip captions. The model loads only while transcribing, then releases its runtime memory.
             </Text>
           </VStack>
 

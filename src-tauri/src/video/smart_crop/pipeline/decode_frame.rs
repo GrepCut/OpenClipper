@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::super::decode::{copy_rgb, rotate_rgb, sample_due};
 use super::super::diagnostics;
 use super::super::internal::{
-    AnalysisFrame, FaceJob, FaceJobKind, ObjectJob, ObjectJobKind, DETECTION_FPS,
-    FACE_BUCKET_INTERVAL,
+    AnalysisFrame, FaceJob, FaceJobKind, ObjectFramePermit, ObjectJob, ObjectJobKind,
+    DETECTION_FPS, FACE_BUCKET_INTERVAL, OBJECT_FRAME_CAPACITY,
 };
 use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::NativeVisionError;
@@ -21,7 +21,9 @@ const SCENE_CUT_DEDUPE_SEC: f64 = 0.15;
 /// TransNet scores the window center; only latch `pending_scene_cut` when that
 /// center is near the current detection sample.
 const TRANSNET_PENDING_SLACK_SEC: f64 = 0.3;
-
+/// Progress is for UI only. Sending it for every 200 ms sample creates
+/// thousands of WebView messages on long clips.
+const PROGRESS_SAMPLE_STRIDE: usize = 50;
 fn record_scene_cut(state: &mut DecodeFrameState, time: f64, set_pending: bool) {
     let is_dup = state
         .scene_cut_timestamps
@@ -55,7 +57,7 @@ pub(crate) fn process_decoded_frame(
                 state.decoded_frame_count,
                 state.sample_count,
                 setup.face_job_sender.len(),
-                setup.object_job_sender.len(),
+                setup.object_base_job_sender.len(),
             ),
         );
     }
@@ -173,6 +175,42 @@ pub(crate) fn process_decoded_frame(
             .solid_background_rgb
             .map(|(r, g, b)| RgbColor { r, g, b }),
     });
+    let permit_started = Instant::now();
+    loop {
+        match setup
+            .object_frame_permit_receiver
+            .recv_timeout(Duration::from_millis(100))
+        {
+            Ok(()) => break,
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Ok(true);
+                }
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                return Err(NativeVisionError::new(
+                    "evaluation_failed",
+                    "Object-frame lifecycle permit channel disconnected",
+                    true,
+                ));
+            }
+        }
+    }
+    let permit_wait_ms = permit_started.elapsed().as_millis();
+    let object_frames_in_flight =
+        OBJECT_FRAME_CAPACITY.saturating_sub(setup.object_frame_permit_receiver.len());
+    if permit_wait_ms >= 50 {
+        diagnostics::append(
+            "backpressure",
+            &format!(
+                "object frame permit waited_ms={permit_wait_ms} in_flight={object_frames_in_flight}/{OBJECT_FRAME_CAPACITY} base_queue={} control_queue={} resources={}",
+                setup.object_base_job_sender.len(),
+                setup.object_control_job_sender.len(),
+                diagnostics::resource_snapshot(),
+            ),
+        );
+    }
+    let object_frame_permit = ObjectFramePermit::new(setup.object_frame_permit_sender.clone());
     let frame = Arc::new(AnalysisFrame {
         index: state.sample_count,
         time: relative,
@@ -188,14 +226,17 @@ pub(crate) fn process_decoded_frame(
     diagnostics::append(
         "decode",
         &format!(
-            "enqueue sample={} t={relative:.3}s size={}x{} face_bucket={} scene_cut={} face_queue_before={} object_queue_before={}",
+            "enqueue sample={} t={relative:.3}s size={}x{} face_bucket={} scene_cut={} face_queue_before={} object_base_queue_before={} object_control_queue={} object_frames_in_flight={}/{}",
             state.sample_count,
             width,
             height,
             face_bucket,
             frame.scene_cut,
             setup.face_job_sender.len(),
-            setup.object_job_sender.len(),
+            setup.object_base_job_sender.len(),
+            setup.object_control_job_sender.len(),
+            object_frames_in_flight,
+            OBJECT_FRAME_CAPACITY,
         ),
     );
     let base_job = FaceJob {
@@ -203,10 +244,13 @@ pub(crate) fn process_decoded_frame(
         kind: FaceJobKind::Base,
     };
     let object_job = ObjectJob {
-        kind: ObjectJobKind::Base { frame },
+        kind: ObjectJobKind::Base {
+            frame,
+            permit: object_frame_permit,
+        },
     };
     let send_failed = setup.face_job_sender.send(base_job).is_err()
-        || setup.object_job_sender.send(object_job).is_err();
+        || setup.object_base_job_sender.send(object_job).is_err();
     state.t_send += started.elapsed().as_micros();
     if send_failed {
         diagnostics::append("decode", "worker queue send failed; cancelling analysis");
@@ -215,21 +259,26 @@ pub(crate) fn process_decoded_frame(
     }
     state.sample_count += 1;
     state.peak_face_queue = state.peak_face_queue.max(setup.face_job_sender.len());
-    state.peak_object_queue = state.peak_object_queue.max(setup.object_job_sender.len());
+    state.peak_object_queue = state
+        .peak_object_queue
+        .max(setup.object_base_job_sender.len());
     let percent = ((relative / meta.total_duration) * 90.0).clamp(0.0, 90.0) as usize;
-    if progress(NativeVisionProgress {
-        phase: "decoding",
-        percent,
-        timestamp_sec: relative,
-        eta_seconds: None,
-        face_sample: None,
-        subject_sample: None,
-        queued_detections: state.sample_count,
-    })
-    .is_err()
+    if state.sample_count == 1 || state.sample_count % PROGRESS_SAMPLE_STRIDE == 0 || percent >= 90
     {
-        cancelled.store(true, Ordering::Relaxed);
-        return Ok(true);
+        if progress(NativeVisionProgress {
+            phase: "decoding",
+            percent,
+            timestamp_sec: relative,
+            eta_seconds: None,
+            face_sample: None,
+            subject_sample: None,
+            queued_detections: state.sample_count,
+        })
+        .is_err()
+        {
+            cancelled.store(true, Ordering::Relaxed);
+            return Ok(true);
+        }
     }
     Ok(false)
 }

@@ -110,7 +110,10 @@ pub fn map_pose_from_tile(
     pose
 }
 
-pub fn merge_pose_subjects(mut candidates: Vec<PoseSubject>, iou_threshold: f32) -> Vec<PoseSubject> {
+pub fn merge_pose_subjects(
+    mut candidates: Vec<PoseSubject>,
+    iou_threshold: f32,
+) -> Vec<PoseSubject> {
     candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut selected = Vec::new();
     for candidate in candidates {

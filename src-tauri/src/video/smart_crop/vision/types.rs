@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Fixed batch size every session is compiled for. The bundled models expose
 /// a free "batch" dimension; pinning it via OverrideNamedDimension lets
@@ -19,7 +19,7 @@ pub enum VisionModel {
     ViNet,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum NativeVisionDevice {
     #[serde(rename = "directx-high-performance")]
     DirectXHighPerformance,

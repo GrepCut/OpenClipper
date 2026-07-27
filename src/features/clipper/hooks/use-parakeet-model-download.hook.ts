@@ -5,7 +5,7 @@ import type { ParakeetModelStatus } from "../../../services/types/transcription.
 import { isTauri } from "../../../shared/utils/platform.util";
 import { clipperLog, clipperWarn } from "../shared/logger.util";
 
-export type ModelStatusBadge = "not-installed" | "installed" | "ready" | "downloading";
+export type ModelStatusBadge = "not-installed" | "installed" | "downloading";
 
 interface ModelDownloadEvent {
   path: string;
@@ -35,11 +35,8 @@ export function accordionStatusText(
   modelStatus: ParakeetModelStatus | null,
   activeProvider: string | null,
 ): string {
-  if (modelStatus?.loaded) {
-    return `Model loaded and ready${activeProvider ? ` — ${activeProvider}` : ""}`;
-  }
   if (modelStatus?.installed) {
-    return `Model installed — loads on first transcription${activeProvider ? ` — ${activeProvider}` : ""}`;
+    return `Model installed — loads for each transcription and is released when it finishes${activeProvider ? ` — ${activeProvider}` : ""}`;
   }
   return "Model not installed (~671 MB)";
 }
@@ -49,7 +46,6 @@ function statusBadge(
   downloading: boolean,
 ): ModelStatusBadge {
   if (downloading) return "downloading";
-  if (modelStatus?.loaded) return "ready";
   if (modelStatus?.installed) return "installed";
   return "not-installed";
 }

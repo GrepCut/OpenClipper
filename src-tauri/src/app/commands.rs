@@ -66,7 +66,6 @@ macro_rules! invoke_handler {
             crate::commands::transcription::probe_parakeet_transcription,
             crate::commands::transcription::download_parakeet_model,
             crate::commands::transcription::delete_parakeet_model,
-            crate::commands::transcription::load_parakeet_model,
             crate::commands::transcription::transcribe_parakeet_local,
             crate::commands::transcription::start_parakeet_transcription,
         ]

@@ -75,11 +75,6 @@ pub fn delete_parakeet_model(
 }
 
 #[tauri::command]
-pub fn load_parakeet_model(service: State<'_, Arc<ParakeetService>>) -> Result<(), String> {
-    service.ensure_worker().map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 pub async fn transcribe_parakeet_local(
     request: ParakeetTranscribeRequest,
     service: State<'_, Arc<ParakeetService>>,
@@ -139,7 +134,10 @@ pub fn start_parakeet_transcription(
         })
         .await;
 
-        forward_handle.abort();
+        // `transcribe_with_job` emits the final `releasing` progress before
+        // returning. Let the channel close naturally so that message reaches
+        // the UI before the native result is delivered.
+        let _ = forward_handle.await;
 
         if !cancelled.load(Ordering::Acquire) {
             match joined {

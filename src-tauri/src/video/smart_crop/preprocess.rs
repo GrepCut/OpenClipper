@@ -47,64 +47,56 @@ pub(crate) fn prepare_yolox_into(frame: &AnalysisFrame, output: &mut [f32]) -> L
 pub(crate) fn evaluate_yolox_batch(
     model: &mut Option<WinMlModel>,
     batch: &[Arc<AnalysisFrame>],
+    input: &mut [f32],
+    letterboxes: &mut Vec<Letterbox>,
+    output: &mut Vec<Vec<f32>>,
     model_path: &Path,
     fp16_model_path: &Path,
     labels: &[String],
 ) -> Result<(Vec<Vec<SubjectDetection>>, NativeVisionDevice), NativeVisionError> {
-    let count = batch.len();
-    let bound = if count == 1 { 1 } else { MAX_BATCH };
-    let frame_elements = 3 * YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
-    let mut input = vec![114.0f32; bound * frame_elements];
-    let letterboxes = batch
-        .iter()
-        .enumerate()
-        .map(|(index, frame)| {
-            prepare_yolox_into(
-                frame,
-                &mut input[index * frame_elements..(index + 1) * frame_elements],
-            )
-        })
-        .collect::<Vec<_>>();
+    let (bound, input) = prepare_yolox_batch_into(batch, input, letterboxes)?;
     let shape = [
         bound as i64,
         3,
         YOLOX_INPUT_SIZE as i64,
         YOLOX_INPUT_SIZE as i64,
     ];
-    let evaluated = if let Some(current) = model.as_mut() {
+    let device = if let Some(current) = model.as_mut() {
         current
-            .evaluate(&shape, &input)
-            .map(|output| (output, current.device()))
+            .evaluate_into(&shape, input, output)
+            .map(|()| current.device())
     } else {
-        WinMlModel::create(
+        WinMlModel::create_into(
             VisionModel::YoloX,
             model_path,
             Some(fp16_model_path),
             "images",
             &["output"],
             &shape,
-            &input,
+            input,
+            output,
         )
-        .map(|(created, output)| {
+        .map(|created| {
             let device = created.device();
             *model = Some(created);
-            (output, device)
+            device
         })
     }?;
-    if evaluated.0.len() != 1 {
+    if output.len() != 1 {
         return Err(NativeVisionError::new(
             "tensor_contract_mismatch",
             "YOLOX output count changed",
             true,
         ));
     }
-    let stride = batch_stride(evaluated.0[0].len(), bound, "YOLOX")?;
+    let stride = batch_stride(output[0].len(), bound, "YOLOX")?;
     let detections = letterboxes
-        .into_iter()
+        .iter()
+        .copied()
         .enumerate()
         .map(|(index, letterbox)| {
             decode_yolox(
-                &evaluated.0[0][index * stride..(index + 1) * stride],
+                &output[0][index * stride..(index + 1) * stride],
                 labels,
                 letterbox,
                 0.1,
@@ -112,7 +104,44 @@ pub(crate) fn evaluate_yolox_batch(
             .map_err(|message| NativeVisionError::new("tensor_contract_mismatch", message, true))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok((detections, evaluated.1))
+    Ok((detections, device))
+}
+
+fn prepare_yolox_batch_into<'a>(
+    batch: &[Arc<AnalysisFrame>],
+    input: &'a mut [f32],
+    letterboxes: &mut Vec<Letterbox>,
+) -> Result<(usize, &'a [f32]), NativeVisionError> {
+    if batch.is_empty() || batch.len() > MAX_BATCH {
+        return Err(NativeVisionError::new(
+            "tensor_contract_mismatch",
+            format!("Invalid YOLOX batch size {}", batch.len()),
+            true,
+        ));
+    }
+    let bound = if batch.len() == 1 { 1 } else { MAX_BATCH };
+    let frame_elements = 3 * YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
+    let required = bound * frame_elements;
+    if input.len() < required {
+        return Err(NativeVisionError::new(
+            "tensor_contract_mismatch",
+            format!(
+                "YOLOX scratch buffer too small: {} floats for {required}",
+                input.len()
+            ),
+            true,
+        ));
+    }
+    let input = &mut input[..required];
+    input.fill(114.0);
+    letterboxes.clear();
+    for (index, frame) in batch.iter().enumerate() {
+        letterboxes.push(prepare_yolox_into(
+            frame,
+            &mut input[index * frame_elements..(index + 1) * frame_elements],
+        ));
+    }
+    Ok((bound, input))
 }
 
 /// InsightFace SCRFD preprocessing: RGB NCHW, top-left letterbox, and
@@ -349,6 +378,48 @@ pub(crate) fn batch_stride(
 #[cfg(test)]
 mod tile_tests {
     use super::*;
+
+    fn tiny_frame(index: usize, rgb: [u8; 3]) -> Arc<AnalysisFrame> {
+        Arc::new(AnalysisFrame {
+            index,
+            time: index as f64,
+            width: 2,
+            height: 1,
+            display_width: 2,
+            display_height: 1,
+            rgb: [rgb, rgb].concat(),
+            face_bucket: false,
+            scene_cut: false,
+        })
+    }
+
+    #[test]
+    fn yolox_batch_reuses_and_resets_the_caller_scratch_buffer() {
+        let frame_elements = 3 * YOLOX_INPUT_SIZE * YOLOX_INPUT_SIZE;
+        let mut input = vec![7.0; MAX_BATCH * frame_elements];
+        let original_ptr = input.as_ptr();
+        let mut letterboxes = Vec::with_capacity(MAX_BATCH);
+        let two_frames = vec![tiny_frame(0, [1, 2, 3]), tiny_frame(1, [4, 5, 6])];
+
+        let (bound, prepared) =
+            prepare_yolox_batch_into(&two_frames, &mut input, &mut letterboxes).unwrap();
+        assert_eq!(bound, MAX_BATCH);
+        assert_eq!(letterboxes.len(), 2);
+        assert_eq!(prepared[0], 3.0);
+        assert_eq!(prepared[frame_elements], 6.0);
+        assert_eq!(prepared[2 * frame_elements], 114.0);
+
+        let padding_index = YOLOX_INPUT_SIZE * (YOLOX_INPUT_SIZE - 1);
+        input[padding_index] = -1.0;
+        let one_frame = vec![tiny_frame(2, [7, 8, 9])];
+        let (bound, prepared) =
+            prepare_yolox_batch_into(&one_frame, &mut input, &mut letterboxes).unwrap();
+        assert_eq!(bound, 1);
+        assert_eq!(letterboxes.len(), 1);
+        assert_eq!(prepared[0], 9.0);
+        assert_eq!(prepared[padding_index], 114.0);
+        assert_eq!(input.as_ptr(), original_ptr);
+    }
 
     #[test]
     fn full_hd_grid_is_overlapping_and_covers_every_edge() {

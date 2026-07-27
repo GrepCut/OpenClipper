@@ -144,9 +144,6 @@ export async function runConfirmRangePipeline(
 ): Promise<ConfirmRangeResult> {
   session.faceCache = createFaceCache(session, reporter);
 
-  // Warm Parakeet ORT while we snap/trim so "Loading speech model" is often a no-op.
-  void transcriptionService.loadParakeetModel().catch(() => {});
-
   const snappedStart = await snapToKeyframe(session.sourceFile, input.start);
   reporter.stageProgress(0.1);
   const end = input.end;

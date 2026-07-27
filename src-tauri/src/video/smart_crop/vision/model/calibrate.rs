@@ -37,12 +37,26 @@ impl WinMlModel {
         );
         let benchmark = |session: &windows::AI::MachineLearning::LearningModelSession| -> Result<Vec<u128>, NativeVisionError> {
             for _ in 0..2 {
-                Self::evaluate_session(session, input_name, output_names, shape, input)?;
+                Self::evaluate_session(
+                    session,
+                    input_name,
+                    output_names,
+                    shape,
+                    input,
+                    "calibration",
+                )?;
             }
             let mut times = Vec::with_capacity(5);
             for _ in 0..5 {
                 let started = Instant::now();
-                Self::evaluate_session(session, input_name, output_names, shape, input)?;
+                Self::evaluate_session(
+                    session,
+                    input_name,
+                    output_names,
+                    shape,
+                    input,
+                    "calibration",
+                )?;
                 times.push(started.elapsed().as_micros());
             }
             times.sort_unstable();
@@ -70,15 +84,16 @@ impl WinMlModel {
         let cpu_session = make_bound_session(&fp32_model, &cpu_device, 1).map_err(|error| {
             winml_error("cpu_session_failed", "WinML session creation failed", error)
         })?;
-        let cpu_times = benchmark(&cpu_session)?;
+        let cpu_times = benchmark(&cpu_session);
+        let _ = cpu_session.Close();
+        let cpu_times = cpu_times?;
         diagnostics::append(
             "winml-calibrate",
             &format!("config={cpu_config:?} times_us={cpu_times:?}"),
         );
-        let _ = cpu_session.Close();
 
-        let mut best_model = fp32_model.clone();
         let mut best = (cpu_config, cpu_times);
+        let mut fp16_winner = None;
         let directx_fp32 = SessionConfig {
             device: NativeVisionDevice::DirectXHighPerformance,
             precision: ModelPrecision::Float32,
@@ -97,8 +112,12 @@ impl WinMlModel {
                 if let Some(times) = try_config(&fp16_model, directx_fp16) {
                     if times[2] < best.1[2] {
                         best = (directx_fp16, times);
-                        best_model = fp16_model;
+                        fp16_winner = Some(fp16_model);
+                    } else {
+                        let _ = fp16_model.Close();
                     }
+                } else {
+                    let _ = fp16_model.Close();
                 }
             }
         }
@@ -106,6 +125,11 @@ impl WinMlModel {
             "winml-calibrate",
             &format!("selected config={:?} median_us={}", best.0, best.1[2]),
         );
-        Ok((best_model, best.0))
+        if let Some(model) = fp16_winner {
+            let _ = fp32_model.Close();
+            Ok((model, best.0))
+        } else {
+            Ok((fp32_model, best.0))
+        }
     }
 }

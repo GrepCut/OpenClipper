@@ -21,6 +21,10 @@ struct ActiveJob {
     cancelled: Arc<AtomicBool>,
 }
 
+fn message_can_be_sent(cancelled: bool, allow_cancelled: bool) -> bool {
+    !cancelled || allow_cancelled
+}
+
 impl Default for NativeJobRegistry {
     fn default() -> Self {
         Self {
@@ -176,25 +180,34 @@ impl NativeJobEmitter {
     }
 
     pub fn progress<T: Serialize>(&self, payload: &T) -> Result<(), String> {
-        self.send(NativeJobMessage::Progress(
-            serde_json::to_value(payload).map_err(|error| error.to_string())?,
-        ))
+        self.send(
+            NativeJobMessage::Progress(
+                serde_json::to_value(payload).map_err(|error| error.to_string())?,
+            ),
+            false,
+        )
     }
 
     pub fn result<T: Serialize>(&self, payload: &T) -> Result<(), String> {
-        self.send(NativeJobMessage::Result(
-            serde_json::to_value(payload).map_err(|error| error.to_string())?,
-        ))
+        self.send(
+            NativeJobMessage::Result(
+                serde_json::to_value(payload).map_err(|error| error.to_string())?,
+            ),
+            false,
+        )
     }
 
     pub fn error<T: Serialize>(&self, payload: &T) -> Result<(), String> {
-        self.send(NativeJobMessage::Error(
-            serde_json::to_value(payload).map_err(|error| error.to_string())?,
-        ))
+        self.send(
+            NativeJobMessage::Error(
+                serde_json::to_value(payload).map_err(|error| error.to_string())?,
+            ),
+            true,
+        )
     }
 
-    fn send(&self, message: NativeJobMessage) -> Result<(), String> {
-        if self.cancelled.load(Ordering::Acquire) {
+    fn send(&self, message: NativeJobMessage, allow_cancelled: bool) -> Result<(), String> {
+        if !message_can_be_sent(self.cancelled.load(Ordering::Acquire), allow_cancelled) {
             return Err("Native job was cancelled".into());
         }
         let envelope = NativeJobEnvelope {
@@ -213,5 +226,17 @@ impl NativeJobEmitter {
             self.cancelled.store(true, Ordering::Release);
             error.to_string()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::message_can_be_sent;
+
+    #[test]
+    fn terminal_errors_can_be_sent_after_internal_cancellation() {
+        assert!(message_can_be_sent(true, true));
+        assert!(!message_can_be_sent(true, false));
+        assert!(message_can_be_sent(false, false));
     }
 }
