@@ -5,8 +5,8 @@ use std::thread;
 
 use super::super::diagnostics;
 use super::super::internal::{
-    FaceJob, FaceWorkerMsg, ObjectJob, ObjectWorkerMsg, FACE_WORKERS, OBJECT_FRAME_CAPACITY,
-    OBJECT_WORKERS, QUEUE_CAPACITY,
+    FaceJob, FaceWorkerMsg, ObjectJob, ObjectWorkerMsg, VisionAblationConfig, WorkerMetrics,
+    FACE_WORKERS, OBJECT_FRAME_CAPACITY, OBJECT_WORKERS, QUEUE_CAPACITY,
 };
 use super::super::shadow::{GeneralizationShadowConfig, GeneralizationShadowRunner};
 use super::super::vision::{fp16_variant_path, resource_paths, NativeVisionError};
@@ -36,12 +36,14 @@ pub(crate) struct PipelineSetup {
     pub object_policy: thread::JoinHandle<()>,
     pub face_preprocess_time_us: Arc<AtomicU64>,
     pub pose_preprocess_time_us: Arc<AtomicU64>,
+    pub worker_metrics: Arc<WorkerMetrics>,
 }
 
 impl PipelineSetup {
     pub(crate) fn prepare(
         resource_dir: &Path,
         cancelled: Arc<AtomicBool>,
+        vision_ablation: VisionAblationConfig,
         progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
     ) -> Result<PipelineInit, NativeVisionError> {
         let resources = resource_paths(resource_dir);
@@ -115,6 +117,7 @@ impl PipelineSetup {
         let face_fp16_path = fp16_variant_path(&face_model_path);
         let face_preprocess_time_us = Arc::new(AtomicU64::new(0));
         let pose_preprocess_time_us = Arc::new(AtomicU64::new(0));
+        let worker_metrics = Arc::new(WorkerMetrics::default());
         let yolox_labels: Arc<Vec<String>> = Arc::new(yolox_labels);
         let (face_job_sender, face_job_receiver) =
             crossbeam_channel::bounded::<FaceJob>(QUEUE_CAPACITY);
@@ -144,6 +147,7 @@ impl PipelineSetup {
                     face_model_path.clone(),
                     face_fp16_path.clone(),
                     face_preprocess_time_us.clone(),
+                    worker_metrics.clone(),
                 )
             })
             .collect();
@@ -160,6 +164,7 @@ impl PipelineSetup {
                     pose_model_path.clone(),
                     yolox_labels.clone(),
                     pose_preprocess_time_us.clone(),
+                    worker_metrics.clone(),
                 )
             })
             .collect();
@@ -177,12 +182,14 @@ impl PipelineSetup {
             face_job_sender.clone(),
             result_sender.clone(),
             cancelled.clone(),
+            vision_ablation,
         );
         let object_policy = spawn_object_policy(
             object_msg_receiver,
             object_control_job_sender.clone(),
             result_sender,
             cancelled,
+            vision_ablation,
         );
 
         Ok(PipelineInit {
@@ -201,6 +208,7 @@ impl PipelineSetup {
                 object_policy,
                 face_preprocess_time_us,
                 pose_preprocess_time_us,
+                worker_metrics,
             },
             shadow_runner,
         })

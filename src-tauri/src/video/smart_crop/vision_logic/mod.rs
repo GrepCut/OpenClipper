@@ -13,7 +13,7 @@ mod yolox;
 pub use blaze::{decode_blaze, weighted_face_nms};
 pub use geometry::box_iou;
 pub use motion::detect_motion_saliency;
-pub use movenet::{decode_movenet, map_pose_from_tile, merge_pose_subjects};
+pub use movenet::decode_movenet;
 pub use recovery::RecoveryPolicy;
 pub use scrfd::decode_scrfd;
 pub use types::{

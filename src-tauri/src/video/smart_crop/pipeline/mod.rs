@@ -8,4 +8,5 @@ mod setup;
 mod spool;
 mod summary;
 mod types;
+pub use super::internal::VisionAblationConfig;
 pub use analyze::analyze;

@@ -4,6 +4,7 @@ import {
   FaceSampleCache,
   prefillFaceSampleCache,
 } from "../../clipper/engine/reframe";
+import type { VisionAblationConfig } from "../../clipper/engine/reframe";
 import { buildAutoFlipTrack } from "../../clipper/engine/autoflip/build-track.util";
 import { buildCanonicalPersonTracks } from "../../clipper/engine/autoflip/identity/canonical-person.util";
 import { DEFAULT_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout";
@@ -49,6 +50,7 @@ export async function runTestBenchmarkAnalysis(input: {
   clip: TestClip;
   clipPath: string;
   signal: AbortSignal;
+  visionAblation?: VisionAblationConfig;
   onProgress?: (progress: TestBenchmarkProgress) => void;
 }): Promise<TestBenchmarkAnalysisOutput> {
   const started = performance.now();
@@ -59,6 +61,7 @@ export async function runTestBenchmarkAnalysis(input: {
   const summary = await prefillFaceSampleCache(file, cache, {
     signal: input.signal,
     nativeSource: { filePath: input.clipPath, startTime: 0, endTime: input.clip.duration },
+    visionAblation: input.visionAblation,
     onPhase: (phase) => input.onProgress?.({ phase, ratio: 0 }),
     onProgress: (ratio) => input.onProgress?.({ phase: "Detecting faces and tracking action", ratio: ratio * 0.9 }),
   });

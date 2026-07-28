@@ -44,6 +44,7 @@ async function detectWinMlMedia(
   onPhase?: (message: string) => void,
   onEta?: (etaSeconds: number | null) => void,
   onNativePhase?: (phase: string) => void,
+  visionAblation?: PrefillFaceSampleCacheOptions["visionAblation"],
 ): Promise<NativeVisionAnalysisSummary> {
   if (signal?.aborted) throw new DOMException("Conversion aborted", "AbortError");
   const faceSamples: FaceBoxSample[] = [];
@@ -76,6 +77,7 @@ async function detectWinMlMedia(
       startTime: source.startTime,
       endTime: source.endTime,
       trackingMode: clipperByteTrackTrackingMode(),
+      visionAblation,
     },
     signal,
     onProgress: onNativeProgress,
@@ -117,10 +119,29 @@ export async function prefillFaceSampleCache(
   cache: FaceSampleCache,
   options: PrefillFaceSampleCacheOptions = {},
 ): Promise<NativeVisionAnalysisSummary> {
-  const { signal, onProgress, onPhase, onEta, onNativePhase, nativeSource, ingestFaces = true } = options;
+  const {
+    signal,
+    onProgress,
+    onPhase,
+    onEta,
+    onNativePhase,
+    nativeSource,
+    ingestFaces = true,
+    visionAblation,
+  } = options;
   if (!nativeSource) {
     throw new Error("Smart crop requires a native trimmed video path.");
   }
   onNativePhase?.("winml");
-  return detectWinMlMedia(nativeSource, cache, ingestFaces, signal, onProgress, onPhase, onEta, onNativePhase);
+  return detectWinMlMedia(
+    nativeSource,
+    cache,
+    ingestFaces,
+    signal,
+    onProgress,
+    onPhase,
+    onEta,
+    onNativePhase,
+    visionAblation,
+  );
 }

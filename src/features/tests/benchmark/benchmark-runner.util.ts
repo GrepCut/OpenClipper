@@ -8,6 +8,7 @@ import {
 } from "./metadata-drift.util";
 import { resolveClipCohorts } from "./cohort-tags.util";
 import { runTestBenchmarkAnalysis } from "./run-analysis.util";
+import type { VisionAblationConfig } from "../../clipper/engine/reframe";
 
 export interface BenchmarkRunnerProgress {
   clipIndex: number;
@@ -59,6 +60,7 @@ export async function executeBenchmarkRun(input: {
   signal: AbortSignal;
   mode?: BenchmarkRunMode;
   rememberedRunId?: string | null;
+  visionAblation?: VisionAblationConfig;
   onProgress?: (progress: BenchmarkRunnerProgress) => void;
 }): Promise<{ run: BenchmarkRun; driftSummary: DriftSummary | null }> {
   const mode = input.mode ?? "process";
@@ -76,6 +78,7 @@ export async function executeBenchmarkRun(input: {
     aspects: TEST_ASPECTS.map(({ id, formatId, ratio }) => ({ id, formatId, ratio })),
     sampling: "decoded-frame-presentation-timestamps",
     createdAt: new Date().toISOString(),
+    visionAblation: input.visionAblation ?? {},
   };
   const run = await benchmarkPersistenceService.createRun(
     input.datasetId,
@@ -101,6 +104,7 @@ export async function executeBenchmarkRun(input: {
           clip,
           clipPath: path,
           signal: input.signal,
+          visionAblation: input.visionAblation,
           onProgress: ({ phase, ratio }) => input.onProgress?.({
             clipIndex,
             clipCount: input.clips.length,

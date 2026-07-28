@@ -28,7 +28,6 @@ pub(crate) struct MergeOutput {
     pub pose_inference_ms: u64,
     pub recovery_face_passes: usize,
     pub recovery_object_passes: usize,
-    pub recovery_pose_passes: usize,
     pub tracker_duration_ms: u64,
     pub tracked_subject_count: usize,
     pub predicted_subject_count: usize,
@@ -80,7 +79,6 @@ pub(crate) fn merge_samples(
     let mut pose_inference_ms = 0;
     let mut recovery_face_passes = 0;
     let mut recovery_object_passes = 0;
-    let mut recovery_pose_passes = 0;
     let tracker_started = Instant::now();
     let mut object_tracker = ByteTracker::new();
     let mut face_tracker = ByteTracker::new();
@@ -113,7 +111,6 @@ pub(crate) fn merge_samples(
         face_inference_ms += face.duration_ms;
         recovery_face_passes += face.recovery_passes;
         recovery_object_passes += object.recovery_passes;
-        recovery_pose_passes += object.recovery_pose_passes;
         object_inference_ms += object.duration_ms;
         pose_inference_ms += object.pose_duration_ms;
         if tracking_enabled && face.scene_cut {
@@ -280,7 +277,6 @@ pub(crate) fn merge_samples(
         pose_inference_ms,
         recovery_face_passes,
         recovery_object_passes,
-        recovery_pose_passes,
         tracker_duration_ms,
         tracked_subject_count,
         predicted_subject_count,

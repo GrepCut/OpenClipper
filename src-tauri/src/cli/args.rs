@@ -24,6 +24,12 @@ struct CliArgs {
     remember: bool,
     #[arg(
         long,
+        value_name = "object-tiles,face-tiles",
+        help = "Benchmark-only recovery ablations (requires --benchmark-run and --check)"
+    )]
+    vision_ablation: Option<String>,
+    #[arg(
+        long,
         num_args = 0..=1,
         help = "Export worst keyframe JPEGs for a completed run, or after --benchmark-run when no run id is given"
     )]
@@ -48,6 +54,14 @@ pub struct BenchmarkCliRequest {
     pub extract_miss_frames: bool,
     pub check: bool,
     pub remember: bool,
+    pub vision_ablation: BenchmarkVisionAblation,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarkVisionAblation {
+    pub disable_object_tile_recovery: bool,
+    pub disable_face_tile_recovery: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -144,6 +158,20 @@ pub fn parse_args() -> Option<CliRequest> {
         std::process::exit(0);
     }
 
+    if args.vision_ablation.is_some() && (args.benchmark_run.is_none() || !args.check) {
+        exit_with_error(
+            2,
+            "--vision-ablation requires --benchmark-run <dataset> together with --check.",
+        );
+    }
+    let vision_ablation = args
+        .vision_ablation
+        .as_deref()
+        .map(parse_vision_ablation)
+        .transpose()
+        .unwrap_or_else(|message| exit_with_error(2, &message))
+        .unwrap_or_default();
+
     if let Some(Some(run_id)) = &args.extract_miss_frames {
         if args.benchmark_run.is_some() {
             exit_with_error(
@@ -170,7 +198,31 @@ pub fn parse_args() -> Option<CliRequest> {
         extract_miss_frames: args.extract_miss_frames.is_some(),
         check: args.check,
         remember: args.remember,
+        vision_ablation,
     }))
+}
+
+fn parse_vision_ablation(raw: &str) -> Result<BenchmarkVisionAblation, String> {
+    let mut config = BenchmarkVisionAblation::default();
+    if raw.trim().is_empty() {
+        return Err("--vision-ablation must list at least one ablation.".into());
+    }
+    for token in raw.split(',').map(str::trim) {
+        let target = match token {
+            "object-tiles" => &mut config.disable_object_tile_recovery,
+            "face-tiles" => &mut config.disable_face_tile_recovery,
+            unknown => {
+                return Err(format!(
+                    "Unknown vision ablation '{unknown}'. Expected object-tiles or face-tiles."
+                ))
+            }
+        };
+        if *target {
+            return Err(format!("Duplicate vision ablation '{token}'."));
+        }
+        *target = true;
+    }
+    Ok(config)
 }
 
 pub fn is_benchmark_cli_argv(argv: &[String]) -> bool {
@@ -241,4 +293,23 @@ pub fn attach_parent_console() {
 
 pub fn is_benchmark_cli_active() -> bool {
     BENCHMARK_CLI_ACTIVE.load(Ordering::SeqCst)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_independent_vision_ablation_switches() {
+        let parsed = parse_vision_ablation("object-tiles,face-tiles").unwrap();
+        assert!(parsed.disable_object_tile_recovery);
+        assert!(parsed.disable_face_tile_recovery);
+    }
+
+    #[test]
+    fn rejects_unknown_and_duplicate_vision_ablations() {
+        assert!(parse_vision_ablation("unknown").is_err());
+        assert!(parse_vision_ablation("object-tiles,object-tiles").is_err());
+        assert!(parse_vision_ablation("").is_err());
+    }
 }

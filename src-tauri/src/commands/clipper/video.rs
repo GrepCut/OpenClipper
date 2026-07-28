@@ -12,6 +12,7 @@ pub fn start_clipper_winml_analysis(
     start_time: f64,
     end_time: f64,
     tracking_mode: Option<String>,
+    vision_ablation: Option<crate::video::smart_crop::pipeline::VisionAblationConfig>,
     app_handle: AppHandle,
     webview: WebviewWindow,
     jobs: State<'_, NativeJobRegistry>,
@@ -34,6 +35,7 @@ pub fn start_clipper_winml_analysis(
     let finish_session_id = session_id.clone();
     let finish_job_id = job_id.clone();
     let tracking_enabled = tracking_mode.as_deref().unwrap_or("bytetrack-v2") != "off";
+    let vision_ablation = vision_ablation.unwrap_or_default();
 
     tauri::async_runtime::spawn(async move {
         let joined = tauri::async_runtime::spawn_blocking(move || {
@@ -44,6 +46,7 @@ pub fn start_clipper_winml_analysis(
                 &resource_dir,
                 task_cancelled,
                 tracking_enabled,
+                vision_ablation,
                 |progress| {
                     task_emitter.progress(&progress).map_err(|error| {
                         crate::video::smart_crop::vision::NativeVisionError::new(
@@ -135,6 +138,7 @@ pub fn start_clipper_winml_analysis(
     _start_time: f64,
     _end_time: f64,
     _tracking_mode: Option<String>,
+    _vision_ablation: Option<serde_json::Value>,
     _app_handle: AppHandle,
     _webview: WebviewWindow,
     _jobs: State<'_, NativeJobRegistry>,

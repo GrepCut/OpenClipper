@@ -1,5 +1,6 @@
 //! Shared WinML pipeline constants and internal frame/result types.
 
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use super::vision::{NativeVisionDevice, NativeVisionError, BATCH_BOUND};
@@ -29,6 +30,51 @@ pub(crate) const OBJECT_WORKERS: usize = 1;
 pub(crate) const POSE_PERSON_SAMPLE_STRIDE: usize = 5;
 pub(crate) const POSE_RECOVERY_SAMPLE_STRIDE: usize = 3;
 pub(crate) const POSE_PERSON_CONFIDENCE: f32 = 0.25;
+
+/// Benchmark-only switches used to prove whether expensive recovery passes can
+/// be removed without changing the final crop geometry. Production callers use
+/// the all-false default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VisionAblationConfig {
+    #[serde(default)]
+    pub disable_object_tile_recovery: bool,
+    #[serde(default)]
+    pub disable_face_tile_recovery: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct WorkerMetrics {
+    pub face_base_inference_ms: AtomicU64,
+    pub face_recovery_inference_ms: AtomicU64,
+    pub object_base_inference_ms: AtomicU64,
+    pub object_recovery_inference_ms: AtomicU64,
+    pub pose_base_inference_ms: AtomicU64,
+    pub base_pose_passes: AtomicUsize,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct WorkerMetricSnapshot {
+    pub face_base_inference_ms: u64,
+    pub face_recovery_inference_ms: u64,
+    pub object_base_inference_ms: u64,
+    pub object_recovery_inference_ms: u64,
+    pub pose_base_inference_ms: u64,
+    pub base_pose_passes: usize,
+}
+
+impl WorkerMetrics {
+    pub(crate) fn snapshot(&self) -> WorkerMetricSnapshot {
+        WorkerMetricSnapshot {
+            face_base_inference_ms: self.face_base_inference_ms.load(Ordering::Relaxed),
+            face_recovery_inference_ms: self.face_recovery_inference_ms.load(Ordering::Relaxed),
+            object_base_inference_ms: self.object_base_inference_ms.load(Ordering::Relaxed),
+            object_recovery_inference_ms: self.object_recovery_inference_ms.load(Ordering::Relaxed),
+            pose_base_inference_ms: self.pose_base_inference_ms.load(Ordering::Relaxed),
+            base_pose_passes: self.base_pose_passes.load(Ordering::Relaxed),
+        }
+    }
+}
 
 #[derive(Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,7 +149,6 @@ pub(crate) struct ObjectResult {
     pub duration_ms: u64,
     pub pose_duration_ms: u64,
     pub recovery_passes: usize,
-    pub recovery_pose_passes: usize,
 }
 
 pub(crate) enum WorkerResult {
@@ -158,8 +203,8 @@ pub(crate) struct PendingRecovery {
     pub extra_duration_ms: u64,
 }
 
-/// Work item for the object session: base YOLOX pass, high-detail tile,
-/// MoveNet tile recovery, or final pose/motion publish.
+/// Work item for the object session: base YOLOX pass, high-detail tile, or
+/// final pose/motion publish.
 pub(crate) struct ObjectJob {
     pub kind: ObjectJobKind,
 }
@@ -186,14 +231,6 @@ pub(crate) enum ObjectJobKind {
         yolox_duration_ms: u64,
         device: NativeVisionDevice,
     },
-    PoseTile {
-        frame: Arc<AnalysisFrame>,
-        base_index: usize,
-        offset_x: f32,
-        offset_y: f32,
-        span_x: f32,
-        span_y: f32,
-    },
 }
 
 pub(crate) struct BaseObjectOutcome {
@@ -215,7 +252,6 @@ pub(crate) struct FinalizedObjectBase {
     pub duration_ms: u64,
     pub pose_duration_ms: u64,
     pub recovery_passes: usize,
-    pub needs_pose_recovery: bool,
 }
 
 pub(crate) enum ObjectWorkerMsg {
@@ -226,11 +262,6 @@ pub(crate) enum ObjectWorkerMsg {
         duration_ms: u64,
     },
     FinalizedBase(FinalizedObjectBase),
-    PoseTile {
-        base_index: usize,
-        poses: Vec<PoseSubject>,
-        duration_ms: u64,
-    },
     Total(usize),
     Error(NativeVisionError),
 }
@@ -241,14 +272,6 @@ pub(crate) struct PendingObjectRecovery {
     pub remaining: usize,
     pub pass_count: usize,
     pub extra_duration_ms: u64,
-}
-
-pub(crate) struct PendingPoseRecovery {
-    pub base: FinalizedObjectBase,
-    pub collected: Vec<PoseSubject>,
-    pub remaining: usize,
-    pub pass_count: usize,
-    pub extra_pose_duration_ms: u64,
 }
 
 #[cfg(test)]

@@ -34,9 +34,16 @@ export interface PrefillFaceSampleCacheOptions {
   nativeSource?: { filePath: string; startTime: number; endTime: number };
   /** When false, WinML still runs but face samples are not written into the cache (subjects-only resume). */
   ingestFaces?: boolean;
+  /** Benchmark-only detector recovery ablations. Production leaves all flags false. */
+  visionAblation?: VisionAblationConfig;
 }
 
 export type NativeVisionDevice = "directx-high-performance" | "cpu";
+
+export interface VisionAblationConfig {
+  disableObjectTileRecovery?: boolean;
+  disableFaceTileRecovery?: boolean;
+}
 
 export interface NativeVisionMetrics {
   decodeDurationMs: number;
@@ -49,7 +56,15 @@ export interface NativeVisionMetrics {
   objectInferenceMs: number;
   poseInferenceMs: number;
   baseFacePasses: number;
+  baseObjectPasses: number;
+  basePosePasses: number;
   recoveryFacePasses: number;
+  recoveryObjectPasses: number;
+  baseFaceInferenceMs: number;
+  recoveryFaceInferenceMs: number;
+  baseObjectInferenceMs: number;
+  recoveryObjectInferenceMs: number;
+  basePoseInferenceMs: number;
   orientationProbePasses: number;
   peakFaceQueueDepth: number;
   peakObjectQueueDepth: number;

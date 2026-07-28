@@ -1,3 +1,4 @@
+use super::super::internal::WorkerMetricSnapshot;
 use super::super::shadow::GeneralizationShadowDiagnostics;
 use super::super::vision::NativeVisionError;
 use super::super::vision_logic::Rotation;
@@ -12,6 +13,7 @@ pub(crate) fn build_summary(
     drain_duration_ms: u64,
     face_preprocess_ms: u64,
     pose_preprocess_ms: u64,
+    worker_metrics: WorkerMetricSnapshot,
     merged: MergeOutput,
     tracking_enabled: bool,
     shadow_diagnostics: Option<GeneralizationShadowDiagnostics>,
@@ -81,9 +83,15 @@ pub(crate) fn build_summary(
             object_inference_ms: merged.object_inference_ms,
             pose_inference_ms: merged.pose_inference_ms,
             base_face_passes: sample_count,
+            base_object_passes: sample_count,
+            base_pose_passes: worker_metrics.base_pose_passes,
             recovery_face_passes: merged.recovery_face_passes,
             recovery_object_passes: merged.recovery_object_passes,
-            recovery_pose_passes: merged.recovery_pose_passes,
+            base_face_inference_ms: worker_metrics.face_base_inference_ms,
+            recovery_face_inference_ms: worker_metrics.face_recovery_inference_ms,
+            base_object_inference_ms: worker_metrics.object_base_inference_ms,
+            recovery_object_inference_ms: worker_metrics.object_recovery_inference_ms,
+            base_pose_inference_ms: worker_metrics.pose_base_inference_ms,
             orientation_probe_passes: 0,
             peak_face_queue_depth: decode_stats.peak_face_queue,
             peak_object_queue_depth: decode_stats.peak_object_queue,

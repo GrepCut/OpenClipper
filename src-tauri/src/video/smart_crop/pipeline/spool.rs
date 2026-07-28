@@ -226,7 +226,6 @@ struct SpoolObjectResult {
     duration_ms: u64,
     pose_duration_ms: u64,
     recovery_passes: usize,
-    recovery_pose_passes: usize,
 }
 
 impl TryFrom<ObjectResult> for SpoolObjectResult {
@@ -248,7 +247,6 @@ impl TryFrom<ObjectResult> for SpoolObjectResult {
             duration_ms: value.duration_ms,
             pose_duration_ms: value.pose_duration_ms,
             recovery_passes: value.recovery_passes,
-            recovery_pose_passes: value.recovery_pose_passes,
         })
     }
 }
@@ -266,7 +264,6 @@ impl From<SpoolObjectResult> for ObjectResult {
             duration_ms: value.duration_ms,
             pose_duration_ms: value.pose_duration_ms,
             recovery_passes: value.recovery_passes,
-            recovery_pose_passes: value.recovery_pose_passes,
         }
     }
 }
@@ -522,7 +519,6 @@ mod tests {
             duration_ms: 12,
             pose_duration_ms: 6,
             recovery_passes: 8,
-            recovery_pose_passes: 1,
         };
         let mut encoded = Vec::new();
         write_object_record(&mut encoded, input).unwrap();
@@ -553,7 +549,6 @@ mod tests {
             duration_ms: 0,
             pose_duration_ms: 0,
             recovery_passes: 0,
-            recovery_pose_passes: 0,
         };
 
         assert!(write_object_record(&mut Vec::new(), input).is_err());

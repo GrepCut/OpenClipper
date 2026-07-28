@@ -32,4 +32,5 @@ export type {
   NativeVisionDevice,
   NativeVisionMetrics,
   PrefillFaceSampleCacheOptions,
+  VisionAblationConfig,
 } from "../types/reframe.types";

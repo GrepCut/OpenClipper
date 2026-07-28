@@ -11,6 +11,7 @@ use super::merge::merge_samples;
 use super::setup::PipelineSetup;
 use super::summary::build_summary;
 use super::types::{NativeVisionProgress, NativeVisionSummary};
+use super::VisionAblationConfig;
 
 pub fn analyze(
     file_path: String,
@@ -19,6 +20,7 @@ pub fn analyze(
     resource_dir: &Path,
     cancelled: Arc<AtomicBool>,
     tracking_enabled: bool,
+    vision_ablation: VisionAblationConfig,
     mut progress: impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<NativeVisionSummary, NativeVisionError> {
     let analysis_started = Instant::now();
@@ -35,7 +37,12 @@ pub fn analyze(
             "setup",
             &format!("preparing pipeline resources={}", resource_dir.display()),
         );
-        let init = PipelineSetup::prepare(resource_dir, cancelled.clone(), &mut progress)?;
+        let init = PipelineSetup::prepare(
+            resource_dir,
+            cancelled.clone(),
+            vision_ablation,
+            &mut progress,
+        )?;
         diagnostics::append("setup", "workers and shadow models initialized");
         let mut setup = init.setup;
         let mut shadow_runner = init.shadow_runner;
@@ -80,6 +87,7 @@ pub fn analyze(
         let drain_duration_ms = drain.drain_duration_ms;
         let face_preprocess_ms = drain.face_preprocess_ms;
         let pose_preprocess_ms = drain.pose_preprocess_ms;
+        let worker_metrics = drain.worker_metrics;
         diagnostics::append("merge", "starting tracking and result merge");
         let merged_result = merge_samples(
             decode_stats.sample_count,
@@ -108,6 +116,7 @@ pub fn analyze(
             drain_duration_ms,
             face_preprocess_ms,
             pose_preprocess_ms,
+            worker_metrics,
             merged,
             tracking_enabled,
             shadow_diagnostics,
@@ -153,6 +162,7 @@ mod windows_pipeline_soak_tests {
             resource_dir,
             cancelled,
             true,
+            VisionAblationConfig::default(),
             |_| Ok(()),
         )
         .expect("five-minute end-to-end pipeline soak");

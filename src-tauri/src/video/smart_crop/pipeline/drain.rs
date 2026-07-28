@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::super::diagnostics;
+use super::super::internal::WorkerMetricSnapshot;
 use super::super::internal::{FaceWorkerMsg, ObjectWorkerMsg};
 use super::super::vision::NativeVisionError;
 use super::setup::PipelineSetup;
@@ -14,6 +15,7 @@ pub(crate) struct DrainOutput {
     pub drain_duration_ms: u64,
     pub face_preprocess_ms: u64,
     pub pose_preprocess_ms: u64,
+    pub worker_metrics: WorkerMetricSnapshot,
 }
 
 pub(crate) fn drain_workers(
@@ -98,6 +100,7 @@ pub(crate) fn drain_workers(
     let drain_duration_ms = drain_started.elapsed().as_millis() as u64;
     let face_preprocess_ms = setup.face_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
     let pose_preprocess_ms = setup.pose_preprocess_time_us.load(Ordering::Relaxed) / 1_000;
+    let worker_metrics = setup.worker_metrics.snapshot();
 
     diagnostics::append("drain", "joining disk result spooler");
     let spool = setup.result_spooler.join().map_err(|_| {
@@ -143,5 +146,6 @@ pub(crate) fn drain_workers(
         drain_duration_ms,
         face_preprocess_ms,
         pose_preprocess_ms,
+        worker_metrics,
     })
 }

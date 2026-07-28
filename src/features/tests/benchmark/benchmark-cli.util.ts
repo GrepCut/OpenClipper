@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { executeBenchmarkRun } from "./benchmark-runner.util";
 import { benchmarkPersistenceService, testDataService } from "../test-data.service";
 import type { BenchmarkResult, BenchmarkRun, DriftSummary, TestClip, TestDataset } from "../test.types";
+import type { VisionAblationConfig } from "../../clipper/engine/reframe";
 
 export interface BenchmarkCliRequest {
   datasetId: string;
   jsonOutput: boolean;
   check: boolean;
   remember: boolean;
+  visionAblation: VisionAblationConfig;
 }
 
 export interface BenchmarkCliClipSummary {
@@ -136,6 +138,7 @@ export async function runBenchmarkCli(request: BenchmarkCliRequest): Promise<voi
     signal: controller.signal,
     mode,
     rememberedRunId: dataset.rememberedRunId,
+    visionAblation: request.visionAblation,
     onProgress: ({ clipIndex, clipCount, clipName, phase }) => {
       void invoke("log_benchmark_cli_progress", {
         message: `[${clipIndex + 1}/${clipCount}] ${clipName}: ${phase}`,

@@ -10,8 +10,8 @@ use super::diagnostics;
 use super::internal::{
     AnalysisFrame, BaseFaceOutcome, BaseObjectOutcome, FaceJob, FaceJobKind, FaceResult,
     FaceWorkerMsg, FinalizedObjectBase, ObjectJob, ObjectJobKind, ObjectResult, ObjectWorkerMsg,
-    PendingObjectRecovery, PendingPoseRecovery, PendingRecovery, WorkerResult, MAX_BATCH,
-    POSE_PERSON_CONFIDENCE, POSE_PERSON_SAMPLE_STRIDE, POSE_RECOVERY_SAMPLE_STRIDE,
+    PendingObjectRecovery, PendingRecovery, VisionAblationConfig, WorkerMetrics, WorkerResult,
+    MAX_BATCH, POSE_PERSON_CONFIDENCE, POSE_PERSON_SAMPLE_STRIDE, POSE_RECOVERY_SAMPLE_STRIDE,
 };
 use super::preprocess::{
     drain_batch, evaluate_yolox_batch, map_detection_from_tile, map_face_from_tile,
@@ -19,13 +19,21 @@ use super::preprocess::{
 };
 use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
 use super::vision_logic::{
-    box_iou, decode_movenet, decode_scrfd, detect_motion_saliency, map_pose_from_tile,
-    merge_pose_subjects, merge_subject_detections, weighted_face_nms, Letterbox, NormalizedBox,
-    RecoveryPolicy, SubjectDetection, MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
+    box_iou, decode_movenet, decode_scrfd, detect_motion_saliency, merge_subject_detections,
+    weighted_face_nms, Letterbox, NormalizedBox, RecoveryPolicy, SubjectDetection,
+    MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
 
 const RECOVERY_PERSON_SCORE: f32 = 0.7;
 const RECOVERY_CONTINUITY_IOU: f32 = 0.1;
+
+fn should_schedule_face_recovery(recover: bool, config: VisionAblationConfig) -> bool {
+    recover && !config.disable_face_tile_recovery
+}
+
+fn should_schedule_object_recovery(recover: bool, config: VisionAblationConfig) -> bool {
+    recover && !config.disable_object_tile_recovery
+}
 
 fn strongest_person_box(detections: &[SubjectDetection]) -> Option<NormalizedBox> {
     detections
@@ -42,11 +50,7 @@ fn strongest_person_box(detections: &[SubjectDetection]) -> Option<NormalizedBox
         .map(|detection| detection.box_)
 }
 
-fn object_result_from(
-    base: FinalizedObjectBase,
-    recovery_pose_passes: usize,
-    extra_pose_ms: u64,
-) -> ObjectResult {
+fn object_result_from(base: FinalizedObjectBase) -> ObjectResult {
     ObjectResult {
         index: base.frame.index,
         time: base.frame.time,
@@ -56,9 +60,8 @@ fn object_result_from(
         device: base.device,
         pose_device: base.pose_device,
         duration_ms: base.duration_ms,
-        pose_duration_ms: base.pose_duration_ms + extra_pose_ms,
+        pose_duration_ms: base.pose_duration_ms,
         recovery_passes: base.recovery_passes,
-        recovery_pose_passes,
     }
 }
 
@@ -86,6 +89,7 @@ pub(crate) fn spawn_face_worker(
     model_path: std::path::PathBuf,
     fp16_model_path: std::path::PathBuf,
     preprocess_time_us: Arc<AtomicU64>,
+    worker_metrics: Arc<WorkerMetrics>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         diagnostics::append(
@@ -216,6 +220,16 @@ pub(crate) fn spawn_face_worker(
             }) {
                 Ok((outcomes, device)) => {
                     let duration_ms = started.elapsed().as_millis() as u64 / count as u64;
+                    let base_count = batch
+                        .iter()
+                        .filter(|job| matches!(&job.kind, FaceJobKind::Base))
+                        .count() as u64;
+                    worker_metrics
+                        .face_base_inference_ms
+                        .fetch_add(duration_ms * base_count, Ordering::Relaxed);
+                    worker_metrics
+                        .face_recovery_inference_ms
+                        .fetch_add(duration_ms * (count as u64 - base_count), Ordering::Relaxed);
                     for (job, faces) in batch.into_iter().zip(outcomes) {
                         let message = match job.kind {
                             FaceJobKind::Base => FaceWorkerMsg::Base(BaseFaceOutcome {
@@ -272,6 +286,7 @@ pub(crate) fn spawn_face_policy(
     jobs: crossbeam_channel::Sender<FaceJob>,
     results: mpsc::Sender<WorkerResult>,
     cancelled: Arc<AtomicBool>,
+    vision_ablation: VisionAblationConfig,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut reorder: BTreeMap<usize, BaseFaceOutcome> = BTreeMap::new();
@@ -362,7 +377,7 @@ pub(crate) fn spawn_face_policy(
                     had_face_track,
                 );
                 had_face_track |= has_face;
-                if recover_face {
+                if should_schedule_face_recovery(recover_face, vision_ablation) {
                     let tiles = quality_face_tiles(&outcome.frame);
                     let tile_count = tiles.len();
                     diagnostics::append(
@@ -426,6 +441,7 @@ fn evaluate_object_detection_batch(
     yolox_labels: &[String],
     results: &mpsc::Sender<ObjectWorkerMsg>,
     cancelled: &AtomicBool,
+    worker_metrics: &WorkerMetrics,
 ) -> bool {
     let frames: Vec<Arc<AnalysisFrame>> = batch
         .iter()
@@ -461,6 +477,17 @@ fn evaluate_object_detection_batch(
     ) {
         Ok((outcomes, device)) => {
             let duration_ms = started.elapsed().as_millis() as u64 / batch.len().max(1) as u64;
+            let base_count = batch
+                .iter()
+                .filter(|job| matches!(&job.kind, ObjectJobKind::Base { .. }))
+                .count() as u64;
+            worker_metrics
+                .object_base_inference_ms
+                .fetch_add(duration_ms * base_count, Ordering::Relaxed);
+            worker_metrics.object_recovery_inference_ms.fetch_add(
+                duration_ms * (batch.len() as u64 - base_count),
+                Ordering::Relaxed,
+            );
             for (job, detections) in batch.into_iter().zip(outcomes) {
                 let message = match job.kind {
                     ObjectJobKind::Base { frame, permit } => {
@@ -528,6 +555,7 @@ pub(crate) fn spawn_object_worker(
     pose_model_path: std::path::PathBuf,
     yolox_labels: Arc<Vec<String>>,
     pose_preprocess_time_us: Arc<AtomicU64>,
+    worker_metrics: Arc<WorkerMetrics>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         diagnostics::append(
@@ -702,6 +730,7 @@ pub(crate) fn spawn_object_worker(
                         &yolox_labels,
                         &results,
                         &cancelled,
+                        &worker_metrics,
                     ) {
                         break 'jobs;
                     }
@@ -737,6 +766,7 @@ pub(crate) fn spawn_object_worker(
                         &yolox_labels,
                         &results,
                         &cancelled,
+                        &worker_metrics,
                     ) {
                         break 'jobs;
                     }
@@ -789,7 +819,15 @@ pub(crate) fn spawn_object_worker(
                             &mut pose_output,
                             &pose_preprocess_time_us,
                         ) {
-                            Ok(value) => value,
+                            Ok(value) => {
+                                worker_metrics
+                                    .base_pose_passes
+                                    .fetch_add(1, Ordering::Relaxed);
+                                worker_metrics
+                                    .pose_base_inference_ms
+                                    .fetch_add(value.2, Ordering::Relaxed);
+                                value
+                            }
                             Err(error) => {
                                 cancelled.store(true, Ordering::Relaxed);
                                 let _ = results.send(ObjectWorkerMsg::Error(error));
@@ -807,12 +845,6 @@ pub(crate) fn spawn_object_worker(
                         )
                     };
 
-                    let trackable_count = poses.iter().filter(|pose| pose.trackable).count();
-                    let needs_pose_recovery = frame.face_bucket
-                        && should_run_pose
-                        && trackable_count == 0
-                        && !quality_object_tiles(&frame).is_empty();
-
                     let message = ObjectWorkerMsg::FinalizedBase(FinalizedObjectBase {
                         frame,
                         _permit: permit,
@@ -824,49 +856,9 @@ pub(crate) fn spawn_object_worker(
                         duration_ms: yolox_duration_ms + yolox_extra_ms,
                         pose_duration_ms,
                         recovery_passes,
-                        needs_pose_recovery,
                     });
                     if results.send(message).is_err() {
                         break;
-                    }
-                }
-                ObjectJobKind::PoseTile {
-                    frame,
-                    base_index,
-                    offset_x,
-                    offset_y,
-                    span_x,
-                    span_y,
-                } => {
-                    let started = Instant::now();
-                    match run_movenet(
-                        &frame,
-                        &mut pose_model,
-                        &mut pose_input,
-                        &mut pose_output,
-                        &pose_preprocess_time_us,
-                    ) {
-                        Ok((poses, _, _)) => {
-                            let duration_ms = started.elapsed().as_millis() as u64;
-                            let message = ObjectWorkerMsg::PoseTile {
-                                base_index,
-                                poses: poses
-                                    .into_iter()
-                                    .map(|pose| {
-                                        map_pose_from_tile(pose, offset_x, offset_y, span_x, span_y)
-                                    })
-                                    .collect(),
-                                duration_ms,
-                            };
-                            if results.send(message).is_err() {
-                                break;
-                            }
-                        }
-                        Err(error) => {
-                            cancelled.store(true, Ordering::Relaxed);
-                            let _ = results.send(ObjectWorkerMsg::Error(error));
-                            break;
-                        }
                     }
                 }
             }
@@ -882,6 +874,7 @@ pub(crate) fn spawn_object_policy(
     jobs: crossbeam_channel::Sender<ObjectJob>,
     results: mpsc::Sender<WorkerResult>,
     cancelled: Arc<AtomicBool>,
+    vision_ablation: VisionAblationConfig,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut reorder: BTreeMap<usize, BaseObjectOutcome> = BTreeMap::new();
@@ -889,7 +882,6 @@ pub(crate) fn spawn_object_policy(
         let mut finalized = 0usize;
         let mut total: Option<usize> = None;
         let mut yolox_recovery: Option<PendingObjectRecovery> = None;
-        let mut pose_recovery: Option<PendingPoseRecovery> = None;
         let mut waiting_finalize = false;
         let mut recovery_policy = RecoveryPolicy::default();
         recovery_policy.new_scene();
@@ -982,43 +974,8 @@ pub(crate) fn spawn_object_policy(
                 }
                 ObjectWorkerMsg::FinalizedBase(outcome) => {
                     waiting_finalize = false;
-                    if outcome.needs_pose_recovery {
-                        let tiles = quality_object_tiles(&outcome.frame);
-                        let tile_count = tiles.len();
-                        diagnostics::append(
-                            "object-policy",
-                            &format!(
-                                "pose recovery tiling frame={} tiles={tile_count}",
-                                outcome.frame.index,
-                            ),
-                        );
-                        for (tile, offset_x, offset_y, span_x, span_y) in tiles {
-                            let job = ObjectJob {
-                                kind: ObjectJobKind::PoseTile {
-                                    frame: Arc::new(tile),
-                                    base_index: outcome.frame.index,
-                                    offset_x,
-                                    offset_y,
-                                    span_x,
-                                    span_y,
-                                },
-                            };
-                            if jobs.send(job).is_err() {
-                                cancelled.store(true, Ordering::Relaxed);
-                                break 'policy;
-                            }
-                        }
-                        pose_recovery = Some(PendingPoseRecovery {
-                            base: outcome,
-                            collected: Vec::new(),
-                            remaining: tile_count,
-                            pass_count: tile_count,
-                            extra_pose_duration_ms: 0,
-                        });
-                        continue;
-                    }
                     if results
-                        .send(WorkerResult::Object(object_result_from(outcome, 0, 0)))
+                        .send(WorkerResult::Object(object_result_from(outcome)))
                         .is_err()
                     {
                         break 'policy;
@@ -1035,58 +992,9 @@ pub(crate) fn spawn_object_policy(
                         );
                     }
                 }
-                ObjectWorkerMsg::PoseTile {
-                    base_index,
-                    poses,
-                    duration_ms,
-                } => {
-                    let Some(pending) = pose_recovery.as_mut() else {
-                        continue;
-                    };
-                    debug_assert_eq!(pending.base.frame.index, base_index);
-                    pending.collected.extend(poses);
-                    pending.extra_pose_duration_ms += duration_ms;
-                    pending.remaining -= 1;
-                    if pending.remaining == 0 {
-                        let mut done = pose_recovery.take().expect("checked pending recovery");
-                        let mut merged = std::mem::take(&mut done.base.poses);
-                        merged.append(&mut done.collected);
-                        done.base.poses = merge_pose_subjects(merged, 0.45);
-                        diagnostics::append(
-                            "object-policy",
-                            &format!(
-                                "pose tile merge complete frame={} tile_passes={} poses={}",
-                                done.base.frame.index,
-                                done.pass_count,
-                                done.base.poses.len(),
-                            ),
-                        );
-                        if results
-                            .send(WorkerResult::Object(object_result_from(
-                                done.base,
-                                done.pass_count,
-                                done.extra_pose_duration_ms,
-                            )))
-                            .is_err()
-                        {
-                            break 'policy;
-                        }
-                        finalized += 1;
-                        next_index += 1;
-                        if finalized == 1 || finalized % 64 == 0 {
-                            diagnostics::append(
-                                "object-policy",
-                                &format!(
-                                    "finalized={finalized} next_index={next_index} reorder_len={} waiting_finalize={waiting_finalize} after_pose_recovery=true",
-                                    reorder.len(),
-                                ),
-                            );
-                        }
-                    }
-                }
             }
 
-            while !waiting_finalize && yolox_recovery.is_none() && pose_recovery.is_none() {
+            while !waiting_finalize && yolox_recovery.is_none() {
                 let Some(outcome) = reorder.remove(&next_index) else {
                     break;
                 };
@@ -1108,7 +1016,7 @@ pub(crate) fn spawn_object_policy(
                     current_person_box.is_some() && !has_continuous_person,
                     had_person_track,
                 );
-                if recover_person {
+                if should_schedule_object_recovery(recover_person, vision_ablation) {
                     let tiles = quality_object_tiles(&outcome.frame);
                     let tile_count = tiles.len();
                     if tile_count > 0 {
@@ -1163,4 +1071,26 @@ pub(crate) fn spawn_object_policy(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod ablation_tests {
+    use super::*;
+
+    #[test]
+    fn each_ablation_only_blocks_its_recovery_queue() {
+        let face = VisionAblationConfig {
+            disable_face_tile_recovery: true,
+            ..Default::default()
+        };
+        assert!(!should_schedule_face_recovery(true, face));
+        assert!(should_schedule_object_recovery(true, face));
+
+        let object = VisionAblationConfig {
+            disable_object_tile_recovery: true,
+            ..Default::default()
+        };
+        assert!(should_schedule_face_recovery(true, object));
+        assert!(!should_schedule_object_recovery(true, object));
+    }
 }
