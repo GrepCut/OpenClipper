@@ -1,64 +1,5 @@
 use std::fmt;
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
-use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
-
-const FILE_NAME: &str = "open-clipper-face-action.log";
-
-struct DiagnosticState {
-    file: File,
-    started: Instant,
-    last_flush: Instant,
-}
-
-static STATE: OnceLock<Mutex<Option<DiagnosticState>>> = OnceLock::new();
-
-fn state() -> &'static Mutex<Option<DiagnosticState>> {
-    STATE.get_or_init(|| Mutex::new(None))
-}
-
-pub fn path() -> PathBuf {
-    dirs::download_dir()
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(std::env::temp_dir)
-        .join(FILE_NAME)
-}
-
-pub fn start(source: &str, start_time: f64, end_time: f64, tracking_enabled: bool) {
-    let path = path();
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let opened = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(&path);
-    let Ok(file) = opened else {
-        return;
-    };
-    if let Ok(mut guard) = state().lock() {
-        *guard = Some(DiagnosticState {
-            file,
-            started: Instant::now(),
-            last_flush: Instant::now(),
-        });
-    }
-    append(
-        "run",
-        &format!(
-            "START version={} pid={} source={} range={start_time:.3}..{end_time:.3} tracking={} log={} resources={}",
-            env!("CARGO_PKG_VERSION"),
-            std::process::id(),
-            source,
-            tracking_enabled,
-            path.display(),
-            resource_snapshot(),
-        ),
-    );
-}
+pub fn start(_: &str, _: f64, _: f64, _: bool) {}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ResourceSnapshot {
@@ -108,37 +49,9 @@ pub fn resource_snapshot() -> String {
         .unwrap_or_else(|| "resource-counters-unavailable".into())
 }
 
-pub fn append(stage: &str, message: &str) {
-    append_impl(stage, message, false);
-}
-
-pub fn append_critical(stage: &str, message: &str) {
-    append_impl(stage, message, true);
-}
-
-fn append_impl(stage: &str, message: &str, critical: bool) {
-    let Ok(mut guard) = state().lock() else {
-        return;
-    };
-    let Some(current) = guard.as_mut() else {
-        return;
-    };
-    let elapsed_ms = current.started.elapsed().as_millis();
-    let _ = writeln!(
-        current.file,
-        "[{}][+{elapsed_ms:>8}ms][{:?}][{stage}] {message}",
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
-        std::thread::current().id(),
-    );
-    if critical || current.last_flush.elapsed() >= Duration::from_secs(1) {
-        let _ = current.file.flush();
-        current.last_flush = Instant::now();
-    }
-}
-
-pub fn finish(message: &str) {
-    append_critical("run", message);
-}
+pub fn append(_: &str, _: &str) {}
+pub fn append_critical(_: &str, _: &str) {}
+pub fn finish(_: &str) {}
 
 #[cfg(windows)]
 mod windows_resources {

@@ -26,11 +26,9 @@ export const useYoutubeStore = create<YoutubeStoreState>((set) => ({
   },
 
   refreshStatus: async () => {
-    console.log("[YouTube Auth] useYoutubeStore.refreshStatus: start");
     set({ isChecking: true, error: null });
     try {
       const status = await youtubeAuthService.checkYoutubeConnection();
-      console.log("[YouTube Auth] useYoutubeStore.refreshStatus: success", status);
       set({
         isConnected: status.connected,
         channelTitle: status.channelTitle ?? null,

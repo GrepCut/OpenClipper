@@ -1,10 +1,5 @@
 pub mod m001_initial;
 pub mod m002_shared_workspace;
-pub mod m003_test_benchmarks;
-pub mod m004_test_target_rect;
-pub mod m005_test_keyframe_layout_intent;
-pub mod m006_test_benchmark_cohorts;
-pub mod m007_test_dataset_remembered_run;
 
 use chrono::Utc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, Statement};
@@ -29,11 +24,6 @@ impl ManualMigrator {
         vec![
             Box::new(m001_initial::M001Initial),
             Box::new(m002_shared_workspace::M002SharedWorkspace),
-            Box::new(m003_test_benchmarks::M003TestBenchmarks),
-            Box::new(m004_test_target_rect::M004TestTargetRect),
-            Box::new(m005_test_keyframe_layout_intent::M005TestKeyframeLayoutIntent),
-            Box::new(m006_test_benchmark_cohorts::M006TestBenchmarkCohorts),
-            Box::new(m007_test_dataset_remembered_run::M007TestDatasetRememberedRun),
         ]
     }
 

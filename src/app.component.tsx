@@ -15,7 +15,6 @@ import { DesktopAuthBridge } from "./features/authentication/desktop-auth-bridge
 import { isTauri } from "./shared/utils/platform.util";
 import { ensureTauriFrontendSession } from "./shared/utils/tauri-native-jobs.util";
 import { ClipperTauriGate } from "./features/clipper/pages/clipper-tauri-gate.component";
-import { BenchmarkCliShell, useBenchmarkCliRequest } from "./features/tests/benchmark/benchmark-cli-bootstrap.component";
 
 const AuthPage = lazy(() =>
   import("./features/authentication/auth-page.component").then((m) => ({
@@ -71,12 +70,6 @@ const ClipperSessionPage = lazy(() =>
   import("./features/clipper/pages/clipper-session-page.component").then((m) => ({
     default: m.ClipperSessionPage,
   })),
-);
-const TestDatasetPage = lazy(() =>
-  import("./features/tests/pages/test-dataset-page.component").then((m) => ({ default: m.TestDatasetPage })),
-);
-const TestClipEditorPage = lazy(() =>
-  import("./features/tests/pages/test-clip-editor-page.component").then((m) => ({ default: m.TestClipEditorPage })),
 );
 
 const system = createSystem(defaultConfig, {
@@ -171,14 +164,6 @@ function AppRoutes() {
           element={<InteractiveRoute name="clipper-home"><ClipperHomePage /></InteractiveRoute>}
         />
         <Route
-          path="/clipper/tests/:datasetId/clips/:clipId"
-          element={<InteractiveRoute name="test-clip-editor"><ClipperTauriGate><TestClipEditorPage /></ClipperTauriGate></InteractiveRoute>}
-        />
-        <Route
-          path="/clipper/tests/:datasetId"
-          element={<InteractiveRoute name="test-dataset"><ClipperTauriGate><TestDatasetPage /></ClipperTauriGate></InteractiveRoute>}
-        />
-        <Route
           path="/clipper/:projectId/*"
           element={<InteractiveRoute name="clipper-session"><ClipperSessionPage /></InteractiveRoute>}
         />
@@ -231,22 +216,6 @@ function AppContent() {
 }
 
 function App() {
-  const cliRequest = useBenchmarkCliRequest();
-
-  if (cliRequest === "loading") {
-    return null;
-  }
-
-  if (cliRequest) {
-    return (
-      <ThemeProvider defaultMode="dark">
-        <ChakraProvider value={system}>
-          <BenchmarkCliShell />
-        </ChakraProvider>
-      </ThemeProvider>
-    );
-  }
-
   return (
     <ThemeProvider defaultMode="dark">
       <ChakraProvider value={system}>

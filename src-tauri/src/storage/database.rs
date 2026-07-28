@@ -3,10 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 use tauri::{AppHandle, Manager};
 
-use crate::storage::entity::{
-    benchmark_result, benchmark_run, local_project, local_record, schema_migration, test_clip,
-    test_dataset, test_keyframe, test_target,
-};
+use crate::storage::entity::{local_project, local_record, schema_migration};
 use crate::storage::migrator::ManualMigrator;
 
 #[derive(Clone)]
@@ -49,12 +46,6 @@ async fn synchronize_schema(database: &DatabaseConnection) -> Result<(), DbErr> 
         .register(local_project::Entity)
         .register(local_record::Entity)
         .register(schema_migration::Entity)
-        .register(test_dataset::Entity)
-        .register(test_clip::Entity)
-        .register(test_keyframe::Entity)
-        .register(test_target::Entity)
-        .register(benchmark_run::Entity)
-        .register(benchmark_result::Entity)
         .sync(database)
         .await
 }

@@ -1,35 +1,17 @@
-use crate::cli;
-use crate::infra::startup_log;
 use tauri::Manager;
 
 /// Pokazuje główne okno. Idempotentne — wywoływane zarówno przez frontend
 /// po pierwszym renderze, jak i przez fallback timer w setup.
 pub fn show_main_window(app: &tauri::AppHandle) {
-    if cli::is_benchmark_cli_active() {
-        if let Some(main) = app.get_webview_window("main") {
-            let _ = main.hide();
-        }
-        return;
-    }
     if let Some(main) = app.get_webview_window("main") {
         let already_visible = match main.is_visible() {
             Ok(visible) => visible,
-            Err(error) => {
-                log::error!(target: "startup", "failed to read main window visibility: {error}");
-                false
-            }
+            Err(_) => false,
         };
         if !already_visible {
-            if let Err(error) = main.show() {
-                log::error!(target: "startup", "failed to show main window: {error}");
-            }
-            if let Err(error) = main.set_focus() {
-                log::error!(target: "startup", "failed to focus main window: {error}");
-            }
-            log::info!(target: "startup", "main window show requested; {}", startup_log::context());
+            let _ = main.show();
+            let _ = main.set_focus();
         }
-    } else {
-        log::error!(target: "startup", "main WebView window was not found");
     }
 }
 

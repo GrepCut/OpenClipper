@@ -1,11 +1,8 @@
 const PREFIX = "[Clipper]";
 
 export function clipperLog(step: string, details?: Record<string, unknown>): void {
-  if (details) {
-    console.log(`${PREFIX} ${step}`, details);
-  } else {
-    console.log(`${PREFIX} ${step}`);
-  }
+  void step;
+  void details;
 }
 
 export function clipperWarn(step: string, details?: Record<string, unknown>): void {

@@ -27,7 +27,6 @@ import { ProjectsPagination } from "../components/projects-pagination.component"
 import { useTheme } from "../../../theme";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
-import { TestsHomeView } from "../../tests/components/tests-home-view.component";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -45,7 +44,6 @@ export function ClipperHomePage() {
     const requested = searchParams.get("tab");
     if (
       requested !== "integrations" &&
-      requested !== "tests" &&
       requested !== "settings"
     ) {
       return;
@@ -69,7 +67,6 @@ export function ClipperHomePage() {
       setProjects(response.data);
       setTotal(response.total);
     } catch (error) {
-      console.error("Failed to load clipper projects", error);
     } finally {
       setLoading(false);
     }
@@ -91,7 +88,6 @@ export function ClipperHomePage() {
     try {
       await openClipperProjectsDir();
     } catch (error) {
-      console.error("Failed to open clipper projects folder", error);
       appToast.error("Error", "Could not open the project data folder.");
     }
   }, []);
@@ -105,8 +101,6 @@ export function ClipperHomePage() {
       >
         {activeTab === "integrations" ? (
           <ClipperIntegrationsView />
-        ) : activeTab === "tests" ? (
-          <TestsHomeView />
         ) : activeTab === "settings" ? (
           <ClipperHomeSettingsView />
         ) : (
