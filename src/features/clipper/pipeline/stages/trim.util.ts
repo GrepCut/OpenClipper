@@ -106,14 +106,20 @@ async function trimClipSegment(
     signal: options.signal,
     onProgress: (ratio) => reporter.stageProgress(ratio),
   });
-  const trimmedFile = new File([trimmedBuffer], "clip-trimmed.mp4", { type: "video/mp4" });
-  const trimmedVideoUrl = URL.createObjectURL(trimmedFile);
   if (isTauri()) {
-    await writeClipperTrimmedSegment(projectId, trimmedBuffer, {
+    const persisted = await writeClipperTrimmedSegment(projectId, trimmedBuffer, {
       clipStart: snappedStart,
       clipEnd: end,
     });
+    if (persisted) {
+      return {
+        trimmedFile: persisted.file,
+        trimmedVideoUrl: persisted.videoUrl,
+      };
+    }
   }
+  const trimmedFile = new File([trimmedBuffer], "clip-trimmed.mp4", { type: "video/mp4" });
+  const trimmedVideoUrl = URL.createObjectURL(trimmedFile);
   return { trimmedFile, trimmedVideoUrl };
 }
 

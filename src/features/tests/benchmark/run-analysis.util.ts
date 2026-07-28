@@ -11,7 +11,10 @@ import { DEFAULT_ARBITER_PARAMS } from "../../clipper/engine/autoflip/layout";
 import { resolveClipCohorts } from "./cohort-tags.util";
 import { DEFAULT_VISIBILITY_PARAMS } from "../../clipper/engine/autoflip/layout";
 import { resolveClipperFrameGeometry } from "../../clipper/engine/render/frame-geometry.util";
-import { canonicalFormatDims, getClipperFormatDef } from "../../clipper/shared/formats.util";
+import {
+  canonicalFormatDims,
+  getClipperFormatDef,
+} from "../../clipper/shared/formats.util";
 import type { TestClip } from "../test.types";
 import { TEST_ASPECTS } from "../test.types";
 import type { FrameMeta } from "./metadata-drift.types";
@@ -43,7 +46,8 @@ function nominalFrameTimestamps(duration: number, frameRate: number): number[] {
   const rate = Number.isFinite(frameRate) && frameRate > 0 ? frameRate : 30;
   const count = Math.max(1, Math.ceil(duration * rate));
   return Array.from({ length: count }, (_, index) =>
-    Math.min(duration, index / rate));
+    Math.min(duration, index / rate),
+  );
 }
 
 export async function runTestBenchmarkAnalysis(input: {
@@ -56,24 +60,39 @@ export async function runTestBenchmarkAnalysis(input: {
   const started = performance.now();
   const file = pathBackedFile(input.clipPath, "test-clip.mp4");
   const cache = new FaceSampleCache(FACE_SAMPLE_INTERVAL_SEC, () => {});
-  input.onProgress?.({ phase: "Detecting faces and tracking action", ratio: 0 });
+  input.onProgress?.({
+    phase: "Detecting faces and tracking action",
+    ratio: 0,
+  });
 
   const summary = await prefillFaceSampleCache(file, cache, {
     signal: input.signal,
-    nativeSource: { filePath: input.clipPath, startTime: 0, endTime: input.clip.duration },
+    nativeSource: {
+      filePath: input.clipPath,
+      startTime: 0,
+      endTime: input.clip.duration,
+    },
     visionAblation: input.visionAblation,
     onPhase: (phase) => input.onProgress?.({ phase, ratio: 0 }),
-    onProgress: (ratio) => input.onProgress?.({ phase: "Detecting faces and tracking action", ratio: ratio * 0.9 }),
+    onProgress: (ratio) =>
+      input.onProgress?.({
+        phase: "Detecting faces and tracking action",
+        ratio: ratio * 0.9,
+      }),
   });
-  if (input.signal.aborted) throw new DOMException("Benchmark cancelled", "AbortError");
+  if (input.signal.aborted)
+    throw new DOMException("Benchmark cancelled", "AbortError");
 
   const detections = summary.subjectSamples;
   const engine = "winml" as const;
   const trackerVersion = summary.trackerVersion ?? null;
-  const degradedReason = detections.find((sample) => sample.degradedReason)?.degradedReason ?? null;
+  const degradedReason =
+    detections.find((sample) => sample.degradedReason)?.degradedReason ?? null;
 
   const faceSamples = cache.sortedSamples();
-  const aspectRatios = Object.fromEntries(TEST_ASPECTS.map((aspect) => [aspect.formatId, aspect.ratio]));
+  const aspectRatios = Object.fromEntries(
+    TEST_ASPECTS.map((aspect) => [aspect.formatId, aspect.ratio]),
+  );
   input.onProgress?.({ phase: "Building production crop tracks", ratio: 0.92 });
   const blob = buildAutoFlipTrack({
     clipStart: 0,
@@ -100,29 +119,47 @@ export async function runTestBenchmarkAnalysis(input: {
     ? summary.frameTimestamps
     : nominalFrameTimestamps(input.clip.duration, summary.sourceFrameRate);
   const source = { width: input.clip.width, height: input.clip.height };
-  const aspects = TEST_ASPECTS.map<TestBenchmarkAspectOutput>((aspect, aspectIndex) => {
-    const format = getClipperFormatDef(aspect.formatId)!;
-    const outputDims = canonicalFormatDims(format);
-    const frames = timestamps.map((timestamp) => {
-      const geometry = resolveClipperFrameGeometry(format, source, outputDims, timestamp, {
-        smartCropAnalysis: blob,
-        disabledCollageRegionIds: [],
+  const aspects = TEST_ASPECTS.map<TestBenchmarkAspectOutput>(
+    (aspect, aspectIndex) => {
+      const format = getClipperFormatDef(aspect.formatId)!;
+      const outputDims = canonicalFormatDims(format);
+      const frames = timestamps.map((timestamp) => {
+        const geometry = resolveClipperFrameGeometry(
+          format,
+          source,
+          outputDims,
+          timestamp,
+          {
+            smartCropAnalysis: blob,
+            disabledCollageRegionIds: [],
+          },
+        );
+        return {
+          timestampUs: Math.round(timestamp * 1_000_000),
+          layoutMode: geometry.mode,
+          panels: geometry.panels.map((panel) => ({
+            source: {
+              x: panel.source.sx / source.width,
+              y: panel.source.sy / source.height,
+              width: panel.source.sw / source.width,
+              height: panel.source.sh / source.height,
+            },
+            destination: {
+              x: panel.destination.x / outputDims.width,
+              y: panel.destination.y / outputDims.height,
+              width: panel.destination.width / outputDims.width,
+              height: panel.destination.height / outputDims.height,
+            },
+          })),
+        } satisfies FrameMeta;
       });
-      return {
-        timestampUs: Math.round(timestamp * 1_000_000),
-        layoutMode: geometry.mode,
-        panels: geometry.panels.map((panel) => ({
-          source: { x: panel.source.sx / source.width, y: panel.source.sy / source.height, width: panel.source.sw / source.width, height: panel.source.sh / source.height },
-          destination: { x: panel.destination.x / outputDims.width, y: panel.destination.y / outputDims.height, width: panel.destination.width / outputDims.width, height: panel.destination.height / outputDims.height },
-        })),
-      } satisfies FrameMeta;
-    });
-    input.onProgress?.({
-      phase: `Recording ${aspect.label} metadata`,
-      ratio: 0.94 + ((aspectIndex + 1) / TEST_ASPECTS.length) * 0.06,
-    });
-    return { aspectId: aspect.id, frames };
-  });
+      input.onProgress?.({
+        phase: `Recording ${aspect.label} metadata`,
+        ratio: 0.94 + ((aspectIndex + 1) / TEST_ASPECTS.length) * 0.06,
+      });
+      return { aspectId: aspect.id, frames };
+    },
+  );
   const processingMs = performance.now() - started;
   const canonicalSamples = buildCanonicalPersonTracks(detections).samples;
   return {

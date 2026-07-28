@@ -14,8 +14,8 @@ use super::internal::{
     MAX_BATCH, POSE_PERSON_CONFIDENCE, POSE_PERSON_SAMPLE_STRIDE, POSE_RECOVERY_SAMPLE_STRIDE,
 };
 use super::preprocess::{
-    drain_batch, evaluate_yolox_batch, map_detection_from_tile, map_face_from_tile,
-    prepare_movenet_into, prepare_scrfd_into, quality_face_tiles, quality_object_tiles,
+    drain_face_batch, evaluate_yolox_batch, map_detection_from_tile, map_face_from_tile,
+    prepare_movenet_into, prepare_scrfd_into, quality_face_tiles, quality_object_tiles, ModelFrame,
 };
 use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
 use super::vision_logic::{
@@ -105,14 +105,34 @@ pub(crate) fn spawn_face_worker(
         let mut model: Option<WinMlModel> = None;
         let frame_elems = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE * 3;
         let mut input = vec![-127.5 / 128.0; MAX_BATCH * frame_elems];
+        let mut resize_scratch = vec![0u8; frame_elems];
         let mut output = Vec::with_capacity(9);
         let mut letterboxes = Vec::with_capacity(MAX_BATCH);
         'jobs: while let Ok(first) = jobs.recv() {
             if cancelled.load(Ordering::Relaxed) {
                 break;
             }
-            let batch = drain_batch(&jobs, first);
+            let (batch, batch_collect_wait_ms) = drain_face_batch(&jobs, first);
             let count = batch.len();
+            worker_metrics
+                .face_inference_calls
+                .fetch_add(1, Ordering::Relaxed);
+            worker_metrics
+                .face_inference_frames
+                .fetch_add(count, Ordering::Relaxed);
+            worker_metrics
+                .face_batch_collect_wait_ms
+                .fetch_add(batch_collect_wait_ms, Ordering::Relaxed);
+            if count > 1 {
+                worker_metrics
+                    .face_multiframe_inference_calls
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            if count == MAX_BATCH {
+                worker_metrics
+                    .face_full_batch_count
+                    .fetch_add(1, Ordering::Relaxed);
+            }
             // Sessions are compiled for batch sizes 1 and MAX_BATCH only;
             // multi-frame batches are padded up to the bound. Padding
             // elements keep the letterbox fill value (-1.0) and their
@@ -131,9 +151,20 @@ pub(crate) fn spawn_face_worker(
             input.fill(-127.5 / 128.0);
             letterboxes.clear();
             for (index, job) in batch.iter().enumerate() {
+                if let Some(region) = job.region {
+                    worker_metrics
+                        .zero_copy_tile_count
+                        .fetch_add(1, Ordering::Relaxed);
+                    worker_metrics.zero_copy_tile_bytes_avoided.fetch_add(
+                        region.width as u64 * region.height as u64 * 3,
+                        Ordering::Relaxed,
+                    );
+                }
                 let letterbox = prepare_scrfd_into(
                     &job.frame,
+                    job.region,
                     &mut input[index * frame_elems..(index + 1) * frame_elems],
+                    &mut resize_scratch,
                 );
                 letterboxes.push(letterbox);
             }
@@ -387,15 +418,16 @@ pub(crate) fn spawn_face_policy(
                             outcome.frame.index, outcome.frame.width, outcome.frame.height,
                         ),
                     );
-                    for (tile, offset_x, offset_y, span_x, span_y) in tiles {
+                    for tile in tiles {
                         let job = FaceJob {
-                            frame: Arc::new(tile),
+                            frame: outcome.frame.clone(),
+                            region: Some(tile.region),
                             kind: FaceJobKind::Tile {
                                 base_index: outcome.frame.index,
-                                offset_x,
-                                offset_y,
-                                span_x,
-                                span_y,
+                                offset_x: tile.offset_x,
+                                offset_y: tile.offset_y,
+                                span_x: tile.span_x,
+                                span_y: tile.span_y,
                             },
                         };
                         if jobs.send(job).is_err() {
@@ -443,13 +475,31 @@ fn evaluate_object_detection_batch(
     cancelled: &AtomicBool,
     worker_metrics: &WorkerMetrics,
 ) -> bool {
-    let frames: Vec<Arc<AnalysisFrame>> = batch
+    let frames: Vec<ModelFrame<'_>> = batch
         .iter()
         .map(|job| match &job.kind {
-            ObjectJobKind::Base { frame, .. } | ObjectJobKind::Tile { frame, .. } => frame.clone(),
+            ObjectJobKind::Base { frame, .. } => ModelFrame {
+                frame,
+                region: None,
+            },
+            ObjectJobKind::Tile { frame, region, .. } => ModelFrame {
+                frame,
+                region: *region,
+            },
             _ => unreachable!(),
         })
         .collect();
+    for frame in &frames {
+        if let Some(region) = frame.region {
+            worker_metrics
+                .zero_copy_tile_count
+                .fetch_add(1, Ordering::Relaxed);
+            worker_metrics.zero_copy_tile_bytes_avoided.fetch_add(
+                region.width as u64 * region.height as u64 * 3,
+                Ordering::Relaxed,
+            );
+        }
+    }
     let started = Instant::now();
     *yolox_evaluation_count += 1;
     if *yolox_evaluation_count == 1 || *yolox_evaluation_count % 128 == 0 {
@@ -460,7 +510,7 @@ fn evaluate_object_detection_batch(
                 *yolox_evaluation_count,
                 batch.len(),
                 if batch.len() == 1 { 1 } else { MAX_BATCH },
-                frames[0].index,
+                frames[0].frame.index,
                 base_jobs.len(),
             ),
         );
@@ -475,7 +525,16 @@ fn evaluate_object_detection_batch(
         yolox_fp16_path,
         yolox_labels,
     ) {
-        Ok((outcomes, device)) => {
+        Ok((outcomes, device, telemetry)) => {
+            worker_metrics
+                .object_preprocess_time_us
+                .fetch_add(telemetry.preprocess_us, Ordering::Relaxed);
+            worker_metrics
+                .object_decode_time_us
+                .fetch_add(telemetry.decode_us, Ordering::Relaxed);
+            worker_metrics
+                .yolox_fast_decode_skipped_rows
+                .fetch_add(telemetry.fast_decode_skipped_rows, Ordering::Relaxed);
             let duration_ms = started.elapsed().as_millis() as u64 / batch.len().max(1) as u64;
             let base_count = batch
                 .iter()
@@ -533,7 +592,7 @@ fn evaluate_object_detection_batch(
                     "yolox failed evaluation={} real_count={} first_index={} code={} message={}",
                     *yolox_evaluation_count,
                     batch.len(),
-                    frames[0].index,
+                    frames[0].frame.index,
                     error.code,
                     error.message
                 ),
@@ -1027,15 +1086,16 @@ pub(crate) fn spawn_object_policy(
                                 outcome.frame.index, outcome.frame.width, outcome.frame.height,
                             ),
                         );
-                        for (tile, offset_x, offset_y, span_x, span_y) in tiles {
+                        for tile in tiles {
                             let job = ObjectJob {
                                 kind: ObjectJobKind::Tile {
-                                    frame: Arc::new(tile),
+                                    frame: outcome.frame.clone(),
+                                    region: Some(tile.region),
                                     base_index: outcome.frame.index,
-                                    offset_x,
-                                    offset_y,
-                                    span_x,
-                                    span_y,
+                                    offset_x: tile.offset_x,
+                                    offset_y: tile.offset_y,
+                                    span_x: tile.span_x,
+                                    span_y: tile.span_y,
                                 },
                             };
                             if jobs.send(job).is_err() {

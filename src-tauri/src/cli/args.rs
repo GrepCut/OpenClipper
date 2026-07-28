@@ -171,7 +171,6 @@ pub fn parse_args() -> Option<CliRequest> {
         .transpose()
         .unwrap_or_else(|message| exit_with_error(2, &message))
         .unwrap_or_default();
-
     if let Some(Some(run_id)) = &args.extract_miss_frames {
         if args.benchmark_run.is_some() {
             exit_with_error(

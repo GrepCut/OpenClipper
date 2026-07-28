@@ -209,8 +209,15 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
     if let Some(drift) = &summary.drift_summary {
         println!(
             "Crop geometry: {} (MSE {})",
-            if drift.matches_baseline { "matches" } else { "changed" },
-            drift.mse.map(|value| format!("{value:.3e}")).unwrap_or_else(|| "—".to_string())
+            if drift.matches_baseline {
+                "matches"
+            } else {
+                "changed"
+            },
+            drift
+                .mse
+                .map(|value| format!("{value:.3e}"))
+                .unwrap_or_else(|| "—".to_string())
         );
     }
     if let Some(error) = &summary.error {
@@ -229,7 +236,9 @@ fn print_human_summary(summary: &BenchmarkCliSummary) {
                 "- {} geometry={} mse={} [{}]",
                 clip.clip_name,
                 if matches { "matches" } else { "changed" },
-                clip.mse.map(|value| format!("{value:.3e}")).unwrap_or_else(|| "—".to_string()),
+                clip.mse
+                    .map(|value| format!("{value:.3e}"))
+                    .unwrap_or_else(|| "—".to_string()),
                 clip.status
             );
         } else {

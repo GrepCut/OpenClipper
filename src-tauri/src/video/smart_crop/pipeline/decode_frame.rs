@@ -241,6 +241,7 @@ pub(crate) fn process_decoded_frame(
     );
     let base_job = FaceJob {
         frame: frame.clone(),
+        region: None,
         kind: FaceJobKind::Base,
     };
     let object_job = ObjectJob {

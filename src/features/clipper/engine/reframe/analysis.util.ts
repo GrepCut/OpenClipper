@@ -1,4 +1,8 @@
-import type { ClipperFaceSamplesBlob, FaceBox, FaceBoxSample } from "../../shared/face-samples.util";
+import type {
+  ClipperFaceSamplesBlob,
+  FaceBox,
+  FaceBoxSample,
+} from "../../shared/face-samples.util";
 import type { AutoFlipStaticFeatureSample } from "../../shared/smart-crop.util";
 import { clipperLog } from "../../shared/logger.util";
 import {
@@ -32,7 +36,9 @@ interface NativeVisionProgress {
 function clipperByteTrackTrackingMode(): "bytetrack-v2" | "off" {
   if (typeof window === "undefined") return "bytetrack-v2";
   const override = window.localStorage?.getItem("clipperByteTrack");
-  return override === "false" || override === "0" || override === "off" ? "off" : "bytetrack-v2";
+  return override === "false" || override === "0" || override === "off"
+    ? "off"
+    : "bytetrack-v2";
 }
 
 async function detectWinMlMedia(
@@ -46,30 +52,42 @@ async function detectWinMlMedia(
   onNativePhase?: (phase: string) => void,
   visionAblation?: PrefillFaceSampleCacheOptions["visionAblation"],
 ): Promise<NativeVisionAnalysisSummary> {
-  if (signal?.aborted) throw new DOMException("Conversion aborted", "AbortError");
+  if (signal?.aborted)
+    throw new DOMException("Conversion aborted", "AbortError");
   const faceSamples: FaceBoxSample[] = [];
-  const subjectSamples: import("../../shared/smart-crop.util").SubjectDetectionSample[] = [];
+  const subjectSamples: import("../../shared/smart-crop.util").SubjectDetectionSample[] =
+    [];
   let lastNativePhase: string | null = null;
   const onNativeProgress = (progress: NativeVisionProgress) => {
     if (progress.faceSample) faceSamples.push(progress.faceSample);
     if (progress.subjectSample) subjectSamples.push(progress.subjectSample);
     if (progress.faceSamples?.length) faceSamples.push(...progress.faceSamples);
-    if (progress.subjectSamples?.length) subjectSamples.push(...progress.subjectSamples);
+    if (progress.subjectSamples?.length)
+      subjectSamples.push(...progress.subjectSamples);
     onProgress?.(Math.max(0, Math.min(1, progress.percent / 100)));
     onEta?.(progress.etaSeconds);
     if (progress.phase !== lastNativePhase) {
       lastNativePhase = progress.phase;
       onNativePhase?.(progress.phase);
     }
-    if (progress.phase === "initializing") onPhase?.("Initializing native vision (WinML)…");
-    else if (progress.phase === "decoding") onPhase?.("Decoding video and analyzing action…");
-    else if (progress.phase === "draining") onPhase?.(`FFmpeg complete — finishing ${progress.queuedDetections} queued detections…`);
-    else if (progress.phase === "inferencing") onPhase?.(`Analyzing faces and action… ${progress.percent}%`);
+    if (progress.phase === "initializing")
+      onPhase?.("Initializing native vision (WinML)…");
+    else if (progress.phase === "decoding")
+      onPhase?.("Decoding video and analyzing action…");
+    else if (progress.phase === "draining")
+      onPhase?.(
+        `FFmpeg complete — finishing ${progress.queuedDetections} queued detections…`,
+      );
+    else if (progress.phase === "inferencing")
+      onPhase?.(`Analyzing faces and action… ${progress.percent}%`);
   };
   onPhase?.("Initializing native vision (WinML)…");
   const started = performance.now();
   const jobId = createTauriNativeJobId("winml");
-  const summary = await runTauriNativeJob<NativeVisionProgress, NativeVisionCommandSummary>({
+  const summary = await runTauriNativeJob<
+    NativeVisionProgress,
+    NativeVisionCommandSummary
+  >({
     jobId,
     startCommand: "start_clipper_winml_analysis",
     args: {
@@ -82,9 +100,15 @@ async function detectWinMlMedia(
     signal,
     onProgress: onNativeProgress,
   });
-  if (signal?.aborted) throw new DOMException("Conversion aborted", "AbortError");
-  if (faceSamples.length !== summary.faceSampleCount || subjectSamples.length !== summary.subjectSampleCount) {
-    throw new Error(`Native vision returned an incomplete atomic result (${faceSamples.length}/${summary.faceSampleCount} face, ${subjectSamples.length}/${summary.subjectSampleCount} subject).`);
+  if (signal?.aborted)
+    throw new DOMException("Conversion aborted", "AbortError");
+  if (
+    faceSamples.length !== summary.faceSampleCount ||
+    subjectSamples.length !== summary.subjectSampleCount
+  ) {
+    throw new Error(
+      `Native vision returned an incomplete atomic result (${faceSamples.length}/${summary.faceSampleCount} face, ${subjectSamples.length}/${summary.subjectSampleCount} subject).`,
+    );
   }
   cache.analysisEngine = "winml";
   cache.analysisModelVersion = summary.modelVersion;

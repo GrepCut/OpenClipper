@@ -1,7 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { executeBenchmarkRun } from "./benchmark-runner.util";
-import { benchmarkPersistenceService, testDataService } from "../test-data.service";
-import type { BenchmarkResult, BenchmarkRun, DriftSummary, TestClip, TestDataset } from "../test.types";
+import {
+  benchmarkPersistenceService,
+  testDataService,
+} from "../test-data.service";
+import type {
+  BenchmarkResult,
+  BenchmarkRun,
+  DriftSummary,
+  TestClip,
+  TestDataset,
+} from "../test.types";
 import type { VisionAblationConfig } from "../../clipper/engine/reframe";
 
 export interface BenchmarkCliRequest {
@@ -76,7 +85,9 @@ function summarizeResults(
 
   const clipSummaries: BenchmarkCliClipSummary[] = clips.map((clip) => {
     const clipResults = resultsByClip.get(clip.id) ?? [];
-    const primary = clipResults.find((result) => result.aspectId === PRIMARY_ASPECT_ID);
+    const primary = clipResults.find(
+      (result) => result.aspectId === PRIMARY_ASPECT_ID,
+    );
     if (!primary) {
       return {
         clipId: clip.id,
@@ -98,7 +109,10 @@ function summarizeResults(
       status: failed ? "failed" : "completed",
       matchesBaseline: primary.metricsJson.matchesBaseline ?? null,
       mse: primary.metricsJson.mse ?? null,
-      frameCount: primary.metricsJson.frameCount ?? primary.metricsJson.comparedFrames ?? null,
+      frameCount:
+        primary.metricsJson.frameCount ??
+        primary.metricsJson.comparedFrames ??
+        null,
       processingMs: primary.metricsJson.processingMs ?? null,
       realtimeFactor: primary.metricsJson.realtimeFactor ?? null,
       speedup: primary.metricsJson.speedup ?? null,
@@ -106,7 +120,9 @@ function summarizeResults(
     };
   });
 
-  const completedClips = clipSummaries.filter((clip) => clip.status === "completed").length;
+  const completedClips = clipSummaries.filter(
+    (clip) => clip.status === "completed",
+  ).length;
   const failedClips = clipSummaries.length - completedClips;
 
   return {
@@ -125,10 +141,14 @@ function summarizeResults(
   };
 }
 
-export async function runBenchmarkCli(request: BenchmarkCliRequest): Promise<void> {
+export async function runBenchmarkCli(
+  request: BenchmarkCliRequest,
+): Promise<void> {
   const { dataset, clips } = await loadBenchmarkRunInput(request.datasetId);
   if (request.check && !dataset.rememberedRunId) {
-    throw new Error("No remembered baseline. Run processing, then Remember a completed run before Check.");
+    throw new Error(
+      "No remembered baseline. Run processing, then Remember a completed run before Check.",
+    );
   }
   const mode = request.check ? "check" : "process";
   const controller = new AbortController();
@@ -149,7 +169,14 @@ export async function runBenchmarkCli(request: BenchmarkCliRequest): Promise<voi
     await testDataService.rememberDatasetRun(request.datasetId, run.id);
   }
   const results = await benchmarkPersistenceService.listResults(run.id);
-  const summary = summarizeResults(dataset, run, clips, results, mode, driftSummary);
+  const summary = summarizeResults(
+    dataset,
+    run,
+    clips,
+    results,
+    mode,
+    driftSummary,
+  );
   await invoke("finish_benchmark_cli_command", { summary });
 }
 

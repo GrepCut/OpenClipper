@@ -1,4 +1,7 @@
-import { benchmarkPersistenceService, testDataService } from "../test-data.service";
+import {
+  benchmarkPersistenceService,
+  testDataService,
+} from "../test-data.service";
 import type { BenchmarkRun, DriftSummary, TestClip } from "../test.types";
 import { TEST_ASPECTS } from "../test.types";
 import {
@@ -20,7 +23,9 @@ export interface BenchmarkRunnerProgress {
 
 export type BenchmarkRunMode = "process" | "check";
 
-function frameMetaJsonl(frames: Array<{ timestampUs: number; layoutMode: string; panels: unknown[] }>): string {
+function frameMetaJsonl(
+  frames: Array<{ timestampUs: number; layoutMode: string; panels: unknown[] }>,
+): string {
   return frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n";
 }
 
@@ -33,9 +38,14 @@ async function loadBaselineFrames(
   const relativePath = `runs/${baselineRunId}/clips/${clipId}/${aspectId}.crop.jsonl`;
   let contents: string;
   try {
-    contents = await benchmarkPersistenceService.readArtifact(datasetId, relativePath);
+    contents = await benchmarkPersistenceService.readArtifact(
+      datasetId,
+      relativePath,
+    );
   } catch {
-    throw new Error("Remembered baseline uses the legacy metadata format. Run processing and Remember a new baseline.");
+    throw new Error(
+      "Remembered baseline uses the legacy metadata format. Run processing and Remember a new baseline.",
+    );
   }
   return parseFrameMetaJsonl(contents);
 }
@@ -49,9 +59,15 @@ async function loadBaselineProcessingMs(
     datasetId,
     `runs/${baselineRunId}/manifest.json`,
   );
-  const manifest = JSON.parse(contents) as { clips?: Array<{ clipId?: string; processingMs?: unknown }> };
-  const value = manifest.clips?.find((entry) => entry.clipId === clipId)?.processingMs;
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+  const manifest = JSON.parse(contents) as {
+    clips?: Array<{ clipId?: string; processingMs?: unknown }>;
+  };
+  const value = manifest.clips?.find(
+    (entry) => entry.clipId === clipId,
+  )?.processingMs;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
 }
 
 export async function executeBenchmarkRun(input: {
@@ -64,9 +80,12 @@ export async function executeBenchmarkRun(input: {
   onProgress?: (progress: BenchmarkRunnerProgress) => void;
 }): Promise<{ run: BenchmarkRun; driftSummary: DriftSummary | null }> {
   const mode = input.mode ?? "process";
-  const baselineRunId = mode === "check" ? input.rememberedRunId ?? null : null;
+  const baselineRunId =
+    mode === "check" ? (input.rememberedRunId ?? null) : null;
   if (mode === "check" && !baselineRunId) {
-    throw new Error("No remembered baseline. Run processing, then Remember a completed run before Check.");
+    throw new Error(
+      "No remembered baseline. Run processing, then Remember a completed run before Check.",
+    );
   }
 
   const config = {
@@ -75,7 +94,11 @@ export async function executeBenchmarkRun(input: {
     mode,
     analyzer: "production-smart-follow",
     baselineRunId,
-    aspects: TEST_ASPECTS.map(({ id, formatId, ratio }) => ({ id, formatId, ratio })),
+    aspects: TEST_ASPECTS.map(({ id, formatId, ratio }) => ({
+      id,
+      formatId,
+      ratio,
+    })),
     sampling: "decoded-frame-presentation-timestamps",
     createdAt: new Date().toISOString(),
     visionAblation: input.visionAblation ?? {},
@@ -97,7 +120,8 @@ export async function executeBenchmarkRun(input: {
 
   try {
     for (const [clipIndex, clip] of input.clips.entries()) {
-      if (input.signal.aborted) throw new DOMException("Benchmark cancelled", "AbortError");
+      if (input.signal.aborted)
+        throw new DOMException("Benchmark cancelled", "AbortError");
       const { path } = await testDataService.playableClip(clip.id);
       try {
         const output = await runTestBenchmarkAnalysis({
@@ -105,13 +129,14 @@ export async function executeBenchmarkRun(input: {
           clipPath: path,
           signal: input.signal,
           visionAblation: input.visionAblation,
-          onProgress: ({ phase, ratio }) => input.onProgress?.({
-            clipIndex,
-            clipCount: input.clips.length,
-            clipName: clip.name,
-            phase,
-            ratio,
-          }),
+          onProgress: ({ phase, ratio }) =>
+            input.onProgress?.({
+              clipIndex,
+              clipCount: input.clips.length,
+              clipName: clip.name,
+              phase,
+              ratio,
+            }),
         });
         const clipManifest = {
           clipId: clip.id,
@@ -143,9 +168,14 @@ export async function executeBenchmarkRun(input: {
             JSON.stringify(output.nativeMetrics, null, 2),
           );
         }
-        const baselineProcessingMs = mode === "check" && baselineRunId
-          ? await loadBaselineProcessingMs(input.datasetId, baselineRunId, clip.id)
-          : null;
+        const baselineProcessingMs =
+          mode === "check" && baselineRunId
+            ? await loadBaselineProcessingMs(
+                input.datasetId,
+                baselineRunId,
+                clip.id,
+              )
+            : null;
         for (const aspect of output.aspects) {
           const relativePath = `clips/${clip.id}/${aspect.aspectId}.crop.jsonl`;
           const detailsPath = await benchmarkPersistenceService.writeArtifact(
@@ -157,9 +187,10 @@ export async function executeBenchmarkRun(input: {
           let resultMetrics: Record<string, unknown> = {
             frameCount: aspect.frames.length,
             processingMs: output.processingMs,
-            realtimeFactor: output.processingMs > 0
-              ? (clip.duration * 1000) / output.processingMs
-              : null,
+            realtimeFactor:
+              output.processingMs > 0
+                ? (clip.duration * 1000) / output.processingMs
+                : null,
           };
           if (mode === "check" && baselineRunId) {
             const baselineFrames = await loadBaselineFrames(
@@ -168,7 +199,10 @@ export async function executeBenchmarkRun(input: {
               clip.id,
               aspect.aspectId,
             );
-            const comparison = compareFrameMetadata(baselineFrames, aspect.frames);
+            const comparison = compareFrameMetadata(
+              baselineFrames,
+              aspect.frames,
+            );
             resultMetrics = {
               matchesBaseline: comparison.matchesBaseline,
               mse: comparison.mse,
@@ -177,12 +211,14 @@ export async function executeBenchmarkRun(input: {
               structuralMismatchCount: comparison.structuralMismatchCount,
               comparedFrames: comparison.comparedFrames,
               processingMs: output.processingMs,
-              realtimeFactor: output.processingMs > 0
-                ? (clip.duration * 1000) / output.processingMs
-                : null,
-              speedup: baselineProcessingMs != null && output.processingMs > 0
-                ? baselineProcessingMs / output.processingMs
-                : null,
+              realtimeFactor:
+                output.processingMs > 0
+                  ? (clip.duration * 1000) / output.processingMs
+                  : null,
+              speedup:
+                baselineProcessingMs != null && output.processingMs > 0
+                  ? baselineProcessingMs / output.processingMs
+                  : null,
             };
             perClipDrift.push({
               clipId: clip.id,
@@ -201,7 +237,11 @@ export async function executeBenchmarkRun(input: {
         }
         completedClips += 1;
       } catch (error) {
-        if (input.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) throw error;
+        if (
+          input.signal.aborted ||
+          (error instanceof DOMException && error.name === "AbortError")
+        )
+          throw error;
         failedClips += 1;
         const message = error instanceof Error ? error.message : String(error);
         (manifest.clips as unknown[]).push({ clipId: clip.id, error: message });
@@ -218,20 +258,25 @@ export async function executeBenchmarkRun(input: {
       }
     }
 
-    const driftSummary = mode === "check" && baselineRunId
-      ? buildDriftSummary({ baselineRunId, perClip: perClipDrift })
-      : null;
+    const driftSummary =
+      mode === "check" && baselineRunId
+        ? buildDriftSummary({ baselineRunId, perClip: perClipDrift })
+        : null;
 
     const manifestPath = await benchmarkPersistenceService.writeArtifact(
       input.datasetId,
       run.id,
       "manifest.json",
-      JSON.stringify({
-        ...manifest,
-        completedClips,
-        failedClips,
-        driftSummary,
-      }, null, 2),
+      JSON.stringify(
+        {
+          ...manifest,
+          completedClips,
+          failedClips,
+          driftSummary,
+        },
+        null,
+        2,
+      ),
     );
     const finishedRun = await benchmarkPersistenceService.finishRun(
       run.id,
@@ -241,11 +286,17 @@ export async function executeBenchmarkRun(input: {
     );
     return { run: finishedRun, driftSummary };
   } catch (error) {
-    const cancelled = input.signal.aborted || (error instanceof DOMException && error.name === "AbortError");
+    const cancelled =
+      input.signal.aborted ||
+      (error instanceof DOMException && error.name === "AbortError");
     const finishedRun = await benchmarkPersistenceService.finishRun(
       run.id,
       cancelled ? "cancelled" : "failed",
-      cancelled ? "Cancelled by user." : error instanceof Error ? error.message : String(error),
+      cancelled
+        ? "Cancelled by user."
+        : error instanceof Error
+          ? error.message
+          : String(error),
     );
     return { run: finishedRun, driftSummary: null };
   }

@@ -1,5 +1,9 @@
 import type { FaceBox, FaceBoxSample } from "../../shared/face-samples.util";
-import type { AutoFlipStaticFeatureSample, NormalizedBox, SubjectDetectionSample } from "../../shared/smart-crop.util";
+import type {
+  AutoFlipStaticFeatureSample,
+  NormalizedBox,
+  SubjectDetectionSample,
+} from "../../shared/smart-crop.util";
 
 export type { FaceBox, FaceBoxSample };
 
@@ -65,6 +69,16 @@ export interface NativeVisionMetrics {
   baseObjectInferenceMs: number;
   recoveryObjectInferenceMs: number;
   basePoseInferenceMs: number;
+  faceInferenceCalls: number;
+  faceMultiframeInferenceCalls: number;
+  faceFullBatchCount: number;
+  faceInferenceFrames: number;
+  faceBatchCollectWaitMs: number;
+  objectPreprocessMs: number;
+  objectDecodeMs: number;
+  zeroCopyTileCount: number;
+  zeroCopyTileBytesAvoided: number;
+  yoloxFastDecodeSkippedRows: number;
   orientationProbePasses: number;
   peakFaceQueueDepth: number;
   peakObjectQueueDepth: number;

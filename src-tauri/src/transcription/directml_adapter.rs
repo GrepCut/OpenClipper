@@ -1,6 +1,6 @@
 #[cfg(windows)]
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1,
+    CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
 };
 
 /// Select the hardware adapter with the most dedicated VRAM. sherpa-onnx
@@ -44,7 +44,10 @@ pub fn configure_preferred_adapter() {
             .trim()
             .to_owned();
         let vram = desc.DedicatedVideoMemory;
-        if selected.as_ref().is_none_or(|(_, best_vram, _)| vram > *best_vram) {
+        if selected
+            .as_ref()
+            .is_none_or(|(_, best_vram, _)| vram > *best_vram)
+        {
             selected = Some((index, vram, name));
         }
     }
@@ -56,7 +59,9 @@ pub fn configure_preferred_adapter() {
             vram / (1024 * 1024)
         );
     } else {
-        log::warn!("Parakeet DirectML: no hardware adapter found; sherpa-onnx will use its default");
+        log::warn!(
+            "Parakeet DirectML: no hardware adapter found; sherpa-onnx will use its default"
+        );
     }
 }
 

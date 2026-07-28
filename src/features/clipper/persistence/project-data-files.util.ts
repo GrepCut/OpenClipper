@@ -176,19 +176,27 @@ export async function writeClipperTrimmedSegment(
   projectId: string,
   buffer: ArrayBuffer,
   metadata: ClipperTrimMetadata,
-): Promise<void> {
-  if (!isTauri()) return;
+): Promise<ClipperRestoredTrimmedSegment | null> {
+  if (!isTauri()) return null;
   await ensureClipperProjectDataDir(projectId);
-  await invoke("write_clipper_project_data_bytes", {
-    projectId,
-    fileName: CLIPPER_TRIMMED_SEGMENT_FILE,
-    contents: new Uint8Array(buffer),
+  await invoke("write_clipper_project_data_raw", new Uint8Array(buffer), {
+    headers: {
+      "x-clipper-project-id": projectId,
+      "x-clipper-file-name": CLIPPER_TRIMMED_SEGMENT_FILE,
+    },
   });
   await invoke("write_clipper_project_data_file", {
     projectId,
     fileName: CLIPPER_TRIM_METADATA_FILE,
     contents: JSON.stringify(metadata),
   });
+  const filePath = await invoke<string>("get_clipper_project_data_file_path", {
+    projectId,
+    fileName: CLIPPER_TRIMMED_SEGMENT_FILE,
+  });
+  const file = pathBackedClipperFile(filePath);
+  const videoUrl = await resolveFilePlayableUrl(file);
+  return { file, videoUrl };
 }
 
 export async function readClipperTrimmedSegment(

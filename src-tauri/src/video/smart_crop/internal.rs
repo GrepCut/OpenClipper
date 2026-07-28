@@ -51,6 +51,16 @@ pub(crate) struct WorkerMetrics {
     pub object_recovery_inference_ms: AtomicU64,
     pub pose_base_inference_ms: AtomicU64,
     pub base_pose_passes: AtomicUsize,
+    pub face_inference_calls: AtomicUsize,
+    pub face_multiframe_inference_calls: AtomicUsize,
+    pub face_full_batch_count: AtomicUsize,
+    pub face_inference_frames: AtomicUsize,
+    pub face_batch_collect_wait_ms: AtomicU64,
+    pub object_preprocess_time_us: AtomicU64,
+    pub object_decode_time_us: AtomicU64,
+    pub zero_copy_tile_count: AtomicUsize,
+    pub zero_copy_tile_bytes_avoided: AtomicU64,
+    pub yolox_fast_decode_skipped_rows: AtomicU64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -61,6 +71,16 @@ pub(crate) struct WorkerMetricSnapshot {
     pub object_recovery_inference_ms: u64,
     pub pose_base_inference_ms: u64,
     pub base_pose_passes: usize,
+    pub face_inference_calls: usize,
+    pub face_multiframe_inference_calls: usize,
+    pub face_full_batch_count: usize,
+    pub face_inference_frames: usize,
+    pub face_batch_collect_wait_ms: u64,
+    pub object_preprocess_time_us: u64,
+    pub object_decode_time_us: u64,
+    pub zero_copy_tile_count: usize,
+    pub zero_copy_tile_bytes_avoided: u64,
+    pub yolox_fast_decode_skipped_rows: u64,
 }
 
 impl WorkerMetrics {
@@ -72,6 +92,20 @@ impl WorkerMetrics {
             object_recovery_inference_ms: self.object_recovery_inference_ms.load(Ordering::Relaxed),
             pose_base_inference_ms: self.pose_base_inference_ms.load(Ordering::Relaxed),
             base_pose_passes: self.base_pose_passes.load(Ordering::Relaxed),
+            face_inference_calls: self.face_inference_calls.load(Ordering::Relaxed),
+            face_multiframe_inference_calls: self
+                .face_multiframe_inference_calls
+                .load(Ordering::Relaxed),
+            face_full_batch_count: self.face_full_batch_count.load(Ordering::Relaxed),
+            face_inference_frames: self.face_inference_frames.load(Ordering::Relaxed),
+            face_batch_collect_wait_ms: self.face_batch_collect_wait_ms.load(Ordering::Relaxed),
+            object_preprocess_time_us: self.object_preprocess_time_us.load(Ordering::Relaxed),
+            object_decode_time_us: self.object_decode_time_us.load(Ordering::Relaxed),
+            zero_copy_tile_count: self.zero_copy_tile_count.load(Ordering::Relaxed),
+            zero_copy_tile_bytes_avoided: self.zero_copy_tile_bytes_avoided.load(Ordering::Relaxed),
+            yolox_fast_decode_skipped_rows: self
+                .yolox_fast_decode_skipped_rows
+                .load(Ordering::Relaxed),
         }
     }
 }
@@ -105,6 +139,14 @@ pub(crate) struct AnalysisFrame {
     pub rgb: Vec<u8>,
     pub face_bucket: bool,
     pub scene_cut: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FrameRegion {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 pub(crate) struct ObjectFramePermit {
@@ -161,6 +203,7 @@ pub(crate) enum WorkerResult {
 /// or one high-detail tile cropped from it.
 pub(crate) struct FaceJob {
     pub frame: Arc<AnalysisFrame>,
+    pub region: Option<FrameRegion>,
     pub kind: FaceJobKind,
 }
 
@@ -216,6 +259,7 @@ pub(crate) enum ObjectJobKind {
     },
     Tile {
         frame: Arc<AnalysisFrame>,
+        region: Option<FrameRegion>,
         base_index: usize,
         offset_x: f32,
         offset_y: f32,
@@ -276,7 +320,8 @@ pub(crate) struct PendingObjectRecovery {
 
 #[cfg(test)]
 mod tests {
-    use super::ObjectFramePermit;
+    use super::{ObjectFramePermit, WorkerMetrics};
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn object_frame_permit_returns_exactly_one_lifecycle_token() {
@@ -297,5 +342,44 @@ mod tests {
         drop(second);
         receiver.recv().unwrap();
         assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn worker_metric_snapshot_includes_face_batch_metrics() {
+        let metrics = WorkerMetrics::default();
+        metrics.face_inference_calls.store(5, Ordering::Relaxed);
+        metrics
+            .face_multiframe_inference_calls
+            .store(3, Ordering::Relaxed);
+        metrics.face_full_batch_count.store(2, Ordering::Relaxed);
+        metrics.face_inference_frames.store(17, Ordering::Relaxed);
+        metrics
+            .face_batch_collect_wait_ms
+            .store(250, Ordering::Relaxed);
+        metrics
+            .object_preprocess_time_us
+            .store(12_345, Ordering::Relaxed);
+        metrics
+            .object_decode_time_us
+            .store(6_789, Ordering::Relaxed);
+        metrics.zero_copy_tile_count.store(7, Ordering::Relaxed);
+        metrics
+            .zero_copy_tile_bytes_avoided
+            .store(8_601_600, Ordering::Relaxed);
+        metrics
+            .yolox_fast_decode_skipped_rows
+            .store(10, Ordering::Relaxed);
+
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.face_inference_calls, 5);
+        assert_eq!(snapshot.face_multiframe_inference_calls, 3);
+        assert_eq!(snapshot.face_full_batch_count, 2);
+        assert_eq!(snapshot.face_inference_frames, 17);
+        assert_eq!(snapshot.face_batch_collect_wait_ms, 250);
+        assert_eq!(snapshot.object_preprocess_time_us, 12_345);
+        assert_eq!(snapshot.object_decode_time_us, 6_789);
+        assert_eq!(snapshot.zero_copy_tile_count, 7);
+        assert_eq!(snapshot.zero_copy_tile_bytes_avoided, 8_601_600);
+        assert_eq!(snapshot.yolox_fast_decode_skipped_rows, 10);
     }
 }

@@ -94,7 +94,10 @@ impl WinMlModel {
                     precision: ModelPrecision::Float16,
                 };
                 if let Some(times) = try_config(&fp16_model, directx_fp16) {
-                    if best_gpu.as_ref().is_none_or(|(_, best_times)| times[2] < best_times[2]) {
+                    if best_gpu
+                        .as_ref()
+                        .is_none_or(|(_, best_times)| times[2] < best_times[2])
+                    {
                         best_gpu = Some((directx_fp16, times));
                         fp16_winner = Some(fp16_model);
                     } else {
@@ -130,7 +133,10 @@ impl WinMlModel {
         let cpu_times = cpu_times?;
         diagnostics::append(
             "winml-calibrate",
-            &format!("DirectX unavailable; selected CPU config={cpu_config:?} median_us={}", cpu_times[2]),
+            &format!(
+                "DirectX unavailable; selected CPU config={cpu_config:?} median_us={}",
+                cpu_times[2]
+            ),
         );
         Ok((fp32_model, cpu_config))
     }

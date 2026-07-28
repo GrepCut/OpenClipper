@@ -85,14 +85,19 @@ fn sync_sherpa_directml_dlls(lib_dir: &Path) {
         return;
     };
     let Some(profile_dir) = Path::new(&out_dir).ancestors().nth(3) else {
-        println!("cargo:warning=Cannot locate the Cargo profile directory for DirectML DLL staging");
+        println!(
+            "cargo:warning=Cannot locate the Cargo profile directory for DirectML DLL staging"
+        );
         return;
     };
 
     let entries = match fs::read_dir(lib_dir) {
         Ok(entries) => entries,
         Err(error) => {
-            println!("cargo:warning=Cannot read DirectML library directory {}: {error}", lib_dir.display());
+            println!(
+                "cargo:warning=Cannot read DirectML library directory {}: {error}",
+                lib_dir.display()
+            );
             return;
         }
     };

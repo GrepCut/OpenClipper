@@ -7,9 +7,7 @@ export {
   hydrateFaceSampleCache,
   serializeFaceSampleCache,
 } from "./cache.util";
-export {
-  prefillFaceSampleCache,
-} from "./analysis.util";
+export { prefillFaceSampleCache } from "./analysis.util";
 export {
   interpolateCentroid,
   blendCentroid,

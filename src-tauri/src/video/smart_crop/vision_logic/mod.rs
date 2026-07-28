@@ -20,4 +20,4 @@ pub use types::{
     AutoFlipFaceDetection, Keypoint, Letterbox, NormalizedBox, PoseSubject, Rotation,
     SubjectDetection, BLAZE_INPUT_SIZE, MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
-pub use yolox::{decode_yolox, merge_subject_detections};
+pub use yolox::{decode_yolox_fast, merge_subject_detections};
