@@ -17,7 +17,7 @@ import {
   type CentroidSample,
 } from "../engine/reframe";
 import type { ClipperFrameContext } from "../engine/render/index";
-import type { AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, SubjectDetectionSample } from "../shared/smart-crop.util";
+import type { AutoFlipStaticFeatureSample, ClipperFrameAnalysis, ImportanceSignalSample, SubjectDetectionSample } from "../shared/smart-crop.util";
 import type { FaceBoxSample } from "../shared/face-samples.util";
 import { groupCaptionWords } from "../engine/transcript";
 import type { ClipSourceMode } from "../persistence/project-metadata.util";
@@ -73,7 +73,7 @@ export interface ClipperSession {
   faceCache: FaceSampleCache | null;
   /** Face samples augmented with person-detector head estimates; consumed only by the collage derivations. */
   collageFaceSamples?: FaceBoxSample[] | null;
-  smartCropAnalysis?: ClipperSmartCropBlob | null;
+  smartCropAnalysis?: ClipperFrameAnalysis | null;
   /** Set by the faces stage when it also ran subject/motion extraction (see `PendingSubjectExtraction`); consumed and cleared by the subjects stage. */
   pendingSubjectExtraction?: PendingSubjectExtraction | null;
   /** Wall-clock phase timings for "Detect faces & track action"; finalized in the subjects stage. */
@@ -112,7 +112,7 @@ export function collageRegionCacheKey(disabledCollageRegionIds: string[]): strin
 
 /** Cache key for layout-derived collage regions (AutoFlip split markers). */
 export function layoutRegionsCacheKey(
-  smartCropAnalysis: ClipperSmartCropBlob | null | undefined,
+  smartCropAnalysis: ClipperFrameAnalysis | null | undefined,
 ): string {
   if (!smartCropAnalysis?.layoutTracks) return "none";
   const sampleCount = Object.values(smartCropAnalysis.layoutTracks).reduce(

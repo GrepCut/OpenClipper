@@ -66,6 +66,7 @@ export function ClipsListScroller({
   fadeHeight = CLIPS_LIST_FADE_HEIGHT,
   contentPaddingBottom,
   css,
+  scrollRef,
 }: {
   children: React.ReactNode;
   fadeBottom?: number | string;
@@ -73,6 +74,7 @@ export function ClipsListScroller({
   fadeHeight?: number | string;
   contentPaddingBottom?: number | string;
   css: Record<string, unknown>;
+  scrollRef?: React.Ref<HTMLDivElement>;
 }) {
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     forwardWheelToScrollableParent(event);
@@ -80,7 +82,7 @@ export function ClipsListScroller({
 
   return (
     <Box position="relative" flex="1" minH={0}>
-      <Box position="absolute" inset={0} css={css} onWheel={handleWheel}>
+      <Box ref={scrollRef} position="absolute" inset={0} css={css} onWheel={handleWheel}>
         <Box css={{ direction: "ltr", minHeight: "100%" }} pb={contentPaddingBottom}>
           {children}
         </Box>

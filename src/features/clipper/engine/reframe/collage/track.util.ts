@@ -427,7 +427,9 @@ export function deriveRegionsFromLayoutTracks(
   primaryFormatId = "tiktok",
 ): CollageRegion[] {
   if (!smartCropAnalysis?.layoutTracks) return [];
+  const aspectId = primaryFormatId === "tiktok" ? "9-16" : primaryFormatId;
   const track = smartCropAnalysis.layoutTracks[primaryFormatId]
+    ?? smartCropAnalysis.layoutTracks[aspectId]
     ?? smartCropAnalysis.layoutTracks.default
     ?? Object.values(smartCropAnalysis.layoutTracks)[0];
   if (!track?.samples.length) return [];

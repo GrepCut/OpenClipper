@@ -91,7 +91,7 @@ export interface ClipperPreviewPlayOverlayProps {
 
 export interface ClipperPreviewHeroSectionProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
-  canvasRefs: React.MutableRefObject<Record<string, HTMLCanvasElement | null>>;
+  registerCanvas: (formatId: string, canvas: HTMLCanvasElement | null) => void;
   primaryFormat: ClipperFormatDef | undefined;
   clipSegments: ClipperClipSegmentWindow[];
   clipDuration: number;
@@ -113,5 +113,5 @@ export interface ClipperPreviewSidePanelProps extends ClipperPreviewProps {
 
 export interface ClipperPreviewFormatsFooterProps {
   secondaryFormats: ClipperFormatDef[];
-  canvasRefs: React.MutableRefObject<Record<string, HTMLCanvasElement | null>>;
+  registerCanvas: (formatId: string, canvas: HTMLCanvasElement | null) => void;
 }

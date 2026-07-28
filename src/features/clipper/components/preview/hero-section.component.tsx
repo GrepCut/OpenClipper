@@ -8,7 +8,7 @@ import { ClipperPreviewTimeline } from "./timeline.component";
 
 export function ClipperPreviewHeroSection({
   videoRef,
-  canvasRefs,
+  registerCanvas,
   primaryFormat,
   clipSegments,
   clipDuration,
@@ -55,7 +55,7 @@ export function ClipperPreviewHeroSection({
         >
           <canvas
             ref={(el) => {
-              canvasRefs.current[primaryFormat.id] = el;
+              registerCanvas(primaryFormat.id, el);
             }}
             style={{
               width: "100%",

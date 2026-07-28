@@ -9,7 +9,7 @@ import type {
   CollageTracks,
 } from "./collage.types";
 import type { ClipperCropRect } from "./reframe.types";
-import type { ClipperSmartCropBlob } from "../../shared/smart-crop.util";
+import type { ClipperFrameAnalysis } from "../../shared/smart-crop.util";
 
 export interface ClipperClipWindow {
   /**
@@ -46,7 +46,7 @@ export interface ClipperFrameContext {
     collageRegions: CollageRegion[];
     collageEligibility: CollageAspectEligibility;
   };
-  smartCropAnalysis?: ClipperSmartCropBlob | null;
+  smartCropAnalysis?: ClipperFrameAnalysis | null;
   disabledCollageRegionIds: string[];
   segments?: ClipperClipSegmentWindow[];
 }

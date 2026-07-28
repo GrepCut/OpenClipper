@@ -58,6 +58,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   const safeClipPreviews = clipPreviews ?? safeAutoPartsPreviews;
   const listPreviews = isAiMode ? safeAiPreviews : safeAutoPartsPreviews;
   const aiHistoryRequestedRef = React.useRef(false);
+  const clipsScrollRef = React.useRef<HTMLDivElement>(null);
   const [aiPanelView, setAiPanelView] = React.useState<ClipperAiChatPanelView>("clips");
   const transcriptProps = clipSelectorTranscriptProps(
     rangeWords,
@@ -168,6 +169,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
             fadeHeight={AUTO_PARTS_LENGTH_OVERLAY_PAD}
             contentPaddingBottom={AUTO_PARTS_LENGTH_OVERLAY_PAD}
             css={clipsListScrollCss}
+            scrollRef={clipsScrollRef}
           >
             <ClipperClipSelector
               clipPreviews={safeClipPreviews}
@@ -175,6 +177,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
               onSelectClip={onSelectClip}
               onDeleteClip={onDeleteAutoPartsClip}
               hideTitle
+              scrollRef={clipsScrollRef}
               {...transcriptProps}
             />
           </ClipsListScroller>

@@ -5,7 +5,10 @@ import type { ClipperFormatDef } from "../../shared/formats.util";
 import { cropRectForCentroid } from "../reframe";
 import { deriveRegionsFromLayoutTracks, findActiveRegion } from "../reframe/collage";
 import type { ClipperCropRect } from "../types/reframe.types";
-import type { ClipperSmartCropBlob } from "../../shared/smart-crop.util";
+import {
+  isClipperRuntimeSmartCropBlob,
+  type ClipperFrameAnalysis,
+} from "../../shared/smart-crop.util";
 import { resolveAutoFlipCropRender } from "./crop-resolvers.util";
 import { resolveFrameLayoutBranch } from "./frame-layout-branch.util";
 import { resolveClipperLayoutRender } from "./layout-resolvers.util";
@@ -26,7 +29,7 @@ export interface ClipperFrameGeometry {
 const layoutRegionCache = new WeakMap<object, ReturnType<typeof deriveRegionsFromLayoutTracks>>();
 
 function cachedLayoutRegions(
-  smartCropAnalysis: ClipperSmartCropBlob | null | undefined,
+  smartCropAnalysis: ClipperFrameAnalysis | null | undefined,
 ): ReturnType<typeof deriveRegionsFromLayoutTracks> {
   if (!smartCropAnalysis) return [];
   const cached = layoutRegionCache.get(smartCropAnalysis);
@@ -72,7 +75,7 @@ function splitDestinations(count: number, output: FrameEffectSize): ClipperFrame
 }
 
 /** Exact crop/panel geometry consumed by the canvas renderer, without captions. */
-export function resolveClipperFrameGeometry(formatDef: ClipperFormatDef, source: FrameEffectSize, output: FrameEffectSize, t: number, render: { smartCropAnalysis?: ClipperSmartCropBlob | null; disabledCollageRegionIds: string[] }): ClipperFrameGeometry {
+export function resolveClipperFrameGeometry(formatDef: ClipperFormatDef, source: FrameEffectSize, output: FrameEffectSize, t: number, render: { smartCropAnalysis?: ClipperFrameAnalysis | null; disabledCollageRegionIds: string[] }): ClipperFrameGeometry {
   const resolved = formatDef.mode === "crop" ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t) : undefined;
   const regions = formatDef.mode === "crop" ? cachedLayoutRegions(render.smartCropAnalysis) : [];
   const { plannedLayout } = resolveFrameLayoutBranch(resolved, findActiveRegion(regions, t), render.disabledCollageRegionIds);
@@ -81,6 +84,10 @@ export function resolveClipperFrameGeometry(formatDef: ClipperFormatDef, source:
     const destinations = splitDestinations(viewports.length, output);
     return { mode: "split", panels: viewports.map((sourceRect, index) => ({ source: sourceRect, destination: destinations[index]! })) };
   }
-  const crop = plannedLayout?.viewports[0] ?? resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t)?.cropRect ?? cropRectForCentroid(source.width, source.height, 0.5, 0.5, output.width / output.height);
+  const crop = plannedLayout?.viewports[0]
+    ?? (!isClipperRuntimeSmartCropBlob(render.smartCropAnalysis)
+      ? resolveAutoFlipCropRender(render.smartCropAnalysis, formatDef.id, source, t)?.cropRect
+      : undefined)
+    ?? cropRectForCentroid(source.width, source.height, 0.5, 0.5, output.width / output.height);
   return { mode: plannedLayout?.mode ?? "single-crop", panels: [{ source: coverCrop(clampToContent(crop, render.smartCropAnalysis?.contentRect, source), output), destination: { x: 0, y: 0, width: output.width, height: output.height } }] };
 }

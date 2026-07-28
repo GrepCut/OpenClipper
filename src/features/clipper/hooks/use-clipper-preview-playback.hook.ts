@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   localTimeToSourceTime,
   sourceTimeToLocalTime,
@@ -38,17 +38,12 @@ export function useClipperPreviewPlayback({
   const previewVisibleRef = useRef(true);
   const getFrameContextRef = useRef(getFrameContext);
   getFrameContextRef.current = getFrameContext;
-  const [previewTimeSec, setPreviewTimeSec] = useState(0);
-  const reportedPreviewTimeRef = useRef(Number.NEGATIVE_INFINITY);
+  const secondaryCanvasObserverRef = useRef<IntersectionObserver | null>(null);
+  const visibleSecondaryFormatIdsRef = useRef<Set<string>>(new Set());
+  const lastSecondaryDrawAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const pendingDrawRef = useRef({ includeSecondary: false });
 
-  const reportPreviewTime = useCallback((time: number) => {
-    // Decision data changes at analysis cadence, not video-frame cadence.
-    if (!Number.isFinite(time) || Math.abs(time - reportedPreviewTimeRef.current) < 0.08) return;
-    reportedPreviewTimeRef.current = time;
-    setPreviewTimeSec(time);
-  }, []);
-
-  const redrawCanvases = useCallback(() => {
+  const redrawCanvases = useCallback((visibleSecondaryFormatIds?: ReadonlySet<string>) => {
     if (!previewVisibleRef.current) return;
     const video = videoRef.current;
     if (!video || video.videoWidth <= 0) return;
@@ -61,21 +56,79 @@ export function useClipperPreviewPlayback({
       getFrameContext: () => getFrameContextRef.current(),
       activeClipIndex,
       firstFrameLoggedRef,
+      visibleSecondaryFormatIds,
     });
   }, [activeClipIndex, previewFormats, primaryFormat?.id]);
 
-  const scheduleRedrawRef = useRef<() => void>(() => {});
+  const scheduleRedrawRef = useRef<(options?: { forceSecondary?: boolean }) => void>(() => {});
 
-  const scheduleRedraw = useCallback(() => {
+  const scheduleRedraw = useCallback((options: { forceSecondary?: boolean } = {}) => {
     if (!previewVisibleRef.current) return;
+    const now = performance.now();
+    const visibleSecondaryFormatIds = visibleSecondaryFormatIdsRef.current;
+    const canDrawSecondary =
+      visibleSecondaryFormatIds.size > 0 &&
+      (options.forceSecondary || now - lastSecondaryDrawAtRef.current >= 100);
+    if (canDrawSecondary) {
+      pendingDrawRef.current.includeSecondary = true;
+    }
     if (rafRef.current != null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      redrawCanvases();
+      const pending = pendingDrawRef.current;
+      pendingDrawRef.current = { includeSecondary: false };
+      const secondaryFormatIds = pending.includeSecondary
+        ? new Set(visibleSecondaryFormatIdsRef.current)
+        : undefined;
+      redrawCanvases(secondaryFormatIds);
+      if (pending.includeSecondary) lastSecondaryDrawAtRef.current = performance.now();
     });
   }, [redrawCanvases]);
 
   scheduleRedrawRef.current = scheduleRedraw;
+
+  const registerCanvas = useCallback((formatId: string, canvas: HTMLCanvasElement | null) => {
+    const previous = canvasRefs.current[formatId];
+    if (previous && previous !== canvas) {
+      secondaryCanvasObserverRef.current?.unobserve(previous);
+    }
+    canvasRefs.current[formatId] = canvas;
+
+    if (!canvas || formatId === primaryFormat?.id) {
+      visibleSecondaryFormatIdsRef.current.delete(formatId);
+      return;
+    }
+    secondaryCanvasObserverRef.current?.observe(canvas);
+  }, [primaryFormat?.id]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let becameVisible = false;
+        for (const entry of entries) {
+          const formatId = Object.entries(canvasRefs.current).find(([, canvas]) => canvas === entry.target)?.[0];
+          if (!formatId || formatId === primaryFormat?.id) continue;
+          if (entry.isIntersecting) {
+            visibleSecondaryFormatIdsRef.current.add(formatId);
+            becameVisible = true;
+          } else {
+            visibleSecondaryFormatIdsRef.current.delete(formatId);
+          }
+        }
+        if (becameVisible) scheduleRedrawRef.current({ forceSecondary: true });
+      },
+      { threshold: 0.01 },
+    );
+    secondaryCanvasObserverRef.current = observer;
+    for (const [formatId, canvas] of Object.entries(canvasRefs.current)) {
+      if (canvas && formatId !== primaryFormat?.id) observer.observe(canvas);
+    }
+    return () => {
+      observer.disconnect();
+      secondaryCanvasObserverRef.current = null;
+      visibleSecondaryFormatIdsRef.current.clear();
+    };
+  }, [primaryFormat?.id]);
 
   useEffect(() => {
     const el = previewRegionRef.current;
@@ -98,7 +151,7 @@ export function useClipperPreviewPlayback({
             vfcIdRef.current = null;
           }
         } else {
-          scheduleRedrawRef.current();
+          scheduleRedrawRef.current({ forceSecondary: true });
         }
       },
       { threshold: 0 },
@@ -154,14 +207,13 @@ export function useClipperPreviewPlayback({
       playbackStart,
       playbackEnd,
       scheduleRedraw,
-      onPreviewTimeChange: reportPreviewTime,
     });
 
     return () => {
       video.removeEventListener("error", onVideoError);
       unbindPlayback();
     };
-  }, [clipDuration, clipSegments, playbackEnd, playbackStart, rangeTrimmedVideoUrl, reportPreviewTime, scheduleRedraw]);
+  }, [clipDuration, clipSegments, playbackEnd, playbackStart, rangeTrimmedVideoUrl, scheduleRedraw]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -172,18 +224,17 @@ export function useClipperPreviewPlayback({
       pendingSeek ??
       localTimeToSourceTime(clipSegments, Math.min(3, clipDuration * 0.15));
     video.currentTime = initial;
-    reportPreviewTime(initial);
     if (playAfterClipSelectRef.current) {
       playAfterClipSelectRef.current = false;
       void video.play();
     } else {
       video.pause();
     }
-    scheduleRedraw();
-  }, [activeClipIndex, clipDuration, clipSegments, reportPreviewTime, scheduleRedraw]);
+    scheduleRedraw({ forceSecondary: true });
+  }, [activeClipIndex, clipDuration, clipSegments, scheduleRedraw]);
 
   useEffect(() => {
-    scheduleRedraw();
+    scheduleRedraw({ forceSecondary: true });
   }, [settings, scheduleRedraw]);
 
   const togglePlay = useCallback(() => {
@@ -212,7 +263,7 @@ export function useClipperPreviewPlayback({
       if (!video) return;
       video.currentTime = sourceTimeSec;
       video.pause();
-      scheduleRedraw();
+      scheduleRedraw({ forceSecondary: true });
     },
     [activeClipIndex, onSelectClip, scheduleRedraw],
   );
@@ -244,8 +295,8 @@ export function useClipperPreviewPlayback({
   return {
     videoRef,
     canvasRefs,
+    registerCanvas,
     previewRegionRef,
-    previewTimeSec,
     togglePlay,
     seekToTranscriptTime,
   };

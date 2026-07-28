@@ -25,6 +25,8 @@ export interface RedrawPreviewCanvasesParams {
   getFrameContext: () => ClipperFrameContext | null;
   activeClipIndex: number;
   firstFrameLoggedRef: { current: boolean };
+  /** Secondary format ids that may redraw in this pass. The primary always redraws. */
+  visibleSecondaryFormatIds?: ReadonlySet<string>;
 }
 
 export function redrawPreviewCanvases({
@@ -36,6 +38,7 @@ export function redrawPreviewCanvases({
   getFrameContext,
   activeClipIndex,
   firstFrameLoggedRef,
+  visibleSecondaryFormatIds,
 }: RedrawPreviewCanvasesParams): void {
   const drawStart = performance.now();
   const render = getFrameContext();
@@ -43,10 +46,18 @@ export function redrawPreviewCanvases({
 
   const time = video.currentTime;
   const source = { width: video.videoWidth, height: video.videoHeight };
+  let drawnFormats = 0;
 
   for (const formatDef of previewFormats) {
+    if (
+      formatDef.id !== primaryFormatId &&
+      (!visibleSecondaryFormatIds || !visibleSecondaryFormatIds.has(formatDef.id))
+    ) {
+      continue;
+    }
     const canvas = canvasRefs[formatDef.id];
     if (!canvas) continue;
+    drawnFormats++;
     let cache = canvasCaches.get(formatDef.id);
     if (!cache) {
       cache = new FrameCanvasCache();
@@ -64,9 +75,11 @@ export function redrawPreviewCanvases({
   if (previewFrameCount >= PREVIEW_PERFORMANCE_SAMPLE_WINDOW) {
     clipperLog("preview: render performance", {
       backend: "canvas2d-display-resolution",
-      formats: previewFormats.length,
+      formats: drawnFormats,
       averageDrawMs: Math.round((previewTotalDrawMs / previewFrameCount) * 10) / 10,
       worstDrawMs: Math.round(previewWorstDrawMs * 10) / 10,
+      totalVideoFrames: video.getVideoPlaybackQuality?.().totalVideoFrames ?? null,
+      droppedVideoFrames: video.getVideoPlaybackQuality?.().droppedVideoFrames ?? null,
     });
     previewFrameCount = 0;
     previewTotalDrawMs = 0;
@@ -93,8 +106,7 @@ export interface BindPreviewVideoPlaybackParams {
   clipDuration: number;
   playbackStart: number;
   playbackEnd: number;
-  scheduleRedraw: () => void;
-  onPreviewTimeChange?: (time: number) => void;
+  scheduleRedraw: (options?: { forceSecondary?: boolean }) => void;
 }
 
 export function bindPreviewVideoPlayback({
@@ -107,19 +119,20 @@ export function bindPreviewVideoPlayback({
   playbackStart,
   playbackEnd,
   scheduleRedraw,
-  onPreviewTimeChange,
 }: BindPreviewVideoPlaybackParams): () => void {
   const initialLocal = Math.min(3, clipDuration * 0.15);
   const initialTime = localTimeToSourceTime(clipSegments, initialLocal);
 
   const onReady = () => {
-    scheduleRedraw();
     video.currentTime = initialTime;
-    onPreviewTimeChange?.(initialTime);
+    scheduleRedraw({ forceSecondary: true });
   };
   const onSeeked = () => {
-    onPreviewTimeChange?.(video.currentTime);
-    scheduleRedraw();
+    scheduleRedraw({ forceSecondary: true });
+  };
+  const onMetadata = () => {
+    video.currentTime = initialTime;
+    scheduleRedraw({ forceSecondary: true });
   };
 
   const cancelVfc = () => {
@@ -129,7 +142,7 @@ export function bindPreviewVideoPlayback({
     }
   };
 
-  video.addEventListener("loadedmetadata", scheduleRedraw);
+  video.addEventListener("loadedmetadata", onMetadata);
   video.addEventListener("loadeddata", onReady);
   video.addEventListener("seeked", onSeeked);
 
@@ -137,10 +150,14 @@ export function bindPreviewVideoPlayback({
   const useVfc = typeof vfcVideo.requestVideoFrameCallback === "function";
   let startVfcLoop: (() => void) | undefined;
   let onTimeUpdate: (() => void) | undefined;
+  const onPauseRedraw = () => scheduleRedraw({ forceSecondary: true });
+  const onVfcPause = () => {
+    cancelVfc();
+    onPauseRedraw();
+  };
 
   if (useVfc) {
     const scheduleNext = () => {
-      onPreviewTimeChange?.(video.currentTime);
       scheduleRedraw();
       const v = videoRef.current;
       if (v && !v.paused && !v.ended) {
@@ -166,11 +183,10 @@ export function bindPreviewVideoPlayback({
       }
     };
     video.addEventListener("play", startVfcLoop);
-    video.addEventListener("pause", cancelVfc);
+    video.addEventListener("pause", onVfcPause);
     video.addEventListener("ended", cancelVfc);
   } else {
     onTimeUpdate = () => {
-      onPreviewTimeChange?.(video.currentTime);
       if (!video.paused) {
         const gapTarget = findGapJumpTarget(clipSegments, video.currentTime);
         if (gapTarget != null) {
@@ -183,24 +199,24 @@ export function bindPreviewVideoPlayback({
       }
     };
     video.addEventListener("timeupdate", onTimeUpdate);
-    video.addEventListener("pause", scheduleRedraw);
+    video.addEventListener("pause", onPauseRedraw);
   }
 
   if (video.readyState >= 2) onReady();
-  else scheduleRedraw();
+  else scheduleRedraw({ forceSecondary: true });
 
   return () => {
-    video.removeEventListener("loadedmetadata", scheduleRedraw);
+    video.removeEventListener("loadedmetadata", onMetadata);
     video.removeEventListener("loadeddata", onReady);
     video.removeEventListener("seeked", onSeeked);
     if (useVfc) {
       cancelVfc();
       if (startVfcLoop) video.removeEventListener("play", startVfcLoop);
-      video.removeEventListener("pause", cancelVfc);
+      video.removeEventListener("pause", onVfcPause);
       video.removeEventListener("ended", cancelVfc);
     } else {
       if (onTimeUpdate) video.removeEventListener("timeupdate", onTimeUpdate);
-      video.removeEventListener("pause", scheduleRedraw);
+      video.removeEventListener("pause", onPauseRedraw);
     }
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);

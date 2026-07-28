@@ -3,6 +3,7 @@ import {
   buildAutoFlipTrack,
   primaryAspectTrackSampleCount,
 } from "../../engine/autoflip/build-track.util";
+import { compactSmartCropForRuntime } from "../../engine/render/compact-smart-crop.util";
 import { augmentFaceSamplesWithDetectedHeads } from "../../engine/reframe/collage";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { aspectRatioFromId } from "../../lib/media/video-draw.util";
@@ -17,6 +18,7 @@ import { clipperPipelineService, markClipperStepCompleted } from "../../persiste
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
 import { isRestoredSmartCropAnalysisValid } from "../is-restored-analysis-valid.util";
+import { isClipperRuntimeSmartCropBlob } from "../../shared/smart-crop.util";
 import type {
   ClipperSmartCropBlob,
   PoseSubject,
@@ -151,7 +153,7 @@ export async function runAnalyzeSubjectsStage(
       const faceCacheSamples = session.faceCache?.sortedSamples() ?? [];
       if (faceCacheSamples.length > 0) {
         const detections =
-          restored && restored.importanceSamples?.length
+          restored && !isClipperRuntimeSmartCropBlob(restored) && restored.importanceSamples?.length
             ? synthesizeDetectionsFromSmartCrop(restored)
             : synthesizeDetectionsFromFaceCache(faceCacheSamples);
         session.collageFaceSamples = augmentFaceSamplesWithDetectedHeads(
@@ -233,14 +235,15 @@ export async function runAnalyzeSubjectsStage(
     enhancedIdentityFusion: true,
   });
   blob.engine = "winml";
-  session.smartCropAnalysis = blob;
+  const runtimeAnalysis = compactSmartCropForRuntime(blob);
+  session.smartCropAnalysis = runtimeAnalysis;
   session.collageFaceSamples = augmentFaceSamplesWithDetectedHeads(
     session.faceCache?.sortedSamples() ?? [],
     detections,
   );
   session.faceRenderCache = null;
   benchmark?.enterPhase("smart-crop-persist");
-  await writeClipperSmartCropAnalysis(input.projectId, blob);
+  await writeClipperSmartCropAnalysis(input.projectId, runtimeAnalysis);
   await markClipperStepCompleted(input.projectId, "analyze_subjects", {
     analyzerVersion: blob.analyzerVersion,
     modelId: blob.modelId,

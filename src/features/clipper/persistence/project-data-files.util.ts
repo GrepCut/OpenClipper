@@ -2,7 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { resolveFilePlayableUrl } from '../persistence/tauri-media.util';
 import type { ClipperFaceSamplesBlob } from "../shared/face-samples.util";
-import type { ClipperSmartCropBlob } from "../shared/smart-crop.util";
+import {
+  isClipperRuntimeSmartCropBlob,
+  type ClipperFrameAnalysis,
+  type ClipperSmartCropBlob,
+} from "../shared/smart-crop.util";
+import { compactSmartCropForRuntime } from "../engine/render/compact-smart-crop.util";
 export type { ClipperFaceSamplesBlob };
 import { parseClipperTrimMetadata, parseRestoredSmartCropBlob } from "./clipper-persistence-schemas.util";
 import { clipperLog, clipperMeasureSync, formatBytes } from "../shared/logger.util";
@@ -48,7 +53,7 @@ export async function writeClipperFaceActionBenchmark(projectId: string, content
   clipperLog("face-action benchmark written", { projectId, filePath });
 }
 
-export async function writeClipperSmartCropAnalysis(projectId: string, blob: ClipperSmartCropBlob): Promise<void> {
+export async function writeClipperSmartCropAnalysis(projectId: string, blob: ClipperFrameAnalysis): Promise<void> {
   if (!isTauri()) return;
   await ensureClipperProjectDataDir(projectId);
   await invoke("write_clipper_project_data_file", {
@@ -58,7 +63,7 @@ export async function writeClipperSmartCropAnalysis(projectId: string, blob: Cli
   });
 }
 
-export async function readClipperSmartCropAnalysis(projectId: string): Promise<ClipperSmartCropBlob | null> {
+export async function readClipperSmartCropAnalysis(projectId: string): Promise<ClipperFrameAnalysis | null> {
   if (!isTauri()) return null;
   try {
     const contents = await invoke<string>("read_clipper_project_data_file", {
@@ -66,7 +71,13 @@ export async function readClipperSmartCropAnalysis(projectId: string): Promise<C
       fileName: CLIPPER_SMART_CROP_FILE,
     });
     await yieldToMain();
-    return parseRestoredSmartCropBlob(JSON.parse(contents));
+    const restored = parseRestoredSmartCropBlob(JSON.parse(contents));
+    if (!restored) return null;
+    // Keep old project files untouched, but release their large diagnostic
+    // object before entering preview playback.
+    return isClipperRuntimeSmartCropBlob(restored)
+      ? restored
+      : compactSmartCropForRuntime(restored as ClipperSmartCropBlob);
   } catch {
     return null;
   }

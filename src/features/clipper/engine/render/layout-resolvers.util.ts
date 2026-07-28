@@ -1,5 +1,10 @@
-import type { ClipperLayoutMode, ClipperSmartCropBlob } from "../../shared/smart-crop.util";
+import {
+  isClipperRuntimeSmartCropBlob,
+  type ClipperFrameAnalysis,
+  type ClipperLayoutTrack,
+} from "../../shared/smart-crop.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
+import { getClipperFormatDef } from "../../shared/formats.util";
 import {
   interpolateLayoutSample,
   isShortCandidateSplitRun,
@@ -15,12 +20,28 @@ import type { ResolvedClipperLayout } from "../types/render.types";
 
 /** Resolves a v3 editing decision; absent on persisted legacy analyses. */
 export function resolveClipperLayoutRender(
-  blob: ClipperSmartCropBlob | null | undefined,
+  blob: ClipperFrameAnalysis | null | undefined,
   formatId: string,
   source: FrameEffectSize,
   time: number,
 ): ResolvedClipperLayout | undefined {
   if (!blob) return undefined;
+  if (isClipperRuntimeSmartCropBlob(blob)) {
+    const aspectId = getClipperFormatDef(formatId)?.aspectId;
+    const runtimeTrack = (aspectId ? blob.layoutTracks[aspectId] : undefined)
+      ?? blob.layoutTracks[formatId]
+      ?? blob.layoutTracks.default;
+    if (!runtimeTrack?.samples.length) return undefined;
+    // The interpolation helper only reads the compact fields when diagnostics
+    // are absent; casting preserves its battle-tested cut/panel-owner rules.
+    const sample = interpolateLayoutSample(runtimeTrack as unknown as ClipperLayoutTrack, time);
+    if (!sample?.viewports.length) return undefined;
+    return {
+      mode: sample.mode,
+      viewports: sample.viewports.map((viewport) => normalizedBoxToCropRect(viewport, source)),
+      solidBackgroundColor: sample.solidBackgroundColor ?? blob.solidBackgroundColor,
+    };
+  }
   const track = resolveLayoutTrack(blob.layoutTracks, formatId);
   const sample = interpolateLayoutSample(track, time);
   if (!sample?.viewports.length) return undefined;

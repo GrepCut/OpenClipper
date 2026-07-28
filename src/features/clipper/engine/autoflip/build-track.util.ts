@@ -1,5 +1,5 @@
 import type { FaceBoxSample } from "../../shared/face-samples.util";
-import type { AutoFlipAspectTrack, AutoFlipCropSample, AutoFlipSceneDebug, AutoFlipStaticFeatureSample, ClipperSmartCropBlob, ImportanceSignalSample, NormalizedBox, SubjectDetectionSample } from "../../shared/smart-crop.util";
+import { isClipperRuntimeSmartCropBlob, type AutoFlipAspectTrack, type AutoFlipCropSample, type AutoFlipSceneDebug, type AutoFlipStaticFeatureSample, type ClipperFrameAnalysis, type ClipperSmartCropBlob, type ImportanceSignalSample, type NormalizedBox, type SubjectDetectionSample } from "../../shared/smart-crop.util";
 import { analyzeSceneMotion } from "./camera/scene-motion.util";
 import { buildSceneTimeline, cropScenePath } from "./camera/scene-path.util";
 import { buildSalientKeyframes } from "./salience/salient-region.util";
@@ -331,7 +331,10 @@ export function resolveAutoFlipCropTrack(blob: ClipperSmartCropBlob, formatId: s
 }
 
 /** Sample count from the first aspect track — used for pipeline metadata. */
-export function primaryAspectTrackSampleCount(blob: ClipperSmartCropBlob): number {
+export function primaryAspectTrackSampleCount(blob: ClipperFrameAnalysis): number {
+  if (isClipperRuntimeSmartCropBlob(blob)) {
+    return Object.values(blob.layoutTracks)[0]?.samples.length ?? 0;
+  }
   const tracks = blob.aspectTracks;
   if (!tracks) return 0;
   const first = Object.values(tracks)[0];

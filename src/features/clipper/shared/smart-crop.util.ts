@@ -375,3 +375,44 @@ export interface ClipperSmartCropBlob {
   /** Present only when the caller asked for diagnostics; never persisted by production analysis. */
   debug?: AutoFlipSceneDebug[];
 }
+
+/** Minimal, playback-only form persisted for normal projects. */
+export interface ClipperRuntimeLayoutSample {
+  t: number;
+  mode: ClipperLayoutMode;
+  viewports: NormalizedBox[];
+  panelSubjects?: Array<{ id: string; focusBox: NormalizedBox }>;
+  cut?: boolean;
+  solidBackgroundColor?: { r: number; g: number; b: number };
+}
+
+export interface ClipperRuntimeLayoutTrack {
+  targetAspectRatio: number;
+  samples: ClipperRuntimeLayoutSample[];
+}
+
+/**
+ * Production render data intentionally excludes per-frame arbitration and
+ * benchmark diagnostics. Tracks are keyed by aspect id, not platform id.
+ */
+export interface ClipperRuntimeSmartCropBlob {
+  renderSchemaVersion: 1;
+  analyzerVersion: string;
+  modelId: string;
+  engine?: "winml" | "wasm";
+  trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
+  clipStart: number;
+  clipEnd: number;
+  cameraSmoothing?: "smooth" | "balanced" | "snappy";
+  contentRect?: NormalizedBox;
+  solidBackgroundColor?: { r: number; g: number; b: number };
+  layoutTracks: Record<string, ClipperRuntimeLayoutTrack>;
+}
+
+export type ClipperFrameAnalysis = ClipperSmartCropBlob | ClipperRuntimeSmartCropBlob;
+
+export function isClipperRuntimeSmartCropBlob(
+  blob: ClipperFrameAnalysis | null | undefined,
+): blob is ClipperRuntimeSmartCropBlob {
+  return Boolean(blob && "renderSchemaVersion" in blob && blob.renderSchemaVersion === 1);
+}

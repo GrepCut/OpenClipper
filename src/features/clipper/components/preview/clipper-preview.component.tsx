@@ -113,7 +113,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     [smartCropAnalysis],
   );
 
-  const { videoRef, canvasRefs, previewRegionRef, togglePlay, seekToTranscriptTime } =
+  const { videoRef, registerCanvas, previewRegionRef, togglePlay, seekToTranscriptTime } =
     useClipperPreviewPlayback({
       rangeTrimmedVideoUrl,
       activeClipIndex,
@@ -141,7 +141,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
         left="-9999px"
         aria-hidden
       >
-        <video ref={videoRef} src={rangeTrimmedVideoUrl} preload="auto" playsInline />
+        <video ref={videoRef} src={rangeTrimmedVideoUrl} preload="metadata" playsInline />
       </Box>
 
       <Box
@@ -154,7 +154,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       >
         <ClipperPreviewHeroSection
           videoRef={videoRef}
-          canvasRefs={canvasRefs}
+          registerCanvas={registerCanvas}
           primaryFormat={primaryFormat}
           clipSegments={clipSegments}
           clipDuration={clipDuration}
@@ -178,7 +178,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
 
       <ClipperPreviewFormatsFooter
         secondaryFormats={secondaryFormats}
-        canvasRefs={canvasRefs}
+        registerCanvas={registerCanvas}
       />
 
       <ClipperSettingsDrawer

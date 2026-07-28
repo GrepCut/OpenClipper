@@ -136,6 +136,26 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
     () => (showCollageMarkers ? regionsByWordIndex(words, regions, wordTimeOffsetSec) : new Map<number, CollageRegion[]>()),
     [words, regions, wordTimeOffsetSec, showCollageMarkers],
   );
+  const handleWordClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (!onWordClick) return;
+    event.stopPropagation();
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-word-time]")
+      : null;
+    const time = Number(target?.dataset.wordTime);
+    if (target && Number.isFinite(time)) onWordClick(time);
+  };
+  const handleWordKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!onWordClick || (event.key !== "Enter" && event.key !== " ")) return;
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-word-time]")
+      : null;
+    const time = Number(target?.dataset.wordTime);
+    if (!target || !Number.isFinite(time)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onWordClick(time);
+  };
 
   if (words.length === 0) {
     if (!showCollageMarkers || regions.length === 0) {
@@ -161,7 +181,13 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
   }
 
   return (
-    <Text fontSize="sm" color={theme.text.onBrandMuted} lineHeight="1.8">
+    <Text
+      fontSize="sm"
+      color={theme.text.onBrandMuted}
+      lineHeight="1.8"
+      onClick={onWordClick ? handleWordClick : undefined}
+      onKeyDown={onWordClick ? handleWordKeyDown : undefined}
+    >
       {words.map((word, index) => {
         const markers = markersByWordIndex.get(index);
         return (
@@ -186,21 +212,11 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
                 borderRadius="sm"
                 px={0.5}
                 mx={-0.5}
+                data-word-time={wordAbsoluteTimeSec(word, wordTimeOffsetSec)}
                 _hover={{
                   color: clipperTheme.accentLight,
                   textDecoration: "underline",
                   bg: `rgba(${clipperTheme.accentTintRgb},0.12)`,
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onWordClick(wordAbsoluteTimeSec(word, wordTimeOffsetSec));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onWordClick(wordAbsoluteTimeSec(word, wordTimeOffsetSec));
-                  }
                 }}
               >
                 {word.text}

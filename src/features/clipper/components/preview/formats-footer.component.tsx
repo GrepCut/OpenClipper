@@ -6,7 +6,7 @@ import type { ClipperPreviewFormatsFooterProps } from "./clipper-preview.types";
 
 export function ClipperPreviewFormatsFooter({
   secondaryFormats,
-  canvasRefs,
+  registerCanvas,
 }: ClipperPreviewFormatsFooterProps) {
   return (
     <VStack align="stretch" gap={6} pt={4}>
@@ -21,7 +21,7 @@ export function ClipperPreviewFormatsFooter({
             >
               <canvas
                 ref={(el) => {
-                  canvasRefs.current[formatDef.id] = el;
+                  registerCanvas(formatDef.id, el);
                 }}
                 style={{
                   width: "100%",

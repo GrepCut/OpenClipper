@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import { AlertCircle, CheckCircle2, Loader2, Pencil, Trash2 } from "lucide-react";
 import type { CollageRegion } from "../engine/types/collage.types";
 import type { ClipperGeneratedClip } from "../engine/segmentation";
@@ -35,6 +36,7 @@ interface ClipperClipSelectorProps {
   canUndoClipEdit?: boolean;
   canRedoClipEdit?: boolean;
   lastEditedTranscriptRange?: { clipIndex: number; startIdx: number; endIdx: number } | null;
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 function clipTimeLabel(preview: ClipperClipPreview): string {
@@ -111,6 +113,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   canUndoClipEdit = false,
   canRedoClipEdit = false,
   lastEditedTranscriptRange = null,
+  scrollRef,
 }) => {
   const { theme } = useClipperUi();
   const [editingClipIndex, setEditingClipIndex] = useState<number | null>(null);
@@ -126,27 +129,21 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
     }
   }, [clipPreviews, editingClipIndex]);
 
-  const transcriptBlocksByIndex = useMemo(
-    () =>
-      new Map(
-        clipPreviews.map((preview) => [
-          preview.clip.index,
-          getClipTranscriptBlocks(preview.clip, rangeWords),
-        ]),
-      ),
-    [clipPreviews, rangeWords],
-  );
-
-  const editableWordsByIndex = useMemo(
-    () =>
-      new Map(
-        clipPreviews.map((preview) => [
-          preview.clip.index,
-          globalWordsInClip(preview.clip, rangeWords),
-        ]),
-      ),
-    [clipPreviews, rangeWords],
-  );
+  const virtualizer = useVirtualizer({
+    count: clipPreviews.length,
+    getScrollElement: () => scrollRef?.current ?? null,
+    estimateSize: () => 230,
+    overscan: 3,
+    getItemKey: (index) => clipPreviews[index]?.clip.index ?? index,
+    rangeExtractor: (range) => {
+      const indices = defaultRangeExtractor(range);
+      const editingIndex = editingClipIndex == null
+        ? -1
+        : clipPreviews.findIndex((preview) => preview.clip.index === editingClipIndex);
+      if (editingIndex >= 0 && !indices.includes(editingIndex)) indices.push(editingIndex);
+      return indices.sort((a, b) => a - b);
+    },
+  });
 
   if (clipPreviews.length === 0) return null;
 
@@ -158,10 +155,12 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
         </Text>
       ) : null}
 
-      <VStack align="stretch" gap={0}>
-        {clipPreviews.map((preview, index) => {
+      <Box position="relative" w="full" h={`${virtualizer.getTotalSize()}px`}>
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const index = virtualItem.index;
+          const preview = clipPreviews[index]!;
           const active = preview.clip.index === activeClipIndex;
-          const transcriptBlocks = transcriptBlocksByIndex.get(preview.clip.index) ?? [];
+          const transcriptBlocks = getClipTranscriptBlocks(preview.clip, rangeWords);
           const statusIcon = renderStatusIcon(preview, theme);
           const clipRegions = filterRegionsForClip(
             collageRegions,
@@ -174,14 +173,22 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
             lastEditedTranscriptRange?.clipIndex === preview.clip.index
               ? lastEditedTranscriptRange
               : null;
-          const editableWordEntries = editableWordsByIndex.get(preview.clip.index) ?? [];
+          const editableWordEntries = isEditing
+            ? globalWordsInClip(preview.clip, rangeWords)
+            : [];
 
           return (
             <Box
-              key={preview.clip.index}
+              key={virtualItem.key}
+              ref={virtualizer.measureElement}
+              data-index={virtualItem.index}
+              position="absolute"
+              top={0}
+              left={0}
+              w="full"
+              transform={`translateY(${virtualItem.start}px)`}
               role="button"
               tabIndex={0}
-              w="full"
               px={5}
               py={4}
               borderBottom={isLast ? "none" : "1px solid"}
@@ -356,7 +363,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
             </Box>
           );
         })}
-      </VStack>
+      </Box>
     </VStack>
   );
 };
