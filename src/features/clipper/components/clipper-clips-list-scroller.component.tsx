@@ -82,12 +82,23 @@ export function ClipsListScroller({
 
   return (
     <Box position="relative" flex="1" minH={0}>
-      <Box ref={scrollRef} position="absolute" inset={0} css={css} onWheel={handleWheel}>
-        <Box css={{ direction: "ltr", minHeight: "100%" }} pb={contentPaddingBottom}>
+      <Box
+        ref={scrollRef}
+        position="absolute"
+        inset={0}
+        css={{ ...css, contain: "strict", overflowAnchor: "none" }}
+        onWheel={handleWheel}
+      >
+        <Box
+          css={{ direction: "ltr", minHeight: "100%" }}
+          pb={contentPaddingBottom}
+        >
           {children}
         </Box>
       </Box>
-      {showBottomFade ? <ClipsListBottomFade bottom={fadeBottom} height={fadeHeight} /> : null}
+      {showBottomFade ? (
+        <ClipsListBottomFade bottom={fadeBottom} height={fadeHeight} />
+      ) : null}
     </Box>
   );
 }

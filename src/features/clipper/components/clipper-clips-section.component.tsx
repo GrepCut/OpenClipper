@@ -58,8 +58,8 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   const safeClipPreviews = clipPreviews ?? safeAutoPartsPreviews;
   const listPreviews = isAiMode ? safeAiPreviews : safeAutoPartsPreviews;
   const aiHistoryRequestedRef = React.useRef(false);
-  const clipsScrollRef = React.useRef<HTMLDivElement>(null);
-  const [aiPanelView, setAiPanelView] = React.useState<ClipperAiChatPanelView>("clips");
+  const [aiPanelView, setAiPanelView] =
+    React.useState<ClipperAiChatPanelView>("clips");
   const transcriptProps = clipSelectorTranscriptProps(
     rangeWords,
     collageRegions,
@@ -96,7 +96,13 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   return (
     <Box flex="1" minH={0} display="flex" flexDirection="column">
       {isAiMode ? (
-        <Box flex="1" minH={0} overflow="hidden" display="flex" flexDirection="column">
+        <Box
+          flex="1"
+          minH={0}
+          overflow="hidden"
+          display="flex"
+          flexDirection="column"
+        >
           {aiPanelView === "history" ? (
             <ClipsListScroller showBottomFade={false} css={clipsListScrollCss}>
               <ClipperAiChatHistory messages={aiChatMessages} />
@@ -126,7 +132,11 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
                   <Sparkles size={52} />
                 </Box>
                 <VStack gap={1.5}>
-                  <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
+                  <Text
+                    fontSize="sm"
+                    fontWeight="semibold"
+                    color={theme.text.primary}
+                  >
                     No AI clips yet
                   </Text>
                   <Text fontSize="sm" color={theme.text.muted} lineHeight="1.5">
@@ -164,25 +174,24 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
           display="flex"
           flexDirection="column"
         >
-          <ClipsListScroller
-            showBottomFade
-            fadeHeight={AUTO_PARTS_LENGTH_OVERLAY_PAD}
-            contentPaddingBottom={AUTO_PARTS_LENGTH_OVERLAY_PAD}
-            css={clipsListScrollCss}
-            scrollRef={clipsScrollRef}
-          >
-            <ClipperClipSelector
-              clipPreviews={safeClipPreviews}
-              activeClipIndex={activeClipIndex}
-              onSelectClip={onSelectClip}
-              onDeleteClip={onDeleteAutoPartsClip}
-              hideTitle
-              scrollRef={clipsScrollRef}
-              {...transcriptProps}
-            />
-          </ClipsListScroller>
+          <ClipperClipSelector
+            clipPreviews={safeClipPreviews}
+            activeClipIndex={activeClipIndex}
+            onSelectClip={onSelectClip}
+            onDeleteClip={onDeleteAutoPartsClip}
+            hideTitle
+            bottomInset={AUTO_PARTS_LENGTH_OVERLAY_PAD}
+            {...transcriptProps}
+          />
 
-          <Box position="absolute" bottom={0} left={0} right={0} zIndex={2} pointerEvents="none">
+          <Box
+            position="absolute"
+            bottom={0}
+            left={0}
+            right={0}
+            zIndex={2}
+            pointerEvents="none"
+          >
             <ClipperAutoPartsLengthIsland
               value={autoPartsSegmentLengthSec}
               onChange={onAutoPartsSegmentLengthChange}

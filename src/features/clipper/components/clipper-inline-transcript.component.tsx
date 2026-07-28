@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import { Box, IconButton, Text } from "@chakra-ui/react";
 import { Columns2 } from "lucide-react";
 import type { CollageRegion } from "../engine/types/collage.types";
@@ -31,7 +31,9 @@ function regionsByWordIndex(
 ): Map<number, CollageRegion[]> {
   const map = new Map<number, CollageRegion[]>();
   for (const region of regions) {
-    let index = words.findIndex((w) => w.end + wordTimeOffsetSec > region.start);
+    let index = words.findIndex(
+      (w) => w.end + wordTimeOffsetSec > region.start,
+    );
     if (index === -1) index = Math.max(0, words.length - 1);
     const existing = map.get(index);
     if (existing) existing.push(region);
@@ -45,7 +47,9 @@ export function filterRegionsForClip(
   clipStartSec: number,
   clipEndSec: number,
 ): CollageRegion[] {
-  return regions.filter((region) => region.end > clipStartSec && region.start < clipEndSec);
+  return regions.filter(
+    (region) => region.end > clipStartSec && region.start < clipEndSec,
+  );
 }
 
 export function sliceWordsForTimeWindow(
@@ -120,7 +124,9 @@ function SplitRegionMarker({
   );
 }
 
-export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = ({
+export const ClipperInlineTranscript: React.FC<
+  ClipperInlineTranscriptProps
+> = ({
   words,
   wordTimeOffsetSec,
   regions,
@@ -131,32 +137,61 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
   onWordClick,
 }) => {
   const { theme } = useClipperUi();
-  const disabledSet = useMemo(() => new Set(disabledRegionIds), [disabledRegionIds]);
+  const disabledSet = useMemo(
+    () => new Set(disabledRegionIds),
+    [disabledRegionIds],
+  );
+  const transcriptRef = useRef<HTMLParagraphElement>(null);
   const markersByWordIndex = useMemo(
-    () => (showCollageMarkers ? regionsByWordIndex(words, regions, wordTimeOffsetSec) : new Map<number, CollageRegion[]>()),
+    () =>
+      showCollageMarkers
+        ? regionsByWordIndex(words, regions, wordTimeOffsetSec)
+        : new Map<number, CollageRegion[]>(),
     [words, regions, wordTimeOffsetSec, showCollageMarkers],
   );
-  const handleWordClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleTranscriptClick = (event: React.MouseEvent<HTMLElement>) => {
     if (!onWordClick) return;
-    event.stopPropagation();
-    const target = event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-word-time]")
-      : null;
-    const time = Number(target?.dataset.wordTime);
-    if (target && Number.isFinite(time)) onWordClick(time);
-  };
-  const handleWordKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (!onWordClick || (event.key !== "Enter" && event.key !== " ")) return;
-    const target = event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-word-time]")
-      : null;
-    const time = Number(target?.dataset.wordTime);
-    if (!target || !Number.isFinite(time)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    onWordClick(time);
-  };
 
+    // Split-screen markers own their clicks. Everything else seeks to the word
+    // closest to the pointer, including whitespace between wrapped lines.
+    if (event.target instanceof Element && event.target.closest("button"))
+      return;
+
+    const wordElements =
+      transcriptRef.current?.querySelectorAll<HTMLElement>("[data-word-index]");
+    if (!wordElements?.length) return;
+
+    let nearestWordIndex = -1;
+    let nearestDistanceSquared = Number.POSITIVE_INFINITY;
+    for (const element of wordElements) {
+      const index = Number(element.dataset.wordIndex);
+      if (!Number.isInteger(index) || !words[index]) continue;
+
+      const rect = element.getBoundingClientRect();
+      const deltaX = Math.max(
+        rect.left - event.clientX,
+        0,
+        event.clientX - rect.right,
+      );
+      const deltaY = Math.max(
+        rect.top - event.clientY,
+        0,
+        event.clientY - rect.bottom,
+      );
+      const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+      if (distanceSquared < nearestDistanceSquared) {
+        nearestDistanceSquared = distanceSquared;
+        nearestWordIndex = index;
+        if (distanceSquared === 0) break;
+      }
+    }
+
+    if (nearestWordIndex === -1) return;
+    event.stopPropagation();
+    onWordClick(
+      wordAbsoluteTimeSec(words[nearestWordIndex], wordTimeOffsetSec),
+    );
+  };
   if (words.length === 0) {
     if (!showCollageMarkers || regions.length === 0) {
       return <ClipperTranscriptEmpty message={emptyMessage} />;
@@ -182,11 +217,28 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
 
   return (
     <Text
+      ref={transcriptRef}
       fontSize="sm"
       color={theme.text.onBrandMuted}
       lineHeight="1.8"
-      onClick={onWordClick ? handleWordClick : undefined}
-      onKeyDown={onWordClick ? handleWordKeyDown : undefined}
+      onClick={onWordClick ? handleTranscriptClick : undefined}
+      aria-label={
+        onWordClick ? "Click transcript to seek to the nearest word" : undefined
+      }
+      css={
+        onWordClick
+          ? {
+              "& [data-word-index]": {
+                transition: "color 100ms ease-out",
+              },
+              "@media (hover: hover)": {
+                "& [data-word-index]:hover": {
+                  color: clipperTheme.accentLight,
+                },
+              },
+            }
+          : undefined
+      }
     >
       {words.map((word, index) => {
         const markers = markersByWordIndex.get(index);
@@ -204,23 +256,7 @@ export const ClipperInlineTranscript: React.FC<ClipperInlineTranscriptProps> = (
               />
             ))}
             {onWordClick ? (
-              <Box
-                as="span"
-                role="button"
-                tabIndex={0}
-                cursor="pointer"
-                borderRadius="sm"
-                px={0.5}
-                mx={-0.5}
-                data-word-time={wordAbsoluteTimeSec(word, wordTimeOffsetSec)}
-                _hover={{
-                  color: clipperTheme.accentLight,
-                  textDecoration: "underline",
-                  bg: `rgba(${clipperTheme.accentTintRgb},0.12)`,
-                }}
-              >
-                {word.text}
-              </Box>
+              <span data-word-index={index}>{word.text}</span>
             ) : (
               word.text
             )}{" "}
