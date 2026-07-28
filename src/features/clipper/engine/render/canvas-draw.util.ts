@@ -1,8 +1,6 @@
 import {
-  type CaptionRenderExtra,
   drawPhraseAnimatedCaption,
 } from '../../lib/captions/animated-caption-render.util';
-import type { SubtitleStyle } from '../../lib/captions/subtitle-render.util';
 import type { CaptionGroup } from "../../lib/media/transcription-export.util";
 import { drawPrimaryPlusTwoFrame, drawVerticalSplitFrame } from "../../lib/media/video-draw.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
@@ -134,7 +132,6 @@ export function drawClipperPlatformFrame(
 }
 
 export function drawClipperCaptions(
-  formatDef: ClipperFormatDef,
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   output: FrameEffectSize,
   t: number,
@@ -142,24 +139,17 @@ export function drawClipperCaptions(
 ): void {
   const { captions } = render.settings;
   if (!captions.enabled) return;
-  if (captions.disabledForFormatIds.includes(formatDef.id)) return;
 
   const captionTime = render.segments?.length
     ? sourceTimeToLocalTime(render.segments, t)
     : Math.max(0, t);
 
-  const style: SubtitleStyle = {
-    position: captions.position,
-    fontSize: captions.fontSize,
-    fontFamily: captions.fontFamily,
-    wrap: captions.wrap ? "on" : "off",
-  };
-  const extra: CaptionRenderExtra = {
-    highlightColor: captions.highlightColor,
-    uppercase: captions.uppercase,
-    boxStyle: captions.boxStyle,
-    boxOpacity: captions.boxOpacity,
-  };
-
-  drawPhraseAnimatedCaption(ctx, render.captionGroups, captionTime, output.width, output.height, style, extra);
+  drawPhraseAnimatedCaption(
+    ctx,
+    render.captionGroups,
+    captionTime,
+    output.width,
+    output.height,
+    captions.presetId,
+  );
 }

@@ -6,8 +6,8 @@ use std::time::Instant;
 use super::internal::{AnalysisFrame, FaceJob, FrameRegion, MAX_BATCH};
 use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
 use super::vision_logic::{
-    decode_yolox_fast, AutoFlipFaceDetection, Letterbox, SubjectDetection, BLAZE_INPUT_SIZE,
-    MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
+    decode_yolox_fast, AutoFlipFaceDetection, Letterbox, SubjectDetection, MOVENET_INPUT_SIZE,
+    SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
 use crate::video::ffmpeg::resize::{resize_rgb_u8, resize_rgb_u8_into};
 #[cfg(test)]
@@ -314,39 +314,6 @@ pub(crate) fn prepare_scrfd_into(
         pad_y: 0.0,
         source_width,
         source_height,
-    }
-}
-
-pub(crate) fn prepare_blaze_into(frame: &AnalysisFrame, input: &mut [f32]) -> Letterbox {
-    let size = BLAZE_INPUT_SIZE as u32;
-    let scale = (size as f32 / frame.width as f32).min(size as f32 / frame.height as f32);
-    let width = (frame.width as f32 * scale).round().clamp(1.0, size as f32) as u32;
-    let height = (frame.height as f32 * scale)
-        .round()
-        .clamp(1.0, size as f32) as u32;
-    let pad_x = (size - width) / 2;
-    let pad_y = (size - height) / 2;
-    let resized = resize_rgb(frame, width, height);
-    // Letterbox padding stays zero-valued (-1.0 after normalization), exactly
-    // like the previous zeroed-canvas overlay.
-    input.fill(-1.0);
-    let row_len = width as usize * 3;
-    for y in 0..height as usize {
-        let source_row = &resized[y * row_len..(y + 1) * row_len];
-        let destination = ((y + pad_y as usize) * size as usize + pad_x as usize) * 3;
-        for (target, &value) in input[destination..destination + row_len]
-            .iter_mut()
-            .zip(source_row)
-        {
-            *target = value as f32 / 127.5 - 1.0;
-        }
-    }
-    Letterbox {
-        scale,
-        pad_x: pad_x as f32,
-        pad_y: pad_y as f32,
-        source_width: frame.width,
-        source_height: frame.height,
     }
 }
 

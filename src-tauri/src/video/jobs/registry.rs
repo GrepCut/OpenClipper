@@ -69,21 +69,6 @@ impl NativeJobRegistry {
         Ok(retired.into_iter().collect())
     }
 
-    pub fn retire_active_session(&self) -> Vec<String> {
-        let Ok(mut state) = self.inner.lock() else {
-            return Vec::new();
-        };
-        let Some(session_id) = state.active_session.take() else {
-            return Vec::new();
-        };
-        for job in state.jobs.values() {
-            if job.session_id == session_id {
-                job.cancelled.store(true, Ordering::Release);
-            }
-        }
-        vec![session_id]
-    }
-
     pub fn register(&self, session_id: &str, job_id: &str) -> Result<Arc<AtomicBool>, String> {
         if !valid_identifier(session_id) || !valid_identifier(job_id) {
             return Err("Invalid native job identifier".into());

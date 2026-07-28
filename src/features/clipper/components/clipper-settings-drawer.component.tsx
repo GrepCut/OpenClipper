@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Drawer, IconButton, Portal, Text, VStack } from "@chakra-ui/react";
-import { ChevronLeft, SlidersHorizontal, X } from "lucide-react";
+import { AudioLines, Type, X } from "lucide-react";
 import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperSettings } from "../settings/settings.util";
 import { clipperTheme } from "../shared/theme.util";
@@ -8,34 +8,34 @@ import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperSettingsPanel } from "./clipper-settings-panel.component";
 
 const DRAWER_CONTENT_ID = "clipper-settings-drawer";
-const DESKTOP_TAB_WIDTH = "120px";
+export type ClipperSettingsDrawerPanel = "captions" | "audio";
 
-interface SettingsRailTabProps {
-  open: boolean;
-  onToggle: () => void;
+interface SettingsToggleButtonProps {
+  panel: ClipperSettingsDrawerPanel;
+  activePanel: ClipperSettingsDrawerPanel | null;
+  onPanelChange: (panel: ClipperSettingsDrawerPanel | null) => void;
   controlsId: string;
 }
 
-function SettingsRailTab({ open, onToggle, controlsId }: SettingsRailTabProps) {
+function SettingsToggleButton({
+  panel,
+  activePanel,
+  onPanelChange,
+  controlsId,
+}: SettingsToggleButtonProps) {
   const { theme } = useClipperUi();
+  const open = activePanel === panel;
+  const label = panel === "captions" ? "Captions" : "Audio";
+  const Icon = panel === "captions" ? Type : AudioLines;
 
   return (
     <Box
       as="button"
-      position="fixed"
-      right={0}
-      top="50%"
-      transform="translateY(-50%)"
-      zIndex={1800}
-      display={{ base: "none", lg: "flex" }}
-      flexDirection="row"
+      w="52px"
+      h="52px"
+      display="flex"
       alignItems="center"
       justifyContent="center"
-      gap={2}
-      w={DESKTOP_TAB_WIDTH}
-      py={4}
-      pl={4}
-      pr={5}
       bg={theme.dashboard.glass}
       backdropFilter="blur(16px)"
       color={open ? clipperTheme.accentLight : theme.text.muted}
@@ -48,114 +48,117 @@ function SettingsRailTab({ open, onToggle, controlsId }: SettingsRailTabProps) {
       cursor="pointer"
       aria-expanded={open}
       aria-controls={controlsId}
-      aria-label={open ? "Close settings" : "Open settings"}
-      onClick={onToggle}
+      aria-label={open ? `Close ${label.toLowerCase()} settings` : `Open ${label.toLowerCase()} settings`}
+      title={label}
+      onClick={() => onPanelChange(open ? null : panel)}
       transition="color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease"
       _hover={{
-        transform: "translateY(-50%) translateX(-2px)",
+        transform: "translateX(-2px)",
         color: clipperTheme.accentLight,
         bg: `rgba(${clipperTheme.accentTintRgb}, 0.12)`,
         borderColor: `rgba(${clipperTheme.accentTintRgb}, 0.55)`,
         boxShadow: `-6px 0 20px rgba(0, 0, 0, 0.35), 0 0 12px rgba(${clipperTheme.accentTintRgb}, 0.25)`,
       }}
       _active={{
-        transform: "translateY(-50%)",
+        transform: "translateX(0)",
       }}
     >
-      <ChevronLeft
-        size={27}
-        strokeWidth={2}
-        style={{
-          flexShrink: 0,
-          transform: open ? "rotate(180deg)" : undefined,
-          transition: "transform 0.2s ease",
-        }}
-      />
-      <Text fontSize="14px" fontWeight="semibold" color="inherit" lineHeight="1">
-        Settings
-      </Text>
+      <Icon size={22} strokeWidth={1.8} aria-hidden="true" />
     </Box>
   );
 }
 
-function SettingsMobileTab({ open, onToggle, controlsId }: SettingsRailTabProps) {
-  const { theme } = useClipperUi();
+interface SettingsDrawerTriggersProps {
+  activePanel: ClipperSettingsDrawerPanel | null;
+  onPanelChange: (panel: ClipperSettingsDrawerPanel | null) => void;
+}
 
+function SettingsDrawerTriggers({ activePanel, onPanelChange }: SettingsDrawerTriggersProps) {
   return (
-    <Box
-      as="button"
-      position="fixed"
-      right={4}
-      bottom={6}
-      zIndex={1800}
-      display={{ base: "flex", lg: "none" }}
-      alignItems="center"
-      gap={2.5}
-      pl={3}
-      pr={4}
-      py={2.5}
-      borderRadius="full"
-      border="1px solid"
-      borderColor={theme.dashboard.border}
-      bg={theme.dashboard.glass}
-      backdropFilter="blur(16px)"
-      color={theme.text.primary}
-      boxShadow={theme.shadow.panel}
-      cursor="pointer"
-      aria-expanded={open}
-      aria-controls={controlsId}
-      aria-label={open ? "Close settings" : "Open settings"}
-      onClick={onToggle}
-    >
-      <Box
-        w="32px"
-        h="32px"
-        borderRadius="full"
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        bg={`rgba(${clipperTheme.accentTintRgb}, 0.16)`}
-        color={clipperTheme.accentLight}
+    <>
+      <VStack
+        position="fixed"
+        right={0}
+        top="50%"
+        transform="translateY(-50%)"
+        zIndex={1800}
+        display={{ base: "none", lg: "flex" }}
+        gap={3}
+        align="end"
       >
-        <SlidersHorizontal size={15} strokeWidth={1.75} />
-      </Box>
-      <Text fontSize="sm" fontWeight="medium">
-        Settings
-      </Text>
-    </Box>
+        <SettingsToggleButton
+          panel="captions"
+          activePanel={activePanel}
+          onPanelChange={onPanelChange}
+          controlsId={DRAWER_CONTENT_ID}
+        />
+        <SettingsToggleButton
+          panel="audio"
+          activePanel={activePanel}
+          onPanelChange={onPanelChange}
+          controlsId={DRAWER_CONTENT_ID}
+        />
+      </VStack>
+
+      <VStack
+        position="fixed"
+        right={4}
+        bottom={6}
+        zIndex={1800}
+        display={{ base: "flex", lg: "none" }}
+        gap={3}
+        align="end"
+      >
+        <SettingsToggleButton
+          panel="captions"
+          activePanel={activePanel}
+          onPanelChange={onPanelChange}
+          controlsId={DRAWER_CONTENT_ID}
+        />
+        <SettingsToggleButton
+          panel="audio"
+          activePanel={activePanel}
+          onPanelChange={onPanelChange}
+          controlsId={DRAWER_CONTENT_ID}
+        />
+      </VStack>
+    </>
   );
 }
 
 interface ClipperSettingsDrawerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  activePanel: ClipperSettingsDrawerPanel | null;
+  onActivePanelChange: (panel: ClipperSettingsDrawerPanel | null) => void;
   settings: ClipperSettings;
   words: WordCue[];
   onUpdateSettings: (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => void;
 }
 
 export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
-  open,
-  onOpenChange,
+  activePanel,
+  onActivePanelChange,
   settings,
   words,
   onUpdateSettings,
 }) => {
   const { theme, scrollbarCss } = useClipperUi();
+  const open = activePanel !== null;
+  const panelTitle = activePanel === "audio" ? "Audio" : "Captions";
 
   return (
     <>
       <Portal>
-        <SettingsRailTab
-          open={open}
-          onToggle={() => onOpenChange(!open)}
-          controlsId={DRAWER_CONTENT_ID}
+        <SettingsDrawerTriggers
+          activePanel={activePanel}
+          onPanelChange={onActivePanelChange}
         />
       </Portal>
 
       <Drawer.Root
         open={open}
-        onOpenChange={(details) => onOpenChange(details.open)}
+        onOpenChange={(details) => {
+          if (!details.open) onActivePanelChange(null);
+        }}
         placement={{ base: "bottom", lg: "end" }}
         size={{ base: "full", lg: "full" }}
         modal={false}
@@ -192,14 +195,14 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
               >
                 <VStack align="start" gap={0.5}>
                   <Drawer.Title color={theme.text.primary} fontSize="lg" fontWeight="semibold">
-                    Settings
+                    {panelTitle}
                   </Drawer.Title>
                   <Text fontSize="xs" color={theme.text.muted}>
                     Applies to all clips
                   </Text>
                 </VStack>
                 <IconButton
-                  aria-label="Close settings"
+                  aria-label={`Close ${panelTitle.toLowerCase()} settings`}
                   position="absolute"
                   top={3}
                   right={3}
@@ -208,7 +211,7 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
                   variant="ghost"
                   borderRadius="lg"
                   color={theme.text.muted}
-                  onClick={() => onOpenChange(false)}
+                  onClick={() => onActivePanelChange(null)}
                   _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
                 >
                   <X size={18} />
@@ -223,26 +226,21 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
                 css={{ ...scrollbarCss, direction: "rtl" }}
               >
                 <Box css={{ direction: "ltr" }}>
-                  <ClipperSettingsPanel
-                    settings={settings}
-                    words={words}
-                    hideTranscript
-                    onUpdateSettings={onUpdateSettings}
-                  />
+                  {activePanel ? (
+                    <ClipperSettingsPanel
+                      settings={settings}
+                      words={words}
+                      hideTranscript
+                      section={activePanel}
+                      onUpdateSettings={onUpdateSettings}
+                    />
+                  ) : null}
                 </Box>
               </Drawer.Body>
             </Drawer.Content>
           </Drawer.Positioner>
         </Portal>
       </Drawer.Root>
-
-      <Portal>
-        <SettingsMobileTab
-          open={open}
-          onToggle={() => onOpenChange(!open)}
-          controlsId={DRAWER_CONTENT_ID}
-        />
-      </Portal>
     </>
   );
 };

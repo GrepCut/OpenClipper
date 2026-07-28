@@ -53,7 +53,7 @@ export function drawClipperFrame(
     ctx.drawImage(frame, crop.sx, crop.sy, crop.sw, crop.sh, destination.x, destination.y, destination.width, destination.height);
   }
 
-  drawClipperCaptions(formatDef, ctx, output, t, render);
+  drawClipperCaptions(ctx, output, t, render);
 }
 
 /** Draws one preview frame onto a display canvas at a fixed height. */

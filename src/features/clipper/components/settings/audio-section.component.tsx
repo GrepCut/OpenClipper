@@ -10,15 +10,16 @@ import { SegmentedControl, SettingRow, SettingSection, SettingSlider } from "./s
 interface AudioSectionProps {
   audio: ClipperAudioSettings;
   onChange: (patch: Partial<ClipperAudioSettings>) => void;
+  defaultOpen?: boolean;
 }
 
 const NORMALIZE_OPTIONS = LUFS_PRESETS.map((p) => ({ value: p.value, label: p.name }));
 
-export const AudioSection: React.FC<AudioSectionProps> = ({ audio, onChange }) => {
+export const AudioSection: React.FC<AudioSectionProps> = ({ audio, onChange, defaultOpen = false }) => {
   const { theme } = useClipperUi();
 
   return (
-    <SettingSection title="Audio" description="Mute, fades, and loudness normalization">
+    <SettingSection title="Audio" description="Mute, fades, and loudness normalization" defaultOpen={defaultOpen}>
       <SettingRow
         label="Mute original audio"
         control={<ModernSwitch checked={audio.mute} onCheckedChange={(v) => onChange({ mute: v })} />}

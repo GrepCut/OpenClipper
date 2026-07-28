@@ -1,7 +1,7 @@
 import { DEFAULT_CLIPPER_SETTINGS, mergeClipperSettings, type ClipperSettings } from "./settings.util";
 import { parseStoredClipperSettings } from "../persistence/clipper-persistence-schemas.util";
 
-export const STORAGE_KEY = "clipper:settings:v1";
+export const STORAGE_KEY = "clipper:settings:v2";
 
 /** Loads clipper settings from localStorage, merging with defaults for missing fields. */
 export function loadClipperSettings(): ClipperSettings {

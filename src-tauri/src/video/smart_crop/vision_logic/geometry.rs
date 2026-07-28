@@ -39,15 +39,6 @@ pub(crate) fn box_around_points(
     })
 }
 
-pub fn stable_sigmoid(value: f32) -> f32 {
-    if value >= 0.0 {
-        1.0 / (1.0 + (-value).exp())
-    } else {
-        let exp = value.exp();
-        exp / (1.0 + exp)
-    }
-}
-
 pub fn box_iou(a: NormalizedBox, b: NormalizedBox) -> f32 {
     let left = a.x.max(b.x);
     let top = a.y.max(b.y);

@@ -1,11 +1,11 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Box, VStack, useDisclosure } from "@chakra-ui/react";
+import { Box, VStack } from "@chakra-ui/react";
 import { deriveRegionsFromLayoutTracks } from "../../engine/reframe/collage";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
 import { useClipperPreviewPlayback } from "../../hooks/use-clipper-preview-playback.hook";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
-import { ClipperSettingsDrawer } from "../clipper-settings-drawer.component";
+import { ClipperSettingsDrawer, type ClipperSettingsDrawerPanel } from "../clipper-settings-drawer.component";
 import { ClipperPreviewFormatsFooter } from "./formats-footer.component";
 import { ClipperPreviewHeroSection } from "./hero-section.component";
 import { ClipperPreviewSidePanel } from "./side-panel.component";
@@ -59,7 +59,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
   } = props;
 
   const { theme } = useClipperUi();
-  const { open: settingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
+  const [activeSettingsPanel, setActiveSettingsPanel] = useState<ClipperSettingsDrawerPanel | null>(null);
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>(
     clipSourceMode === "ai" ? "ai" : "auto-parts",
   );
@@ -182,8 +182,8 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       />
 
       <ClipperSettingsDrawer
-        open={settingsOpen}
-        onOpenChange={(nextOpen) => (nextOpen ? onSettingsOpen() : onSettingsClose())}
+        activePanel={activeSettingsPanel}
+        onActivePanelChange={setActiveSettingsPanel}
         settings={settings}
         words={activeClip?.words ?? []}
         onUpdateSettings={onUpdateSettings}

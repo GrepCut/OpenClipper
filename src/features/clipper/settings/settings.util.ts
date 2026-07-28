@@ -1,28 +1,16 @@
-import type {
-  SubtitleFontFamily,
-  SubtitleFontSize,
-  SubtitlePosition,
-} from '../lib/captions/subtitle-render.util';
+import {
+  DEFAULT_CAPTION_PRESET_ID,
+  normalizeCaptionPresetId,
+  type ClipperCaptionPresetId,
+} from "../lib/captions/caption-presets.util";
 import { clamp } from '../lib/math.util';
-
-export type ClipperCaptionBoxStyle = "solid" | "outline" | "none";
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
 
 export interface ClipperCaptionSettings {
   enabled: boolean;
-  fontFamily: SubtitleFontFamily;
-  fontSize: SubtitleFontSize;
-  position: SubtitlePosition;
-  wordsPerGroup: number;
-  highlightColor: string;
-  wrap: boolean;
-  uppercase: boolean;
-  boxStyle: ClipperCaptionBoxStyle;
-  boxOpacity: number;
-  /** Format ids where captions are force-disabled, overriding `enabled`. */
-  disabledForFormatIds: string[];
+  presetId: ClipperCaptionPresetId;
 }
 
 export interface ClipperFormatSettings {
@@ -64,16 +52,7 @@ export const CLIPPER_MIN_CLIP_SECONDS = 3;
 export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   captions: {
     enabled: true,
-    fontFamily: "arial",
-    fontSize: "md",
-    position: "bottom",
-    wordsPerGroup: 5,
-    highlightColor: "#FFE566",
-    wrap: true,
-    uppercase: false,
-    boxStyle: "solid",
-    boxOpacity: 0.55,
-    disabledForFormatIds: [],
+    presetId: DEFAULT_CAPTION_PRESET_ID,
   },
   formats: {
     enabledFormatIds: ["tiktok"],
@@ -91,14 +70,6 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   },
   lastDurationPresetSec: 60,
 };
-
-export function clampOpacity01(value: number): number {
-  return clamp(value, 0, 1);
-}
-
-export function clampWordsPerGroup(value: number): number {
-  return Math.round(clamp(value, 1, 12));
-}
 
 export function clampFadeSeconds(value: number): number {
   return clamp(value, 0, 10);
@@ -118,8 +89,20 @@ export function mergeClipperSettings(
   partial: Partial<ClipperSettings> | null | undefined,
 ): ClipperSettings {
   if (!partial) return base;
+  const partialCaptions = partial.captions as
+    | Partial<ClipperCaptionSettings>
+    | undefined;
   return {
-    captions: { ...base.captions, ...partial.captions },
+    captions: {
+      enabled:
+        typeof partialCaptions?.enabled === "boolean"
+          ? partialCaptions.enabled
+          : base.captions.enabled,
+      presetId: normalizeCaptionPresetId(
+        partialCaptions?.presetId,
+        base.captions.presetId,
+      ),
+    },
     formats: { ...base.formats, ...partial.formats },
     audio: { ...base.audio, ...partial.audio },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,

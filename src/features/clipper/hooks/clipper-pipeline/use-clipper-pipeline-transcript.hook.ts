@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import { sortClipsByIndex } from "../../engine/segmentation";
 import {
   applyClipTranscriptEdit,
@@ -41,6 +42,7 @@ export function useClipperPipelineTranscript(
     transcriptClipboardRef,
     lastEditedTranscriptRangeRef,
   } = refs;
+  const wordsPerGroup = captionWordsPerGroup(settings.captions);
 
   const [lastEditedTranscriptRange, setLastEditedTranscriptRange] = useState<{
     clipIndex: number;
@@ -168,7 +170,7 @@ export function useClipperPipelineTranscript(
         clipIndex,
         result.ranges,
         session.rangeWords,
-        settings.captions.wordsPerGroup,
+        wordsPerGroup,
         label,
         session.rangeEnd - session.rangeStart,
         undefined,
@@ -238,7 +240,7 @@ export function useClipperPipelineTranscript(
       pushClipEditSnapshot,
       sessionRef,
       setState,
-      settings.captions.wordsPerGroup,
+      wordsPerGroup,
       transcriptClipboardRef,
     ],
   );

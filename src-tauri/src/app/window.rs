@@ -15,12 +15,6 @@ pub fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-pub fn main_window_is_visible(app: &tauri::AppHandle) -> bool {
-    app.get_webview_window("main")
-        .and_then(|window| window.is_visible().ok())
-        .unwrap_or(false)
-}
-
 #[cfg(windows)]
 pub fn apply_webview_background(window: &tauri::WebviewWindow) {
     let _ = window.with_webview(|webview| {

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import type { Project } from "../../../../services/projects.service";
+import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import { runConfirmRangePipeline } from "../../pipeline/range-workflow.util";
 import { clipperError } from "../../shared/logger.util";
 import { preparePreviewFromRange } from "./clipper-pipeline-preview-range.util";
@@ -32,6 +33,7 @@ export function useClipperPipelineWorkflow(
     aiClipsMetaRef,
     reporterRef,
   } = refs;
+  const wordsPerGroup = captionWordsPerGroup(settings.captions);
 
   const { selectFile, clipAgain, resetSessionForNewRange } = useClipperPipelineSessionActions(
     core,
@@ -73,7 +75,7 @@ export function useClipperPipelineWorkflow(
       setAutoPartsSegmentLengthSec,
       setDisabledCollageRegionIds,
       setState,
-      settings.captions.wordsPerGroup,
+      wordsPerGroup,
       settings.formats.enabledFormatIds,
     ],
   );
@@ -117,7 +119,7 @@ export function useClipperPipelineWorkflow(
             projectId,
             start,
             end,
-            wordsPerGroup: settings.captions.wordsPerGroup,
+            wordsPerGroup,
             metadata: metadataRef.current,
           },
           reporterRef.current,
@@ -131,7 +133,6 @@ export function useClipperPipelineWorkflow(
             clipEnd: rangeEnd,
             transcribedClipStart: snappedStart,
             transcribedClipEnd: rangeEnd,
-            wordsPerGroupAtTranscribe: settings.captions.wordsPerGroup,
           },
           "analyzing-faces",
         );
@@ -166,7 +167,7 @@ export function useClipperPipelineWorkflow(
       sessionRef,
       setRangeLocked,
       setState,
-      settings.captions.wordsPerGroup,
+      wordsPerGroup,
     ],
   );
 

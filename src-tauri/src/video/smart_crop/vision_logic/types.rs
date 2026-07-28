@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-pub const BLAZE_INPUT_SIZE: usize = 192;
-pub const BLAZE_ANCHOR_COUNT: usize = 2304;
 pub const SCRFD_INPUT_SIZE: usize = 640;
 pub const SCRFD_ANCHORS_PER_CELL: usize = 2;
 pub const MOVENET_INPUT_SIZE: usize = 512;
@@ -17,14 +15,6 @@ pub const YOLOX_CLASS_COUNT: usize = 80;
 pub struct NormalizedBox {
     pub x: f32,
     pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Anchor {
-    pub x_center: f32,
-    pub y_center: f32,
     pub width: f32,
     pub height: f32,
 }

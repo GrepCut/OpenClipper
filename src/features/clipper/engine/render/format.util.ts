@@ -37,6 +37,7 @@ import {
 import type { ClipperFrameContext } from "../types/render.types";
 import { rebaseVideoSampleForWindow } from "./windowed-video.util";
 import { applySeamFades, trimAudioSampleToWindow } from "../audio/windowed-samples.util";
+import { ensureCaptionFontsReady } from "../../lib/captions/caption-presets.util";
 
 const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
   draft: 0.55,
@@ -136,6 +137,8 @@ export async function renderClipperFormat(
   } = {},
 ): Promise<RenderClipperResult> {
   const { signal, onProgress, clipWindow, outputSink } = options;
+  throwIfAborted(signal);
+  await ensureCaptionFontsReady();
   throwIfAborted(signal);
 
   const input = await createMediabunnyInput(trimmedFile);

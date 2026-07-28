@@ -8,16 +8,9 @@ const clipperSettingsSchema = z
     captions: z
       .object({
         enabled: z.boolean(),
-        fontFamily: z.string(),
-        fontSize: z.string(),
-        position: z.string(),
-        wordsPerGroup: z.number(),
-        highlightColor: z.string(),
-        wrap: z.boolean(),
-        uppercase: z.boolean(),
-        boxStyle: z.enum(["solid", "outline", "none"]),
-        boxOpacity: z.number(),
-        disabledForFormatIds: z.array(z.string()),
+        // Keep legacy/unknown IDs parseable so mergeClipperSettings can migrate
+        // the caption preset without discarding unrelated saved settings.
+        presetId: z.string(),
       })
       .partial()
       .optional(),

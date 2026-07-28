@@ -1,4 +1,5 @@
 import type { WordCue } from "../lib/media/transcription-export.util";
+import { captionWordsPerGroup } from "../lib/captions/caption-presets.util";
 import type { ClipperSettings } from "../settings/settings.util";
 import {
   buildCollageTracksForRegions,
@@ -199,16 +200,16 @@ export function buildFrameContext(
   const clip = findClipByIndex(getActiveClips(session), clipIndex);
   if (!clip) return null;
 
-  const wordsPerGroup = settings.captions.wordsPerGroup;
+  const wordsPerGroup = captionWordsPerGroup(settings.captions);
   let cached = session.captionGroupsCache;
   if (!cached || cached.wordsPerGroup !== wordsPerGroup || cached.clip !== clip) {
     cached = {
       wordsPerGroup,
       clip,
       groups:
-        clip.captionGroups.length > 0
-          ? clip.captionGroups
-          : groupCaptionWords(clip.words, wordsPerGroup),
+        clip.words.length > 0
+          ? groupCaptionWords(clip.words, wordsPerGroup)
+          : clip.captionGroups,
     };
     session.captionGroupsCache = cached;
   }

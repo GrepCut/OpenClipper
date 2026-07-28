@@ -22,7 +22,6 @@ export interface ClipperProjectMetadata {
   clipEnd: number | null;
   /** Legacy jsonb field — project settings are stored in DB; parsed only for migration. */
   settings?: ClipperSettings;
-  wordsPerGroupAtTranscribe?: number;
   transcribedClipStart?: number;
   transcribedClipEnd?: number;
   /** Legacy jsonb fields — manual/AI clips are now stored in dedicated clipper_clip tables; kept optionally readable only for one-time server-side migration. */
@@ -76,10 +75,6 @@ export function parseClipperProjectMetadata(
     settings: partial.settings
       ? mergeClipperSettings(loadClipperSettings(), partial.settings)
       : undefined,
-    wordsPerGroupAtTranscribe:
-      typeof partial.wordsPerGroupAtTranscribe === "number"
-        ? partial.wordsPerGroupAtTranscribe
-        : undefined,
     transcribedClipStart:
       typeof partial.transcribedClipStart === "number"
         ? partial.transcribedClipStart

@@ -44,29 +44,6 @@ impl WinMlModel {
         })
     }
 
-    pub fn create(
-        kind: VisionModel,
-        path: &Path,
-        fp16_path: Option<&Path>,
-        input_name: &str,
-        output_names: &[&str],
-        first_shape: &[i64],
-        first_input: &[f32],
-    ) -> Result<(Self, Vec<Vec<f32>>), NativeVisionError> {
-        let mut first_outputs = Vec::new();
-        let created = Self::create_into(
-            kind,
-            path,
-            fp16_path,
-            input_name,
-            output_names,
-            first_shape,
-            first_input,
-            &mut first_outputs,
-        )?;
-        Ok((created, first_outputs))
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn create_into(
         kind: VisionModel,

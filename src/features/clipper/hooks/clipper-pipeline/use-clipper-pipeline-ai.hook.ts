@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import {
   aiClipPicksToWordRanges,
   buildClipsFromWordRanges,
@@ -23,6 +24,7 @@ import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.h
 export function useClipperPipelineAi(core: UseClipperPipelineCoreResult) {
   const { projectId, setState, settings, refs, persistMetadata } = core;
   const { sessionRef, activeClipIndexRef, aiClipsMetaRef, aiChatAbortRef } = refs;
+  const wordsPerGroup = captionWordsPerGroup(settings.captions);
 
   const [aiChatMessages, setAiChatMessages] = useState<ClipperAiChatMessage[]>([]);
   const [aiChatLoading, setAiChatLoading] = useState(false);
@@ -109,7 +111,7 @@ export function useClipperPipelineAi(core: UseClipperPipelineCoreResult) {
       const aiClips = buildClipsFromWordRanges(
         session.rangeWords,
         aiClipPicksToWordRanges(clips),
-        settings.captions.wordsPerGroup,
+        wordsPerGroup,
         session.rangeEnd - session.rangeStart,
         undefined,
         session.audioEnvelope ?? undefined,
@@ -133,7 +135,7 @@ export function useClipperPipelineAi(core: UseClipperPipelineCoreResult) {
 
       applyAiClipsAndPersist(aiClips, aiGeneratedClips);
     },
-    [applyAiClipsAndPersist, sessionRef, settings.captions.wordsPerGroup],
+    [applyAiClipsAndPersist, sessionRef, wordsPerGroup],
   );
 
   const deleteAiClip = useCallback(
@@ -154,7 +156,7 @@ export function useClipperPipelineAi(core: UseClipperPipelineCoreResult) {
             label: clip.label,
             index: clip.index,
           })),
-          settings.captions.wordsPerGroup,
+          wordsPerGroup,
           session.rangeEnd - session.rangeStart,
           undefined,
           session.audioEnvelope ?? undefined,
@@ -176,7 +178,7 @@ export function useClipperPipelineAi(core: UseClipperPipelineCoreResult) {
       persistMetadata,
       sessionRef,
       setState,
-      settings.captions.wordsPerGroup,
+      wordsPerGroup,
     ],
   );
 

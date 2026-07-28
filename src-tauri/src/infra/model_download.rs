@@ -58,44 +58,25 @@ pub fn emit_model_download_event(
 
 /// Extract a `.tar.bz2` archive into `dest`.
 pub fn extract_tar_bz2(archive_path: &Path, dest: &Path) -> Result<(), String> {
-    extract_tar_bz2_inner(archive_path, dest, false)
-}
-
-/// Extract a `.tar.bz2` archive, rejecting path traversal entries.
-pub fn extract_tar_bz2_safe(archive_path: &Path, dest: &Path) -> Result<(), String> {
-    extract_tar_bz2_inner(archive_path, dest, true)
-}
-
-fn extract_tar_bz2_inner(
-    archive_path: &Path,
-    dest: &Path,
-    reject_unsafe_paths: bool,
-) -> Result<(), String> {
     let file = File::open(archive_path).map_err(|error| format!("Cannot open archive: {error}"))?;
     let decoder = BzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);
-    if reject_unsafe_paths {
-        for entry in archive.entries().map_err(|error| error.to_string())? {
-            let mut entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path().map_err(|error| error.to_string())?;
-            if path.is_absolute()
-                || path.components().any(|component| {
-                    matches!(
-                        component,
-                        Component::ParentDir | Component::RootDir | Component::Prefix(_)
-                    )
-                })
-            {
-                return Err("Archive contains an unsafe path.".into());
-            }
-            if !entry.unpack_in(dest).map_err(|error| error.to_string())? {
-                return Err("Archive entry escaped the import directory.".into());
-            }
+    for entry in archive.entries().map_err(|error| error.to_string())? {
+        let mut entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path().map_err(|error| error.to_string())?;
+        if path.is_absolute()
+            || path.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return Err("Archive contains an unsafe path.".into());
         }
-    } else {
-        archive
-            .unpack(dest)
-            .map_err(|error| format!("Archive extract failed: {error}"))?;
+        if !entry.unpack_in(dest).map_err(|error| error.to_string())? {
+            return Err("Archive entry escaped the import directory.".into());
+        }
     }
     Ok(())
 }

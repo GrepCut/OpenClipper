@@ -21,6 +21,7 @@ import type { PipelineReporter } from "../../pipeline/reporter.util";
 import type { ClipperProjectMetadata } from "../../persistence/project-metadata.util";
 import type { ClipperPipelineState, ClipperFormatResult } from "../../shared/state.util";
 import type { ClipperSettings } from "../../settings/settings.util";
+import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import {
   activeClipPreviewsForMode,
   buildClipPreviews,
@@ -73,9 +74,8 @@ export async function preparePreviewFromRange(
     hydrateExportsFromDisk,
   } = deps;
 
-  const wordsPerGroup = settings.captions.wordsPerGroup;
+  const wordsPerGroup = captionWordsPerGroup(settings.captions);
   const metadata = metadataRef.current;
-  const captionWordsPerGroup = metadata.wordsPerGroupAtTranscribe ?? wordsPerGroup;
   const rangeDuration = end - snappedStart;
   const segmentLength = normalizeAutoPartsSegmentLengthSec(metadata.autoPartsSegmentLengthSec);
 
@@ -122,7 +122,7 @@ export async function preparePreviewFromRange(
     snappedStart,
     end,
     words,
-    wordsPerGroup: captionWordsPerGroup,
+    wordsPerGroup,
     targetLengthSec: segmentLength,
     enabledFormatIds: settings.formats.enabledFormatIds,
     skipFaceDetect: options.skipFaceDetect,
@@ -167,7 +167,6 @@ export async function preparePreviewFromRange(
       clipEnd: end,
       transcribedClipStart: snappedStart,
       transcribedClipEnd: end,
-      wordsPerGroupAtTranscribe: wordsPerGroup,
       autoPartsSegmentLengthSec: segmentLength,
       activeClipIndex: restoredActiveClipIndex,
     },
@@ -181,7 +180,7 @@ export async function preparePreviewFromRange(
   session.aiClips = rebuildClipsFromDbPayload(
     aiDbClips,
     words,
-    captionWordsPerGroup,
+    wordsPerGroup,
     session.rangeEnd - session.rangeStart,
     session.audioEnvelope ?? undefined,
   );

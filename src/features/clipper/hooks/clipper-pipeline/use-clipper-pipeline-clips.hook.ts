@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { produce } from "immer";
 
+import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import {
   resolveActiveClipIndexAfterDelete,
   segmentRangeFromTrimmedFile,
@@ -35,6 +36,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
     disabledCollageRegionIds,
   } = core;
   const { sessionRef, activeClipIndexRef } = refs;
+  const wordsPerGroup = captionWordsPerGroup(settings.captions);
 
   const [autoPartsResegmenting, setAutoPartsResegmenting] = useState(false);
 
@@ -97,9 +99,6 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
       }));
 
       try {
-        const wordsPerGroup =
-          refs.metadataRef.current.wordsPerGroupAtTranscribe ?? settings.captions.wordsPerGroup;
-
         if (options.force) {
           session.keyframeTimestamps = undefined;
         }
@@ -166,7 +165,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
       sessionRef,
       setAutoPartsSegmentLengthSec,
       setState,
-      settings.captions.wordsPerGroup,
+      wordsPerGroup,
     ],
   );
 
