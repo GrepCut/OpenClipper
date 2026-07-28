@@ -4,7 +4,6 @@ import type {
   ClipperAiClipPickerModel,
 } from "../persistence/ai-clip-api.util";
 import type { ClipperClipPreview, ClipSourceMode, WordCue } from "../shared/state.util";
-import type { ClipTranscriptEditOp } from "../engine/transcript";
 import type { AutoPartsSegmentLengthSec } from "../persistence/project-metadata.util";
 
 export interface ClipperClipsSectionProps {
@@ -36,12 +35,6 @@ export interface ClipperClipsSectionProps {
   onAutoPartsSegmentLengthChange: (lengthSec: AutoPartsSegmentLengthSec) => void;
   onResetAutoParts?: () => void;
   autoPartsResegmenting?: boolean;
-  onEditClipTranscript?: (clipIndex: number, op: ClipTranscriptEditOp) => void;
-  onUndoClipEdit?: () => void;
-  onRedoClipEdit?: () => void;
-  canUndoClipEdit?: boolean;
-  canRedoClipEdit?: boolean;
-  lastEditedTranscriptRange?: { clipIndex: number; startIdx: number; endIdx: number } | null;
 }
 
 export const CLIPS_LIST_FADE_HEIGHT = "56px";
@@ -53,14 +46,6 @@ export function clipSelectorTranscriptProps(
   disabledCollageRegionIds: string[],
   onToggleCollageRegion: (regionId: string) => void,
   onSeekToTranscriptTime?: (clipIndex: number, sourceTimeSec: number) => void,
-  editProps?: {
-    onEditClipTranscript?: (clipIndex: number, op: ClipTranscriptEditOp) => void;
-    onUndoClipEdit?: () => void;
-    onRedoClipEdit?: () => void;
-    canUndoClipEdit?: boolean;
-    canRedoClipEdit?: boolean;
-    lastEditedTranscriptRange?: { clipIndex: number; startIdx: number; endIdx: number } | null;
-  },
 ) {
   return {
     rangeWords,
@@ -68,6 +53,5 @@ export function clipSelectorTranscriptProps(
     disabledCollageRegionIds,
     onToggleCollageRegion,
     onSeekToTranscriptTime,
-    ...editProps,
   };
 }

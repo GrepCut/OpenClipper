@@ -39,12 +39,6 @@ export function ClipperPreviewSidePanel({
   onAutoPartsSegmentLengthChange,
   onResetAutoParts,
   autoPartsResegmenting,
-  onEditClipTranscript,
-  onUndoClipEdit,
-  onRedoClipEdit,
-  canUndoClipEdit,
-  canRedoClipEdit,
-  lastEditedTranscriptRange,
   isRendering = false,
   onOpenRenderQueue,
   sidePanelTab,
@@ -149,12 +143,6 @@ export function ClipperPreviewSidePanel({
           onAutoPartsSegmentLengthChange={onAutoPartsSegmentLengthChange}
           onResetAutoParts={onResetAutoParts}
           autoPartsResegmenting={autoPartsResegmenting}
-          onEditClipTranscript={onEditClipTranscript}
-          onUndoClipEdit={onUndoClipEdit}
-          onRedoClipEdit={onRedoClipEdit}
-          canUndoClipEdit={canUndoClipEdit}
-          canRedoClipEdit={canRedoClipEdit}
-          lastEditedTranscriptRange={lastEditedTranscriptRange}
         />
       </Box>
     </Box>

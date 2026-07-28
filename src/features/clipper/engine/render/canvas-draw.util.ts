@@ -1,6 +1,7 @@
 import {
   drawPhraseAnimatedCaption,
 } from '../../lib/captions/animated-caption-render.util';
+import { resolveCaptionPreset } from "../../lib/captions/caption-presets.util";
 import type { CaptionGroup } from "../../lib/media/transcription-export.util";
 import { drawPrimaryPlusTwoFrame, drawVerticalSplitFrame } from "../../lib/media/video-draw.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
@@ -143,6 +144,17 @@ export function drawClipperCaptions(
   const captionTime = render.segments?.length
     ? sourceTimeToLocalTime(render.segments, t)
     : Math.max(0, t);
+  const preset = resolveCaptionPreset(captions.presetId);
+  const anchorY = {
+    top: 0.22,
+    center: 0.5,
+    bottom: 0.78,
+  }[captions.position];
+  const fontSizeScale = {
+    small: 0.8,
+    medium: 1,
+    large: 1.24,
+  }[captions.size];
 
   drawPhraseAnimatedCaption(
     ctx,
@@ -151,5 +163,11 @@ export function drawClipperCaptions(
     output.width,
     output.height,
     captions.presetId,
+    {
+      ...preset,
+      anchorY,
+      fontSizeRatio: preset.fontSizeRatio * fontSizeScale,
+      wordsPerGroup: captions.wordsPerGroup,
+    },
   );
 }

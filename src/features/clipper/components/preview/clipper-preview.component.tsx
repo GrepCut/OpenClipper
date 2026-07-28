@@ -50,12 +50,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     onAutoPartsSegmentLengthChange,
     onResetAutoParts,
     autoPartsResegmenting,
-    onEditClipTranscript,
-    onUndoClipEdit,
-    onRedoClipEdit,
-    canUndoClipEdit,
-    canRedoClipEdit,
-    lastEditedTranscriptRange,
   } = props;
 
   const { theme } = useClipperUi();

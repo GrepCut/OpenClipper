@@ -25,6 +25,11 @@ function getClipperLeftScrollbarCss(theme: Theme) {
     direction: "rtl" as const,
     overflowY: "auto" as const,
     overscrollBehavior: "contain" as const,
+    "&::-webkit-scrollbar": { width: "4px", height: "4px" },
+    "&::-webkit-scrollbar-thumb": {
+      background: theme.scrollbar.thumb,
+      borderRadius: "999px",
+    },
   };
 }
 

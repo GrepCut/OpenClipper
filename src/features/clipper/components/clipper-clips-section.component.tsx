@@ -44,12 +44,6 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   onAutoPartsSegmentLengthChange,
   onResetAutoParts,
   autoPartsResegmenting = false,
-  onEditClipTranscript,
-  onUndoClipEdit,
-  onRedoClipEdit,
-  canUndoClipEdit,
-  canRedoClipEdit,
-  lastEditedTranscriptRange,
 }) => {
   const { theme, leftScrollbarCss } = useClipperUi();
   const isAiMode = clipSourceMode === "ai";
@@ -66,14 +60,6 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
     disabledCollageRegionIds,
     onToggleCollageRegion,
     onSeekToTranscriptTime,
-    {
-      onEditClipTranscript,
-      onUndoClipEdit,
-      onRedoClipEdit,
-      canUndoClipEdit,
-      canRedoClipEdit,
-      lastEditedTranscriptRange,
-    },
   );
 
   useEffect(() => {

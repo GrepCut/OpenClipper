@@ -3,7 +3,6 @@ import type { Theme } from "../../../../theme";
 import type { CollageRegion } from "../../engine/reframe/collage";
 import type { ClipperFrameContext } from "../../engine/render/index";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
-import type { ClipTranscriptEditOp } from "../../engine/transcript";
 import type {
   ClipperAiChatMessage,
   ClipperAiClipPickerModel,
@@ -52,12 +51,6 @@ export interface ClipperPreviewProps {
   onAutoPartsSegmentLengthChange: (lengthSec: AutoPartsSegmentLengthSec) => void;
   onResetAutoParts?: () => void;
   autoPartsResegmenting?: boolean;
-  onEditClipTranscript?: (clipIndex: number, op: ClipTranscriptEditOp) => void;
-  onUndoClipEdit?: () => void;
-  onRedoClipEdit?: () => void;
-  canUndoClipEdit?: boolean;
-  canRedoClipEdit?: boolean;
-  lastEditedTranscriptRange?: { clipIndex: number; startIdx: number; endIdx: number } | null;
 }
 
 export interface UseClipperPreviewPlaybackParams {

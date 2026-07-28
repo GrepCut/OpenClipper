@@ -29,10 +29,6 @@ export function usePipelineRefs(
   const resumeStartedRef = useRef(false);
   const loadedResumeKeyRef = useRef<string | null>(null);
   const aiClipsMetaRef = useRef<ClipperPipelineRefs["aiClipsMetaRef"]["current"]>([]);
-  const clipEditUndoStackRef = useRef<ClipperPipelineRefs["clipEditUndoStackRef"]["current"]>([]);
-  const clipEditRedoStackRef = useRef<ClipperPipelineRefs["clipEditRedoStackRef"]["current"]>([]);
-  const transcriptClipboardRef = useRef<ClipperPipelineRefs["transcriptClipboardRef"]["current"]>([]);
-  const lastEditedTranscriptRangeRef = useRef<ClipperPipelineRefs["lastEditedTranscriptRangeRef"]["current"]>(null);
   const reporterRef = useRef(createThrottledReporter(createReporter(setState)));
   const aiChatAbortRef = useRef<AbortController | null>(null);
 
@@ -45,10 +41,6 @@ export function usePipelineRefs(
     resumeStartedRef,
     loadedResumeKeyRef,
     aiClipsMetaRef,
-    clipEditUndoStackRef,
-    clipEditRedoStackRef,
-    transcriptClipboardRef,
-    lastEditedTranscriptRangeRef,
     reporterRef,
     aiChatAbortRef,
   };

@@ -30,12 +30,6 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     startNewAiChat,
     deleteAiClip,
     deleteAutoPartsClip,
-    editClipTranscript,
-    undoClipEdit,
-    redoClipEdit,
-    canUndoClipEdit,
-    canRedoClipEdit,
-    lastEditedTranscriptRange,
     aiCurrentClipsJsonChars,
     aiChatMessages,
     aiChatLoading,
@@ -102,12 +96,6 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         }}
         onDeleteAiClip={deleteAiClip}
         onDeleteAutoPartsClip={deleteAutoPartsClip}
-        onEditClipTranscript={editClipTranscript}
-        onUndoClipEdit={undoClipEdit}
-        onRedoClipEdit={redoClipEdit}
-        canUndoClipEdit={canUndoClipEdit}
-        canRedoClipEdit={canRedoClipEdit}
-        lastEditedTranscriptRange={lastEditedTranscriptRange}
         aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
         settings={settings}
         onUpdateSettings={updateSettings}

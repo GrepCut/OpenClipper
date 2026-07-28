@@ -1,6 +1,4 @@
 import type { Project } from "../../../../services/projects.service";
-import type { AiClipSegmentRange } from "../../engine/transcript";
-import type { ClipperGeneratedClip } from "../../engine/segmentation";
 import type { ClipperProjectMetadata } from "../../persistence/project-metadata.util";
 import type { ClipperClipPayload } from "../../persistence/clipper-clips-api.util";
 import type { PipelineReporter } from "../../pipeline/reporter.util";
@@ -11,19 +9,9 @@ import type { ClipperStage } from "../../shared/stages.util";
 import type { ClipperLoadedProject } from "../use-clipper-project-loader.hook";
 import { EMPTY_CLIPPER_PIPELINE_STATE } from "../../pipeline/resume.util";
 
-export const CLIP_EDIT_HISTORY_MAX = 30;
-
 export const METADATA_IMMEDIATE_FLUSH_STAGES: ClipperStage[] = ["preview", "done", "error"];
 
 export const INITIAL_PIPELINE_STATE = EMPTY_CLIPPER_PIPELINE_STATE;
-
-export interface ClipEditSnapshot {
-  mode: ClipSourceMode;
-  autoPartsClips: ClipperGeneratedClip[];
-  aiClips: ClipperGeneratedClip[];
-  aiMeta: ClipperClipPayload[];
-  lastEditedRange: { clipIndex: number; startIdx: number; endIdx: number } | null;
-}
 
 export interface UseClipperPipelineOptions {
   project: Project;
@@ -40,14 +28,6 @@ export interface ClipperPipelineRefs {
   resumeStartedRef: React.MutableRefObject<boolean>;
   loadedResumeKeyRef: React.MutableRefObject<string | null>;
   aiClipsMetaRef: React.MutableRefObject<ClipperClipPayload[]>;
-  clipEditUndoStackRef: React.MutableRefObject<ClipEditSnapshot[]>;
-  clipEditRedoStackRef: React.MutableRefObject<ClipEditSnapshot[]>;
-  transcriptClipboardRef: React.MutableRefObject<AiClipSegmentRange[]>;
-  lastEditedTranscriptRangeRef: React.MutableRefObject<{
-    clipIndex: number;
-    startIdx: number;
-    endIdx: number;
-  } | null>;
   reporterRef: React.MutableRefObject<PipelineReporter>;
   aiChatAbortRef: React.MutableRefObject<AbortController | null>;
 }

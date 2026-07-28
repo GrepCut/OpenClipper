@@ -863,8 +863,17 @@ export function resolveCaptionPreset(
 }
 
 export function captionWordsPerGroup(
-  captions: { presetId?: ClipperCaptionPresetId | string } | null | undefined,
+  captions:
+    | {
+        presetId?: ClipperCaptionPresetId | string;
+        wordsPerGroup?: number;
+      }
+    | null
+    | undefined,
 ): number {
+  if (typeof captions?.wordsPerGroup === "number") {
+    return Math.min(5, Math.max(1, Math.round(captions.wordsPerGroup)));
+  }
   return resolveCaptionPreset(captions?.presetId).wordsPerGroup;
 }
 

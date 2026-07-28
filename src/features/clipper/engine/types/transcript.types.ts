@@ -1,21 +1,3 @@
-export interface WordSelection {
-  startIdx: number;
-  endIdx: number;
-}
-
-export type ClipTranscriptEditOp =
-  | { type: "delete"; selection: WordSelection }
-  | { type: "cut"; selection: WordSelection }
-  | { type: "copy"; selection: WordSelection }
-  | { type: "paste"; selection: WordSelection; clipboard?: AiClipSegmentRange[] };
-
-export interface ClipTranscriptEditResult {
-  ranges: AiClipSegmentRange[];
-  editedRange: WordSelection | null;
-  isEmpty: boolean;
-  clipboard?: AiClipSegmentRange[];
-}
-
 export interface AiClipSegmentRange {
   wordStartIdx: number;
   wordEndIdx: number;

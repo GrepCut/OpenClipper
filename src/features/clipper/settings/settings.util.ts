@@ -7,10 +7,15 @@ import { clamp } from '../lib/math.util';
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
+export type ClipperCaptionPosition = "top" | "center" | "bottom";
+export type ClipperCaptionSize = "small" | "medium" | "large";
 
 export interface ClipperCaptionSettings {
   enabled: boolean;
   presetId: ClipperCaptionPresetId;
+  position: ClipperCaptionPosition;
+  size: ClipperCaptionSize;
+  wordsPerGroup: number;
 }
 
 export interface ClipperFormatSettings {
@@ -53,6 +58,9 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   captions: {
     enabled: true,
     presetId: DEFAULT_CAPTION_PRESET_ID,
+    position: "bottom",
+    size: "medium",
+    wordsPerGroup: 4,
   },
   formats: {
     enabledFormatIds: ["tiktok"],
@@ -102,6 +110,22 @@ export function mergeClipperSettings(
         partialCaptions?.presetId,
         base.captions.presetId,
       ),
+      position:
+        partialCaptions?.position === "top" ||
+        partialCaptions?.position === "center" ||
+        partialCaptions?.position === "bottom"
+          ? partialCaptions.position
+          : base.captions.position,
+      size:
+        partialCaptions?.size === "small" ||
+        partialCaptions?.size === "medium" ||
+        partialCaptions?.size === "large"
+          ? partialCaptions.size
+          : base.captions.size,
+      wordsPerGroup:
+        typeof partialCaptions?.wordsPerGroup === "number"
+          ? clamp(Math.round(partialCaptions.wordsPerGroup), 1, 5)
+          : base.captions.wordsPerGroup,
     },
     formats: { ...base.formats, ...partial.formats },
     audio: { ...base.audio, ...partial.audio },

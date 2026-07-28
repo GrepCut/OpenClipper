@@ -8,7 +8,6 @@ import { useClipperPipelineAi } from "./use-clipper-pipeline-ai.hook";
 import { useClipperPipelineClips } from "./use-clipper-pipeline-clips.hook";
 import { useClipperPipelineCore } from "./use-clipper-pipeline-core.hook";
 import { useClipperPipelineRender } from "./use-clipper-pipeline-render.hook";
-import { useClipperPipelineTranscript } from "./use-clipper-pipeline-transcript.hook";
 import { useClipperPipelineWorkflow } from "./use-clipper-pipeline-workflow.hook";
 import { useClipperResume } from "../use-clipper-resume.hook";
 
@@ -29,11 +28,6 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
   const workflow = useClipperPipelineWorkflow(core, project, token);
   const clips = useClipperPipelineClips(core);
   const ai = useClipperPipelineAi(core);
-  const transcript = useClipperPipelineTranscript(core, {
-    deleteAiClip: ai.deleteAiClip,
-    deleteAutoPartsClip: clips.deleteAutoPartsClip,
-    applyAiClipsAndPersist: ai.applyAiClipsAndPersist,
-  });
   const render = useClipperPipelineRender(core);
 
   useClipperResume({
@@ -86,12 +80,6 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     startNewAiChat: ai.startNewAiChat,
     deleteAiClip: ai.deleteAiClip,
     deleteAutoPartsClip: clips.deleteAutoPartsClip,
-    editClipTranscript: transcript.editClipTranscript,
-    undoClipEdit: transcript.undoClipEdit,
-    redoClipEdit: transcript.redoClipEdit,
-    canUndoClipEdit: transcript.canUndoClipEdit,
-    canRedoClipEdit: transcript.canRedoClipEdit,
-    lastEditedTranscriptRange: transcript.lastEditedTranscriptRange,
     aiChatMessages: ai.aiChatMessages,
     aiChatLoading: ai.aiChatLoading,
     aiChatError: ai.aiChatError,

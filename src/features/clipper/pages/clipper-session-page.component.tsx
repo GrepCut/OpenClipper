@@ -110,7 +110,6 @@ export function ClipperSessionPage() {
     };
     // ponytail: intentionally omit `project` from deps — we only re-fetch when projectId changes;
     // the early return uses the latest project via closure when projectId is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- project?.id gate; deps are projectId only
   }, [projectId]);
 
   if (!projectId) return null;

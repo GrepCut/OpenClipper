@@ -11,6 +11,9 @@ const clipperSettingsSchema = z
         // Keep legacy/unknown IDs parseable so mergeClipperSettings can migrate
         // the caption preset without discarding unrelated saved settings.
         presetId: z.string(),
+        position: z.enum(["top", "center", "bottom"]),
+        size: z.enum(["small", "medium", "large"]),
+        wordsPerGroup: z.number(),
       })
       .partial()
       .optional(),

@@ -1,21 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Box, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
 import { Virtuoso, type ScrollerProps } from "react-virtuoso";
 import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  Pencil,
   Trash2,
 } from "lucide-react";
 import type { CollageRegion } from "../engine/types/collage.types";
 import type { ClipperGeneratedClip } from "../engine/segmentation";
-import type { ClipTranscriptEditOp } from "../engine/transcript";
-import { globalWordsInClip } from "../engine/transcript/edit.util";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperClipPreview, WordCue } from "../shared/state.util";
-import { ClipperEditableTranscript } from "./clipper-editable-transcript.component";
 import {
   ClipperInlineTranscript,
   filterRegionsForClip,
@@ -36,16 +32,6 @@ interface ClipperClipSelectorProps {
   disabledCollageRegionIds?: string[];
   onToggleCollageRegion?: (regionId: string) => void;
   onSeekToTranscriptTime?: (clipIndex: number, sourceTimeSec: number) => void;
-  onEditClipTranscript?: (clipIndex: number, op: ClipTranscriptEditOp) => void;
-  onUndoClipEdit?: () => void;
-  onRedoClipEdit?: () => void;
-  canUndoClipEdit?: boolean;
-  canRedoClipEdit?: boolean;
-  lastEditedTranscriptRange?: {
-    clipIndex: number;
-    startIdx: number;
-    endIdx: number;
-  } | null;
   bottomInset?: number | string;
 }
 
@@ -56,29 +42,49 @@ function clipTimeLabel(preview: ClipperClipPreview): string {
 
 /** Keep the native scrollbar on the left without letting RTL reposition Virtuoso's viewport. */
 const ClipperVirtuosoScroller = React.forwardRef<HTMLDivElement, ScrollerProps>(
-  ({ style, ...props }, ref) => (
-    <Box
-      {...props}
-      ref={ref}
-      style={{
-        ...style,
-        direction: "rtl",
-        overflowX: "hidden",
-      }}
-      css={{
-        // Virtuoso positions this node absolutely. In an RTL containing block
-        // its implicit horizontal position can change after item re-measurement.
-        '& > [data-viewport-type="element"]': {
-          direction: "ltr",
-          left: "0 !important",
-          right: "0 !important",
-          width: "auto !important",
-          minWidth: 0,
-          boxSizing: "border-box",
-        },
-      }}
-    />
-  ),
+  ({ style, ...props }, ref) => {
+    const { theme } = useClipperUi();
+
+    return (
+      <Box
+        {...props}
+        ref={ref}
+        style={{
+          ...style,
+          direction: "rtl",
+          overflowX: "hidden",
+        }}
+        css={{
+          scrollbarWidth: "thin",
+          scrollbarColor: `${theme.scrollbar.thumb} ${theme.scrollbar.track}`,
+          "&::-webkit-scrollbar": {
+            width: "4px",
+            height: "4px",
+          },
+          "&::-webkit-scrollbar-track": {
+            background: theme.scrollbar.track,
+          },
+          "&::-webkit-scrollbar-thumb": {
+            background: theme.scrollbar.thumb,
+            borderRadius: "999px",
+          },
+          "&::-webkit-scrollbar-thumb:hover": {
+            background: theme.brand.purpleLight,
+          },
+          // Virtuoso positions this node absolutely. In an RTL containing block
+          // its implicit horizontal position can change after item re-measurement.
+          '& > [data-viewport-type="element"]': {
+            direction: "ltr",
+            left: "0 !important",
+            right: "0 !important",
+            width: "auto !important",
+            minWidth: 0,
+            boxSizing: "border-box",
+          },
+        }}
+      />
+    );
+  },
 );
 
 ClipperVirtuosoScroller.displayName = "ClipperVirtuosoScroller";
@@ -162,28 +168,10 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   disabledCollageRegionIds = [],
   onToggleCollageRegion,
   onSeekToTranscriptTime,
-  onEditClipTranscript,
-  onUndoClipEdit,
-  onRedoClipEdit,
-  canUndoClipEdit = false,
-  canRedoClipEdit = false,
-  lastEditedTranscriptRange = null,
   bottomInset = 0,
 }) => {
   const { theme } = useClipperUi();
-  const [editingClipIndex, setEditingClipIndex] = useState<number | null>(null);
-  const showCollageMarkers =
-    Boolean(onToggleCollageRegion) && editingClipIndex == null;
-  const canEdit = Boolean(onEditClipTranscript);
-
-  useEffect(() => {
-    if (
-      editingClipIndex != null &&
-      !clipPreviews.some((preview) => preview.clip.index === editingClipIndex)
-    ) {
-      setEditingClipIndex(null);
-    }
-  }, [clipPreviews, editingClipIndex]);
+  const showCollageMarkers = Boolean(onToggleCollageRegion);
 
   if (clipPreviews.length === 0) return null;
 
@@ -197,14 +185,6 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
       preview.clip.endSec,
     );
     const isLast = index === clipPreviews.length - 1;
-    const isEditing = editingClipIndex === preview.clip.index;
-    const clipLastEdited =
-      lastEditedTranscriptRange?.clipIndex === preview.clip.index
-        ? lastEditedTranscriptRange
-        : null;
-    const editableWordEntries = isEditing
-      ? globalWordsInClip(preview.clip, rangeWords)
-      : [];
 
     return (
       <Box
@@ -214,33 +194,20 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
         px={5}
         py={4}
         borderBottom={isLast ? "none" : "1px solid"}
-        borderColor={isEditing ? clipperTheme.accent : theme.border.primary}
-        borderLeft={isEditing ? "3px solid" : "3px solid transparent"}
-        borderLeftColor={isEditing ? clipperTheme.accent : "transparent"}
+        borderColor={theme.border.primary}
+        borderLeft="3px solid transparent"
         bg={
-          isEditing
-            ? `rgba(${clipperTheme.accentTintRgb},0.12)`
-            : active
-              ? `rgba(${clipperTheme.accentTintRgb},0.08)`
-              : "transparent"
+          active ? `rgba(${clipperTheme.accentTintRgb},0.08)` : "transparent"
         }
         cursor="pointer"
         transition="border-color 0.15s ease, background 0.15s ease"
         _hover={{
-          bg: isEditing
-            ? `rgba(${clipperTheme.accentTintRgb},0.16)`
-            : active
-              ? `rgba(${clipperTheme.accentTintRgb},0.12)`
-              : theme.surface.hover,
+          bg: active
+            ? `rgba(${clipperTheme.accentTintRgb},0.12)`
+            : theme.surface.hover,
         }}
         onClick={() => onSelectClip(preview.clip.index)}
         onKeyDown={(e) => {
-          if (e.key === "Escape" && isEditing) {
-            e.preventDefault();
-            e.stopPropagation();
-            setEditingClipIndex(null);
-            return;
-          }
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             onSelectClip(preview.clip.index);
@@ -267,44 +234,6 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
             </HStack>
 
             <HStack gap={0} flexShrink={0}>
-              {canEdit ? (
-                <IconButton
-                  aria-label={
-                    isEditing
-                      ? `Stop editing clip ${preview.clip.index + 1}`
-                      : `Edit clip ${preview.clip.index + 1} transcript`
-                  }
-                  title={isEditing ? "Done editing" : "Edit transcript"}
-                  size="xs"
-                  variant="ghost"
-                  borderRadius="md"
-                  color={
-                    isEditing ? clipperTheme.accentLight : theme.text.muted
-                  }
-                  bg="transparent"
-                  border="none"
-                  flexShrink={0}
-                  alignSelf="flex-end"
-                  minW="0"
-                  w="auto"
-                  h="auto"
-                  p={1}
-                  _hover={{
-                    bg: "transparent",
-                    color: clipperTheme.accentLight,
-                    opacity: 0.85,
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingClipIndex((prev) =>
-                      prev === preview.clip.index ? null : preview.clip.index,
-                    );
-                  }}
-                >
-                  <Pencil size={14} strokeWidth={1.75} />
-                </IconButton>
-              ) : null}
-
               {onDeleteClip ? (
                 <ClipperDeleteClipConfirm
                   onConfirm={() => onDeleteClip(preview.clip.index)}
@@ -337,18 +266,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
           </HStack>
 
           <VStack align="stretch" gap={2} w="full">
-            {isEditing && onEditClipTranscript ? (
-              <ClipperEditableTranscript
-                wordEntries={editableWordEntries}
-                lastEditedRange={clipLastEdited}
-                onEdit={(op) => onEditClipTranscript(preview.clip.index, op)}
-                onUndo={onUndoClipEdit}
-                onRedo={onRedoClipEdit}
-                canUndo={canUndoClipEdit}
-                canRedo={canRedoClipEdit}
-              />
-            ) : (
-              transcriptBlocks.map((block, i) => {
+            {transcriptBlocks.map((block, i) => {
                 const blockRegions =
                   transcriptBlocks.length > 1
                     ? filterRegionsForClip(
@@ -391,8 +309,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
                     />
                   </Box>
                 );
-              })
-            )}
+              })}
           </VStack>
         </VStack>
       </Box>
