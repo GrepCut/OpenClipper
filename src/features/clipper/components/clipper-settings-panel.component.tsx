@@ -35,7 +35,6 @@ export const ClipperSettingsPanel: React.FC<ClipperSettingsPanelProps> = ({
       {section !== "captions" ? (
         <AudioSection
           audio={settings.audio}
-          defaultOpen={section === "audio"}
           onChange={(patch) => onUpdateSettings((prev) => ({ ...prev, audio: { ...prev.audio, ...patch } }))}
         />
       ) : null}

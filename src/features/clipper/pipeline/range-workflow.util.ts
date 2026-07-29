@@ -12,6 +12,7 @@ import { runAnalyzeFacesStage } from "./stages/analyze-faces.util";
 import { runAnalyzeSubjectsStage } from "./stages/analyze-subjects.util";
 import { runTranscribeStage } from "./stages/transcribe.util";
 import { runTrimStage, trimNativeSourceEarly } from "./stages/trim.util";
+import type { LocalTranscriptionEngine } from "../../../services/transcription.service";
 
 export interface PreparePreviewInput {
   projectId: string;
@@ -127,6 +128,8 @@ export interface ConfirmRangeInput {
   end: number;
   wordsPerGroup: number;
   metadata: ClipperProjectMetadata;
+  transcriptionEngine?: LocalTranscriptionEngine;
+  isolateVocals?: boolean;
 }
 
 export interface ConfirmRangeResult {
@@ -170,6 +173,8 @@ export async function runConfirmRangePipeline(
       clipDuration,
       trimUnchanged,
       existingWords: session.rangeWords.length > 0 ? session.rangeWords : session.words,
+      transcriptionEngine: input.transcriptionEngine,
+      isolateVocals: input.isolateVocals,
     },
     reporter,
     options,

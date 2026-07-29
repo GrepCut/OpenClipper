@@ -37,6 +37,13 @@ const clipperSettingsSchema = z
       })
       .partial()
       .optional(),
+    transcription: z
+      .object({
+        engine: z.enum(["parakeet", "whisper"]),
+        isolateVocals: z.enum(["off", "on"]),
+      })
+      .partial()
+      .optional(),
     lastDurationPresetSec: z.number().optional(),
   })
   .passthrough();

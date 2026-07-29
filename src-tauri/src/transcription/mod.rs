@@ -5,6 +5,9 @@ pub mod parakeet_provider;
 pub mod parakeet_tokens;
 pub mod parakeet_worker;
 pub mod types;
+pub mod vocals_isolate;
+pub mod whisper_genai;
 
 pub use parakeet_worker::ParakeetService;
 pub use types::*;
+pub use vocals_isolate::VocalsIsolateModelStatus;

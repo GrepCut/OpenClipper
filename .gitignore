@@ -24,13 +24,35 @@ dist-ssr
 *.sln
 *.sw?
 
-# sherpa-onnx DirectML build output (npm run sherpa:directml)
-third_party/sherpa-onnx-directml/
+# HuggingFace / transformers local cache (Whisper model export)
+cache_dir/
+
+# Local reference repo checkouts (read-only; used by model prep scripts)
+reference-algorithms/
+
+# Local native deps: NuGet ORT DirectML, sherpa build, ONNX export scratch
+third_party/
 
 # Parakeet ASR model (~640 MB total; exceeds GitHub 100 MB file limit)
 public/models/nemo-parakeet-tdt-0.6b-v3-int8/*
 !public/models/nemo-parakeet-tdt-0.6b-v3-int8/.gitkeep
 !public/models/nemo-parakeet-tdt-0.6b-v3-int8/README.md
+
+# Whisper ASR model (large ONNX; same policy as Parakeet — CDN / models:prepare)
+public/models/whisper-large-v3-turbo-dml/*
+!public/models/whisper-large-v3-turbo-dml/.gitkeep
+!public/models/whisper-large-v3-turbo-dml/README.md
+!public/models/whisper-large-v3-turbo-dml/config.json
+
+# HT-Demucs vocals isolate model (large ONNX; sideload / CDN)
+public/models/htdemucs-ft-vocals-onnx/*
+!public/models/htdemucs-ft-vocals-onnx/.gitkeep
+!public/models/htdemucs-ft-vocals-onnx/README.md
+!public/models/htdemucs-ft-vocals-onnx/config.json
+
+# Local dev scratch / test output
+smoke_output*.txt
+zmiany.txt
 
 # Generated Open Clipper model publication state. The manifest is committed;
 # prepared state, local R2 mirror and Python bytecode are reproducible.

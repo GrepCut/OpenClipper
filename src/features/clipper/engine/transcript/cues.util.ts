@@ -46,11 +46,15 @@ export function buildWordCuesForTranscription(
   transcription: Transcription,
   clipDurationSec: number,
 ): WordCue[] {
-  if (transcription.words?.length) {
+  if (
+    transcription.words?.length &&
+    transcription.words.some((w) => w.endTime > w.startTime)
+  ) {
     return sliceWordsForWindow(transcription.words, clipDurationSec);
   }
   return buildWordCuesForClip(transcription.segments, clipDurationSec);
 }
+
 
 export function groupCaptionWords(words: WordCue[], wordsPerGroup: number): CaptionGroup[] {
   return wordCuesToCaptionGroups(words, wordsPerGroup);

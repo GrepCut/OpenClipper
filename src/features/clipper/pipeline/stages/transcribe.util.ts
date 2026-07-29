@@ -1,4 +1,5 @@
 import { transcriptionService } from "../../../../services/transcription.service";
+import type { LocalTranscriptionEngine } from "../../../../services/transcription.service";
 import {
   extractClipAudioForTranscription,
   type PreparedTranscriptionAudio,
@@ -16,6 +17,8 @@ export interface TranscribeStageInput {
   clipDuration: number;
   trimUnchanged: boolean;
   existingWords: WordCue[];
+  transcriptionEngine?: LocalTranscriptionEngine;
+  isolateVocals?: boolean;
 }
 
 const PREPARE_WEIGHT = 0.3;
@@ -35,6 +38,8 @@ export async function runTranscribeStage(
     clipDuration,
     trimUnchanged,
     existingWords,
+    transcriptionEngine = "parakeet",
+    isolateVocals = false,
   } = input;
 
   if (trimUnchanged && existingWords.length > 0) {
@@ -47,19 +52,24 @@ export async function runTranscribeStage(
       {
         clipStartSec: snappedStart,
         clipEndSec: end,
+        engine: transcriptionEngine,
+        isolateVocals,
       },
     );
     const words = buildWordCuesForTranscription(existing, clipDuration);
     clipperLog("transcribe: reused transcription", {
       wordCount: words.length,
-      engine: "parakeet_local",
+      engine:
+        transcriptionEngine === "whisper" ? "whisper_local" : "parakeet_local",
     });
     return words;
   } catch {
-    // Fall through to local Parakeet run.
+    // Fall through to local ASR run.
   }
 
-  reporter.stage("transcribing", "Transcribing speech (Parakeet local)…");
+  const modelName =
+    transcriptionEngine === "whisper" ? "Whisper Turbo" : "Parakeet";
+  reporter.stage("transcribing", `Transcribing speech (${modelName} local)…`);
   reporter.stageProgress(0);
   reporter.stageDetail("Preparing audio", 0);
 
@@ -109,7 +119,17 @@ export async function runTranscribeStage(
       signal: options.signal,
       clipStartSec: snappedStart,
       clipEndSec: end,
-      onParakeetProgress: (progress) => {
+      engine: transcriptionEngine,
+      isolateVocals,
+      onProgress: (progress) => {
+        if (progress.phase === "isolating_vocals") {
+          reporter.stageProgress(
+            PREPARE_WEIGHT + progress.ratio * (LOAD_END - PREPARE_WEIGHT) * 0.5,
+          );
+          reporter.stageDetail("Isolating vocals", progress.ratio);
+          reporter.stage("transcribing", "Isolating vocals…");
+          return;
+        }
         const runtime =
           progress.provider === "directml"
             ? "GPU (DirectML)"

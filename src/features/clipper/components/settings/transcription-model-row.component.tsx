@@ -5,6 +5,11 @@ import { formatBytes } from "../../shared/logger.util";
 import type { ModelStatusBadge } from "../../hooks/use-parakeet-model-download.hook";
 
 interface TranscriptionModelRowProps {
+  name?: string;
+  description?: string;
+  size?: string;
+  selected?: boolean;
+  onSelect?: () => void;
   badge: ModelStatusBadge;
   provider: string | null;
   showDownload: boolean;
@@ -50,6 +55,11 @@ function MetaCell({ label, value }: { label: string; value: string }) {
 }
 
 export function TranscriptionModelRow({
+  name = "Parakeet",
+  description = "Local speech-to-text for clip captions. The model loads only while transcribing, then releases its runtime memory.",
+  size = "~671 MB",
+  selected = false,
+  onSelect,
   badge,
   provider,
   showDownload,
@@ -76,7 +86,7 @@ export function TranscriptionModelRow({
       ? `${formatBytes(downloadReceived)} / ${formatBytes(downloadTotal)}`
       : downloadReceived != null
         ? formatBytes(downloadReceived)
-        : "~671 MB";
+        : size;
 
   return (
     <Box
@@ -97,14 +107,14 @@ export function TranscriptionModelRow({
               lineHeight="1.15"
               color={theme.text.primary}
             >
-              Parakeet
+              {name}
             </Text>
             <Text fontSize="sm" color={theme.text.muted} lineHeight="1.6" maxW="36em">
-              Local speech-to-text for clip captions. The model loads only while transcribing, then releases its runtime memory.
+              {description}
             </Text>
           </VStack>
 
-          {!downloading && (showDownload || showDelete) && (
+          {!downloading && (showDownload || showDelete || onSelect) && (
             <HStack gap={2} flexShrink={0} pt={1}>
               {showDownload && (
                 <OutlinedActionButton onClick={onDownload} whiteSpace="nowrap">
@@ -116,13 +126,18 @@ export function TranscriptionModelRow({
                   Delete
                 </OutlinedActionButton>
               )}
+              {onSelect && (
+                <OutlinedActionButton onClick={onSelect} disabled={selected} whiteSpace="nowrap">
+                  {selected ? "Active" : "Use this model"}
+                </OutlinedActionButton>
+              )}
             </HStack>
           )}
         </HStack>
 
         <HStack gap={{ base: 6, md: 10 }} flexWrap="wrap" align="start">
           <MetaCell label="Status" value={statusLabel(badge)} />
-          <MetaCell label="Size" value={downloading ? bytesLabel : "~671 MB"} />
+          <MetaCell label="Size" value={downloading ? bytesLabel : size} />
           {provider && <MetaCell label="Runtime" value={provider} />}
         </HStack>
 

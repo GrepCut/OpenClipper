@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import type { Project } from "../../../../services/projects.service";
 import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import { runConfirmRangePipeline } from "../../pipeline/range-workflow.util";
+import { loadClipperSettings } from "../../settings/settings-storage.util";
 import { clipperError } from "../../shared/logger.util";
 import { preparePreviewFromRange } from "./clipper-pipeline-preview-range.util";
 import { describeClipperError } from "./pipeline-error.util";
@@ -121,6 +122,9 @@ export function useClipperPipelineWorkflow(
             end,
             wordsPerGroup,
             metadata: metadataRef.current,
+            // Device-level model choice — read at invoke so Settings changes apply to open projects.
+            transcriptionEngine: loadClipperSettings().transcription.engine,
+            isolateVocals: loadClipperSettings().transcription.isolateVocals === "on",
           },
           reporterRef.current,
           { signal: controller.signal },

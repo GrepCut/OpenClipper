@@ -37,12 +37,15 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 url = "2"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2"] }
 sha2 = "0.10"
-sherpa-onnx = { version = "1.13.4", default-features = false, features = ["shared"] }
+sherpa-onnx = { path = "vendor/sherpa-onnx", default-features = false, features = ["shared"] }
 crossbeam-channel = "0.5"
 tar = "0.4"
 bzip2 = "0.5"
 uuid = { version = "1", features = ["v4"] }
 http-range-header = "0.4"
+hound = "3.5"
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "load-dynamic", "directml"] }
+ndarray = "0.16"
 
 [profile.release]
 codegen-units = 1
@@ -53,6 +56,14 @@ strip = "symbols"
 [[example]]
 name = "parakeet_smoke"
 path = "examples/parakeet_smoke.rs"
+
+[[example]]
+name = "whisper_smoke"
+path = "examples/whisper_smoke.rs"
+
+[[example]]
+name = "vocals_isolate_smoke"
+path = "examples/vocals_isolate_smoke.rs"
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-deep-link = "2"

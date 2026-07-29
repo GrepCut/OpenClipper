@@ -1075,34 +1075,59 @@ function drawCaptionWordBlock(
       }
     }
 
-    for (const line of layout.lines) {
-      for (const placement of line.words) {
-        const word = group.words[placement.index]!;
-        if (preset.renderer === "karaoke") {
-          drawKaraokeWord(
-            ctx,
-            placement,
-            line.baseline,
-            layout.fontPx,
-            preset,
-            word,
-            timestamp,
-          );
-          continue;
-        }
-        drawPhraseWord(
+    const isEmphasizedWord = (index: number): boolean =>
+      preset.activeEffect === "longest-color"
+        ? index === emphasizedWordIndex
+        : index === activeWordIndex && activeWordIndex >= 0;
+
+    const drawWordAtPlacement = (
+      placement: CaptionWordPlacement,
+      baseline: number,
+    ): void => {
+      const word = group.words[placement.index]!;
+      if (preset.renderer === "karaoke") {
+        drawKaraokeWord(
           ctx,
           placement,
-          line.baseline,
-          layout,
+          baseline,
+          layout.fontPx,
           preset,
           word,
-          preset.activeEffect === "longest-color"
-            ? placement.index === emphasizedWordIndex
-            : placement.index === activeWordIndex && activeWordIndex >= 0,
           timestamp,
         );
+        return;
       }
+      drawPhraseWord(
+        ctx,
+        placement,
+        baseline,
+        layout,
+        preset,
+        word,
+        isEmphasizedWord(placement.index),
+        timestamp,
+      );
+    };
+
+    const drawWordsPass = (emphasizedOnly: boolean): void => {
+      for (const line of layout.lines) {
+        for (const placement of line.words) {
+          const emphasized = isEmphasizedWord(placement.index);
+          if (emphasizedOnly ? !emphasized : emphasized) continue;
+          drawWordAtPlacement(placement, line.baseline);
+        }
+      }
+    };
+
+    if (preset.renderer === "karaoke") {
+      for (const line of layout.lines) {
+        for (const placement of line.words) {
+          drawWordAtPlacement(placement, line.baseline);
+        }
+      }
+    } else {
+      drawWordsPass(false);
+      drawWordsPass(true);
     }
   } finally {
     ctx.restore();

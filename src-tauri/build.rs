@@ -123,10 +123,53 @@ fn sync_sherpa_directml_dlls(lib_dir: &Path) {
     }
 }
 
+/// Stage ORT 1.23 DirectML as `onnxruntime_ort.dll` so Demucs (`ort` crate) does
+/// not pick up sherpa's ORT 1.14 `onnxruntime.dll` beside the exe.
+fn sync_ort_directml_dll() {
+    let Ok(out_dir) = std::env::var("OUT_DIR") else {
+        return;
+    };
+    let Some(profile_dir) = Path::new(&out_dir).ancestors().nth(3) else {
+        println!(
+            "cargo:warning=Cannot locate the Cargo profile directory for ORT 1.23 staging"
+        );
+        return;
+    };
+
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("third_party")
+        .join("onnxruntime-directml")
+        .join("1.23.0")
+        .join("runtimes")
+        .join("win-x64")
+        .join("native")
+        .join("onnxruntime.dll");
+    println!("cargo:rerun-if-changed={}", source.display());
+
+    if !source.is_file() {
+        println!(
+            "cargo:warning=Demucs ORT 1.23 missing at {}. \
+             Place Microsoft.ML.OnnxRuntime.DirectML 1.23.0 under third_party/onnxruntime-directml.",
+            source.display()
+        );
+        return;
+    }
+
+    let destination = profile_dir.join("onnxruntime_ort.dll");
+    if let Err(error) = fs::copy(&source, &destination) {
+        println!(
+            "cargo:warning=Cannot stage ORT 1.23 to {}: {error}",
+            destination.display()
+        );
+    }
+}
+
 fn main() {
     verify_clipper_vision_models();
     if cfg!(target_os = "windows") {
         verify_sherpa_directml_libs();
+        sync_ort_directml_dll();
         println!(
             "cargo:rustc-link-search=native=C:\\ffmpeg\\vcpkg\\installed\\x64-windows-static\\lib"
         );

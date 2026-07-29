@@ -59,12 +59,37 @@ pub struct ParakeetTranscriptionProgress {
     pub provider: Option<String>,
 }
 
+/// Shared progress payload for Parakeet / Whisper native jobs.
+pub type LocalTranscriptionProgress = ParakeetTranscriptionProgress;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParakeetTranscribeRequest {
     pub audio_path: String,
     pub language: Option<String>,
+    #[serde(default)]
+    pub isolate_vocals: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhisperModelStatus {
+    pub installed: bool,
+    pub loaded: bool,
+    pub path: Option<String>,
+    pub provider: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhisperTranscribeRequest {
+    pub audio_path: String,
+    pub language: Option<String>,
+    #[serde(default)]
+    pub isolate_vocals: bool,
+}
+
+pub type WhisperTranscriptionResult = ParakeetTranscriptionResult;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TranscriptionError {

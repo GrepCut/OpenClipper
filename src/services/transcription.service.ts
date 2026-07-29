@@ -6,7 +6,9 @@ export * from "./types/transcription.types";
 import type {
   ParakeetCapability,
   ParakeetModelStatus,
-  ParakeetTranscriptionProgress,
+  WhisperModelStatus,
+  VocalsIsolateModelStatus,
+  LocalTranscriptionProgress,
   ParakeetTranscriptionResult,
   Transcription,
 } from "./types/transcription.types";
@@ -25,13 +27,31 @@ const TRANSCRIBE_AUDIO_WAV = "transcribe-audio.wav";
 const exactKey = (mediaFileId: string, cacheKey: string) =>
   `${mediaFileId}:${cacheKey}`;
 const latestKey = (mediaFileId: string) => `${mediaFileId}:latest`;
+export type LocalTranscriptionEngine = "parakeet" | "whisper";
+
+const engineId = (engine: LocalTranscriptionEngine) =>
+  engine === "whisper" ? "whisper_local" : "parakeet_local";
+
+// Prevent old single-pass Whisper results from being restored after the
+// chunked decoder is shipped.
+const engineCacheId = (
+  engine: LocalTranscriptionEngine,
+  isolateVocals = false,
+) => {
+  const base =
+    engine === "whisper" ? `${engineId(engine)}:chunked-v5` : engineId(engine);
+  return isolateVocals ? `${base}:vocals-v1` : base;
+};
+
 const rangeCacheKey = (
   start?: number,
   end?: number,
+  engine: LocalTranscriptionEngine = "parakeet",
+  isolateVocals = false,
 ) =>
   start == null || end == null
-    ? "full:parakeet_local"
-    : `${start.toFixed(3)}-${end.toFixed(3)}:parakeet_local`;
+    ? `full:${engineCacheId(engine, isolateVocals)}`
+    : `${start.toFixed(3)}-${end.toFixed(3)}:${engineCacheId(engine, isolateVocals)}`;
 
 async function cacheTranscription(
   projectId: string,
@@ -64,7 +84,7 @@ function mapParakeetResultToTranscription(
   };
 }
 
-async function prepareWavPathForParakeet(
+async function prepareWavPathForTranscription(
   wavBytes: Uint8Array,
   projectId: string,
 ): Promise<string> {
@@ -90,10 +110,20 @@ export const transcriptionService = {
       signal?: AbortSignal;
       clipStartSec?: number;
       clipEndSec?: number;
-      onParakeetProgress?: (progress: ParakeetTranscriptionProgress) => void;
+      engine?: LocalTranscriptionEngine;
+      language?: string;
+      isolateVocals?: boolean;
+      onProgress?: (progress: LocalTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
-    const cacheKey = rangeCacheKey(options?.clipStartSec, options?.clipEndSec);
+    const engine = options?.engine ?? "parakeet";
+    const isolateVocals = Boolean(options?.isolateVocals);
+    const cacheKey = rangeCacheKey(
+      options?.clipStartSec,
+      options?.clipEndSec,
+      engine,
+      isolateVocals,
+    );
     const cached = await localRecordGet<Transcription>(
       NAMESPACE,
       exactKey(mediaFileId, cacheKey),
@@ -105,7 +135,7 @@ export const transcriptionService = {
       mediaFileId,
       projectId,
       cacheKey,
-      engine: "parakeet_local",
+      engine: engineId(engine),
       wavBytes: wavBytes.byteLength,
     });
 
@@ -118,22 +148,33 @@ export const transcriptionService = {
           "Local transcription audio is unavailable. Try selecting the clip range again.",
         );
       }
-      const audioPath = await prepareWavPathForParakeet(wavBytes, projectId);
+      const audioPath = await prepareWavPathForTranscription(wavBytes, projectId);
       if (options?.signal?.aborted) {
         throw new DOMException("Conversion aborted", "AbortError");
       }
+      const requestLanguage = options?.language ?? (engine === "whisper" ? undefined : "pl");
       const result = await runTauriNativeJob<
-        ParakeetTranscriptionProgress,
+        LocalTranscriptionProgress,
         ParakeetTranscriptionResult
       >({
-        jobId: createTauriNativeJobId("parakeet"),
-        startCommand: "start_parakeet_transcription",
-        args: { request: { audioPath, language: "pl" } },
+        jobId: createTauriNativeJobId(engine),
+        startCommand:
+          engine === "whisper"
+            ? "start_whisper_transcription"
+            : "start_parakeet_transcription",
+        args: {
+          request: {
+            audioPath,
+            language: requestLanguage,
+            isolateVocals,
+          },
+        },
         signal: options?.signal,
-        onProgress: (progress) => options?.onParakeetProgress?.(progress),
+        onProgress: (progress) => options?.onProgress?.(progress),
       });
       const transcription = mapParakeetResultToTranscription(result, mediaFileId);
-      debugLogger.log("transcription", "parakeet transcription success", {
+      transcription.engine = engineId(engine);
+      debugLogger.log("transcription", `${engine} transcription success`, {
         mediaFileId,
         durationMs: Date.now() - startTime,
         provider: result.provider,
@@ -148,7 +189,7 @@ export const transcriptionService = {
     } catch (error: unknown) {
       debugLogger.log("transcription", "transcription failed", {
         mediaFileId,
-        engine: "parakeet_local",
+        engine: engineId(engine),
         durationMs: Date.now() - startTime,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -161,12 +202,19 @@ export const transcriptionService = {
     options?: {
       clipStartSec?: number;
       clipEndSec?: number;
+      engine?: LocalTranscriptionEngine;
+      isolateVocals?: boolean;
     },
   ): Promise<Transcription> => {
     const key = options
       ? exactKey(
           mediaFileId,
-          rangeCacheKey(options.clipStartSec, options.clipEndSec),
+          rangeCacheKey(
+            options.clipStartSec,
+            options.clipEndSec,
+            options.engine,
+            Boolean(options.isolateVocals),
+          ),
         )
       : latestKey(mediaFileId);
     const transcription = await localRecordGet<Transcription>(NAMESPACE, key);
@@ -201,6 +249,48 @@ export const transcriptionService = {
       throw new Error("Usuwanie modelu wymaga aplikacji desktopowej.");
     }
     await invoke("delete_parakeet_model");
+  },
+
+  getWhisperModelStatus: async (): Promise<WhisperModelStatus> => {
+    if (!isTauri()) {
+      return { installed: false, loaded: false, path: null, provider: null };
+    }
+    return invoke<WhisperModelStatus>("get_whisper_model_status");
+  },
+
+  downloadWhisperModel: async (): Promise<void> => {
+    if (!isTauri()) {
+      throw new Error("Pobieranie modelu wymaga aplikacji desktopowej.");
+    }
+    await invoke("download_whisper_model");
+  },
+
+  deleteWhisperModel: async (): Promise<void> => {
+    if (!isTauri()) {
+      throw new Error("Usuwanie modelu wymaga aplikacji desktopowej.");
+    }
+    await invoke("delete_whisper_model");
+  },
+
+  getVocalsIsolateModelStatus: async (): Promise<VocalsIsolateModelStatus> => {
+    if (!isTauri()) {
+      return { installed: false, path: null, provider: null };
+    }
+    return invoke<VocalsIsolateModelStatus>("get_vocals_isolate_model_status");
+  },
+
+  downloadVocalsIsolateModel: async (): Promise<void> => {
+    if (!isTauri()) {
+      throw new Error("Pobieranie modelu wymaga aplikacji desktopowej.");
+    }
+    await invoke("download_vocals_isolate_model");
+  },
+
+  deleteVocalsIsolateModel: async (): Promise<void> => {
+    if (!isTauri()) {
+      throw new Error("Usuwanie modelu wymaga aplikacji desktopowej.");
+    }
+    await invoke("delete_vocals_isolate_model");
   },
 
   probeParakeet: async (): Promise<ParakeetCapability> => {

@@ -193,14 +193,9 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
                 flexShrink={0}
                 pr={12}
               >
-                <VStack align="start" gap={0.5}>
-                  <Drawer.Title color={theme.text.primary} fontSize="lg" fontWeight="semibold">
-                    {panelTitle}
-                  </Drawer.Title>
-                  <Text fontSize="xs" color={theme.text.muted}>
-                    Applies to all clips
-                  </Text>
-                </VStack>
+                <Drawer.Title color={theme.text.primary} fontSize="lg" fontWeight="semibold">
+                  {panelTitle}
+                </Drawer.Title>
                 <IconButton
                   aria-label={`Close ${panelTitle.toLowerCase()} settings`}
                   position="absolute"

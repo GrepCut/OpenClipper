@@ -37,6 +37,14 @@ macro_rules! invoke_handler {
             crate::commands::transcription::delete_parakeet_model,
             crate::commands::transcription::transcribe_parakeet_local,
             crate::commands::transcription::start_parakeet_transcription,
+            crate::commands::transcription::get_whisper_model_status,
+            crate::commands::transcription::download_whisper_model,
+            crate::commands::transcription::delete_whisper_model,
+            crate::commands::transcription::transcribe_whisper_local,
+            crate::commands::transcription::start_whisper_transcription,
+            crate::commands::transcription::get_vocals_isolate_model_status,
+            crate::commands::transcription::download_vocals_isolate_model,
+            crate::commands::transcription::delete_vocals_isolate_model,
         ]
     };
 }

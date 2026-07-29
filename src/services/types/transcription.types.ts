@@ -15,7 +15,7 @@ export interface Transcription {
   id: string;
   mediaFileId: string;
   language?: string;
-  engine?: "parakeet_local";
+  engine?: "parakeet_local" | "whisper_local";
   segments: TranscriptionSegment[];
   words?: TranscriptionWord[];
 }
@@ -29,6 +29,19 @@ export interface ParakeetModelStatus {
   manifestValid?: boolean | null;
 }
 
+export interface WhisperModelStatus {
+  installed: boolean;
+  loaded: boolean;
+  path?: string | null;
+  provider?: string | null;
+}
+
+export interface VocalsIsolateModelStatus {
+  installed: boolean;
+  path?: string | null;
+  provider?: string | null;
+}
+
 export interface ParakeetCapability {
   available: boolean;
   provider?: string | null;
@@ -36,13 +49,16 @@ export interface ParakeetCapability {
   reason?: string | null;
 }
 
-export interface ParakeetTranscriptionProgress {
+export interface LocalTranscriptionProgress {
   phase: string;
   chunkIndex: number;
   chunkCount: number;
   ratio: number;
   provider?: string | null;
 }
+
+/** @deprecated Use LocalTranscriptionProgress. */
+export type ParakeetTranscriptionProgress = LocalTranscriptionProgress;
 
 export interface ParakeetTranscriptionResult {
   text: string;

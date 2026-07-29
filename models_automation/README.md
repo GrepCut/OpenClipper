@@ -3,8 +3,8 @@
 Niezależny, zweryfikowany zestaw modeli Open Clipper do ręcznej publikacji w
 Cloudflare R2 pod `https://models.openclipper.grepcut.com/v1`.
 
-Automatyzacja publikuje wyłącznie produkcyjne pliki Parakeet (ASR), jedyny
-model pobierany na żądanie przez runtime. Testowe WAV-y, README i natywne
+Automatyzacja publikuje produkcyjne pliki ASR: Parakeet i Whisper Large v3
+Turbo DirectML. Testowe WAV-y, README i natywne
 `src-tauri/resources/models/clipper-vision` nie wchodzą do CDN.
 
 ```powershell

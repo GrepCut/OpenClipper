@@ -1,25 +1,25 @@
 import React from "react";
-import { Text, VStack } from "@chakra-ui/react";
+import { Box, Text, VStack } from "@chakra-ui/react";
 import { ModernSwitch } from "../../../../shared/components/ui/modern-switch.component";
 import { LUFS_PRESETS } from '../../lib/presets/normalize-presets.util';
 import type { ClipperAudioSettings } from "../../settings/settings.util";
 import { clampFadeSeconds, clampPeakCeiling } from "../../settings/settings.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
-import { SegmentedControl, SettingRow, SettingSection, SettingSlider } from "./setting-controls.component";
+import { SegmentedControl, SettingRow, SettingSlider } from "./setting-controls.component";
 
 interface AudioSectionProps {
   audio: ClipperAudioSettings;
   onChange: (patch: Partial<ClipperAudioSettings>) => void;
-  defaultOpen?: boolean;
 }
 
 const NORMALIZE_OPTIONS = LUFS_PRESETS.map((p) => ({ value: p.value, label: p.name }));
 
-export const AudioSection: React.FC<AudioSectionProps> = ({ audio, onChange, defaultOpen = false }) => {
+export const AudioSection: React.FC<AudioSectionProps> = ({ audio, onChange }) => {
   const { theme } = useClipperUi();
 
   return (
-    <SettingSection title="Audio" description="Mute, fades, and loudness normalization" defaultOpen={defaultOpen}>
+    <Box as="div" px={1} py={3.5}>
+      <VStack align="stretch" gap={4}>
       <SettingRow
         label="Mute original audio"
         control={<ModernSwitch checked={audio.mute} onCheckedChange={(v) => onChange({ mute: v })} />}
@@ -76,6 +76,7 @@ export const AudioSection: React.FC<AudioSectionProps> = ({ audio, onChange, def
           )}
         </>
       )}
-    </SettingSection>
+      </VStack>
+    </Box>
   );
 };
