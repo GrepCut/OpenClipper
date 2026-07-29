@@ -13,7 +13,7 @@ interface ModelDownloadEvent {
   error?: string | null;
 }
 
-const DEMUCS_MODEL_PATH = "htdemucs-ft-vocals-onnx";
+const VOCALS_MODEL_PATH = "uvr-mdx-net-voc-ft";
 
 function statusBadge(installed: boolean, downloading: boolean): ModelStatusBadge {
   if (downloading) return "downloading";
@@ -72,7 +72,7 @@ export function useVocalsIsolateModelStatus() {
     void listen<ModelDownloadEvent>("model-download", (event) => {
       if (cancelled || !isMountedRef.current) return;
       const payload = event.payload;
-      if (!payload.path.includes(DEMUCS_MODEL_PATH)) return;
+      if (!payload.path.includes(VOCALS_MODEL_PATH)) return;
 
       if (payload.error) {
         setError(payload.error);

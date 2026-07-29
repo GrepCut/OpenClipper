@@ -39,7 +39,7 @@ export interface ClipperAudioSettings {
 
 export interface ClipperTranscriptionSettings {
   engine: ClipperTranscriptionEngine;
-  /** Isolate vocals (Demucs) before ASR — better for songs; default off for dialog. */
+  /** Isolate vocals (MDX) before ASR — better for songs; default off for dialog. */
   isolateVocals: ClipperIsolateVocals;
 }
 

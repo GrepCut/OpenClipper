@@ -40,7 +40,7 @@ const engineCacheId = (
 ) => {
   const base =
     engine === "whisper" ? `${engineId(engine)}:chunked-v5` : engineId(engine);
-  return isolateVocals ? `${base}:vocals-v1` : base;
+  return isolateVocals ? `${base}:vocals-v2` : base;
 };
 
 const rangeCacheKey = (

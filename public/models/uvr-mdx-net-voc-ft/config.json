@@ -1,0 +1,11 @@
+{
+  "model_type": "uvr_mdx_net_voc_ft",
+  "sample_rate": 44100,
+  "n_fft": 7680,
+  "hop_length": 1024,
+  "dim_f": 3072,
+  "dim_t": 256,
+  "primary_stem": "vocals",
+  "compensate": 1.021,
+  "onnx_file": "UVR-MDX-NET-Voc_FT.onnx"
+}

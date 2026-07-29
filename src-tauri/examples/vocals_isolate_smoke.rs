@@ -1,4 +1,4 @@
-//! Smoke: HT-Demucs vocals isolate vs mix baseline length/energy.
+//! Smoke: UVR-MDX-NET-Voc_FT vocals isolate vs mix baseline length/energy.
 //!
 //! Usage:
 //!   cargo run --example vocals_isolate_smoke --release -- [wav_path]
@@ -13,16 +13,18 @@ use std::time::Instant;
 use tauri_app_lib::transcription::vocals_isolate::isolate_vocals_with_model;
 
 fn default_model_dir() -> PathBuf {
-    if let Ok(path) = env::var("OPEN_CLIPPER_DEMUCS_MODEL_DIR") {
-        return PathBuf::from(path);
+    for key in ["OPEN_CLIPPER_VOCALS_MODEL_DIR", "OPEN_CLIPPER_DEMUCS_MODEL_DIR"] {
+        if let Ok(path) = env::var(key) {
+            return PathBuf::from(path);
+        }
     }
     let appdata = env::var("APPDATA").ok().map(PathBuf::from);
     if let Some(root) = appdata {
         let cached = root
             .join("com.openclipper.app")
             .join("models")
-            .join("htdemucs-ft-vocals-onnx");
-        if cached.join("htdemucs_ft_vocals.onnx").is_file() {
+            .join("uvr-mdx-net-voc-ft");
+        if cached.join("UVR-MDX-NET-Voc_FT.onnx").is_file() {
             return cached;
         }
     }
@@ -30,7 +32,7 @@ fn default_model_dir() -> PathBuf {
         .join("..")
         .join("public")
         .join("models")
-        .join("htdemucs-ft-vocals-onnx")
+        .join("uvr-mdx-net-voc-ft")
 }
 
 fn write_synthetic_mix(path: &Path, seconds: f32) -> Result<(), String> {
@@ -46,7 +48,7 @@ fn write_synthetic_mix(path: &Path, seconds: f32) -> Result<(), String> {
         WavWriter::create(path, spec).map_err(|error| format!("create wav: {error}"))?;
     for i in 0..frames {
         let t = i as f32 / sample_rate as f32;
-        // "Vocal-ish" mid tone + "beat" low pulse noise — Demucs should prefer the tone.
+        // "Vocal-ish" mid tone + "beat" low pulse noise — MDX should prefer the tone.
         let vocal = 0.35 * (2.0 * PI * 220.0 * t).sin();
         let beat = 0.25 * (2.0 * PI * 90.0 * t).sin() * ((2.0 * PI * 2.0 * t).sin().max(0.0));
         let noise = 0.05 * (((i * 1103515245 + 12345) % 1000) as f32 / 500.0 - 1.0);
@@ -116,9 +118,15 @@ fn main() {
                 Ok((len, rms)) => {
                     let expected_16k = {
                         let (mix_len, _) = wav_rms_and_len(&input_wav).unwrap_or((0, 0.0));
-                        // stereo 44.1k → mono 16k: frames * 16000/44100
-                        let input_frames = mix_len / 2;
-                        ((input_frames as u64 * 16_000) / 44_100) as i64
+                        let channels = WavReader::open(&input_wav)
+                            .map(|r| r.spec().channels as usize)
+                            .unwrap_or(2)
+                            .max(1);
+                        let input_frames = mix_len / channels;
+                        let in_rate = WavReader::open(&input_wav)
+                            .map(|r| r.spec().sample_rate as u64)
+                            .unwrap_or(44_100);
+                        ((input_frames as u64 * 16_000) / in_rate) as i64
                     };
                     let len_ok = (len as i64 - expected_16k).abs() <= 2;
                     println!("\n=== VOCALS ISOLATE SUCCESS ===");

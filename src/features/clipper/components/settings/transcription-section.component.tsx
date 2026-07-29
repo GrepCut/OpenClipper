@@ -84,7 +84,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     <VStack align="stretch" gap={3}>
       <SettingRow
         label="Isolate vocals (better for songs)"
-        hint="Runs Demucs before speech-to-text. Uses CPU by default; download the ~316 MB model first."
+        hint="Runs MDX vocal separation before speech-to-text. Uses GPU (DirectML) by default on Windows; download the ~67 MB model first."
         control={
           <ModernSwitch
             checked={isolateVocals === "on"}
@@ -93,9 +93,9 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         }
       />
       <TranscriptionModelRow
-        name="Demucs vocals (HT-Demucs FT)"
-        description="Optional music/vocal separator used when Isolate vocals is on. Runs on CPU by default (DirectML optional via OPEN_CLIPPER_DEMUCS_DML=1)."
-        size="~316 MB"
+        name="Vocals isolate (UVR-MDX-NET-Voc_FT)"
+        description="Optional music/vocal separator used when Isolate vocals is on. GPU (DirectML) by default on Windows; set OPEN_CLIPPER_VOCALS_CPU=1 to force CPU."
+        size="~67 MB"
         badge={demucs.badge}
         provider={demucs.activeProvider}
         showDownload={demucs.showDownload}
@@ -107,7 +107,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         error={
           demucs.error ??
           (!demucs.installed && !demucs.downloading && isolateVocals === "on"
-            ? "Download Demucs before enabling Isolate vocals."
+            ? "Download the vocals model before enabling Isolate vocals."
             : null)
         }
         onDownload={() => void demucs.handleDownload()}

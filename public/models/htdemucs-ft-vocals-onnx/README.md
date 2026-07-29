@@ -1,10 +1,10 @@
-# HT-Demucs FT vocals (ONNX)
+# HT-Demucs FT vocals (ONNX) — deprecated
 
-Weights are not committed (large). Sideload to AppData:
+Replaced by **UVR-MDX-NET-Voc_FT** (`public/models/uvr-mdx-net-voc-ft/`).
+Remove any leftover AppData folder:
 
 ```powershell
-$dest = "$env:APPDATA\com.openclipper.app\models\htdemucs-ft-vocals-onnx"
-# copy config.json + htdemucs_ft_vocals.onnx into $dest
+Remove-Item -Recurse -Force "$env:APPDATA\com.openclipper.app\models\htdemucs-ft-vocals-onnx" -ErrorAction SilentlyContinue
 ```
 
-Source: https://huggingface.co/StemSplitio/htdemucs-ft-vocals-onnx
+See `../uvr-mdx-net-voc-ft/README.md`.

@@ -31,7 +31,7 @@ fn resolve_asr_audio_path(
             chunk_index: 0,
             chunk_count: 0,
             ratio: 0.0,
-            provider: Some("cpu".into()),
+            provider: Some("gpu".into()),
         })?;
     }
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
@@ -55,7 +55,7 @@ fn resolve_asr_audio_path(
                         chunk_index: 0,
                         chunk_count: 0,
                         ratio,
-                        provider: Some("cpu".into()),
+                        provider: Some("gpu".into()),
                     })?;
                 }
                 Ok(())
@@ -375,7 +375,7 @@ pub async fn get_vocals_isolate_model_status(
 ) -> Result<VocalsIsolateModelStatus, String> {
     tauri::async_runtime::spawn_blocking(move || vocals_isolate::model_status(&app))
         .await
-        .map_err(|error| format!("Demucs status task failed: {error}"))?
+        .map_err(|error| format!("Vocals model status task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -389,6 +389,6 @@ pub async fn download_vocals_isolate_model(app: tauri::AppHandle) -> Result<(), 
         vocals_isolate::download_and_install_model(&app)
     })
     .await
-    .map_err(|error| format!("Demucs download task failed: {error}"))?
+    .map_err(|error| format!("Vocals model download task failed: {error}"))?
     .map(|_| ())
 }

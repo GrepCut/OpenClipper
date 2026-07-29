@@ -50,6 +50,11 @@ public/models/htdemucs-ft-vocals-onnx/*
 !public/models/htdemucs-ft-vocals-onnx/README.md
 !public/models/htdemucs-ft-vocals-onnx/config.json
 
+public/models/uvr-mdx-net-voc-ft/*
+!public/models/uvr-mdx-net-voc-ft/.gitkeep
+!public/models/uvr-mdx-net-voc-ft/README.md
+!public/models/uvr-mdx-net-voc-ft/config.json
+
 # Local dev scratch / test output
 smoke_output*.txt
 zmiany.txt
