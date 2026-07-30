@@ -34,10 +34,12 @@ import {
   drawClipperFrame,
   resolveClipperOutputSize,
 } from "./frame-draw.util";
+import { resolveClipperFrameGeometry } from "./frame-geometry.util";
 import type { ClipperFrameContext } from "../types/render.types";
 import { rebaseVideoSampleForWindow } from "./windowed-video.util";
 import { applySeamFades, trimAudioSampleToWindow } from "../audio/windowed-samples.util";
 import { ensureCaptionFontsReady } from "../../lib/captions/caption-presets.util";
+import { evenInt } from "../../lib/media/video-draw.util";
 
 const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
   draft: 0.55,
@@ -48,6 +50,43 @@ const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
 function resolveEncodeBitrate(output: FrameEffectSize, quality: ClipperQualityPreset): number {
   const base = highQualityVideoBitrate(output.width, output.height);
   return Math.ceil((base * QUALITY_BITRATE_MULTIPLIER[quality]) / 1000) * 1000;
+}
+
+/**
+ * Crop + scale a VideoFrame without Canvas 2D (WebCodecs visibleRect path).
+ * Falls back to null when the crop rect is invalid for VideoFrame constraints.
+ */
+function cropScaleVideoFrame(
+  frame: VideoFrame,
+  crop: { sx: number; sy: number; sw: number; sh: number },
+  output: FrameEffectSize,
+  timestamp: number,
+  duration: number | undefined,
+): VideoFrame | null {
+  const codedW = frame.codedWidth || frame.displayWidth;
+  const codedH = frame.codedHeight || frame.displayHeight;
+  let x = Math.max(0, Math.floor(crop.sx));
+  let y = Math.max(0, Math.floor(crop.sy));
+  let width = evenInt(Math.max(2, Math.floor(crop.sw)));
+  let height = evenInt(Math.max(2, Math.floor(crop.sh)));
+  if (x + width > codedW) width = evenInt(Math.max(2, codedW - x));
+  if (y + height > codedH) height = evenInt(Math.max(2, codedH - y));
+  if (width < 2 || height < 2) return null;
+  // WebCodecs requires even offsets for many YUV formats.
+  x = evenInt(x);
+  y = evenInt(y);
+  if (x + width > codedW || y + height > codedH) return null;
+  try {
+    return new VideoFrame(frame, {
+      timestamp,
+      duration,
+      visibleRect: { x, y, width, height },
+      displayWidth: output.width,
+      displayHeight: output.height,
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -165,7 +204,9 @@ export async function renderClipperFormat(
     const videoSource = new VideoSampleSource({
       codec: "avc",
       bitrate: resolveEncodeBitrate(outputSize, render.settings.formats.quality),
-      latencyMode: "realtime",
+      // Offline export: prefer quality (no frame drops) + hardware when available.
+      latencyMode: "quality",
+      hardwareAcceleration: "prefer-hardware",
     });
     output.addVideoTrack(videoSource);
 
@@ -181,6 +222,7 @@ export async function renderClipperFormat(
 
     const canvasCache = new FrameCanvasCache();
     const encodeBackpressure = new EncodeBackpressure();
+    const skipCanvas = !render.settings.captions.enabled;
 
     const encodeSample = async (
       sample: VideoSample,
@@ -190,14 +232,35 @@ export async function renderClipperFormat(
     ): Promise<void> => {
       const frame = sample.toVideoFrame();
       try {
-        const base = renderSizedEffectFrame(
-          frame,
-          outputSize,
-          (ctx, videoFrame, source, out) => {
-            drawClipperFrame(formatDef, ctx, videoFrame, source, out, sourceTimestamp, render);
-          },
-          canvasCache,
-        );
+        let base: VideoFrame | null = null;
+        if (skipCanvas) {
+          const geometry = resolveClipperFrameGeometry(
+            formatDef,
+            { width: frame.displayWidth, height: frame.displayHeight },
+            outputSize,
+            sourceTimestamp,
+            render,
+          );
+          if (geometry.mode === "single-crop" && geometry.panels.length === 1) {
+            base = cropScaleVideoFrame(
+              frame,
+              geometry.panels[0]!.source,
+              outputSize,
+              frame.timestamp,
+              frame.duration ?? undefined,
+            );
+          }
+        }
+        if (!base) {
+          base = renderSizedEffectFrame(
+            frame,
+            outputSize,
+            (ctx, videoFrame, source, out) => {
+              drawClipperFrame(formatDef, ctx, videoFrame, source, out, sourceTimestamp, render);
+            },
+            canvasCache,
+          );
+        }
         try {
           const outSample = new VideoSample(base, {
             timestamp: outputTimestamp,
