@@ -120,7 +120,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         syncSessionActiveClips(session);
         session.captionGroupsCache = null;
 
-        const payload = clipsToPayload(clips);
+        const payload = clipsToPayload(clips, session.rangeWords, rangeDuration);
         await saveClipperClips(projectId, "auto-parts", payload);
         persistMetadata({ autoPartsSegmentLengthSec: segmentLengthSec });
         setAutoPartsSegmentLengthSec(segmentLengthSec);
@@ -190,7 +190,11 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         }
         session.captionGroupsCache = null;
 
-        void saveClipperClips(projectId, "auto-parts", clipsToPayload(remaining)).catch((error) =>
+        void saveClipperClips(
+          projectId,
+          "auto-parts",
+          clipsToPayload(remaining, session.rangeWords, session.rangeEnd - session.rangeStart),
+        ).catch((error) =>
           clipperError("pipeline: save auto-parts clips after delete failed", error),
         );
 

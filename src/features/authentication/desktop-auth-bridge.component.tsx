@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   getCurrentDesktopDeepLinks,
@@ -6,6 +6,7 @@ import {
   parseDesktopDeepLink,
 } from "../../shared/utils/desktop-auth.util";
 import { isTauri } from "../../shared/utils/platform.util";
+import { logIntegration } from "../../shared/utils/integration-logger.util";
 
 const handledDeepLinks = new Set<string>();
 
@@ -20,10 +21,19 @@ const navigateToDeepLink = (
     }
 
     const parsed = parseDesktopDeepLink(url);
-    if (!parsed) continue;
+    if (!parsed) {
+      logIntegration("oauth.deep_link_ignored", { url });
+      continue;
+    }
 
     const target = `${parsed.route}${parsed.search}`;
     handledDeepLinks.add(url);
+
+    logIntegration("oauth.deep_link_received", {
+      url,
+      target,
+      currentPathWithSearch,
+    });
 
     if (target === currentPathWithSearch) {
       return;
@@ -37,21 +47,39 @@ const navigateToDeepLink = (
 export function DesktopAuthBridge() {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentPathRef = useRef(`${location.pathname}${location.search}`);
+
+  useEffect(() => {
+    currentPathRef.current = `${location.pathname}${location.search}`;
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (!isTauri()) {
       return;
     }
 
-    const currentPathWithSearch = `${location.pathname}${location.search}`;
-
     void getCurrentDesktopDeepLinks().then((urls) => {
-      navigateToDeepLink(urls, navigate, currentPathWithSearch);
+      if (urls.length > 0) {
+        navigateToDeepLink(urls, navigate, currentPathRef.current);
+      }
     });
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    const deepLinkApi = (window as Window & { __TAURI__?: { deepLink?: unknown } })
+      .__TAURI__?.deepLink as { onOpenUrl?: unknown } | undefined;
+    if (typeof deepLinkApi?.onOpenUrl !== "function") {
+      logIntegration("oauth.deep_link_listener_unavailable");
+      return;
+    }
 
     let dispose = () => {};
     void listenToDesktopDeepLinks((urls) => {
-      navigateToDeepLink(urls, navigate, currentPathWithSearch);
+      navigateToDeepLink(urls, navigate, currentPathRef.current);
     }).then((unlisten) => {
       dispose = unlisten;
     });
@@ -59,7 +87,7 @@ export function DesktopAuthBridge() {
     return () => {
       dispose();
     };
-  }, [location.pathname, location.search, navigate]);
+  }, [navigate]);
 
   return null;
 }

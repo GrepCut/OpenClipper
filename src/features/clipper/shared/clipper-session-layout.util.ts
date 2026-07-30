@@ -96,17 +96,24 @@ export function resolveClipperSessionVisibility(
   } = input;
 
   const clipCount = autoPartsClipPreviewsLength ?? clipPreviewsLength;
-  const hasPreview = rangeTrimmedVideoUrl != null && clipCount > 0;
+  const hasClips = clipCount > 0;
+  const hasVideo = rangeTrimmedVideoUrl != null;
+  const hasFullPreview = hasVideo && hasClips;
   const isRestoringSession =
-    loaded?.resumePlan.target === "restoring" && !hasPreview && stage !== "error";
+    loaded?.resumePlan.target === "restoring" && !hasClips && stage !== "error";
   const isPreparing = isPreparingStage(stage);
-  const previewReady = hasPreview && isPreviewReadyStage(stage);
+  const previewStageReady = isPreviewReadyStage(stage);
+  /** Clips hydrated early during restore — show preview shell before video URL is ready. */
+  const hasEarlyPreviewShell =
+    hasClips && (previewStageReady || (isPreparing && loaded?.resumePlan.target === "restoring"));
+  const previewReady = hasFullPreview && previewStageReady;
+  const previewKeepAlive = previewReady || hasEarlyPreviewShell;
 
   const showUpload = stage === "idle" && !isRestoringSession;
   const showRestoreLoader = isRestoringSession;
-  const showFreshProcessing = isPreparing && !hasPreview && !isRestoringSession;
+  const showFreshProcessing = isPreparing && !hasClips && !isRestoringSession;
   const showLoadingUi = showRestoreLoader || showFreshProcessing;
-  const showPreview = previewReady && view === "preview";
+  const showPreview = previewKeepAlive && view === "preview";
   const showQueueSetup = previewReady && view === "queue";
   const showQueueProgress = previewReady && view === "rendering";
   const showExports =
@@ -127,6 +134,7 @@ export function resolveClipperSessionVisibility(
     showFreshProcessing,
     showLoadingUi,
     showPreview,
+    previewKeepAlive,
     showQueue: showQueueSetup,
     showExports,
     showQueueSetup,

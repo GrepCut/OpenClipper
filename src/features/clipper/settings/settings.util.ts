@@ -10,7 +10,6 @@ export type ClipperResolutionCap = "source" | "1080p" | "720p";
 export type ClipperCaptionPosition = "top" | "center" | "bottom";
 export type ClipperCaptionSize = "small" | "medium" | "large";
 export type ClipperTranscriptionEngine = "parakeet" | "whisper";
-export type ClipperIsolateVocals = "off" | "on";
 
 export interface ClipperCaptionSettings {
   enabled: boolean;
@@ -39,8 +38,6 @@ export interface ClipperAudioSettings {
 
 export interface ClipperTranscriptionSettings {
   engine: ClipperTranscriptionEngine;
-  /** Isolate vocals (MDX) before ASR — better for songs; default off for dialog. */
-  isolateVocals: ClipperIsolateVocals;
 }
 
 export interface ClipperSettings {
@@ -87,7 +84,6 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   },
   transcription: {
     engine: "parakeet",
-    isolateVocals: "off",
   },
   lastDurationPresetSec: 60,
 };
@@ -144,11 +140,6 @@ export function mergeClipperSettings(
     audio: { ...base.audio, ...partial.audio },
     transcription: {
       engine: partial.transcription?.engine === "whisper" ? "whisper" : base.transcription.engine,
-      isolateVocals:
-        partial.transcription?.isolateVocals === "on" ||
-        partial.transcription?.isolateVocals === "off"
-          ? partial.transcription.isolateVocals
-          : base.transcription.isolateVocals,
     },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };

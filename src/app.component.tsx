@@ -26,11 +26,6 @@ const OAuthSuccess = lazy(() =>
     default: m.OAuthSuccess,
   })),
 );
-const OAuthDriveCallback = lazy(() =>
-  import("./features/authentication/oauth-drive-callback.component").then((m) => ({
-    default: m.OAuthDriveCallback,
-  })),
-);
 const OAuthYoutubeCallback = lazy(() =>
   import("./features/authentication/oauth-youtube-callback.component").then((m) => ({
     default: m.OAuthYoutubeCallback,
@@ -49,11 +44,6 @@ const OAuthInstagramCallback = lazy(() =>
 const OAuthTikTokCallback = lazy(() =>
   import("./features/authentication/oauth-social-callbacks.component").then((m) => ({
     default: m.OAuthTikTokCallback,
-  })),
-);
-const OAuthLinkedInCallback = lazy(() =>
-  import("./features/authentication/oauth-social-callbacks.component").then((m) => ({
-    default: m.OAuthLinkedInCallback,
   })),
 );
 const OAuthXCallback = lazy(() =>
@@ -141,10 +131,6 @@ function AppRoutes() {
         <Route path="/login" element={<Navigate to="/auth" replace />} />
         <Route path="/oauth/success" element={<InteractiveRoute name="oauth-success"><OAuthSuccess /></InteractiveRoute>} />
         <Route
-          path="/oauth/google-drive-connected"
-          element={<InteractiveRoute name="oauth-drive"><OAuthDriveCallback /></InteractiveRoute>}
-        />
-        <Route
           path="/oauth/youtube-connected"
           element={<InteractiveRoute name="oauth-youtube"><OAuthYoutubeCallback /></InteractiveRoute>}
         />
@@ -153,10 +139,6 @@ function AppRoutes() {
         <Route
           path="/oauth/tiktok-connected"
           element={<InteractiveRoute name="oauth-tiktok"><OAuthTikTokCallback /></InteractiveRoute>}
-        />
-        <Route
-          path="/oauth/linkedin-connected"
-          element={<InteractiveRoute name="oauth-linkedin"><OAuthLinkedInCallback /></InteractiveRoute>}
         />
         <Route path="/oauth/x-connected" element={<InteractiveRoute name="oauth-x"><OAuthXCallback /></InteractiveRoute>} />
         <Route

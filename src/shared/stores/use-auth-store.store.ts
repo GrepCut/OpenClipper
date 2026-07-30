@@ -126,11 +126,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
     logout: async () => {
       set({ isLoggingOut: true });
       setIsLoggingOut(true);
-      await safeServerLogout();
-      await clearActiveAuthProfile();
-      clearLocalSessionData();
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.removeItem("subscription_intent_token");
+      try {
+        await safeServerLogout();
+        await clearActiveAuthProfile();
+        clearLocalSessionData();
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.removeItem("subscription_intent_token");
+        }
+      } finally {
+        get().finalizeLogout();
       }
     },
 
@@ -167,8 +171,11 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    checkAuthStatus: async () => {
-      set({ isLoading: true });
+    checkAuthStatus: async (options?: { silent?: boolean }) => {
+      const silent = options?.silent === true;
+      if (!silent) {
+        set({ isLoading: true });
+      }
       try {
         const refreshResponse =
           isTauri() && isDesktopAuthSessionAvailable()
@@ -202,7 +209,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
         });
         syncSessionMarker(true);
       } finally {
-        set({ isLoading: false });
+        if (!silent) {
+          set({ isLoading: false });
+        }
       }
     },
 
@@ -243,7 +252,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
             });
             syncSessionMarker(true);
             void get()
-              .checkAuthStatus()
+              .checkAuthStatus({ silent: true })
               .catch(() => {});
             return;
           }
@@ -323,12 +332,7 @@ setTokenRefreshCallback(async (token: string) => {
 
 // --- Session Expired Callback ---
 setSessionExpiredCallback(() => {
-  void useAuthStore
-    .getState()
-    .logout()
-    .then(() => {
-      useAuthStore.getState().finalizeLogout();
-    });
+  void useAuthStore.getState().logout();
 });
 
 setActiveSessionChecker(() => {

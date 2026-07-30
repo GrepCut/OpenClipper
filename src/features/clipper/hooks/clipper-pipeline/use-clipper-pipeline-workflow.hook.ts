@@ -102,6 +102,7 @@ export function useClipperPipelineWorkflow(
         clipPreviews: [],
         autoPartsClipPreviews: [],
         aiClipPreviews: [],
+        rangeWords: [],
         activeClipIndex: 0,
         error: null,
         clipStart: start,
@@ -124,7 +125,6 @@ export function useClipperPipelineWorkflow(
             metadata: metadataRef.current,
             // Device-level model choice — read at invoke so Settings changes apply to open projects.
             transcriptionEngine: loadClipperSettings().transcription.engine,
-            isolateVocals: loadClipperSettings().transcription.isolateVocals === "on",
           },
           reporterRef.current,
           { signal: controller.signal },

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Drawer, IconButton, Portal, Text, VStack } from "@chakra-ui/react";
-import { AudioLines, Type, X } from "lucide-react";
+import { Type, X } from "lucide-react";
 import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperSettings } from "../settings/settings.util";
 import { clipperTheme } from "../shared/theme.util";
@@ -8,7 +8,7 @@ import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperSettingsPanel } from "./clipper-settings-panel.component";
 
 const DRAWER_CONTENT_ID = "clipper-settings-drawer";
-export type ClipperSettingsDrawerPanel = "captions" | "audio";
+export type ClipperSettingsDrawerPanel = "captions";
 
 interface SettingsToggleButtonProps {
   panel: ClipperSettingsDrawerPanel;
@@ -25,8 +25,8 @@ function SettingsToggleButton({
 }: SettingsToggleButtonProps) {
   const { theme } = useClipperUi();
   const open = activePanel === panel;
-  const label = panel === "captions" ? "Captions" : "Audio";
-  const Icon = panel === "captions" ? Type : AudioLines;
+  const label = "Captions";
+  const Icon = Type;
 
   return (
     <Box
@@ -92,12 +92,6 @@ function SettingsDrawerTriggers({ activePanel, onPanelChange }: SettingsDrawerTr
           onPanelChange={onPanelChange}
           controlsId={DRAWER_CONTENT_ID}
         />
-        <SettingsToggleButton
-          panel="audio"
-          activePanel={activePanel}
-          onPanelChange={onPanelChange}
-          controlsId={DRAWER_CONTENT_ID}
-        />
       </VStack>
 
       <VStack
@@ -111,12 +105,6 @@ function SettingsDrawerTriggers({ activePanel, onPanelChange }: SettingsDrawerTr
       >
         <SettingsToggleButton
           panel="captions"
-          activePanel={activePanel}
-          onPanelChange={onPanelChange}
-          controlsId={DRAWER_CONTENT_ID}
-        />
-        <SettingsToggleButton
-          panel="audio"
           activePanel={activePanel}
           onPanelChange={onPanelChange}
           controlsId={DRAWER_CONTENT_ID}
@@ -143,7 +131,7 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
 }) => {
   const { theme, scrollbarCss } = useClipperUi();
   const open = activePanel !== null;
-  const panelTitle = activePanel === "audio" ? "Audio" : "Captions";
+  const panelTitle = "Captions";
 
   return (
     <>
@@ -226,7 +214,6 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
                       settings={settings}
                       words={words}
                       hideTranscript
-                      section={activePanel}
                       onUpdateSettings={onUpdateSettings}
                     />
                   ) : null}

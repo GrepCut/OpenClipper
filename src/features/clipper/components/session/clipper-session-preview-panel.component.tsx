@@ -64,7 +64,7 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
       <ClipperPreview
         projectId={project.id}
         state={state}
-        rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl!}
+        rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl}
         clipPreviews={state.clipPreviews}
         autoPartsClipPreviews={state.autoPartsClipPreviews ?? state.clipPreviews}
         aiClipPreviews={state.aiClipPreviews ?? []}

@@ -8,13 +8,13 @@ import {
   fetchDisabledCollageRegions,
   saveClipperClips,
 } from "../../persistence/clipper-clips-api.util";
+import { saveClipperRangeWords } from "../../persistence/clipper-range-words-api.util";
 import {
   canUseFastPreviewResume,
   runFastPreviewResume,
 } from "../../pipeline/fast-resume.util";
 import { runPreparePreviewPipeline } from "../../pipeline/range-workflow.util";
-import type { ClipperSession } from "../../pipeline/session.util";
-import { syncSessionActiveClips } from "../../pipeline/session.util";
+import { syncSessionActiveClips, type ClipperSession } from "../../pipeline/session.util";
 import { clipperError, clipperLog } from "../../shared/logger.util";
 import type { WordCue } from "../../lib/media/transcription-export.util";
 import type { PipelineReporter } from "../../pipeline/reporter.util";
@@ -28,6 +28,10 @@ import {
   clipsToPayload,
   rebuildClipsFromDbPayload,
 } from "./clip-preview.util";
+import {
+  buildEarlyPreviewStatePatch,
+  mergeEarlyPreviewPatch,
+} from "./early-preview-hydrate.util";
 
 export interface PreparePreviewFromRangeDeps {
   settings: ClipperSettings;
@@ -92,7 +96,6 @@ export async function preparePreviewFromRange(
   const clipsForResume = repairedGenerated.length > 0 ? repairedGenerated : autoPartsDbClips;
   const needsRepairSave =
     repairedGenerated.length > 0 && !autoPartsBoundariesEqual(autoPartsDbClips, repairedGenerated);
-
   if (needsRepairSave) {
     void saveClipperClips(
       options.projectId,
@@ -103,10 +106,30 @@ export async function preparePreviewFromRange(
         endSec: clip.endSec,
         segments: [{ orderIndex: 0, startSec: clip.startSec, endSec: clip.endSec }],
       })),
-    ).catch((error) =>
-      clipperError(`pipeline[${runId}]: repair auto-parts clips failed`, error),
+    ).catch((error) => clipperError(`pipeline[${runId}]: repair auto-parts clips failed`, error));
+  }
+  if (words.length > 0) {
+    void saveClipperRangeWords(options.projectId, words).catch((error) =>
+      clipperError(`pipeline[${runId}]: save range words failed`, error),
     );
   }
+
+  const earlyPatch = buildEarlyPreviewStatePatch({
+    clipsForResume: clipsForResume.map((c) => ({
+      index: c.index,
+      startSec: c.startSec,
+      endSec: c.endSec,
+    })),
+    aiDbClips,
+    words,
+    wordsPerGroup,
+    rangeDuration,
+    clipSourceMode: metadataRef.current.clipSourceMode ?? "auto-parts",
+    activeClipIndex: metadataRef.current.activeClipIndex ?? activeClipIndexRef.current ?? 0,
+    snappedStart,
+    end,
+  });
+  if (earlyPatch) setState((prev) => mergeEarlyPreviewPatch(prev, earlyPatch));
 
   const useFastPath =
     clipsForResume.length > 0 &&
@@ -153,14 +176,13 @@ export async function preparePreviewFromRange(
       );
   if (controller.signal.aborted) return;
 
-  const generatedClips = clipsToPayload(result.clips);
+  const generatedClips = clipsToPayload(result.clips, words, rangeDuration);
   void saveClipperClips(options.projectId, "auto-parts", generatedClips).catch((error) =>
     clipperError(`pipeline[${runId}]: save auto-parts clips failed`, error),
   );
 
   const restoredActiveClipIndex =
     metadataRef.current.activeClipIndex ?? activeClipIndexRef.current ?? 0;
-
   persistMetadata(
     {
       clipStart: snappedStart,
@@ -198,19 +220,18 @@ export async function preparePreviewFromRange(
   activeClipIndexRef.current = validActiveClipIndex;
   session.activeClipIndex = validActiveClipIndex;
 
+  const metaStage = metadataRef.current.stage;
+  const done = metaStage === "done";
   clipperLog(`pipeline[${runId}]: post-face — enter preview`, {
     rangeDuration: result.rangeDuration,
     clipCount: result.clips.length,
   });
-
-  const metaStage = metadataRef.current.stage;
   setState((prev) => ({
     ...prev,
-    stage: metaStage === "done" ? "done" : "preview",
-    stageMessage:
-      metaStage === "done"
-        ? "Your clips are ready!"
-        : `Review ${result.clips.length} clip${result.clips.length > 1 ? "s" : ""}, then render`,
+    stage: done ? "done" : "preview",
+    stageMessage: done
+      ? "Your clips are ready!"
+      : `Review ${result.clips.length} clip${result.clips.length > 1 ? "s" : ""}, then render`,
     rangeTrimmedVideoUrl: result.rangeTrimmedVideoUrl,
     clipPreviews,
     autoPartsClipPreviews,
@@ -225,7 +246,5 @@ export async function preparePreviewFromRange(
     rangeWords: words,
   }));
 
-  if (metaStage === "done" || metaStage === "rendering") {
-    await hydrateExportsFromDisk();
-  }
+  if (done || metaStage === "rendering") await hydrateExportsFromDisk();
 }

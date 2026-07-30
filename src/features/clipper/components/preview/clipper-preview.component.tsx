@@ -135,7 +135,12 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
         left="-9999px"
         aria-hidden
       >
-        <video ref={videoRef} src={rangeTrimmedVideoUrl} preload="metadata" playsInline />
+        <video
+          ref={videoRef}
+          src={rangeTrimmedVideoUrl ?? undefined}
+          preload="metadata"
+          playsInline
+        />
       </Box>
 
       <Box

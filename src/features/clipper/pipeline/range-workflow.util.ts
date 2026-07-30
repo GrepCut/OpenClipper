@@ -2,12 +2,12 @@ import { segmentRangeFromTrimmedFile } from "../engine/segmentation";
 import { clipperLog, clipperTimer } from "../shared/logger.util";
 import { snapToKeyframe } from "../platform/native-source.util";
 import { markClipperStepCompleted } from "../persistence/pipeline-api.util";
+import { saveClipperRangeWords } from "../persistence/clipper-range-words-api.util";
 import type { ClipperProjectMetadata } from "../persistence/project-metadata.util";
 import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperGeneratedClip } from "../engine/segmentation";
 import type { PipelineReporter } from "./reporter.util";
 import { createFaceCache, syncSessionActiveClips, type ClipperSession } from "./session.util";
-import { transcriptionService } from "../../../services/transcription.service";
 import { runAnalyzeFacesStage } from "./stages/analyze-faces.util";
 import { runAnalyzeSubjectsStage } from "./stages/analyze-subjects.util";
 import { runTranscribeStage } from "./stages/transcribe.util";
@@ -129,7 +129,6 @@ export interface ConfirmRangeInput {
   wordsPerGroup: number;
   metadata: ClipperProjectMetadata;
   transcriptionEngine?: LocalTranscriptionEngine;
-  isolateVocals?: boolean;
 }
 
 export interface ConfirmRangeResult {
@@ -174,7 +173,6 @@ export async function runConfirmRangePipeline(
       trimUnchanged,
       existingWords: session.rangeWords.length > 0 ? session.rangeWords : session.words,
       transcriptionEngine: input.transcriptionEngine,
-      isolateVocals: input.isolateVocals,
     },
     reporter,
     options,
@@ -183,6 +181,8 @@ export async function runConfirmRangePipeline(
 
   session.rangeWords = words;
   session.words = words;
+
+  await saveClipperRangeWords(input.projectId, words);
 
   if (words.length > 0) {
     await markClipperStepCompleted(input.projectId, "transcribe", { wordCount: words.length });

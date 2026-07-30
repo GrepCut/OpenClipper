@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Project } from "../../../services/projects.service";
-import { transcriptionService } from "../../../services/transcription.service";
 import type { WordCue } from "../lib/media/transcription-export.util";
-import { buildWordCuesForTranscription } from "../engine/transcript";
 import {
   initClipperProjectSync,
   loadClipperSourceMediaFile,
@@ -15,6 +13,7 @@ import {
   fetchClipperProjectSettings,
   fetchRenderQueueFormats,
 } from "../persistence/clipper-db-api.util";
+import { fetchClipperRangeWords } from "../persistence/clipper-range-words-api.util";
 import { sanitizeRenderQueueSelections } from "../shared/render-queue-utils.util";
 import type { ClipperSettings } from "../settings/settings.util";
 import { clipperError, clipperLog } from "../shared/logger.util";
@@ -250,31 +249,15 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
           await report(
             "transcription",
             "Restoring transcription",
-            "Downloading word-level transcript and building caption cues",
+            "Loading saved word-level transcript for this project",
           );
-          try {
-            const transcription = await transcriptionService.getTranscription(
-              metadata.sourceMediaFileId,
-              {
-                clipStartSec: metadata.transcribedClipStart ?? metadata.clipStart,
-                clipEndSec: metadata.transcribedClipEnd ?? metadata.clipEnd ?? undefined,
-              },
-            );
-            words = buildWordCuesForTranscription(transcription, clipDuration);
-            await yieldToMain();
-            clipperLog("loader: restored transcription", {
-              wordCount: words.length,
-              stage: metadata.stage,
-              skipTranscribe: resumePlan.skipTranscribe,
-            });
-          } catch (error) {
-            clipperError("loader: transcription restore failed", error, {
-              stage: metadata.stage,
-              clipStart: metadata.clipStart,
-              clipEnd: metadata.clipEnd,
-            });
-            words = [];
-          }
+          words = await fetchClipperRangeWords(project.id);
+          await yieldToMain();
+          clipperLog("loader: restored transcription", {
+            wordCount: words.length,
+            stage: metadata.stage,
+            skipTranscribe: resumePlan.skipTranscribe,
+          });
         } else {
           await report(
             "transcription",

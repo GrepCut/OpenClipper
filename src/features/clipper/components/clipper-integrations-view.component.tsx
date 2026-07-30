@@ -1,19 +1,17 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import {
-  HardDrive,
   Youtube,
   Instagram,
   Facebook,
-  Linkedin,
 } from "lucide-react";
 import { colors, useTheme } from "../../../theme";
-import { googleAuthService } from "../../../services/google-auth.service";
 import { youtubeAuthService } from "../../../services/youtube-auth.service";
 import { socialAuthService } from "../../../services/social-auth.service";
 import type {
   MetaTargetsResponse,
   SocialOAuthFlow,
+  SocialPublishablePlatform,
 } from "../../../services/types/social-auth.types";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
@@ -25,6 +23,7 @@ import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { AppLoader } from "../../../shared/components/app-loader.component";
 import { useLocation, useNavigate } from "react-router-dom";
 import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
+import { logIntegration } from "../../../shared/utils/integration-logger.util";
 
 const INTEGRATIONS_RETURN_PATH = "/clipper?tab=integrations";
 
@@ -36,7 +35,8 @@ interface IntegrationRowProps {
   subtitle?: string | null;
   onConnect?: () => void;
   isConnecting?: boolean;
-  onChangeConnection?: () => void;
+  onDisconnect?: () => void;
+  isDisconnecting?: boolean;
 }
 
 function IntegrationRow({
@@ -47,65 +47,70 @@ function IntegrationRow({
   subtitle,
   onConnect,
   isConnecting = false,
-  onChangeConnection,
+  onDisconnect,
+  isDisconnecting = false,
 }: IntegrationRowProps) {
   const { theme, mode } = useTheme();
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
-  const showConnect = !isActive && !isChecking && onConnect;
 
   return (
     <Box bg={rowBg} borderRadius="2xl" p={{ base: 4, md: 5 }}>
-      <VStack align="stretch" gap={3}>
-        <HStack justify="space-between" align="center" gap={4}>
-          <HStack gap={3} minW={0} flex={1}>
-            <Box flexShrink={0} color={theme.text.muted}>
-              {icon}
-            </Box>
-            <VStack align="start" gap={0.5} minW={0}>
-              <Text fontWeight="semibold" color={theme.text.primary}>
-                {name}
-              </Text>
-              {subtitle ? (
-                <Text fontSize="sm" color={theme.text.muted} lineClamp={1}>
-                  {subtitle}
-                </Text>
-              ) : null}
-            </VStack>
-          </HStack>
-
-          <Box
-            flexShrink={0}
-            px={2.5}
-            py={0.5}
-            borderRadius="full"
-            bg={mode === "dark" ? theme.brand.purpleSoftAlpha12 : theme.brand.toggleActiveBg}
-            color={colors.purple.medium}
-            fontSize="xs"
-            fontWeight="semibold"
-            whiteSpace="nowrap"
-          >
-            {isChecking ? "Checking…" : isActive ? "Active" : "Inactive"}
+      <HStack justify="space-between" align="center" gap={4}>
+        <HStack gap={3} minW={0} flex={1}>
+          <Box flexShrink={0} color={theme.text.muted}>
+            {icon}
           </Box>
+          <VStack align="start" gap={0.5} minW={0}>
+            <Text fontWeight="semibold" color={theme.text.primary}>
+              {name}
+            </Text>
+            {subtitle ? (
+              <Text fontSize="sm" color={theme.text.muted} lineClamp={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </VStack>
         </HStack>
-        {showConnect || (isActive && !isChecking && onChangeConnection) ? (
-          <HStack justify="end" gap={2} flexWrap="wrap">
-            {showConnect ? (
+
+        {isChecking ? (
+          <OutlinedActionButton disabled whiteSpace="nowrap">
+            Checking…
+          </OutlinedActionButton>
+        ) : isActive ? (
+          <HStack gap={2} flexShrink={0}>
+            <Box
+              px={2.5}
+              py={0.5}
+              borderRadius="full"
+              bg={mode === "dark" ? theme.brand.purpleSoftAlpha12 : theme.brand.toggleActiveBg}
+              color={colors.purple.medium}
+              fontSize="xs"
+              fontWeight="semibold"
+              whiteSpace="nowrap"
+            >
+              Active
+            </Box>
+            {onDisconnect ? (
               <OutlinedActionButton
-                loading={isConnecting}
-                onClick={onConnect}
+                tone="danger"
+                loading={isDisconnecting}
+                onClick={onDisconnect}
                 whiteSpace="nowrap"
               >
-                Connect {name}
-              </OutlinedActionButton>
-            ) : null}
-            {isActive && !isChecking && onChangeConnection ? (
-              <OutlinedActionButton onClick={onChangeConnection} whiteSpace="nowrap">
-                Change account
+                Disconnect
               </OutlinedActionButton>
             ) : null}
           </HStack>
+        ) : onConnect ? (
+          <OutlinedActionButton
+            loading={isConnecting}
+            onClick={onConnect}
+            whiteSpace="nowrap"
+          >
+            Connect {name}
+          </OutlinedActionButton>
         ) : null}
-      </VStack>
+      </HStack>
     </Box>
   );
 }
@@ -133,17 +138,18 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
     channelTitle: youtubeChannelTitle,
     isChecking: isYoutubeChecking,
     refreshStatus: refreshYoutubeStatus,
+    setConnected: setYoutubeConnected,
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((s) => s.platforms);
   const refreshSocial = useSocialStore((s) => s.refreshAll);
 
-  const [isDriveConnected, setIsDriveConnected] = useState(false);
-  const [isDriveChecking, setIsDriveChecking] = useState(true);
-  const [isDriveConnecting, setIsDriveConnecting] = useState(false);
   const [isYoutubeConnecting, setIsYoutubeConnecting] = useState(false);
   const [connectingFlow, setConnectingFlow] = useState<SocialOAuthFlow | null>(
     null,
   );
+  const [disconnectingPlatform, setDisconnectingPlatform] = useState<
+    SocialPublishablePlatform | "youtube" | null
+  >(null);
   const [metaTargets, setMetaTargets] = useState<MetaTargetsResponse | null>(null);
   const [selectedMetaPageId, setSelectedMetaPageId] = useState<string | null>(null);
   const [isSavingMetaTarget, setIsSavingMetaTarget] = useState(false);
@@ -163,55 +169,85 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadStatuses = async () => {
-      setIsDriveChecking(true);
-      const [driveConnected] = await Promise.all([
-        googleAuthService.checkDriveConnection(),
-        refreshYoutubeStatus(),
-        refreshSocial(),
-      ]);
+    void (async () => {
+      await Promise.all([refreshYoutubeStatus(), refreshSocial()]);
       await loadMetaTargets();
-      if (!cancelled) {
-        setIsDriveConnected(driveConnected);
-        setIsDriveChecking(false);
-      }
-    };
-
-    void loadStatuses();
-
-    return () => {
-      cancelled = true;
-    };
+    })();
   }, [loadMetaTargets, refreshYoutubeStatus, refreshSocial]);
-
-  const handleConnectDrive = useCallback(() => {
-    setIsDriveConnecting(true);
-    void googleAuthService
-      .redirectToDriveConnect(INTEGRATIONS_RETURN_PATH)
-      .catch(() => {
-        setIsDriveConnecting(false);
-      });
-  }, []);
 
   const handleConnectYoutube = useCallback(() => {
     setIsYoutubeConnecting(true);
     void youtubeAuthService
       .redirectToYoutubeConnect(INTEGRATIONS_RETURN_PATH)
       .catch(() => {
+        appToast.error(
+          "Could not open YouTube",
+          "Please try again.",
+        );
+      })
+      .finally(() => {
         setIsYoutubeConnecting(false);
       });
   }, []);
 
   const handleConnectSocial = useCallback((flow: SocialOAuthFlow) => {
     setConnectingFlow(flow);
+    logIntegration("integrations.connect_clicked", { flow });
     void socialAuthService
       .redirectToConnect(flow, INTEGRATIONS_RETURN_PATH)
       .catch(() => {
+        appToast.error(
+          "Could not start connection",
+          "Please try again.",
+        );
+      })
+      .finally(() => {
         setConnectingFlow(null);
       });
   }, []);
+
+  const handleDisconnectYoutube = useCallback(() => {
+    setDisconnectingPlatform("youtube");
+    logIntegration("integrations.disconnect_clicked", { platform: "youtube" });
+    void youtubeAuthService
+      .disconnectYoutube()
+      .then(() => {
+        setYoutubeConnected(false, null);
+        appToast.success("YouTube disconnected");
+      })
+      .catch((error: unknown) => {
+        appToast.error(
+          "Could not disconnect YouTube",
+          error instanceof Error ? error.message : "Please try again.",
+        );
+      })
+      .finally(() => {
+        setDisconnectingPlatform(null);
+      });
+  }, [setYoutubeConnected]);
+
+  const handleDisconnectSocial = useCallback(
+    (platform: SocialPublishablePlatform) => {
+      setDisconnectingPlatform(platform);
+      logIntegration("integrations.disconnect_clicked", { platform });
+      void socialAuthService
+        .disconnect(platform)
+        .then(async () => {
+          await refreshSocial();
+          appToast.success("Disconnected");
+        })
+        .catch((error: unknown) => {
+          appToast.error(
+            "Could not disconnect",
+            error instanceof Error ? error.message : "Please try again.",
+          );
+        })
+        .finally(() => {
+          setDisconnectingPlatform(null);
+        });
+    },
+    [refreshSocial],
+  );
 
   const handleSelectMetaTarget = useCallback(() => {
     if (!selectedMetaPageId) return;
@@ -234,7 +270,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const fb = socialPlatforms.facebook;
   const ig = socialPlatforms.instagram;
   const tt = socialPlatforms.tiktok;
-  const li = socialPlatforms.linkedin;
   const x = socialPlatforms.x;
 
   return (
@@ -255,14 +290,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
 
       <VStack align="stretch" gap={3}>
         <IntegrationRow
-          name="Google Drive"
-          icon={<HardDrive size={20} />}
-          isActive={isDriveConnected}
-          isChecking={isDriveChecking}
-          onConnect={handleConnectDrive}
-          isConnecting={isDriveConnecting}
-        />
-        <IntegrationRow
           name="YouTube"
           icon={<Youtube size={20} color="#FF0000" />}
           isActive={isYoutubeConnected}
@@ -270,6 +297,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           subtitle={isYoutubeConnected ? youtubeChannelTitle : null}
           onConnect={handleConnectYoutube}
           isConnecting={isYoutubeConnecting}
+          onDisconnect={handleDisconnectYoutube}
+          isDisconnecting={disconnectingPlatform === "youtube"}
         />
         <IntegrationRow
           name="Facebook"
@@ -279,7 +308,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           subtitle={fb.connected ? fb.displayName : "Via Meta (Page)"}
           onConnect={() => handleConnectSocial("meta")}
           isConnecting={connectingFlow === "meta"}
-          onChangeConnection={() => handleConnectSocial("meta")}
+          onDisconnect={() => handleDisconnectSocial("facebook")}
+          isDisconnecting={disconnectingPlatform === "facebook"}
         />
         <IntegrationRow
           name="Instagram"
@@ -293,7 +323,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           }
           onConnect={() => handleConnectSocial("instagram")}
           isConnecting={connectingFlow === "instagram"}
-          onChangeConnection={() => handleConnectSocial("instagram")}
+          onDisconnect={() => handleDisconnectSocial("instagram")}
+          isDisconnecting={disconnectingPlatform === "instagram"}
         />
         <IntegrationRow
           name="TikTok"
@@ -303,15 +334,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           subtitle={tt.connected ? tt.displayName : null}
           onConnect={() => handleConnectSocial("tiktok")}
           isConnecting={connectingFlow === "tiktok"}
-        />
-        <IntegrationRow
-          name="LinkedIn"
-          icon={<Linkedin size={20} />}
-          isActive={li.connected}
-          isChecking={li.isChecking}
-          subtitle={li.connected ? li.displayName : null}
-          onConnect={() => handleConnectSocial("linkedin")}
-          isConnecting={connectingFlow === "linkedin"}
+          onDisconnect={() => handleDisconnectSocial("tiktok")}
+          isDisconnecting={disconnectingPlatform === "tiktok"}
         />
         <IntegrationRow
           name="X"
@@ -321,6 +345,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           subtitle={x.connected ? x.displayName : null}
           onConnect={() => handleConnectSocial("x")}
           isConnecting={connectingFlow === "x"}
+          onDisconnect={() => handleDisconnectSocial("x")}
+          isDisconnecting={disconnectingPlatform === "x"}
         />
       </VStack>
 

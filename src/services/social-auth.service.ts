@@ -2,6 +2,7 @@ import { apiClient } from "../shared/utils/api-client.util";
 import axios from "axios";
 import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
 import { getAuthClient } from "../shared/utils/auth-client.util";
+import { logIntegration } from "../shared/utils/integration-logger.util";
 import type {
   PublishClipperToSocialParams,
   SocialDisconnectResponse,
@@ -28,10 +29,38 @@ export const socialAuthService = {
     params.append("client", client);
     if (returnPath) params.append("returnPath", returnPath);
 
-    const response = await apiClient.get<{ url: string }>(
-      `/social/${flow}/authorize?${params.toString()}`,
-    );
-    await openExternalAuthUrl(response.data.url);
+    logIntegration("oauth.connect_start", {
+      flow,
+      client,
+      returnPath: returnPath ?? null,
+    });
+
+    try {
+      const response = await apiClient.get<{ url: string }>(
+        `/social/${flow}/authorize?${params.toString()}`,
+      );
+
+      logIntegration("oauth.authorize_url_received", {
+        flow,
+        client,
+        url: response.data.url,
+      });
+
+      await openExternalAuthUrl(response.data.url);
+
+      logIntegration("oauth.browser_opened", {
+        flow,
+        client,
+        url: response.data.url,
+      });
+    } catch (error: unknown) {
+      logIntegration("oauth.connect_failed", {
+        flow,
+        client,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   },
 
   async checkConnection(

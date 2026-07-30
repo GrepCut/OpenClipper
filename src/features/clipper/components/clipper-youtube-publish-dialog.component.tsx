@@ -50,7 +50,9 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
       isOpen={isOpen}
       onClose={onClose}
       title={`Publish to ${publish.platformLabel}`}
-      size="md"
+      size={publish.isTikTok ? "xl" : "md"}
+      contentWidth={publish.isTikTok ? "min(calc(100vw - 64px), 1320px)" : undefined}
+      scrollBehavior={publish.isTikTok ? "outside" : "inside"}
       isLoading={publish.isPublishing}
       closeOnOverlayClick={!publish.isPublishing}
       footer={
@@ -63,7 +65,8 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
         />
       }
     >
-      <VStack align="stretch" gap={4}>
+      <VStack align="stretch" gap={4} w="full">
+        {!publish.isTikTok || !defaultConnected ? (
         <HStack
           gap={3}
           p={3}
@@ -100,21 +103,24 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
             </Button>
           ) : null}
         </HStack>
+        ) : null}
 
-        <Box>
-          <Text fontSize="sm" mb={2} color={theme.text.distinct}>
-            {publish.isTikTok ? "Caption" : "Title"}
-          </Text>
-          <Input
-            value={publish.title}
-            onChange={(e) => publish.setTitle(e.target.value)}
-            borderRadius="xl"
-            bg={theme.surface.subtle}
-            borderColor={theme.surface.borderStrong}
-            color={theme.text.primary}
-            disabled={publish.isPublishing}
-          />
-        </Box>
+        {!publish.isTikTok ? (
+          <Box>
+            <Text fontSize="sm" mb={2} color={theme.text.distinct}>
+              Title
+            </Text>
+            <Input
+              value={publish.title}
+              onChange={(e) => publish.setTitle(e.target.value)}
+              borderRadius="xl"
+              bg={theme.surface.subtle}
+              borderColor={theme.surface.borderStrong}
+              color={theme.text.primary}
+              disabled={publish.isPublishing}
+            />
+          </Box>
+        ) : null}
 
         {!publish.isTikTok ? (
           <Box>
@@ -138,6 +144,8 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
           <ClipperSocialPublishTikTokForm
             result={result}
             isPublishing={publish.isPublishing}
+            title={publish.title}
+            setTitle={publish.setTitle}
             tiktokCreator={publish.tiktokCreator}
             tiktokError={publish.tiktokError}
             tiktokPrivacy={publish.tiktokPrivacy}

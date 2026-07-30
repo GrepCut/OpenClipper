@@ -30,7 +30,6 @@ const INITIAL: Record<SocialPublishablePlatform, PlatformState> = {
   facebook: empty(),
   instagram: empty(),
   tiktok: empty(),
-  linkedin: empty(),
   x: empty(),
 };
 
@@ -75,7 +74,6 @@ export const useSocialStore = create<SocialStore>((set, get) => ({
       "facebook",
       "instagram",
       "tiktok",
-      "linkedin",
       "x",
     ];
     await Promise.all(platforms.map((p) => get().refreshStatus(p)));

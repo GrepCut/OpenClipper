@@ -3,6 +3,7 @@ macro_rules! invoke_handler {
     () => {
         tauri::generate_handler![
             crate::commands::frontend::frontend_ready,
+            crate::infra::integration_log::append_integration_log,
             crate::commands::clipper::video::start_clipper_winml_analysis,
             crate::commands::clipper::video::cancel_clipper_native_job,
             crate::commands::clipper::video::snap_clipper_to_keyframe,

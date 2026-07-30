@@ -18,7 +18,6 @@ export interface TranscribeStageInput {
   trimUnchanged: boolean;
   existingWords: WordCue[];
   transcriptionEngine?: LocalTranscriptionEngine;
-  isolateVocals?: boolean;
 }
 
 const PREPARE_WEIGHT = 0.3;
@@ -39,8 +38,8 @@ export async function runTranscribeStage(
     trimUnchanged,
     existingWords,
     transcriptionEngine = "parakeet",
-    isolateVocals = false,
   } = input;
+  const isolateVocals = true;
 
   if (trimUnchanged && existingWords.length > 0) {
     return existingWords;

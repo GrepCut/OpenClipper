@@ -77,7 +77,11 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
         </Center>
       )}
 
-      {visibility.showPreview && <ClipperSessionPreviewPanel session={session} />}
+      {visibility.previewKeepAlive && (
+        <Box display={visibility.showPreview ? undefined : "none"} w="full" h="full">
+          <ClipperSessionPreviewPanel session={session} />
+        </Box>
+      )}
 
       {visibility.showQueueSetup && (
         <>

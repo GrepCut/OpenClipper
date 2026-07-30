@@ -40,7 +40,6 @@ const clipperSettingsSchema = z
     transcription: z
       .object({
         engine: z.enum(["parakeet", "whisper"]),
-        isolateVocals: z.enum(["off", "on"]),
       })
       .partial()
       .optional(),

@@ -3,7 +3,8 @@ export type VideoFrameCallbackCompat = HTMLVideoElement & {
   cancelVideoFrameCallback?: (handle: number) => void;
 };
 
-export function truncatePreviewUrl(url: string, maxLen = 80): string {
+export function truncatePreviewUrl(url: string | null | undefined, maxLen = 80): string {
+  if (!url) return "(none)";
   if (url.length <= maxLen) return url;
   return `${url.slice(0, maxLen)}…`;
 }

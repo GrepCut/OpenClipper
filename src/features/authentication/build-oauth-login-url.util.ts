@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../../shared/utils/api-client.util";
 import { useAuthStore } from "../../shared/stores/use-auth-store.store";
 import { getAuthClient } from "../../shared/utils/auth-client.util";
 
-type OAuthLoginPath = "/auth/google/drive/login" | "/auth/google/youtube/login";
+type OAuthLoginPath = "/auth/google/youtube/login";
 
 export function buildOAuthLoginUrl(path: OAuthLoginPath, returnPath?: string): string {
   const loginHint = useAuthStore.getState().user?.email?.trim();

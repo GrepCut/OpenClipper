@@ -16,7 +16,7 @@ import type { SidePanelTab } from "./clipper-preview.constants";
 export interface ClipperPreviewProps {
   projectId: string;
   state: ClipperPipelineState;
-  rangeTrimmedVideoUrl: string;
+  rangeTrimmedVideoUrl: string | null;
   clipPreviews: ClipperClipPreview[];
   autoPartsClipPreviews: ClipperClipPreview[];
   aiClipPreviews: ClipperClipPreview[];
@@ -54,7 +54,7 @@ export interface ClipperPreviewProps {
 }
 
 export interface UseClipperPreviewPlaybackParams {
-  rangeTrimmedVideoUrl: string;
+  rangeTrimmedVideoUrl: string | null;
   activeClipIndex: number;
   clipStartSec: number;
   clipEndSec: number;

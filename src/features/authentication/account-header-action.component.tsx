@@ -1,33 +1,34 @@
-import { Box, Spinner, Text } from "@chakra-ui/react";
+import { Box, HStack, Spinner, Text } from "@chakra-ui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../shared/hooks/use-auth.hook";
 import { rememberAuthReturnPath } from "../../shared/auth/auth-return-path.util";
+import type { User } from "../../shared/types/auth.types";
 import { useTheme } from "../../theme";
 import { clipperTheme } from "../clipper/shared/theme.util";
+
+function getUserDisplayName(user: User): string {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  return name || user.email;
+}
 
 export function AccountHeaderAction() {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAuthenticated, hasTriedInit, isLoading, isLoggingOut, logout } = useAuth();
-  const checking = !hasTriedInit || isLoading || isLoggingOut;
+  const { user, isAuthenticated, hasTriedInit, isLoggingOut, logout } = useAuth();
 
-  const common = {
-    display: "flex",
-    alignItems: "center",
-    gap: 2,
-    px: 2.5,
-    py: 1.5,
-    borderRadius: "lg",
-    fontSize: "sm",
-    color: theme.text.muted,
-  } as const;
-
-  if (checking) {
+  if (!hasTriedInit) {
     return (
-      <Box {...common} cursor="wait" aria-label="Checking account">
-        <Spinner size="xs" borderWidth="2px" />
-        <Text display={{ base: "none", md: "block" }}>Account…</Text>
+      <Box
+        display="flex"
+        alignItems="center"
+        gap={2}
+        px={2.5}
+        py={1.5}
+        aria-label="Checking account"
+        aria-busy="true"
+      >
+        <Spinner size="xs" borderWidth="2px" color={theme.text.muted} />
       </Box>
     );
   }
@@ -65,17 +66,57 @@ export function AccountHeaderAction() {
     );
   }
 
+  const displayName = getUserDisplayName(user);
+
   return (
-    <Box
-      as="button"
-      {...common}
-      onClick={() => void logout()}
-      _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
-      title={`Sign out (${user.email})`}
-    >
-      <Text maxW="180px" truncate>
-        {user.email || "Sign out"}
+    <HStack gap={2} align="center" flexShrink={0}>
+      <Text
+        fontSize="sm"
+        fontWeight="medium"
+        color={theme.text.primary}
+        maxW="160px"
+        truncate
+        title={user.email}
+      >
+        {displayName}
       </Text>
-    </Box>
+      <Box
+        as="button"
+        display="inline-flex"
+        alignItems="center"
+        justifyContent="center"
+        gap={1.5}
+        minW="72px"
+        px={2.5}
+        py={1}
+        borderRadius="full"
+        fontSize="xs"
+        fontWeight="600"
+        color={theme.text.muted}
+        border="1px solid"
+        borderColor={theme.dashboard.border}
+        bg="transparent"
+        cursor={isLoggingOut ? "wait" : "pointer"}
+        disabled={isLoggingOut}
+        aria-busy={isLoggingOut}
+        title={`Sign out (${user.email})`}
+        onClick={() => {
+          if (isLoggingOut) return;
+          void logout();
+        }}
+        transition="all 0.2s ease"
+        _hover={
+          isLoggingOut
+            ? undefined
+            : {
+                bg: theme.surface.hover,
+                color: theme.text.primary,
+                borderColor: theme.text.muted,
+              }
+        }
+      >
+        {isLoggingOut ? <Spinner size="xs" borderWidth="2px" /> : "Log out"}
+      </Box>
+    </HStack>
   );
 }

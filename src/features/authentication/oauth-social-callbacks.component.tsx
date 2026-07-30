@@ -19,6 +19,7 @@ import {
   resolveOAuthReturnPath,
   type OAuthConnectionStatus,
 } from "./oauth-callback-utils.util";
+import { logIntegration } from "../../shared/utils/integration-logger.util";
 
 const FLOW_VERIFY_PLATFORMS: Record<
   SocialOAuthFlow,
@@ -27,7 +28,6 @@ const FLOW_VERIFY_PLATFORMS: Record<
   meta: ["facebook", "instagram"],
   instagram: ["instagram"],
   tiktok: ["tiktok"],
-  linkedin: ["linkedin"],
   x: ["x"],
 };
 
@@ -35,7 +35,6 @@ const FLOW_LABELS: Record<SocialOAuthFlow, string> = {
   meta: "Meta",
   instagram: "Instagram",
   tiktok: "TikTok",
-  linkedin: "LinkedIn",
   x: "X",
 };
 
@@ -85,6 +84,14 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
           returnPath,
         } = parseOAuthSearchParams(location.search);
 
+        logIntegration("oauth.callback_page_opened", {
+          flow,
+          hasTicket: Boolean(ticket),
+          callbackError,
+          returnPath,
+          search: location.search,
+        });
+
         if (callbackError) throw new Error(callbackError);
 
         setStatus("connecting");
@@ -100,6 +107,11 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
         setStatus("verifying");
         const selectionRequired = await verifyConnection();
 
+        logIntegration("oauth.callback_verified", {
+          flow,
+          selectionRequired,
+        });
+
         handleOAuthConnectionSuccess(
           navigate,
           resolveOAuthReturnPath(returnPath, location.search),
@@ -109,6 +121,10 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
           setStatus,
         );
       } catch (error: unknown) {
+        logIntegration("oauth.callback_failed", {
+          flow,
+          error: error instanceof Error ? error.message : String(error),
+        });
         handleOAuthConnectionFailure(
           navigate,
           error,
@@ -166,5 +182,4 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
 export const OAuthMetaCallback = createSocialOAuthCallback("meta");
 export const OAuthInstagramCallback = createSocialOAuthCallback("instagram");
 export const OAuthTikTokCallback = createSocialOAuthCallback("tiktok");
-export const OAuthLinkedInCallback = createSocialOAuthCallback("linkedin");
 export const OAuthXCallback = createSocialOAuthCallback("x");

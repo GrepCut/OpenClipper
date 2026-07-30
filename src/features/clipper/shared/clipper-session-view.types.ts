@@ -15,7 +15,10 @@ export interface ClipperSessionVisibility {
   showRestoreLoader: boolean;
   showFreshProcessing: boolean;
   showLoadingUi: boolean;
+  /** Preview panel should be visible for the current view. */
   showPreview: boolean;
+  /** Keep preview panel mounted (CSS-hidden) across queue/exports to avoid remount flash. */
+  previewKeepAlive: boolean;
   showQueue: boolean;
   showExports: boolean;
   showQueueSetup: boolean;

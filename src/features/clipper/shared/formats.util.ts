@@ -1,7 +1,7 @@
 import { aspectRatioFromId, evenInt } from "../lib/media/video-draw.util";
 import { CLIPPER_CARD_BADGE_INSET } from "../components/clipper-platform-icon.component";
 
-export type ClipperPlatform = "instagram" | "tiktok" | "youtube" | "twitter" | "linkedin";
+export type ClipperPlatform = "instagram" | "tiktok" | "youtube" | "twitter";
 
 /** Ids from `ASPECT_PRESETS` in `tools/shared/video-draw.ts`. */
 export type ClipperAspectPresetId = "16-9" | "9-16" | "1-1" | "4-5";
@@ -61,15 +61,6 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     aspectId: "16-9",
     mode: "crop",
     description: "Landscape 16:9 (cropped)",
-    isDefaultEnabled: false,
-  },
-  {
-    id: "linkedin",
-    platform: "linkedin",
-    label: "LinkedIn",
-    aspectId: "1-1",
-    mode: "crop",
-    description: "Square 1:1",
     isDefaultEnabled: false,
   },
 ];

@@ -42,7 +42,7 @@ export interface AuthActions {
   logout: () => Promise<void>;
   finalizeLogout: () => void;
   refreshTokens: () => Promise<string>;
-  checkAuthStatus: () => Promise<void>;
+  checkAuthStatus: (options?: { silent?: boolean }) => Promise<void>;
   ensureAuthLoaded: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
   completeDesktopLogin: (payload: {

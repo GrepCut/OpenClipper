@@ -170,6 +170,8 @@ export function useClipperPreviewPlayback({
       clipDuration,
     });
 
+    if (!rangeTrimmedVideoUrl) return;
+
     const watchdog = window.setTimeout(() => {
       const video = videoRef.current;
       if (firstFrameLoggedRef.current || !video) return;
@@ -188,7 +190,7 @@ export function useClipperPreviewPlayback({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !rangeTrimmedVideoUrl) return;
 
     const onVideoError = () => {
       clipperError("preview: video failed", video.error ?? new Error("video load failed"), {
@@ -217,7 +219,7 @@ export function useClipperPreviewPlayback({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !rangeTrimmedVideoUrl) return;
     const pendingSeek = pendingSeekSourceTimeRef.current;
     pendingSeekSourceTimeRef.current = null;
     const initial =
@@ -231,7 +233,7 @@ export function useClipperPreviewPlayback({
       video.pause();
     }
     scheduleRedraw({ forceSecondary: true });
-  }, [activeClipIndex, clipDuration, clipSegments, scheduleRedraw]);
+  }, [activeClipIndex, clipDuration, clipSegments, rangeTrimmedVideoUrl, scheduleRedraw]);
 
   useEffect(() => {
     scheduleRedraw({ forceSecondary: true });

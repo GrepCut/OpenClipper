@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { Project } from "../../../../services/projects.service";
 import { isMediabunnyConvertSupported } from "../../lib/convert/mediabunny-convert.util";
+import { saveClipperRangeWords } from "../../persistence/clipper-range-words-api.util";
 import { clipperPipelineService } from "../../persistence/pipeline-api.util";
 import { removeClipperProjectDataDir } from "../../persistence/project-data-files.util";
 import { runIngestStage } from "../../pipeline/stages/ingest.util";
@@ -112,6 +113,9 @@ export function useClipperPipelineSessionActions(
     revokePreviewUrls();
     void clipperPipelineService.resetPipeline(projectId);
     void removeClipperProjectDataDir(projectId);
+    void saveClipperRangeWords(projectId, []).catch((error) =>
+      clipperError("pipeline: clear range words failed", error),
+    );
     setRangeLocked(false);
     resumeStartedRef.current = false;
     activeClipIndexRef.current = 0;
@@ -133,6 +137,7 @@ export function useClipperPipelineSessionActions(
       clipPreviews: [],
       autoPartsClipPreviews: [],
       aiClipPreviews: [],
+      rangeWords: [],
       activeClipIndex: 0,
       error: null,
       renderProgress: {},
@@ -161,8 +166,13 @@ export function useClipperPipelineSessionActions(
     session.trimmedVideoUrl = null;
     session.autoPartsClips = [];
     session.aiClips = [];
+    session.rangeWords = [];
+    session.words = [];
     syncSessionActiveClips(session);
-  }, [revokePreviewUrls, sessionRef]);
+    void saveClipperRangeWords(projectId, []).catch((error) =>
+      clipperError("pipeline: clear range words on new range failed", error),
+    );
+  }, [projectId, revokePreviewUrls, sessionRef]);
 
   return { selectFile, clipAgain, resetSessionForNewRange };
 }

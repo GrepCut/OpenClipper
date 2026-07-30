@@ -347,7 +347,6 @@ export function primaryCropAspectRatio(enabledFormatIds: string[]): number {
   const preferred = enabledFormatIds.find((id) => id === "tiktok") ?? enabledFormatIds[0] ?? "tiktok";
   switch (preferred) {
     case "instagram":
-    case "linkedin":
       return 1;
     case "instagram-portrait":
       return 4 / 5;

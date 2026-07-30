@@ -13,7 +13,6 @@ const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
   instagram: asset("/clipper/instagram-logo.webp"),
   tiktok: asset("/clipper/tiktok-logo.webp"),
   twitter: asset("/clipper/x-logo.webp"),
-  linkedin: asset("/clipper/linkedin-logo.webp"),
 };
 
 function ClipperPlatformLogoCircle({

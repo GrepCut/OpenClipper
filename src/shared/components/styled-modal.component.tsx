@@ -30,6 +30,8 @@ interface StyledModalProps {
   scrollBehavior?: "inside" | "outside";
   zIndex?: number;
   onFormSubmit?: () => void;
+  /** Overrides default dialog width, e.g. `min(calc(100vw - 64px), 1280px)`. */
+  contentWidth?: string;
 }
 
 type TauriNoDragStyle = CSSProperties & {
@@ -49,6 +51,7 @@ export function StyledModal({
   scrollBehavior = "inside",
   zIndex = 9999,
   onFormSubmit,
+  contentWidth,
 }: StyledModalProps) {
   const { theme, mode } = useTheme();
   const formId = useId();
@@ -111,6 +114,8 @@ export function StyledModal({
             borderRadius="2xl"
             boxShadow="0 8px 32px rgba(0,0,0,0.4)"
             p={4}
+            w={contentWidth}
+            maxW={contentWidth}
             maxH={scrollBehavior === "inside" ? "85vh" : undefined}
             display="flex"
             flexDirection="column"

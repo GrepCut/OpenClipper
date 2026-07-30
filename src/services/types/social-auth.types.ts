@@ -3,10 +3,9 @@ export type SocialPublishablePlatform =
   | "facebook"
   | "instagram"
   | "tiktok"
-  | "linkedin"
   | "x";
 
-export type SocialOAuthFlow = "meta" | "instagram" | "tiktok" | "linkedin" | "x";
+export type SocialOAuthFlow = "meta" | "instagram" | "tiktok" | "x";
 
 export type SocialPublishJobStatus =
   | "pending"
@@ -130,8 +129,6 @@ export function publishPlatformForFormat(
       return "tiktok";
     case "twitter":
       return "x";
-    case "linkedin":
-      return "linkedin";
     default:
       return null;
   }

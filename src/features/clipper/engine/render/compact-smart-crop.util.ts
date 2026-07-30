@@ -18,7 +18,6 @@ const FORMAT_ASPECTS = [
   ["tiktok", "9-16"],
   ["instagram-portrait", "4-5"],
   ["twitter", "16-9"],
-  ["linkedin", "1-1"],
 ] as const;
 
 function finalSample(samples: ClipperLayoutSample[], index: number): ClipperLayoutSample {

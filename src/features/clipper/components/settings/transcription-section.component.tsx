@@ -2,7 +2,6 @@ import React from "react";
 import { HStack, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { Download, Trash2 } from "lucide-react";
 import { OutlinedActionButton } from "../../../../shared/components/buttons/outlined-action-button.component";
-import { ModernSwitch } from "../../../../shared/components/ui/modern-switch.component";
 import { formatBytes } from "../../shared/logger.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import {
@@ -10,16 +9,13 @@ import {
   useParakeetModelDownload,
 } from "../../hooks/use-parakeet-model-download.hook";
 import { ClipperProgressBar } from "../clipper-progress-bar.component";
-import { SettingRow, SettingSection } from "./setting-controls.component";
+import { SettingSection } from "./setting-controls.component";
 import { DeleteParakeetModelModal } from "./delete-parakeet-model-modal.component";
 import { TranscriptionModelRow } from "./transcription-model-row.component";
 import { useWhisperModelStatus } from "../../hooks/use-whisper-model-status.hook";
 import { useVocalsIsolateModelStatus } from "../../hooks/use-vocals-isolate-model-status.hook";
 import { loadClipperSettings, saveClipperSettings } from "../../settings/settings-storage.util";
-import type {
-  ClipperIsolateVocals,
-  ClipperTranscriptionEngine,
-} from "../../settings/settings.util";
+import type { ClipperTranscriptionEngine } from "../../settings/settings.util";
 
 function downloadCaption(received: number | null, total: number | null): string | undefined {
   if (received == null) return undefined;
@@ -43,9 +39,6 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
   const [activeEngine, setActiveEngine] = React.useState<ClipperTranscriptionEngine>(
     () => loadClipperSettings().transcription.engine,
   );
-  const [isolateVocals, setIsolateVocals] = React.useState<ClipperIsolateVocals>(
-    () => loadClipperSettings().transcription.isolateVocals,
-  );
 
   const selectEngine = (engine: ClipperTranscriptionEngine) => {
     const next = {
@@ -54,16 +47,6 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     };
     saveClipperSettings(next);
     setActiveEngine(engine);
-  };
-
-  const setIsolateVocalsSetting = (enabled: boolean) => {
-    const value: ClipperIsolateVocals = enabled ? "on" : "off";
-    const next = {
-      ...loadClipperSettings(),
-      transcription: { ...loadClipperSettings().transcription, isolateVocals: value },
-    };
-    saveClipperSettings(next);
-    setIsolateVocals(value);
   };
 
   const {
@@ -81,39 +64,27 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
   );
 
   const vocalsControls = (
-    <VStack align="stretch" gap={3}>
-      <SettingRow
-        label="Isolate vocals (better for songs)"
-        hint="Runs MDX vocal separation before speech-to-text. Uses GPU (DirectML) by default on Windows; download the ~67 MB model first."
-        control={
-          <ModernSwitch
-            checked={isolateVocals === "on"}
-            onCheckedChange={setIsolateVocalsSetting}
-          />
-        }
-      />
-      <TranscriptionModelRow
-        name="Vocals isolate (UVR-MDX-NET-Voc_FT)"
-        description="Optional music/vocal separator used when Isolate vocals is on. GPU (DirectML) by default on Windows; set OPEN_CLIPPER_VOCALS_CPU=1 to force CPU."
-        size="~67 MB"
-        badge={demucs.badge}
-        provider={demucs.activeProvider}
-        showDownload={demucs.showDownload}
-        showDelete={demucs.showDelete}
-        downloading={demucs.downloading}
-        downloadProgress={demucs.downloadProgress}
-        downloadReceived={demucs.downloadReceived}
-        downloadTotal={demucs.downloadTotal}
-        error={
-          demucs.error ??
-          (!demucs.installed && !demucs.downloading && isolateVocals === "on"
-            ? "Download the vocals model before enabling Isolate vocals."
-            : null)
-        }
-        onDownload={() => void demucs.handleDownload()}
-        onDeleteOpen={() => void demucs.handleDelete()}
-      />
-    </VStack>
+    <TranscriptionModelRow
+      name="Vocals isolate (UVR-MDX-NET-Voc_FT)"
+      description="Runs MDX vocal separation before speech-to-text. GPU (DirectML) by default on Windows; set OPEN_CLIPPER_VOCALS_CPU=1 to force CPU."
+      size="~67 MB"
+      badge={demucs.badge}
+      provider={demucs.activeProvider}
+      showDownload={demucs.showDownload}
+      showDelete={demucs.showDelete}
+      downloading={demucs.downloading}
+      downloadProgress={demucs.downloadProgress}
+      downloadReceived={demucs.downloadReceived}
+      downloadTotal={demucs.downloadTotal}
+      error={
+        demucs.error ??
+        (!demucs.installed && !demucs.downloading
+          ? "Download the vocals model before transcribing."
+          : null)
+      }
+      onDownload={() => void demucs.handleDownload()}
+      onDeleteOpen={() => void demucs.handleDelete()}
+    />
   );
 
   if (variant === "flat") {
