@@ -6,7 +6,7 @@ import {
   patchClipperExportSocial,
   type ClipperExportSocialPatch,
 } from "../persistence/clipper-export-db-api.util";
-import { metadataFieldsFromExportRecord } from "../hooks/clipper-pipeline/export-manifest-resolve.util";
+import { socialFieldsFromExportRecord } from "../hooks/clipper-pipeline/export-manifest-resolve.util";
 import {
   socialFieldsFromResult,
   type ExportSocialFields,
@@ -29,15 +29,13 @@ export function useClipperExportMetadata({
 
   useEffect(() => {
     setFields(socialFieldsFromResult(result));
-  }, [result.id, result.socialTitle, result.socialShortDescription, result.socialDescription, result.socialDescriptionTimestamped, result.socialHashtags]);
+  }, [result.id, result.socialTitle, result.socialDescription, result.socialHashtags]);
 
   const dirty = useMemo(() => {
     const current = socialFieldsFromResult(result);
     return (
       fields.socialTitle !== current.socialTitle ||
-      fields.socialShortDescription !== current.socialShortDescription ||
       fields.socialDescription !== current.socialDescription ||
-      fields.socialDescriptionTimestamped !== current.socialDescriptionTimestamped ||
       fields.socialHashtags !== current.socialHashtags
     );
   }, [fields, result]);
@@ -52,7 +50,7 @@ export function useClipperExportMetadata({
     try {
       const patch: ClipperExportSocialPatch = { ...fields };
       const record = await patchClipperExportSocial(result.id, patch, "overwrite");
-      const saved = metadataFieldsFromExportRecord(record);
+      const saved = socialFieldsFromExportRecord(record);
       onMetadataSaved(result.id, saved);
       setFields(saved);
       appToast.success("Export metadata saved");
@@ -70,13 +68,11 @@ export function useClipperExportMetadata({
       if (!silent) setIsRefreshing(true);
       try {
         const record = await fetchClipperExport(result.id);
-        const saved = metadataFieldsFromExportRecord(record);
+        const saved = socialFieldsFromExportRecord(record);
         const current = socialFieldsFromResult(result);
         const changed =
           saved.socialTitle !== current.socialTitle ||
-          saved.socialShortDescription !== current.socialShortDescription ||
           saved.socialDescription !== current.socialDescription ||
-          saved.socialDescriptionTimestamped !== current.socialDescriptionTimestamped ||
           saved.socialHashtags !== current.socialHashtags;
 
         if (changed) {

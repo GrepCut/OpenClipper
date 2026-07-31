@@ -11,7 +11,8 @@ import {
   countMissingSocialFields,
   EXPORT_SOCIAL_FIELD_LABELS,
   type ExportSocialFields,
-} from "../persistence/clipper-export-social.util";import { groupTimestampedTranscriptForInlineDisplay } from "../persistence/export-transcript.util";
+} from "../persistence/clipper-export-social.util";
+import { groupTimestampedTranscriptForInlineDisplay } from "../persistence/export-transcript.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperFormatResult } from "../shared/state.util";
 
@@ -223,24 +224,11 @@ export const ClipperExportMetadataPanel: React.FC<ClipperExportMetadataPanelProp
             onChange={(value) => updateField("socialTitle", value)}
           />
           <SocialField
-            label={EXPORT_SOCIAL_FIELD_LABELS.socialShortDescription}
-            value={fields.socialShortDescription ?? ""}
-            disabled={!canEdit}
-            onChange={(value) => updateField("socialShortDescription", value)}
-          />
-          <SocialField
             label={EXPORT_SOCIAL_FIELD_LABELS.socialDescription}
             value={fields.socialDescription ?? ""}
             multiline
             disabled={!canEdit}
             onChange={(value) => updateField("socialDescription", value)}
-          />
-          <SocialField
-            label={EXPORT_SOCIAL_FIELD_LABELS.socialDescriptionTimestamped}
-            value={fields.socialDescriptionTimestamped ?? ""}
-            multiline
-            disabled={!canEdit}
-            onChange={(value) => updateField("socialDescriptionTimestamped", value)}
           />
           <SocialField
             label={EXPORT_SOCIAL_FIELD_LABELS.socialHashtags}

@@ -65,8 +65,17 @@ export const useSocialStore = create<SocialStore>((set, get) => ({
     try {
       const status = await socialAuthService.checkConnection(platform);
       get().setConnections(platform, status.connections ?? []);
-    } catch {
-      get().setConnections(platform, []);
+    } catch (error) {
+      console.error(`[Social Auth] refreshStatus(${platform}) failed`, error);
+      set((state) => ({
+        platforms: {
+          ...state.platforms,
+          [platform]: {
+            ...state.platforms[platform],
+            isChecking: false,
+          },
+        },
+      }));
     }
   },
 

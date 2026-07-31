@@ -174,3 +174,19 @@ export async function purgeClipperExportsMissing(
 ): Promise<ClipperExportsPurgeResult> {
   return invoke<ClipperExportsPurgeResult>("clipper_exports_purge_missing", { projectId });
 }
+
+export async function deleteClipperExport(exportId: string): Promise<void> {
+  return invoke<void>("clipper_export_delete", { exportId });
+}
+
+export async function copyClipperExportFile(
+  projectId: string,
+  fileName: string,
+  destinationPath: string,
+): Promise<void> {
+  return invoke<void>("copy_clipper_export_file", {
+    projectId,
+    fileName,
+    destinationPath,
+  });
+}

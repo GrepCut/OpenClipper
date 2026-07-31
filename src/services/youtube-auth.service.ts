@@ -45,10 +45,10 @@ export const youtubeAuthService = {
   },
 
   async checkYoutubeConnection(): Promise<YoutubeStatusResponse> {
-    console.log("[YouTube Auth] checkYoutubeConnection: requesting /auth/google/youtube/status");
+    console.log("[YouTube Auth] checkYoutubeConnection: requesting /social/youtube/status");
     try {
       const response = await apiClient.get<YoutubeStatusResponse>(
-        "/auth/google/youtube/status",
+        "/social/youtube/status",
       );
       console.log("[YouTube Auth] checkYoutubeConnection: response", {
         status: response.status,
@@ -66,7 +66,7 @@ export const youtubeAuthService = {
       ? `?connectionId=${encodeURIComponent(connectionId)}`
       : "";
     return apiClient
-      .get<YoutubeDisconnectResponse>(`/auth/google/youtube/disconnect${params}`)
+      .get<YoutubeDisconnectResponse>(`/social/youtube/disconnect${params}`)
       .then((res) => res.data);
   },
 

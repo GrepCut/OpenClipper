@@ -1,9 +1,10 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService,
     session::local::LocalSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService,
 };
 use sea_orm::DatabaseConnection;
 use tokio_util::sync::CancellationToken;
@@ -11,6 +12,8 @@ use tokio_util::sync::CancellationToken;
 use crate::mcp::server::OpenClipperMcpServer;
 
 pub const DEFAULT_MCP_HTTP_PORT: u16 = 12742;
+
+const MCP_SESSION_KEEP_ALIVE_SECS: u64 = 3600;
 
 #[derive(Clone)]
 pub struct McpHttpServer {
@@ -24,17 +27,33 @@ impl McpHttpServer {
     }
 }
 
+fn allowed_hosts_for_port(port: u16) -> Vec<String> {
+    vec![
+        "127.0.0.1".to_string(),
+        format!("127.0.0.1:{port}"),
+        "localhost".to_string(),
+        format!("localhost:{port}"),
+        "::1".to_string(),
+    ]
+}
+
 pub async fn start_mcp_http_server(
     database: Arc<DatabaseConnection>,
     port: u16,
 ) -> Result<McpHttpServer, String> {
     let cancel = CancellationToken::new();
-    let config = StreamableHttpServerConfig::default().with_cancellation_token(cancel.clone());
+    let config = StreamableHttpServerConfig::default()
+        .with_cancellation_token(cancel.clone())
+        .with_json_response(true)
+        .with_allowed_hosts(allowed_hosts_for_port(port));
+
+    let mut session_manager = LocalSessionManager::default();
+    session_manager.session_config.keep_alive = Some(Duration::from_secs(MCP_SESSION_KEEP_ALIVE_SECS));
 
     let service: StreamableHttpService<OpenClipperMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
             move || Ok(OpenClipperMcpServer::new(database.clone())),
-            Arc::new(LocalSessionManager::default()),
+            Arc::new(session_manager),
             config,
         );
 

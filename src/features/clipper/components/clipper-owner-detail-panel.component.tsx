@@ -1,204 +1,156 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
-import { Plus, Trash2 } from "lucide-react";
+import { Link2, Trash2 } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
+import { StyledModal, StyledModalFooter } from "../../../shared/components/styled-modal.component";
 import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/themed-input.component";
-import type { Project } from "../../../services/projects.service";
 import type {
   ClipperOwnerChannelRecord,
   ClipperOwnerRecord,
-  ClipperProjectSummary,
 } from "../persistence/clipper-owner-db-api.util";
-import type { AvailableOwnerChannel } from "../shared/clipper-owner-channels.util";
-import type { ClipperPlatform } from "../shared/formats.util";
+import { platformLabel } from "../shared/clipper-owner-channels.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
-
-function platformLabel(platform: string): string {
-  if (platform === "x") return "X";
-  return platform.charAt(0).toUpperCase() + platform.slice(1);
-}
+import { ClipperOwnerChannelPlatformIcon } from "./clipper-owner-channel-platform-icon.component";
 
 interface ClipperOwnerDetailPanelProps {
   owner: ClipperOwnerRecord;
   channels: ClipperOwnerChannelRecord[];
-  projects: ClipperProjectSummary[];
-  availableChannels: AvailableOwnerChannel[];
-  allProjects: Project[];
+  onManageChannels: () => void;
   onSave: (name: string, notes: string) => Promise<void>;
   onDelete: () => Promise<void>;
-  onAddChannel: (channel: AvailableOwnerChannel) => Promise<void>;
-  onRemoveChannel: (channelId: string) => Promise<void>;
-  onAssignProject: (projectId: string) => Promise<void>;
-  onUnassignProject: (projectId: string) => Promise<void>;
 }
 
 export function ClipperOwnerDetailPanel({
   owner,
   channels,
-  projects,
-  availableChannels,
-  allProjects,
+  onManageChannels,
   onSave,
   onDelete,
-  onAddChannel,
-  onRemoveChannel,
-  onAssignProject,
-  onUnassignProject,
 }: ClipperOwnerDetailPanelProps) {
-  const { theme } = useClipperUi();
+  const { theme, mode } = useClipperUi();
+  const rowBg = mode === "dark" ? theme.background.card : "gray.50";
   const [name, setName] = useState(owner.name);
   const [notes, setNotes] = useState(owner.notes);
   const [saving, setSaving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setName(owner.name);
     setNotes(owner.notes);
   }, [owner.id, owner.name, owner.notes]);
 
-  const unassignedProjects = useMemo(
-    () => allProjects.filter((project) => !projects.some((row) => row.id === project.id)),
-    [allProjects, projects],
-  );
-
-  const linkableChannels = useMemo(
-    () => availableChannels.filter(
-      (channel) => !channels.some(
-        (row) =>
-          row.platform === channel.platform &&
-          row.externalId === channel.externalId,
-      ),
-    ),
-    [availableChannels, channels],
-  );
-
   return (
-    <Box
-      borderRadius="2xl"
-      border="1px solid"
-      borderColor={theme.border.primary}
-      bg={theme.background.card}
-      p={5}
-    >
-      <VStack align="stretch" gap={4}>
-        <VStack align="stretch" gap={2}>
-          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-            Owner details
-          </Text>
-          <ThemedInput
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <ThemedTextarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={3}
-            placeholder="Notes"
-            resize="vertical"
-          />
-          <HStack gap={2}>
-            <OutlinedActionButton
-              loading={saving}
-              onClick={() => {
-                setSaving(true);
-                void onSave(name.trim(), notes.trim()).finally(() => setSaving(false));
-              }}
-            >
-              Save
-            </OutlinedActionButton>
-            <OutlinedActionButton
-              tone="danger"
-              startIcon={<Trash2 size={16} />}
-              onClick={() => void onDelete()}
-            >
-              Delete
-            </OutlinedActionButton>
-          </HStack>
-        </VStack>
+    <>
+    <HStack align="start" gap={6} flex="1" minH={0} flexWrap={{ base: "wrap", lg: "nowrap" }}>
+      <VStack align="stretch" gap={4} flex="1" minW={{ base: "full", lg: "0" }}>
+        <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
+          Owner details
+        </Text>
+        <ThemedInput
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <ThemedTextarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={3}
+          placeholder="Notes"
+          resize="vertical"
+        />
+        <HStack gap={2} justify="flex-end" flexWrap="wrap">
+          <OutlinedActionButton
+            tone="danger"
+            startIcon={<Trash2 size={16} />}
+            onClick={() => setDeleteConfirmOpen(true)}
+          >
+            Delete
+          </OutlinedActionButton>
+          <OutlinedActionButton
+            loading={saving}
+            onClick={() => {
+              setSaving(true);
+              void onSave(name.trim(), notes.trim()).finally(() => setSaving(false));
+            }}
+          >
+            Save
+          </OutlinedActionButton>
+        </HStack>
+      </VStack>
 
-        <VStack align="stretch" gap={2}>
+      <VStack align="stretch" gap={3} flex="1" minW={{ base: "full", lg: "0" }}>
+        <HStack justify="space-between" align="center" gap={3} flexWrap="wrap">
           <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
             Channels
           </Text>
-          {channels.length === 0 ? (
+          <OutlinedActionButton
+            alignSelf="flex-start"
+            flexShrink={0}
+            startIcon={<Link2 size={16} />}
+            onClick={onManageChannels}
+          >
+            Manage channels
+          </OutlinedActionButton>
+        </HStack>
+
+        {channels.length === 0 ? (
+          <Box bg={rowBg} borderRadius="2xl" p={4}>
             <Text fontSize="sm" color={theme.text.muted}>
-              No channels linked yet.
+              No channels linked yet. Manage channels to connect integrated accounts.
             </Text>
-          ) : (
-            channels.map((channel) => (
-              <HStack
-                key={channel.id}
-                justify="space-between"
-                borderRadius="xl"
-                border="1px solid"
-                borderColor={theme.surface.hover}
-                bg={theme.surface.faint}
-                px={3}
-                py={2}
-              >
-                <HStack gap={2}>
-                  <ClipperPlatformIcon platform={channel.platform as ClipperPlatform} size={20} />
-                  <VStack align="start" gap={0}>
+          </Box>
+        ) : (
+          <VStack align="stretch" gap={2}>
+            {channels.map((channel) => (
+              <Box key={channel.id} bg={rowBg} borderRadius="2xl" px={4} py={3}>
+                <HStack gap={3} minW={0}>
+                  <ClipperOwnerChannelPlatformIcon platform={channel.platform} size={24} />
+                  <VStack align="start" gap={0.5} minW={0} flex={1}>
                     <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
                       {platformLabel(channel.platform)}
                     </Text>
-                    <Text fontSize="xs" color={theme.text.muted}>
+                    <Text fontSize="xs" color={theme.text.muted} lineClamp={1}>
                       {channel.displayName}
                     </Text>
                   </VStack>
                 </HStack>
-                <OutlinedActionButton
-                  tone="danger"
-                  onClick={() => void onRemoveChannel(channel.id)}
-                >
-                  Remove
-                </OutlinedActionButton>
-              </HStack>
-            ))
-          )}
-          {linkableChannels.map((channel) => (
-            <OutlinedActionButton
-              key={channel.platform}
-              startIcon={<Plus size={16} />}
-              onClick={() => void onAddChannel(channel)}
-            >
-              Link {platformLabel(channel.platform)}
-            </OutlinedActionButton>
-          ))}
-        </VStack>
-
-        <VStack align="stretch" gap={2}>
-          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-            Projects
-          </Text>
-          {projects.map((project) => (
-            <HStack
-              key={project.id}
-              justify="space-between"
-              borderRadius="xl"
-              border="1px solid"
-              borderColor={theme.surface.hover}
-              bg={theme.surface.faint}
-              px={3}
-              py={2}
-            >
-              <Text fontSize="sm" color={theme.text.primary}>{project.name}</Text>
-              <OutlinedActionButton onClick={() => void onUnassignProject(project.id)}>
-                Unassign
-              </OutlinedActionButton>
-            </HStack>
-          ))}
-          {unassignedProjects.map((project) => (
-            <OutlinedActionButton
-              key={project.id}
-              startIcon={<Plus size={16} />}
-              onClick={() => void onAssignProject(project.id)}
-            >
-              Assign {project.name}
-            </OutlinedActionButton>
-          ))}
-        </VStack>
+              </Box>
+            ))}
+          </VStack>
+        )}
       </VStack>
-    </Box>
+    </HStack>
+
+      <StyledModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteConfirmOpen(false);
+          }
+        }}
+        title="Delete owner"
+        closeOnOverlayClick={!deleting}
+        isLoading={deleting}
+        footer={
+          <StyledModalFooter
+            cancelText="Cancel"
+            submitText="Delete"
+            submitColorScheme="red"
+            isLoading={deleting}
+            onCancel={() => setDeleteConfirmOpen(false)}
+            onSubmit={() => {
+              setDeleting(true);
+              void onDelete()
+                .then(() => setDeleteConfirmOpen(false))
+                .finally(() => setDeleting(false));
+            }}
+          />
+        }
+      >
+        <Text fontSize="sm" color={theme.text.muted}>
+          Are you sure you want to delete &ldquo;{owner.name}&rdquo;? This action cannot be undone.
+        </Text>
+      </StyledModal>
+    </>
   );
 }

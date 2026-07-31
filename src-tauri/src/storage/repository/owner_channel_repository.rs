@@ -1,12 +1,11 @@
 use chrono::Utc;
 use sea_orm::{
-    sea_query::OnConflict, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::infra::error::{DbError, DbResult};
+use crate::infra::error::DbResult;
 use crate::storage::entity::clipper_owner_channel::{ActiveModel, Column, Entity, Model};
 
 pub struct OwnerChannelRepository;
@@ -50,54 +49,41 @@ impl OwnerChannelRepository {
         database: &DatabaseConnection,
         input: ClipperOwnerChannelUpsertInput,
     ) -> DbResult<ClipperOwnerChannelRecord> {
+        let owner_id = input.owner_id.clone();
+        let platform = input.platform.clone();
+        let now = Utc::now().to_rfc3339();
+        let existing = Entity::find()
+            .filter(Column::OwnerId.eq(owner_id.clone()))
+            .filter(Column::Platform.eq(platform.clone()))
+            .one(database)
+            .await?;
+
+        if let Some(existing) = existing {
+            let mut active: ActiveModel = existing.into();
+            active.external_id = sea_orm::Set(input.external_id);
+            active.display_name = sea_orm::Set(input.display_name);
+            active.updated_at = sea_orm::Set(now);
+            let updated = active.update(database).await?;
+            return Ok(model_to_record(updated));
+        }
+
         let id = input
             .id
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
-        let now = Utc::now().to_rfc3339();
-        let existing = Entity::find()
-            .filter(Column::OwnerId.eq(input.owner_id.clone()))
-            .filter(Column::Platform.eq(input.platform.clone()))
-            .one(database)
-            .await?;
-
-        let row_id = existing
-            .as_ref()
-            .map(|row| row.id.clone())
-            .unwrap_or(id);
-        let created_at = existing
-            .as_ref()
-            .map(|row| row.created_at.clone())
-            .unwrap_or_else(|| now.clone());
 
         let active_model = ActiveModel {
-            id: sea_orm::Set(row_id.clone()),
-            owner_id: sea_orm::Set(input.owner_id),
-            platform: sea_orm::Set(input.platform),
+            id: sea_orm::Set(id),
+            owner_id: sea_orm::Set(owner_id),
+            platform: sea_orm::Set(platform),
             external_id: sea_orm::Set(input.external_id),
             display_name: sea_orm::Set(input.display_name),
-            created_at: sea_orm::Set(created_at),
+            created_at: sea_orm::Set(now.clone()),
             updated_at: sea_orm::Set(now),
         };
 
-        Entity::insert(active_model)
-            .on_conflict(
-                OnConflict::columns([Column::OwnerId, Column::Platform])
-                    .update_columns([
-                        Column::ExternalId,
-                        Column::DisplayName,
-                        Column::UpdatedAt,
-                    ])
-                    .to_owned(),
-            )
-            .exec(database)
-            .await?;
-
-        Entity::find_by_id(row_id)
-            .one(database)
-            .await?
-            .map(model_to_record)
-            .ok_or_else(|| DbError::message("Owner channel upsert failed"))
+        let inserted = active_model.insert(database).await?;
+        Ok(model_to_record(inserted))
     }
 
     pub async fn delete(database: &DatabaseConnection, id: &str) -> DbResult<()> {

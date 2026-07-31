@@ -1,0 +1,69 @@
+name: Bug report
+description: Create a report to help us improve
+title: "[BUG] "
+labels: bug
+body:
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS and version where you encountered the bug.
+      placeholder: e.g. Windows 11 24H2
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Open Clipper version, if known.
+      placeholder: e.g. 0.1.0
+    validations:
+      required: false
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior
+      description: A concise description of what you're experiencing.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: A concise description of what you expected to happen.
+    validations:
+      required: false
+  - type: dropdown
+    id: recurrence-probability
+    attributes:
+      label: Recurrence probability
+      description: How often does this bug occur?
+      options:
+        - Always
+        - Usually
+        - Sometimes
+        - Seldom
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Open a project with ...
+        2. Click on ...
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Anything else?
+      description: |
+        Logs, screenshots, or links that give more context.
+
+        Tip: You can attach images or log files by clicking this area to highlight it and then dragging files in.
+    validations:
+      required: false

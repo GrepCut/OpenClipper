@@ -1,20 +1,12 @@
 use crate::storage::repository::export_repository::ClipperExportRecord;
 
-pub const SOCIAL_FIELD_NAMES: [&str; 5] = [
-    "socialTitle",
-    "socialShortDescription",
-    "socialDescription",
-    "socialDescriptionTimestamped",
-    "socialHashtags",
-];
+pub const SOCIAL_FIELD_NAMES: [&str; 3] = ["title", "description", "hashtags"];
 
 fn social_field_empty(record: &ClipperExportRecord, name: &str) -> bool {
     match name {
-        "socialTitle" => record.social_title.trim().is_empty(),
-        "socialShortDescription" => record.social_short_description.trim().is_empty(),
-        "socialDescription" => record.social_description.trim().is_empty(),
-        "socialDescriptionTimestamped" => record.social_description_timestamped.trim().is_empty(),
-        "socialHashtags" => record.social_hashtags.trim().is_empty(),
+        "title" => record.social_title.trim().is_empty(),
+        "description" => record.social_description.trim().is_empty(),
+        "hashtags" => record.social_hashtags.trim().is_empty(),
         _ => false,
     }
 }

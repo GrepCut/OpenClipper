@@ -1,5 +1,15 @@
+import {
+  getExportNodeStatus,
+  type ExportNodeStatus,
+} from "../persistence/clipper-export-social.util";
 import type { PublishGraphNode } from "../shared/clipper-publish-graph.util";
 import { PROJECT_THUMB_MAX_DIMENSION } from "../shared/clipper-publish-graph.util";
+
+const STATUS_DOT_COLORS: Record<ExportNodeStatus, string> = {
+  incomplete: "#ef4444",
+  ready: "#eab308",
+  published: "#22c55e",
+};
 
 const PROJECT_LABEL_GAP = 5;
 const PROJECT_BORDER_RADIUS = 8;
@@ -61,6 +71,24 @@ function roundRectPath(
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+function drawStatusDot(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+  strokeColor: string,
+  globalScale: number,
+): void {
+  const dotR = 5 / globalScale;
+  ctx.beginPath();
+  ctx.arc(x, y, dotR, 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 1.5 / globalScale;
+  ctx.stroke();
 }
 
 export function getProjectCardHeight(
@@ -207,25 +235,19 @@ export function drawExportNode(
     }
   }
 
-  if (node.isPublished) {
-    const badgeR = 6 / globalScale;
-    const bx = (node.x ?? 0) + radius - 4;
-    const by = (node.y ?? 0) - radius + 4;
-    ctx.beginPath();
-    ctx.arc(bx, by, badgeR, 0, 2 * Math.PI);
-    ctx.fillStyle = "#22c55e";
-    ctx.fill();
-    ctx.strokeStyle = theme.background.card;
-    ctx.lineWidth = 1.5 / globalScale;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(bx - badgeR * 0.45, by);
-    ctx.lineTo(bx - badgeR * 0.1, by + badgeR * 0.35);
-    ctx.lineTo(bx + badgeR * 0.5, by - badgeR * 0.35);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1.4 / globalScale;
-    ctx.stroke();
-  }
+  const status = node.exportItem
+    ? getExportNodeStatus(node.exportItem)
+    : "incomplete";
+  const bx = (node.x ?? 0) + radius - 4 / globalScale;
+  const by = (node.y ?? 0) + radius - 4 / globalScale;
+  drawStatusDot(
+    ctx,
+    bx,
+    by,
+    STATUS_DOT_COLORS[status],
+    theme.background.card,
+    globalScale,
+  );
 }
 
 export function paintNodeHitArea(

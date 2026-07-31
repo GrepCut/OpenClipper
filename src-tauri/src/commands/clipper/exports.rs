@@ -1,5 +1,8 @@
-use tauri::State;
+use std::fs;
 
+use tauri::{AppHandle, State};
+
+use crate::clipper::data::clipper_export_file_path;
 use crate::storage::database::LocalDb;
 use crate::storage::export_cleanup;
 use crate::storage::repository::export_map_repository::{
@@ -95,6 +98,32 @@ pub struct ClipperExportsPurgeResult {
 }
 
 #[tauri::command]
+pub async fn clipper_export_delete(
+    app: AppHandle,
+    db: State<'_, LocalDb>,
+    export_id: String,
+) -> Result<(), String> {
+    let export = ExportRepository::get_by_id(&db.database, &export_id)
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?
+        .ok_or_else(|| format!("Export not found: {export_id}"))?;
+
+    let path = clipper_export_file_path(&app, &export.project_id, &export.file_name)?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+
+    ExportPublishRepository::delete_by_export_ids(&db.database, &[export_id.clone()])
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?;
+    ExportRepository::delete_by_ids(&db.database, &[export_id])
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn clipper_exports_purge_missing(
     app: tauri::AppHandle,
     db: State<'_, LocalDb>,
@@ -126,17 +155,46 @@ pub fn get_open_clipper_mcp_http_url(mcp: State<'_, crate::mcp::McpHttpServer>) 
 
 #[tauri::command]
 pub fn get_open_clipper_mcp_path() -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = exe.parent().ok_or_else(|| "Cannot resolve app directory".to_string())?;
+    resolve_open_clipper_mcp_binary()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+fn resolve_open_clipper_mcp_binary() -> Result<std::path::PathBuf, String> {
     let mcp_name = if cfg!(windows) {
         "open-clipper-mcp.exe"
     } else {
         "open-clipper-mcp"
     };
-    let path = dir.join(mcp_name);
-    if path.exists() {
-        Ok(path.to_string_lossy().into_owned())
-    } else {
-        Ok(path.to_string_lossy().into_owned())
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let beside_app = dir.join(mcp_name);
+            if beside_app.exists() {
+                return Ok(beside_app);
+            }
+        }
     }
+
+    #[cfg(debug_assertions)]
+    {
+        let bin_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin");
+        if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+            for entry in entries.flatten() {
+                let file_name = entry.file_name();
+                let file_name = file_name.to_string_lossy();
+                if file_name.starts_with("open-clipper-mcp") {
+                    return Ok(entry.path());
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "{mcp_name} not found beside the app or in src-tauri/bin. Build it with: cargo build --bin open-clipper-mcp"
+    ))
+}
+
+#[tauri::command]
+pub fn get_open_clipper_mcp_tools_catalog() -> Result<crate::mcp::McpToolsCatalog, String> {
+    Ok(crate::mcp::build_mcp_tools_catalog())
 }

@@ -12,7 +12,7 @@ interface YoutubeStoreState {
   setConnections: (connections: SocialConnectionSummary[]) => void;
 }
 
-export const useYoutubeStore = create<YoutubeStoreState>((set) => ({
+export const useYoutubeStore = create<YoutubeStoreState>((set, get) => ({
   connections: [],
   isConnected: false,
   channelTitle: null,
@@ -43,10 +43,11 @@ export const useYoutubeStore = create<YoutubeStoreState>((set) => ({
       });
     } catch (error) {
       console.error("[YouTube Auth] useYoutubeStore.refreshStatus: failed", error);
+      const previous = get();
       set({
-        connections: [],
-        isConnected: false,
-        channelTitle: null,
+        connections: previous.connections,
+        isConnected: previous.isConnected,
+        channelTitle: previous.channelTitle,
         isChecking: false,
         error:
           error instanceof Error

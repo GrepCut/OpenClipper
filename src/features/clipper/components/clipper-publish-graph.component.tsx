@@ -4,6 +4,10 @@ import { Box } from "@chakra-ui/react";
 import { asset } from "../../../shared/utils/asset.util";
 import { useClipperPublishGraphThumbnails } from "../hooks/use-clipper-publish-graph-thumbnails.hook";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
+import {
+  getExportNodeStatus,
+  getExportNodeStatusLabel,
+} from "../persistence/clipper-export-social.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperPlatform } from "../shared/formats.util";
 import type { PublishGraphData, PublishGraphNode } from "../shared/clipper-publish-graph.util";
@@ -174,8 +178,10 @@ export function ClipperPublishGraph({
           const n = node as PublishGraphNode;
           if (n.type === "project") return n.label;
           if (n.type === "owner") return n.label;
-          const published = n.isPublished ? " · Published" : "";
-          return `${n.label}${published}`;
+          const status = n.exportItem
+            ? getExportNodeStatus(n.exportItem)
+            : "incomplete";
+          return `${n.label}${getExportNodeStatusLabel(status)}`;
         }}
         linkColor={() => theme.border.primary}
         linkWidth={1}

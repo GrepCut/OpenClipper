@@ -1,30 +1,25 @@
+import type { ClipperExportMapItem } from "./clipper-export-db-api.util";
 import type { ClipperFormatResult } from "../shared/state.util";
+
+export type ExportNodeStatus = "incomplete" | "ready" | "published";
 
 export type ExportSocialFields = Pick<
   ClipperFormatResult,
-  | "socialTitle"
-  | "socialShortDescription"
-  | "socialDescription"
-  | "socialDescriptionTimestamped"
-  | "socialHashtags"
+  "socialTitle" | "socialDescription" | "socialHashtags"
 >;
 
 export type SocialPatchMode = "overwrite" | "fill_missing";
 
 export const EXPORT_SOCIAL_FIELD_LABELS: Record<keyof ExportSocialFields, string> = {
   socialTitle: "Title",
-  socialShortDescription: "Short description",
   socialDescription: "Description",
-  socialDescriptionTimestamped: "Description with timestamps",
   socialHashtags: "Hashtags",
 };
 
 export function socialFieldsFromResult(result: ClipperFormatResult): ExportSocialFields {
   return {
     socialTitle: result.socialTitle ?? "",
-    socialShortDescription: result.socialShortDescription ?? "",
     socialDescription: result.socialDescription ?? "",
-    socialDescriptionTimestamped: result.socialDescriptionTimestamped ?? "",
     socialHashtags: result.socialHashtags ?? "",
   };
 }
@@ -34,7 +29,43 @@ export function countMissingSocialFields(result: ClipperFormatResult): number {
   return Object.values(fields).filter((value) => !value?.trim()).length;
 }
 
+export function getExportNodeStatus(
+  item: Pick<ClipperExportMapItem, "missingFields" | "isPublished">,
+): ExportNodeStatus {
+  if (item.isPublished) return "published";
+  if (item.missingFields.length > 0) return "incomplete";
+  return "ready";
+}
+
+export function getExportNodeStatusLabel(status: ExportNodeStatus): string {
+  switch (status) {
+    case "incomplete":
+      return " · Missing metadata";
+    case "ready":
+      return " · Ready to publish";
+    case "published":
+      return " · Published";
+  }
+}
+
+/** Prefer stdio for Cursor (avoids OAuth/mcp_auth gating on HTTP URL servers). */
 export function buildMcpConfigSnippet(options: { httpUrl?: string; stdioPath?: string }): string {
+  if (options.stdioPath) {
+    return JSON.stringify(
+      {
+        mcpServers: {
+          "open-clipper": {
+            type: "stdio",
+            command: options.stdioPath,
+            args: [],
+          },
+        },
+      },
+      null,
+      2,
+    );
+  }
+
   if (options.httpUrl) {
     return JSON.stringify(
       {
@@ -49,12 +80,12 @@ export function buildMcpConfigSnippet(options: { httpUrl?: string; stdioPath?: s
     );
   }
 
-  const command = options.stdioPath ?? "open-clipper-mcp";
   return JSON.stringify(
     {
       mcpServers: {
         "open-clipper": {
-          command,
+          type: "stdio",
+          command: "open-clipper-mcp",
           args: [],
         },
       },

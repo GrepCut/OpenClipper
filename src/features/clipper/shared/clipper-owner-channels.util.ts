@@ -1,10 +1,74 @@
 import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
+import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
 
 export interface AvailableOwnerChannel {
   platform: SocialPublishablePlatform;
   externalId: string;
   displayName: string;
   connectionId: string;
+}
+
+export function ownerChannelKey(channel: { platform: string; externalId: string }): string {
+  return `${channel.platform}:${channel.externalId}`;
+}
+
+export function platformLabel(platform: string): string {
+  if (platform === "x") return "X";
+  return platform.charAt(0).toUpperCase() + platform.slice(1);
+}
+
+export interface OwnerChannelSelectionDiff {
+  toAdd: AvailableOwnerChannel[];
+  toRemove: ClipperOwnerChannelRecord[];
+}
+
+export function diffOwnerChannelSelection(
+  linked: ClipperOwnerChannelRecord[],
+  selected: AvailableOwnerChannel[],
+): OwnerChannelSelectionDiff {
+  const selectedByPlatform = new Map<string, AvailableOwnerChannel>();
+  for (const channel of selected) {
+    selectedByPlatform.set(channel.platform, channel);
+  }
+
+  const linkedByPlatform = new Map<string, ClipperOwnerChannelRecord>();
+  for (const channel of linked) {
+    linkedByPlatform.set(channel.platform, channel);
+  }
+
+  const toAdd: AvailableOwnerChannel[] = [];
+  const toRemove: ClipperOwnerChannelRecord[] = [];
+
+  for (const [platform, selectedChannel] of selectedByPlatform) {
+    const existing = linkedByPlatform.get(platform);
+    if (!existing || existing.externalId !== selectedChannel.externalId) {
+      toAdd.push(selectedChannel);
+    }
+  }
+
+  for (const [platform, linkedChannel] of linkedByPlatform) {
+    const selectedChannel = selectedByPlatform.get(platform);
+    if (!selectedChannel || selectedChannel.externalId !== linkedChannel.externalId) {
+      toRemove.push(linkedChannel);
+    }
+  }
+
+  return { toAdd, toRemove };
+}
+
+export function linkedChannelsToSelection(
+  linked: ClipperOwnerChannelRecord[],
+  available: AvailableOwnerChannel[],
+): AvailableOwnerChannel[] {
+  return linked
+    .map((linkedChannel) =>
+      available.find(
+        (item) =>
+          item.platform === linkedChannel.platform &&
+          item.externalId === linkedChannel.externalId,
+      ),
+    )
+    .filter((item): item is AvailableOwnerChannel => item != null);
 }
 
 export function buildAvailableOwnerChannels(input: {

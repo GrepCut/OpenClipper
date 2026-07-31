@@ -12,7 +12,7 @@ import { FolderOpen, Plus } from "lucide-react";
 import { appToast } from "../../../shared/utils/toast.service";
 import { AppLoader } from "../../../shared/components/app-loader.component";
 import { projectsService, type Project } from "../../../services/projects.service";
-import { ClipperLayout } from "../components/clipper-layout.component";
+import { ClipperLayout, type ClipperLayoutBackLink } from "../components/clipper-layout.component";
 import { ClipperProjectListRow } from "../components/clipper-project-list-row.component";
 import {
   ClipperHomeNavToggle,
@@ -20,6 +20,7 @@ import {
 } from "../components/clipper-home-nav-toggle.component";
 import { ClipperIntegrationsView } from "../components/clipper-integrations-view.component";
 import { ClipperHomeSettingsView } from "../components/clipper-home-settings-view.component";
+import { ClipperHomeMcpView } from "../components/clipper-home-mcp-view.component";
 import { ClipperPublishView } from "../components/clipper-publish-view.component";
 import { ClipperOwnersView } from "../components/clipper-owners-view.component";
 import { CreateClipperProjectModal } from "./create-clipper-project-modal.component";
@@ -41,12 +42,20 @@ export function ClipperHomePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [total, setTotal] = useState(0);
   const { open: isCreateOpen, onOpen: onCreateOpen, onClose: onCreateClose } = useDisclosure();
+  const [ownersBackLink, setOwnersBackLink] = useState<ClipperLayoutBackLink | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== "owners") {
+      setOwnersBackLink(null);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
     if (
       requested !== "integrations" &&
       requested !== "settings" &&
+      requested !== "mcp" &&
       requested !== "publish" &&
       requested !== "owners"
     ) {
@@ -100,17 +109,25 @@ export function ClipperHomePage() {
     <ClipperTauriGate>
       <ClipperLayout
         headerStartExtra={
-          <ClipperHomeNavToggle value={activeTab} onChange={setActiveTab} />
+          ownersBackLink ? undefined : (
+            <ClipperHomeNavToggle value={activeTab} onChange={setActiveTab} />
+          )
         }
+        backLink={ownersBackLink ?? undefined}
       >
         {activeTab === "integrations" ? (
           <ClipperIntegrationsView />
         ) : activeTab === "settings" ? (
           <ClipperHomeSettingsView />
+        ) : activeTab === "mcp" ? (
+          <ClipperHomeMcpView />
         ) : activeTab === "publish" ? (
           <ClipperPublishView />
         ) : activeTab === "owners" ? (
-          <ClipperOwnersView />
+          <ClipperOwnersView
+            onOpenIntegrations={() => setActiveTab("integrations")}
+            onHeaderBackChange={setOwnersBackLink}
+          />
         ) : (
           <VStack align="stretch" gap={8} flex="1" minH={0}>
             <HStack justify="space-between" align="start" flexWrap="wrap" gap={4} flexShrink={0}>

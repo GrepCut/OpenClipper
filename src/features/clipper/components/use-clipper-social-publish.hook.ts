@@ -121,9 +121,7 @@ export function useClipperSocialPublish({
 
   const defaultDescription = useMemo(() => {
     if (!result) return "";
-    const long = result.socialDescription?.trim();
-    if (long) return long;
-    return result.socialShortDescription?.trim() ?? "";
+    return result.socialDescription?.trim() ?? "";
   }, [result]);
 
   useEffect(() => {

@@ -191,6 +191,22 @@ pub fn stat_clipper_export_file(
 }
 
 #[tauri::command]
+pub fn copy_clipper_export_file(
+    app: AppHandle,
+    project_id: String,
+    file_name: String,
+    destination_path: String,
+) -> Result<(), String> {
+    let source = clipper_export_file_path(&app, &project_id, &file_name)?;
+    if !source.exists() {
+        return Err(format!("Export file not found: {file_name}"));
+    }
+    fs::copy(&source, &destination_path)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn open_clipper_project_exports_dir(
     app: AppHandle,
     project_id: String,

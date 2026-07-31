@@ -2,7 +2,16 @@ import {
   fetchClipperExports,
   type ClipperExportRecord,
 } from "../../persistence/clipper-export-db-api.util";
+import type { ExportSocialFields } from "../../persistence/clipper-export-social.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
+
+export function socialFieldsFromExportRecord(record: ClipperExportRecord): ExportSocialFields {
+  return {
+    socialTitle: record.socialTitle,
+    socialDescription: record.socialDescription,
+    socialHashtags: record.socialHashtags,
+  };
+}
 
 export function metadataFieldsFromExportRecord(
   record: ClipperExportRecord,
@@ -11,19 +20,13 @@ export function metadataFieldsFromExportRecord(
   | "transcriptPlain"
   | "transcriptTimestamped"
   | "socialTitle"
-  | "socialShortDescription"
   | "socialDescription"
-  | "socialDescriptionTimestamped"
   | "socialHashtags"
 > {
   return {
     transcriptPlain: record.transcriptPlain,
     transcriptTimestamped: record.transcriptTimestamped,
-    socialTitle: record.socialTitle,
-    socialShortDescription: record.socialShortDescription,
-    socialDescription: record.socialDescription,
-    socialDescriptionTimestamped: record.socialDescriptionTimestamped,
-    socialHashtags: record.socialHashtags,
+    ...socialFieldsFromExportRecord(record),
   };
 }
 

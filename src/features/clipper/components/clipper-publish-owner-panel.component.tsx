@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
-import type { ClipperOwnerChannelRecord, ClipperProjectSummary } from "../persistence/clipper-owner-db-api.util";
+import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 import type { ClipperPlatform } from "../shared/formats.util";
@@ -21,21 +21,18 @@ export function ClipperPublishOwnerPanel({
   connectedSplit = false,
 }: ClipperPublishOwnerPanelProps) {
   const { theme } = useClipperUi();
-  const { owners, loadOwnerChannels, loadOwnerProjects } = useClipperOwners();
+  const { owners, loadOwnerChannels } = useClipperOwners();
   const [channels, setChannels] = useState<ClipperOwnerChannelRecord[]>([]);
-  const [projects, setProjects] = useState<ClipperProjectSummary[]>([]);
 
   const owner = owners.find((row) => row.id === ownerId) ?? null;
 
   useEffect(() => {
     if (!ownerId) {
       setChannels([]);
-      setProjects([]);
       return;
     }
     void loadOwnerChannels(ownerId).then(setChannels);
-    void loadOwnerProjects(ownerId).then(setProjects);
-  }, [ownerId, loadOwnerChannels, loadOwnerProjects, owners]);
+  }, [ownerId, loadOwnerChannels, owners]);
 
   if (!ownerId) {
     return null;
@@ -66,7 +63,7 @@ export function ClipperPublishOwnerPanel({
           {owner.name}
         </Text>
         <Text fontSize="xs" color={theme.text.muted}>
-          {projects.length} projects · {channels.length} channels
+          {owner.projectCount} projects · {channels.length} channels
         </Text>
       </VStack>
 
@@ -106,31 +103,6 @@ export function ClipperPublishOwnerPanel({
                 </Text>
               </VStack>
             </HStack>
-          ))
-        )}
-      </VStack>
-
-      <VStack align="stretch" gap={2}>
-        <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-          Projects
-        </Text>
-        {projects.length === 0 ? (
-          <Text fontSize="sm" color={theme.text.muted}>
-            No projects assigned yet.
-          </Text>
-        ) : (
-          projects.map((project) => (
-            <Box
-              key={project.id}
-              borderRadius="xl"
-              border="1px solid"
-              borderColor={theme.surface.hover}
-              bg={theme.surface.faint}
-              px={3}
-              py={2}
-            >
-              <Text fontSize="sm" color={theme.text.primary}>{project.name}</Text>
-            </Box>
           ))
         )}
       </VStack>

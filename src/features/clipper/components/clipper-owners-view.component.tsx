@@ -1,25 +1,40 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
-import { Plus, UserRound } from "lucide-react";
+import { Plus } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { StyledModal } from "../../../shared/components/styled-modal.component";
 import { ThemedInput } from "../../../shared/components/ui/themed-input.component";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 import { useTheme } from "../../../theme";
+import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
-import type {
-  ClipperOwnerChannelRecord,
-  ClipperProjectSummary,
-} from "../persistence/clipper-owner-db-api.util";
-import { buildAvailableOwnerChannels } from "../shared/clipper-owner-channels.util";
+import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
+import {
+  buildAvailableOwnerChannels,
+  diffOwnerChannelSelection,
+  type AvailableOwnerChannel,
+} from "../shared/clipper-owner-channels.util";
 import { appToast } from "../../../shared/utils/toast.service";
-import { projectsService, type Project } from "../../../services/projects.service";
+import type { ClipperLayoutBackLink } from "../components/clipper-layout.component";
 import { ClipperOwnerDetailPanel } from "./clipper-owner-detail-panel.component";
+import { ClipperOwnerListRow } from "./clipper-owner-list-row.component";
+import { ClipperOwnerChannelPicker } from "./clipper-owner-channel-picker.component";
 
-export function ClipperOwnersView() {
+type OwnersScreen = "list" | "detail" | "channels";
+
+interface ClipperOwnersViewProps {
+  onOpenIntegrations?: () => void;
+  onHeaderBackChange?: (back: ClipperLayoutBackLink | null) => void;
+}
+
+export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: ClipperOwnersViewProps) {
   const { theme } = useTheme();
+  const { user, token, isAuthenticated, sessionMode } = useAuth();
+  const canUseAccountFeatures = Boolean(
+    user && token && isAuthenticated && sessionMode === "online",
+  );
   const {
     owners,
     loading,
@@ -28,8 +43,6 @@ export function ClipperOwnersView() {
     saveOwnerChannel,
     removeOwnerChannel,
     loadOwnerChannels,
-    loadOwnerProjects,
-    assignProjectOwner,
   } = useClipperOwners();
   const {
     connections: youtubeConnections,
@@ -37,10 +50,9 @@ export function ClipperOwnersView() {
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((state) => state.platforms);
   const refreshSocial = useSocialStore((state) => state.refreshAll);
+  const [screen, setScreen] = useState<OwnersScreen>("list");
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [channels, setChannels] = useState<ClipperOwnerChannelRecord[]>([]);
-  const [ownerProjects, setOwnerProjects] = useState<ClipperProjectSummary[]>([]);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [newOwnerName, setNewOwnerName] = useState("");
 
@@ -54,26 +66,23 @@ export function ClipperOwnersView() {
     [youtubeConnections, socialPlatforms],
   );
 
+  const refreshOwnerData = useCallback(async (ownerId: string) => {
+    setChannels(await loadOwnerChannels(ownerId));
+  }, [loadOwnerChannels]);
+
   useEffect(() => {
+    if (!canUseAccountFeatures) return;
     void refreshYoutubeStatus();
     void refreshSocial();
-  }, [refreshSocial, refreshYoutubeStatus]);
+  }, [canUseAccountFeatures, refreshSocial, refreshYoutubeStatus]);
 
   useEffect(() => {
-    void projectsService.getAll(1, 100, "", "clipper", "updatedAt").then((response) => {
-      setAllProjects(response.data);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!selectedOwnerId) {
+    if (!selectedOwnerId || screen === "list") {
       setChannels([]);
-      setOwnerProjects([]);
       return;
     }
-    void loadOwnerChannels(selectedOwnerId).then(setChannels);
-    void loadOwnerProjects(selectedOwnerId).then(setOwnerProjects);
-  }, [selectedOwnerId, loadOwnerChannels, loadOwnerProjects, owners]);
+    void refreshOwnerData(selectedOwnerId);
+  }, [selectedOwnerId, screen, refreshOwnerData, owners]);
 
   const handleCreateOwner = useCallback(async () => {
     const name = newOwnerName.trim();
@@ -82,23 +91,131 @@ export function ClipperOwnersView() {
     setNewOwnerName("");
     setCreateOpen(false);
     setSelectedOwnerId(saved.id);
+    setScreen("detail");
     appToast.success("Owner created", `${saved.name} is ready.`);
   }, [newOwnerName, saveOwner]);
 
+  const handleOpenOwner = useCallback((ownerId: string) => {
+    setSelectedOwnerId(ownerId);
+    setScreen("detail");
+  }, []);
+
+  const handleBackToList = useCallback(() => {
+    setScreen("list");
+    setSelectedOwnerId(null);
+  }, []);
+
+  const handleBackToDetail = useCallback(() => {
+    setScreen("detail");
+  }, []);
+
+  useEffect(() => {
+    if (!onHeaderBackChange) return;
+
+    if (screen === "list") {
+      onHeaderBackChange(null);
+      return;
+    }
+    if (screen === "detail") {
+      onHeaderBackChange({
+        label: "Back to owners",
+        onClick: handleBackToList,
+      });
+      return;
+    }
+    if (screen === "channels" && selectedOwner) {
+      onHeaderBackChange({
+        label: `Back to ${selectedOwner.name}`,
+        onClick: handleBackToDetail,
+      });
+    }
+  }, [screen, selectedOwner, handleBackToList, handleBackToDetail, onHeaderBackChange]);
+
+  useEffect(() => {
+    return () => onHeaderBackChange?.(null);
+  }, [onHeaderBackChange]);
+
+  const handleDeleteOwner = useCallback(async () => {
+    if (!selectedOwner) return;
+    await removeOwner(selectedOwner.id);
+    setSelectedOwnerId(null);
+    setScreen("list");
+    appToast.success("Owner deleted");
+  }, [removeOwner, selectedOwner]);
+
+  const handleChannelsChange = useCallback(async (selected: AvailableOwnerChannel[]) => {
+    if (!selectedOwner) return;
+    const { toAdd, toRemove } = diffOwnerChannelSelection(channels, selected);
+    try {
+      for (const channel of toRemove) {
+        await removeOwnerChannel(channel.id);
+      }
+      for (const channel of toAdd) {
+        await saveOwnerChannel({
+          ownerId: selectedOwner.id,
+          platform: channel.platform,
+          externalId: channel.externalId,
+          displayName: channel.displayName,
+        });
+      }
+      await refreshOwnerData(selectedOwner.id);
+    } catch (error) {
+      await refreshOwnerData(selectedOwner.id);
+      throw error;
+    }
+  }, [channels, refreshOwnerData, removeOwnerChannel, saveOwnerChannel, selectedOwner]);
+
+  if (screen === "channels" && selectedOwner) {
+    return (
+      <ClipperOwnerChannelPicker
+        availableChannels={availableChannels}
+        linkedChannels={channels}
+        onSelectionChange={handleChannelsChange}
+        onOpenIntegrations={() => onOpenIntegrations?.()}
+      />
+    );
+  }
+
+  if (screen === "detail" && selectedOwner) {
+    return (
+      <ClipperOwnerDetailPanel
+        owner={selectedOwner}
+        channels={channels}
+        onManageChannels={() => setScreen("channels")}
+        onSave={async (name, notes) => {
+          await saveOwner({ id: selectedOwner.id, name, notes });
+          appToast.success("Owner saved");
+        }}
+        onDelete={handleDeleteOwner}
+      />
+    );
+  }
+
   return (
-    <VStack align="stretch" gap={6} flex="1" minH={0}>
-      <HStack justify="space-between" align="start" flexWrap="wrap" gap={4}>
+    <VStack align="stretch" gap={8} flex="1" minH={0}>
+      <HStack justify="space-between" align="start" flexWrap="wrap" gap={4} flexShrink={0}>
         <VStack align="start" gap={2} maxW="640px">
-          <SecondaryMainTitle fontSize={{ base: "2xl", md: "3xl" }} fontWeight="bold" color={theme.text.primary}>
+          <SecondaryMainTitle
+            fontSize={{ base: "2xl", md: "3xl" }}
+            fontWeight="bold"
+            color={theme.text.primary}
+          >
             Owners
           </SecondaryMainTitle>
           <Text color={theme.text.muted}>
             Group projects under content owners and link integrated channels for publishing.
           </Text>
         </VStack>
-        <OutlinedActionButton startIcon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
-          Add owner
-        </OutlinedActionButton>
+        <VStack align="stretch" gap={2} minW={{ base: "full", sm: "240px" }}>
+          <OutlinedActionButton
+            width="100%"
+            justifyContent="flex-start"
+            startIcon={<Plus size={16} />}
+            onClick={() => setCreateOpen(true)}
+          >
+            Add owner
+          </OutlinedActionButton>
+        </VStack>
       </HStack>
 
       {loading ? (
@@ -111,86 +228,38 @@ export function ClipperOwnersView() {
           borderColor={theme.dashboard.border}
           textAlign="center"
           bg={theme.background.card}
+          flex="1"
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
         >
           <Text color={theme.text.primary} fontWeight="semibold" mb={2}>
             No owners yet
           </Text>
-          <Text color={theme.text.muted}>
+          <Text color={theme.text.muted} mb={5}>
             Create an owner to assign projects and connect integrated channels.
           </Text>
+          <OutlinedActionButton
+            width="100%"
+            maxW="320px"
+            justifyContent="center"
+            startIcon={<Plus size={16} />}
+            onClick={() => setCreateOpen(true)}
+          >
+            Add owner
+          </OutlinedActionButton>
         </Box>
       ) : (
-        <HStack align="start" gap={4} flexWrap={{ base: "wrap", lg: "nowrap" }}>
-          <VStack align="stretch" gap={2} flex="1" minW="280px">
-            {owners.map((owner) => (
-              <Box
-                key={owner.id}
-                as="button"
-                onClick={() => setSelectedOwnerId(owner.id)}
-                borderRadius="2xl"
-                border="1px solid"
-                borderColor={selectedOwnerId === owner.id ? theme.brand.purpleSoftAlpha12 : theme.surface.hover}
-                bg={selectedOwnerId === owner.id ? theme.surface.faint : theme.background.card}
-                p={4}
-                textAlign="left"
-              >
-                <HStack gap={3}>
-                  <Box color={theme.text.muted}>
-                    <UserRound size={20} />
-                  </Box>
-                  <VStack align="start" gap={0.5} flex={1}>
-                    <Text fontWeight="semibold" color={theme.text.primary}>{owner.name}</Text>
-                    <Text fontSize="xs" color={theme.text.muted}>
-                      {owner.projectCount} projects · {owner.channelCount} channels
-                    </Text>
-                  </VStack>
-                </HStack>
-              </Box>
-            ))}
-          </VStack>
-
-          {selectedOwner ? (
-            <Box flex="1.4" minW="320px">
-              <ClipperOwnerDetailPanel
-                owner={selectedOwner}
-                channels={channels}
-                projects={ownerProjects}
-                availableChannels={availableChannels}
-                allProjects={allProjects}
-                onSave={async (name, notes) => {
-                  await saveOwner({ id: selectedOwner.id, name, notes });
-                  appToast.success("Owner saved");
-                }}
-                onDelete={async () => {
-                  await removeOwner(selectedOwner.id);
-                  setSelectedOwnerId(null);
-                  appToast.success("Owner deleted");
-                }}
-                onAddChannel={async (channel) => {
-                  await saveOwnerChannel({
-                    ownerId: selectedOwner.id,
-                    platform: channel.platform,
-                    externalId: channel.externalId,
-                    displayName: channel.displayName,
-                  });
-                  setChannels(await loadOwnerChannels(selectedOwner.id));
-                }}
-                onRemoveChannel={async (channelId) => {
-                  await removeOwnerChannel(channelId);
-                  setChannels(await loadOwnerChannels(selectedOwner.id));
-                }}
-                onAssignProject={async (projectId) => {
-                  await assignProjectOwner(projectId, selectedOwner.id);
-                  setOwnerProjects(await loadOwnerProjects(selectedOwner.id));
-                }}
-                onUnassignProject={async (projectId) => {
-                  await assignProjectOwner(projectId, null);
-                  setOwnerProjects(await loadOwnerProjects(selectedOwner.id));
-                }}
-              />
-            </Box>
-          ) : null}
-        </HStack>
+        <VStack align="stretch" gap={3}>
+          {owners.map((owner) => (
+            <ClipperOwnerListRow
+              key={owner.id}
+              owner={owner}
+              onOpen={() => handleOpenOwner(owner.id)}
+            />
+          ))}
+        </VStack>
       )}
 
       <StyledModal

@@ -19,6 +19,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-resize-dragging",
     "dialog:allow-open",
+    "dialog:allow-save",
     "dialog:default",
     "deep-link:default",
     {

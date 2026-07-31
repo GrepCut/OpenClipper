@@ -261,7 +261,10 @@ export function ClipperPublishSplitLayout({ graph, detail }: ClipperPublishSplit
       <Box
         w={`${panelWidth}px`}
         flexShrink={0}
+        h="full"
         minH={0}
+        display="flex"
+        flexDirection="column"
         borderLeft="1px solid"
         borderColor={theme.border.primary}
         overflow="hidden"

@@ -129,6 +129,10 @@ export function ClipperPublishView() {
     [refresh],
   );
 
+  const handleExportDeleted = useCallback(() => {
+    selectNode(null);
+  }, [selectNode]);
+
   const handlePublishDialogClose = useCallback(() => {
     setPublishOpen(false);
     void refresh();
@@ -186,6 +190,7 @@ export function ClipperPublishView() {
                 canPublish={canUseAccountFeatures}
                 onPublish={handleOpenPublish}
                 onMetadataSaved={handleMetadataSaved}
+                onDeleted={handleExportDeleted}
                 connectedSplit
               />
             ) : selection.kind === "owner" ? (

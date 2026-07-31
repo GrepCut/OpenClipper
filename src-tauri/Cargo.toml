@@ -3,6 +3,7 @@ name = "open-clipper"
 version = "0.1.0"
 description = "Open Clipper desktop app"
 authors = ["GrepCut"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.91"
 default-run = "open-clipper"

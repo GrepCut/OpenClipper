@@ -3,23 +3,18 @@ use std::sync::Arc;
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{ServerCapabilities, ServerInfo},
+    model::{Implementation, ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
 };
 use sea_orm::DatabaseConnection;
-use serde::Deserialize;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
 
-use crate::mcp::helpers::{
-    build_export_graph, format_label, format_platform, metadata_prompt_for_export,
-    missing_social_fields, publish_agent_prompt, publish_platform, suggested_response_schema,
-};
+use crate::mcp::helpers::format_platform;
+use crate::mcp::list_exports::{list_exports_response, ListExportsParams};
 use crate::storage::repository::export_map_repository::ExportMapRepository;
-use crate::storage::repository::export_publish_repository::ExportPublishRepository;
 use crate::storage::repository::export_repository::{
     ClipperExportRecord, ClipperExportSocialPatch, ExportRepository, SocialPatchMode,
 };
-use crate::storage::repository::project_repository::ProjectRepository;
 
 #[derive(Debug, Clone)]
 pub struct OpenClipperMcpServer {
@@ -38,269 +33,142 @@ impl OpenClipperMcpServer {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct ListExportsParams {
-    #[schemars(description = "Optional project id filter")]
-    project_id: Option<String>,
+struct GetExportDetailsParams {
+    export_id: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-struct ExportIdParams {
-    #[schemars(description = "Clipper export row id")]
-    export_id: String,
+#[serde(rename_all = "snake_case")]
+enum McpPatchMode {
+    /// Replace existing title/description/hashtags with provided values.
+    Overwrite,
+    /// Only write fields that are currently empty (default).
+    #[serde(alias = "fillMissing")]
+    FillMissing,
+}
+
+impl Default for McpPatchMode {
+    fn default() -> Self {
+        Self::FillMissing
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct PatchExportSocialParams {
     export_id: String,
-    social_title: Option<String>,
-    social_short_description: Option<String>,
-    social_description: Option<String>,
-    social_description_timestamped: Option<String>,
-    social_hashtags: Option<String>,
-    #[schemars(description = "overwrite or fill_missing (default fill_missing)")]
-    mode: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    hashtags: Option<String>,
+    #[serde(default)]
+    mode: McpPatchMode,
 }
 
-fn export_list_item(record: &ClipperExportRecord) -> Value {
-    serde_json::json!({
-        "exportId": record.id,
-        "projectId": record.project_id,
-        "clipIndex": record.clip_index,
-        "formatId": record.format_id,
-        "platform": format_platform(&record.format_id),
-        "formatLabel": format_label(&record.format_id),
-        "exportedAt": record.exported_at,
-        "missingFields": missing_social_fields(record),
-        "hasTranscript": !record.transcript_plain.trim().is_empty(),
-    })
+#[derive(Debug, schemars::JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpExportDetails {
+    export_id: String,
+    project_id: String,
+    platform: String,
+    exported_at: String,
+    transcript_timestamped: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    hashtags: Option<String>,
 }
 
-fn export_context(record: &ClipperExportRecord) -> Value {
-    serde_json::json!({
-        "exportId": record.id,
-        "projectId": record.project_id,
-        "clipIndex": record.clip_index,
-        "formatId": record.format_id,
-        "platform": format_platform(&record.format_id),
-        "publishPlatform": publish_platform(&record.format_id),
-        "formatLabel": format_label(&record.format_id),
-        "clipStartSec": record.clip_start_sec,
-        "clipEndSec": record.clip_end_sec,
-        "exportedAt": record.exported_at,
-        "transcriptPlain": record.transcript_plain,
-        "transcriptTimestamped": record.transcript_timestamped,
-        "socialTitle": record.social_title,
-        "socialShortDescription": record.social_short_description,
-        "socialDescription": record.social_description,
-        "socialDescriptionTimestamped": record.social_description_timestamped,
-        "socialHashtags": record.social_hashtags,
-        "missingFields": missing_social_fields(record),
-        "suggestedResponseSchema": suggested_response_schema(),
-    })
+#[derive(Debug, schemars::JsonSchema, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct McpPatchResult {
+    export_id: String,
+    title: String,
+    description: String,
+    hashtags: String,
 }
 
-fn patch_mode_from_str(mode: Option<String>) -> SocialPatchMode {
-    match mode.as_deref() {
-        Some("overwrite") => SocialPatchMode::Overwrite,
-        _ => SocialPatchMode::FillMissing,
+fn non_empty_string(value: String) -> Option<String> {
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn export_details(record: &ClipperExportRecord) -> McpExportDetails {
+    McpExportDetails {
+        export_id: record.id.clone(),
+        project_id: record.project_id.clone(),
+        platform: format_platform(&record.format_id).to_string(),
+        exported_at: record.exported_at.clone(),
+        transcript_timestamped: non_empty_string(record.transcript_timestamped.clone()),
+        title: non_empty_string(record.social_title.clone()),
+        description: non_empty_string(record.social_description.clone()),
+        hashtags: non_empty_string(record.social_hashtags.clone()),
+    }
+}
+
+fn patch_result(record: &ClipperExportRecord) -> McpPatchResult {
+    McpPatchResult {
+        export_id: record.id.clone(),
+        title: record.social_title.clone(),
+        description: record.social_description.clone(),
+        hashtags: record.social_hashtags.clone(),
+    }
+}
+
+fn patch_mode_from_mcp(mode: McpPatchMode) -> SocialPatchMode {
+    match mode {
+        McpPatchMode::Overwrite => SocialPatchMode::Overwrite,
+        McpPatchMode::FillMissing => SocialPatchMode::FillMissing,
     }
 }
 
 #[tool_router]
 impl OpenClipperMcpServer {
-    #[tool(description = "List Open Clipper projects (id and name)")]
-    async fn list_projects(&self) -> Result<String, String> {
-        let summaries = ProjectRepository::list_summaries(self.database.as_ref(), Some("clipper"))
-            .await
-            .map_err(|e| e.to_string())?;
-        serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
-    }
-
-    #[tool(description = "List clip exports with missing metadata flags")]
+    #[tool(
+        description = "List clip exports with status, pagination (skip/rows), and filters (status, hasTranscript). Defaults: incomplete, hasTranscript=true, sort=newest"
+    )]
     async fn list_exports(
         &self,
         Parameters(params): Parameters<ListExportsParams>,
     ) -> Result<String, String> {
-        let records = ExportRepository::list_all(
+        let items = ExportMapRepository::list_all(
             self.database.as_ref(),
             params.project_id.as_deref(),
         )
         .await
         .map_err(|e| e.to_string())?;
-        let items: Vec<Value> = records.iter().map(export_list_item).collect();
-        serde_json::to_string_pretty(&items).map_err(|e| e.to_string())
+        let response = list_exports_response(items, &params);
+        serde_json::to_string_pretty(&response).map_err(|e| e.to_string())
     }
 
-    #[tool(description = "Full export graph: project hubs, export nodes, edges, publish status")]
-    async fn list_export_graph(
+    #[tool(description = "Get export details: transcript with timestamps and current title/description/hashtags")]
+    async fn get_export_details(
         &self,
-        Parameters(params): Parameters<ListExportsParams>,
-    ) -> Result<String, String> {
-        let items = ExportMapRepository::list_all(self.database.as_ref(), params.project_id.as_deref())
-            .await
-            .map_err(|e| e.to_string())?;
-        let item_values: Vec<Value> = items
-            .iter()
-            .map(|item| serde_json::to_value(item).unwrap_or(Value::Null))
-            .collect();
-        let graph = build_export_graph(&item_values);
-        serde_json::to_string_pretty(&graph).map_err(|e| e.to_string())
-    }
-
-    #[tool(description = "Export node detail: metadata gaps, publish status, suggested actions")]
-    async fn get_export_node(
-        &self,
-        Parameters(params): Parameters<ExportIdParams>,
+        Parameters(params): Parameters<GetExportDetailsParams>,
     ) -> Result<String, String> {
         let record = ExportRepository::get_by_id(self.database.as_ref(), &params.export_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Export not found: {}", params.export_id))?;
-
-        let publish_platform = publish_platform(&record.format_id);
-        let publishes = ExportPublishRepository::list_by_export_id(
-            self.database.as_ref(),
-            &params.export_id,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-        let latest_publish = publishes
-            .iter()
-            .find(|row| row.platform == publish_platform)
-            .or_else(|| publishes.first());
-
-        let mut node = export_context(&record);
-        if let Some(map) = node.as_object_mut() {
-            map.insert(
-                "publishStatus".to_string(),
-                serde_json::to_value(latest_publish).unwrap_or(Value::Null),
-            );
-            map.insert(
-                "isPublished".to_string(),
-                Value::Bool(
-                    latest_publish
-                        .map(|row| row.status == "succeeded")
-                        .unwrap_or(false),
-                ),
-            );
-            map.insert(
-                "suggestedNextSteps".to_string(),
-                Value::Array(if missing_social_fields(&record).is_empty() {
-                    if latest_publish.map(|r| r.status == "succeeded").unwrap_or(false) {
-                        vec![Value::String(
-                            "Already published — open watch URL or pick another export.".into(),
-                        )]
-                    } else {
-                        vec![Value::String(
-                            "Metadata complete — user can publish from Publish map or session exports."
-                                .into(),
-                        )]
-                    }
-                } else {
-                    vec![
-                        Value::String("Call generate_export_metadata_prompt".into()),
-                        Value::String("patch_export_social_metadata with fill_missing".into()),
-                    ]
-                }),
-            );
-        }
-
-        serde_json::to_string_pretty(&node).map_err(|e| e.to_string())
-    }
-
-    #[tool(description = "List publish attempts for an export (all platforms)")]
-    async fn list_publish_status(
-        &self,
-        Parameters(params): Parameters<ExportIdParams>,
-    ) -> Result<String, String> {
-        let publishes = ExportPublishRepository::list_by_export_id(
-            self.database.as_ref(),
-            &params.export_id,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-        serde_json::to_string_pretty(&publishes).map_err(|e| e.to_string())
+        serde_json::to_string_pretty(&export_details(&record)).map_err(|e| e.to_string())
     }
 
     #[tool(
-        description = "Workflow prompt for agent: graph overview, metadata gaps, publish order"
+        description = "Patch title, description, and hashtags. mode: overwrite (replace all) or fill_missing (only empty fields, default)"
     )]
-    async fn generate_publish_agent_prompt(
-        &self,
-        Parameters(params): Parameters<ListExportsParams>,
-    ) -> Result<String, String> {
-        let items = ExportMapRepository::list_all(self.database.as_ref(), params.project_id.as_deref())
-            .await
-            .map_err(|e| e.to_string())?;
-        let summary = serde_json::json!({
-            "exports": items.iter().map(|item| serde_json::json!({
-                "exportId": item.id,
-                "projectName": item.project_name,
-                "formatLabel": item.format_label,
-                "platform": item.platform,
-                "isPublished": item.is_published,
-                "missingFields": item.missing_fields,
-            })).collect::<Vec<_>>(),
-            "stats": {
-                "total": items.len(),
-                "published": items.iter().filter(|i| i.is_published).count(),
-                "needsMetadata": items.iter().filter(|i| !i.missing_fields.is_empty()).count(),
-            }
-        });
-        Ok(publish_agent_prompt(&summary))
-    }
-
-    #[tool(description = "Full export context for LLM metadata generation")]
-    async fn get_export_context(
-        &self,
-        Parameters(params): Parameters<ExportIdParams>,
-    ) -> Result<String, String> {
-        let record = ExportRepository::get_by_id(self.database.as_ref(), &params.export_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Export not found: {}", params.export_id))?;
-
-        if record.transcript_plain.trim().is_empty() {
-            return Err(
-                "No transcript saved for this export. Re-export the clip in Open Clipper first."
-                    .to_string(),
-            );
-        }
-
-        serde_json::to_string_pretty(&export_context(&record)).map_err(|e| e.to_string())
-    }
-
-    #[tool(
-        description = "Returns a ready-made prompt and JSON schema for generating export metadata"
-    )]
-    async fn generate_export_metadata_prompt(
-        &self,
-        Parameters(params): Parameters<ExportIdParams>,
-    ) -> Result<String, String> {
-        let record = ExportRepository::get_by_id(self.database.as_ref(), &params.export_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Export not found: {}", params.export_id))?;
-
-        Ok(metadata_prompt_for_export(&record))
-    }
-
-    #[tool(description = "Patch social metadata fields on an export row")]
     async fn patch_export_social_metadata(
         &self,
         Parameters(params): Parameters<PatchExportSocialParams>,
     ) -> Result<String, String> {
         let patch = ClipperExportSocialPatch {
-            social_title: params.social_title,
-            social_short_description: params.social_short_description,
-            social_description: params.social_description,
-            social_description_timestamped: params.social_description_timestamped,
-            social_hashtags: params.social_hashtags,
+            social_title: params.title,
+            social_short_description: None,
+            social_description: params.description,
+            social_description_timestamped: None,
+            social_hashtags: params.hashtags,
         };
-        let mode = patch_mode_from_str(params.mode);
+        let mode = patch_mode_from_mcp(params.mode);
         let updated = ExportRepository::patch_social_metadata(
             self.database.as_ref(),
             &params.export_id,
@@ -309,18 +177,24 @@ impl OpenClipperMcpServer {
         )
         .await
         .map_err(|e| e.to_string())?;
-        serde_json::to_string_pretty(&updated).map_err(|e| e.to_string())
+        serde_json::to_string_pretty(&patch_result(&updated)).map_err(|e| e.to_string())
     }
+}
+
+pub fn list_registered_mcp_tools() -> Vec<rmcp::model::Tool> {
+    OpenClipperMcpServer::tool_router().list_all()
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for OpenClipperMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new(
+                "open-clipper",
+                env!("CARGO_PKG_VERSION"),
+            ))
             .with_instructions(
-                "Open Clipper export metadata and publish MCP server. \
-                 Use list_export_graph to navigate exports, fill metadata via patch_export_social_metadata, \
-                 and generate_publish_agent_prompt for publish workflow guidance.",
+                "Open Clipper export metadata MCP server. Workflow: 1) list_exports — find exports with missing metadata; 2) get_export_details — read transcript and current title/description/hashtags; 3) patch_export_social_metadata — write title, description, hashtags (mode fill_missing by default). In Cursor, use stdio transport (not HTTP URL) so tools appear without OAuth.",
             )
     }
 }
@@ -330,4 +204,110 @@ pub async fn run_stdio_server(database: Arc<DatabaseConnection>) -> anyhow::Resu
     let service = server.serve(rmcp::transport::stdio()).await?;
     service.waiting().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn sample_record() -> ClipperExportRecord {
+        ClipperExportRecord {
+            id: "export-1".to_string(),
+            project_id: "project-1".to_string(),
+            clip_index: 0,
+            format_id: "youtube".to_string(),
+            file_name: "clip.mp4".to_string(),
+            relative_path: "exports/clip.mp4".to_string(),
+            width: 1920,
+            height: 1080,
+            file_size: 1024,
+            clip_start_sec: Some(0.0),
+            clip_end_sec: Some(60.0),
+            exported_at: "2026-01-01T00:00:00Z".to_string(),
+            transcript_plain: "hello world".to_string(),
+            transcript_timestamped: "[0:00] hello\n[0:02] world".to_string(),
+            social_title: "My Title".to_string(),
+            social_short_description: String::new(),
+            social_description: "My description".to_string(),
+            social_description_timestamped: String::new(),
+            social_hashtags: String::new(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn export_details_maps_short_metadata_names() {
+        let details = export_details(&sample_record());
+        assert_eq!(details.export_id, "export-1");
+        assert_eq!(details.title.as_deref(), Some("My Title"));
+        assert_eq!(details.description.as_deref(), Some("My description"));
+        assert_eq!(details.hashtags, None);
+        assert_eq!(
+            details.transcript_timestamped.as_deref(),
+            Some("[0:00] hello\n[0:02] world")
+        );
+        let json = serde_json::to_value(&details).expect("serialize export details");
+        let obj = json.as_object().expect("object");
+        assert!(!obj.contains_key("clipIndex"));
+        assert!(!obj.contains_key("missingFields"));
+        assert!(!obj.contains_key("hasTranscript"));
+        assert_eq!(obj.get("hashtags"), Some(&Value::Null));
+    }
+
+    #[test]
+    fn patch_mode_deserializes_overwrite_and_fill_missing() {
+        let overwrite: McpPatchMode = serde_json::from_str("\"overwrite\"").unwrap();
+        let fill_missing: McpPatchMode = serde_json::from_str("\"fill_missing\"").unwrap();
+        assert!(matches!(overwrite, McpPatchMode::Overwrite));
+        assert!(matches!(fill_missing, McpPatchMode::FillMissing));
+
+        let defaults: PatchExportSocialParams = serde_json::from_str(
+            r#"{"exportId":"exp-1","title":"t"}"#,
+        )
+        .unwrap();
+        assert!(matches!(defaults.mode, McpPatchMode::FillMissing));
+    }
+
+    #[test]
+    fn patch_mode_maps_overwrite_and_fill_missing() {
+        assert_eq!(
+            patch_mode_from_mcp(McpPatchMode::Overwrite),
+            SocialPatchMode::Overwrite
+        );
+        assert_eq!(
+            patch_mode_from_mcp(McpPatchMode::FillMissing),
+            SocialPatchMode::FillMissing
+        );
+    }
+
+    #[test]
+    fn registered_tools_have_no_output_schema() {
+        let tools = list_registered_mcp_tools();
+        assert_eq!(tools.len(), 3);
+        for tool in tools {
+            assert!(
+                tool.output_schema.is_none(),
+                "tool {} should not declare output_schema (Cursor rejects it)",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn patch_result_excludes_transcript_and_file_fields() {
+        let result = patch_result(&sample_record());
+        let json = serde_json::to_value(&result).expect("serialize patch result");
+        let obj = json.as_object().expect("object");
+        assert!(obj.contains_key("exportId"));
+        assert!(obj.contains_key("title"));
+        assert!(obj.contains_key("description"));
+        assert!(obj.contains_key("hashtags"));
+        assert!(!obj.contains_key("missingFields"));
+        assert!(!obj.contains_key("transcriptPlain"));
+        assert!(!obj.contains_key("transcriptTimestamped"));
+        assert!(!obj.contains_key("fileName"));
+        assert!(!obj.contains_key("relativePath"));
+    }
 }
