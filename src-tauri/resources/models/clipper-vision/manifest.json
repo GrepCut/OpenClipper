@@ -8,25 +8,6 @@
   },
   "modelVersion": "clipper-vision-v5-yolox-s-scrfd10g-tiled",
   "models": {
-    "lr_asd_ava": {
-      "dynamicBatch": true,
-      "dynamicTime": true,
-      "inputs": [
-        { "dtype": "float32", "name": "audio_mfcc", "shape": [1, "4*time", 13] },
-        { "dtype": "float32", "name": "face_gray", "shape": [1, "time", 112, 112] }
-      ],
-      "onnxFile": "lr_asd_ava.onnx",
-      "onnxSha256": "8dba7d770fafdd60ae0d7ce521bc83cf2e8852f3ce30878aee6a134efd53cfbb",
-      "outputs": [{ "dtype": "float32", "name": "speaker_probability", "shape": [1, "time"] }],
-      "parity": { "windowsSec": [1, 2, 3, 4, 5, 6], "maxAbsError": 1.1641532182693481e-9 },
-      "preprocessing": {
-        "audio": "mono-16khz-mfcc13-four-rows-per-frame",
-        "face": "grayscale-112x112",
-        "fps": 25
-      },
-      "sourcePath": "reference-algorithms/active-speaker/lr-asd/weight/pretrain_AVA.model",
-      "sourceSha256": "85e6c77fc981595234790d1e128ebb60352d37726b2445e0ef8891e2512fe9e3"
-    },
     "yolox_s": {
       "batchParity": { "batchSize": 2, "maxAbsErrorVsSingle": 0.0 },
       "decoder": {

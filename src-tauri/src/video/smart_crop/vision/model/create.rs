@@ -5,45 +5,12 @@ use windows::core::HSTRING;
 use super::super::com::MtaApartment;
 use super::super::device_cache::device_cache;
 use super::super::session::load_model;
-use super::super::types::{
-    ModelPrecision, NativeVisionDevice, NativeVisionError, SessionConfig, VisionModel,
-};
+use super::super::types::{ModelPrecision, NativeVisionError, VisionModel};
 use super::memory_guard;
 use super::WinMlModel;
 use crate::video::smart_crop::diagnostics;
 
 impl WinMlModel {
-    pub fn create_multi(
-        kind: VisionModel,
-        path: &Path,
-        output_names: &[&str],
-    ) -> Result<Self, NativeVisionError> {
-        let apartment = MtaApartment::initialize()?;
-        let model = load_model(path)?;
-        let config = SessionConfig {
-            device: NativeVisionDevice::Cpu,
-            precision: ModelPrecision::Float32,
-        };
-        let session = Self::make_session(&model, config)?;
-        Ok(Self {
-            kind,
-            model: Some(model),
-            session: Some(session),
-            single_session: None,
-            batch_context: None,
-            single_context: None,
-            fp32_path: path.to_path_buf(),
-            input_name: HSTRING::new(),
-            output_names: output_names
-                .iter()
-                .map(|name| HSTRING::from(*name))
-                .collect(),
-            evaluation_count: 0,
-            session_generation: 1,
-            _apartment: apartment,
-        })
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn create_into(
         kind: VisionModel,

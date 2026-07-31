@@ -50,16 +50,6 @@ impl WinMlModel {
         Ok(output)
     }
 
-    pub fn evaluate(
-        &mut self,
-        shape: &[i64],
-        input: &[f32],
-    ) -> Result<Vec<Vec<f32>>, NativeVisionError> {
-        let mut output = Vec::new();
-        self.evaluate_into(shape, input, &mut output)?;
-        Ok(output)
-    }
-
     pub fn evaluate_into(
         &mut self,
         shape: &[i64],
@@ -69,46 +59,6 @@ impl WinMlModel {
         let batch = shape.first().copied().unwrap_or(1) as usize;
         self.with_directml_recovery(batch, |model| {
             model.evaluate_once_into(shape, input, output)
-        })
-    }
-
-    pub fn evaluate_named(
-        &mut self,
-        inputs: &[(&str, &[i64], &[f32])],
-    ) -> Result<Vec<Vec<f32>>, NativeVisionError> {
-        let mut output = Vec::new();
-        self.evaluate_named_into(inputs, &mut output)?;
-        Ok(output)
-    }
-
-    pub fn evaluate_named_into(
-        &mut self,
-        inputs: &[(&str, &[i64], &[f32])],
-        output: &mut Vec<Vec<f32>>,
-    ) -> Result<(), NativeVisionError> {
-        let batch = inputs
-            .first()
-            .and_then(|input| input.1.first())
-            .copied()
-            .unwrap_or(1) as usize;
-        if batch != 1 && batch != BATCH_BOUND {
-            return Err(NativeVisionError::new(
-                "tensor_contract_mismatch",
-                format!("Unsupported batch size {batch}"),
-                true,
-            ));
-        }
-        let names = inputs
-            .iter()
-            .map(|input| HSTRING::from(input.0))
-            .collect::<Vec<_>>();
-        let bound = inputs
-            .iter()
-            .enumerate()
-            .map(|(index, input)| (&names[index], input.1, input.2))
-            .collect::<Vec<_>>();
-        self.with_directml_recovery(batch, |model| {
-            model.evaluate_named_once_into(batch, &bound, output)
         })
     }
 

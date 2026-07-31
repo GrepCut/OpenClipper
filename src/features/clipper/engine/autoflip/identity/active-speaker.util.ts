@@ -11,9 +11,9 @@ export const DEFAULT_ACTIVE_SPEAKER_POLICY: ActiveSpeakerPolicy = {
 };
 
 /**
- * Converts LR-ASD scores into salience evidence. The function never creates
- * geometry: scores are accepted only for an observed face with the same
- * ByteTrack id and only after a stable multi-face span.
+ * Converts optional per-face speaker scores into salience evidence. The
+ * function never creates geometry: scores are accepted only for an observed
+ * face with the same ByteTrack id and only after a stable multi-face span.
  */
 export function attachActiveSpeakerSignals(
   samples: SubjectDetectionSample[],

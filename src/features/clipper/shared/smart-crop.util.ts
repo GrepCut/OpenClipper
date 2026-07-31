@@ -53,7 +53,7 @@ export interface PoseSubject {
 export interface SubjectDetectionSample {
   time: number;
   detections: SubjectDetection[];
-  /** LR-ASD probabilities keyed to existing native face tracks. */
+  /** Optional speaker probabilities keyed to existing native face tracks. */
   activeSpeakerScores?: Array<{ trackId: number; confidence: number }>;
   autoflipFaces?: AutoFlipFaceDetection[];
   poseSubjects?: PoseSubject[];

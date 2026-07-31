@@ -1,11 +1,5 @@
 # Clipper vision model notices
 
-## LR-ASD
-
-The bundled `lr_asd_ava.onnx` is a deterministic ONNX export of the supplied
-LR-ASD AVA checkpoint. LR-ASD is distributed under the MIT License. See
-<https://github.com/Junhua-Liao/LR-ASD>.
-
 ## YOLOX-S
 
 The bundled `yolox_s.onnx` and `yolox_s.fp16.onnx` files are dynamic-batch

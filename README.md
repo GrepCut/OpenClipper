@@ -152,7 +152,7 @@ Production models ship in [`src-tauri/resources/models/clipper-vision/`](src-tau
 | MoveNet MultiPose | Pose fallback; injects person boxes when YOLOX misses |
 | ByteTrack v2 | Stable `trackId` per stream; reset on scene cuts |
 
-`lr_asd_ava.onnx` is bundled and the TypeScript active-speaker policy exists, but native WinML inference is not wired yet. Cheap motion-grid saliency runs on every detection sample (no model).
+Saliency also uses a cheap motion-grid on every detection sample (no model). There is no active-speaker ONNX in the vision bundle.
 
 ### Identity and composition
 
