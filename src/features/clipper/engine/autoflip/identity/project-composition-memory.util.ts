@@ -11,7 +11,6 @@ const MAX_ENTITIES_PER_KIND = 12;
 // makes association cost and memory independent of the duration of a project.
 const MAX_ACTIVE_ENTITIES_PER_KIND = MAX_ENTITIES_PER_KIND * 2;
 const MAX_DURATION_DELTA_SEC = 0.5;
-const REID_MATCH_THRESHOLD = 0.72;
 
 interface EntityState {
   id: string;
@@ -26,7 +25,6 @@ interface EntityState {
   continuityHits: number;
   lastSeen: number;
   lastBox?: NormalizedBox;
-  embedding?: number[];
 }
 
 export interface ProjectCompositionMemoryResult {
@@ -43,20 +41,6 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
-}
-
-function cosineSimilarity(a: number[] | undefined, b: number[] | undefined): number {
-  if (!a?.length || !b?.length || a.length !== b.length) return 0;
-  let dot = 0;
-  let leftNorm = 0;
-  let rightNorm = 0;
-  for (let index = 0; index < a.length; index++) {
-    dot += a[index]! * b[index]!;
-    leftNorm += a[index]! * a[index]!;
-    rightNorm += b[index]! * b[index]!;
-  }
-  const denominator = Math.sqrt(leftNorm) * Math.sqrt(rightNorm);
-  return denominator > Number.EPSILON ? dot / denominator : 0;
 }
 
 function intersectionOverUnion(a: NormalizedBox | undefined, b: NormalizedBox | undefined): number {
@@ -80,14 +64,8 @@ function findEntity(
   label: string | undefined,
   box: NormalizedBox,
   time: number,
-  embedding: number[] | undefined,
 ): EntityState | undefined {
   const candidates = states.filter((state) => state.kind === kind && (kind === "person" || state.label === label));
-  const appearance = candidates
-    .map((state) => ({ state, similarity: cosineSimilarity(embedding, state.embedding) }))
-    .filter(({ similarity }) => similarity >= REID_MATCH_THRESHOLD)
-    .sort((a, b) => b.similarity - a.similarity)[0]?.state;
-  if (appearance) return appearance;
   return candidates
     .filter((state) => time - state.lastSeen <= MAX_DURATION_DELTA_SEC)
     .map((state) => ({ state, overlap: intersectionOverUnion(state.lastBox, box) }))
@@ -106,7 +84,6 @@ function updateEntity(
   scene: number,
   box: NormalizedBox,
   confidence: number,
-  embedding: number[] | undefined,
   speaker: boolean,
 ): void {
   const elapsed = Math.max(0, Math.min(MAX_DURATION_DELTA_SEC, time - state.lastSeen));
@@ -119,7 +96,6 @@ function updateEntity(
   state.saliencyTotal += clamp01(confidence);
   state.observationCount++;
   appendHeight(state, box.height);
-  if (embedding?.length) state.embedding = embedding;
 }
 
 function makeEntity(
@@ -130,7 +106,6 @@ function makeEntity(
   scene: number,
   box: NormalizedBox,
   confidence: number,
-  embedding: number[] | undefined,
   speaker: boolean,
 ): EntityState {
   const state: EntityState = {
@@ -146,9 +121,8 @@ function makeEntity(
     continuityHits: 0,
     lastSeen: time,
     lastBox: box,
-    embedding,
   };
-  updateEntity(state, time, scene, box, confidence, embedding, speaker);
+  updateEntity(state, time, scene, box, confidence, speaker);
   return state;
 }
 
@@ -196,7 +170,7 @@ function trimWorkingSet(states: EntityState[], localOwners: Map<string, string>)
   for (const kind of ["person", "object"] satisfies CompositionEntityKind[]) {
     const candidates = states
       .filter((state) => state.kind === kind)
-      .sort((left, right) => retentionScore(left) - retentionScore(right));
+      .sort((left, right) => retentionScore(right) - retentionScore(left));
     while (candidates.length > MAX_ACTIVE_ENTITIES_PER_KIND) {
       const discarded = candidates.shift();
       if (!discarded) break;
@@ -244,12 +218,12 @@ export function buildProjectCompositionMemory(samples: SubjectDetectionSample[])
       const localKey = entityKey(kind, scene, localId, label);
       const owned = localOwners.get(localKey);
       const existing = owned ? states.find((state) => state.id === owned) : undefined;
-      const entity = existing ?? findEntity(states, kind, label, box, sample.time, kind === "person" ? sample.reidEmbedding : undefined)
-        ?? makeEntity(`project-${kind}-${nextId++}`, kind, label, sample.time, scene, box, confidence, kind === "person" ? sample.reidEmbedding : undefined, speaker);
+      const entity = existing ?? findEntity(states, kind, label, box, sample.time)
+        ?? makeEntity(`project-${kind}-${nextId++}`, kind, label, sample.time, scene, box, confidence, speaker);
       if (!states.includes(entity)) states.push(entity);
       localOwners.set(localKey, entity.id);
       if (entity.lastSeen !== sample.time || entity.observationCount === 0) {
-        updateEntity(entity, sample.time, scene, box, confidence, kind === "person" ? sample.reidEmbedding : undefined, speaker);
+        updateEntity(entity, sample.time, scene, box, confidence, speaker);
       } else if (speaker) {
         // The observation is already counted; add only its speaker evidence.
         entity.speakerSeconds += Math.max(0, Math.min(MAX_DURATION_DELTA_SEC, sample.time - previousTime));

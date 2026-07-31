@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::super::diagnostics;
-use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::NativeVisionError;
 use super::decode_frame::process_decoded_frame;
 use super::decode_session::{DecodeSession, DecodeStats};
@@ -15,7 +14,6 @@ impl DecodeSession {
     pub(crate) fn run(
         &mut self,
         setup: &mut PipelineSetup,
-        shadow_runner: &mut GeneralizationShadowRunner,
         cancelled: Arc<AtomicBool>,
         progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
     ) -> Result<DecodeStats, NativeVisionError> {
@@ -59,7 +57,6 @@ impl DecodeSession {
                     meta,
                     &decoded,
                     setup,
-                    shadow_runner,
                     &cancelled,
                     progress,
                 )? {
@@ -84,7 +81,6 @@ impl DecodeSession {
                     meta,
                     &decoded,
                     setup,
-                    shadow_runner,
                     &cancelled,
                     progress,
                 )? {

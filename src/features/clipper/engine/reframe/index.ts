@@ -25,7 +25,6 @@ export type {
   FaceCentroid,
   FaceBox,
   FaceBoxSample,
-  GeneralizationShadowDiagnostics,
   NativeVisionAnalysisSummary,
   NativeVisionDevice,
   NativeVisionMetrics,

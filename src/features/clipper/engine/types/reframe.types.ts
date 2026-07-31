@@ -100,38 +100,6 @@ export interface NativeVisionMetrics {
   fastDecodeEnabled: boolean;
 }
 
-export interface GeneralizationShadowDiagnostics {
-  enabledModels: string[];
-  transnetSamples: Array<{
-    time: number;
-    singleFrameProbability: number;
-    manyFrameProbability: number;
-    histogramSceneCut: boolean;
-  }>;
-  saliencyProxySamples?: Array<{
-    time: number;
-    box: NormalizedBox;
-    confidence: number;
-    kind: string;
-  }>;
-  transnetCalibration?: {
-    sampleCount: number;
-    histogramCutCount: number;
-    transnetCutCount: number;
-    agreementRate: number;
-  };
-  reidSamples?: Array<{
-    time: number;
-    personCount: number;
-    embeddingDim: number;
-    embeddingNorm: number;
-  }>;
-  osnetReady?: boolean;
-  reidTriggerCount?: number;
-  vinetReady?: boolean;
-  vinetNote?: string;
-}
-
 export interface NativeVisionCommandSummary {
   engine: "winml";
   faceDevice: NativeVisionDevice;
@@ -151,7 +119,6 @@ export interface NativeVisionCommandSummary {
   modelVersion: string;
   trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   metrics: NativeVisionMetrics;
-  shadowDiagnostics?: GeneralizationShadowDiagnostics;
 }
 
 export interface NativeVisionAnalysisSummary extends NativeVisionCommandSummary {

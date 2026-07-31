@@ -145,58 +145,6 @@
       },
       "sourceArchiveSha256": "f01b9e5e8c3bc31f82e9ca7fa4a2876f25d7a54b65c83da5df2eca3e1632cec8",
       "sourceUrl": "https://www.kaggle.com/models/google/movenet/tensorFlow2/multipose-lightning/1"
-    },
-    "osnet_x0_25": {
-      "dynamicBatch": true,
-      "input": { "dtype": "float32", "name": "input", "shape": [16, 3, 256, 128] },
-      "onnxFile": "osnet_x0_25_msmt17.onnx",
-      "onnxSha256": "e78604f4ccda49b8f41cd0f8f7303800ce75d2361895ebb0729513c1bf53d277",
-      "outputs": [{ "dtype": "float32", "name": "output", "shape": [16, 512] }],
-      "preprocessing": {
-        "colorOrder": "rgb",
-        "layout": "nchw",
-        "resize": "bilinear",
-        "valueRange": [0.0, 1.0]
-      },
-      "sourcePath": "public/models/osnet/osnet_x0_25_msmt17.onnx",
-      "usage": "shadow-reid"
-    },
-    "transnetv2": {
-      "dynamicBatch": false,
-      "input": { "dtype": "float32", "name": "input", "shape": [1, 100, 27, 48, 3] },
-      "onnxFile": "transnetv2.onnx",
-      "onnxSha256": "c4d54a682bace32f25136ef83ca2c9d403e8f8193775efeb995172a0d95a8e0c",
-      "outputs": [
-        { "dtype": "float32", "name": "534", "shape": [1, 100, 1] },
-        { "dtype": "float32", "name": "535", "shape": [1, 100, 1] }
-      ],
-      "preprocessing": {
-        "colorOrder": "rgb",
-        "layout": "ntdhw",
-        "resize": "nearest-27x48",
-        "valueRange": [0.0, 1.0]
-      },
-      "sourcePath": "public/models/transnetv2/transnetv2.onnx",
-      "usage": "shadow-shot-boundary"
-    },
-    "vinet_s_saliency": {
-      "dynamicBatch": true,
-      "input": { "dtype": "float32", "name": "video", "shape": [1, 3, 32, 224, 384] },
-      "onnxFile": "vinet-s-saliency.onnx",
-      "onnxSha256": "9c36968a0f8ea63119b15f40bbda2c97f6aaa3f06e9f38d563da4c1013e2d4c8",
-      "outputs": [{ "dtype": "float32", "name": "saliency", "shape": [1, 224, 384] }],
-      "parity": { "maxAbsError": 1.3073940863250755e-7 },
-      "preprocessing": {
-        "clipCount": 32,
-        "colorOrder": "rgb",
-        "layout": "ncdhw",
-        "normalize": "imagenet",
-        "resize": "bilinear-224x384",
-        "valueRange": [0.0, 1.0]
-      },
-      "sourcePath": "public/models/vinet/vinet-s-saliency.safetensors",
-      "sourceSha256": "803e6d265d46d3f4f3d7ec2c6c2f3b4511f9ba176aa12e348ac317788ca0dc68",
-      "usage": "shadow-video-saliency"
     }
   },
   "onnxOpset": 15,

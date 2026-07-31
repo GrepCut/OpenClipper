@@ -5,9 +5,6 @@ pub struct VisionResourcePaths {
     pub pose: PathBuf,
     pub yolox: PathBuf,
     pub yolox_labels: PathBuf,
-    pub transnet: PathBuf,
-    pub osnet: PathBuf,
-    pub vinet: PathBuf,
 }
 
 pub fn resource_paths(resource_dir: &Path) -> VisionResourcePaths {
@@ -17,9 +14,6 @@ pub fn resource_paths(resource_dir: &Path) -> VisionResourcePaths {
         pose: root.join("movenet_multipose_lightning.onnx"),
         yolox: root.join("yolox_s.onnx"),
         yolox_labels: root.join("coco80.txt"),
-        transnet: root.join("transnetv2.onnx"),
-        osnet: root.join("osnet_x0_25_msmt17.onnx"),
-        vinet: root.join("vinet-s-saliency.onnx"),
     }
 }
 

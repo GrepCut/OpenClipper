@@ -1,5 +1,4 @@
 use super::super::internal::WorkerMetricSnapshot;
-use super::super::shadow::GeneralizationShadowDiagnostics;
 use super::super::vision::NativeVisionError;
 use super::super::vision_logic::Rotation;
 use super::decode_session::{DecodeSession, DecodeStats};
@@ -16,7 +15,6 @@ pub(crate) fn build_summary(
     worker_metrics: WorkerMetricSnapshot,
     merged: MergeOutput,
     tracking_enabled: bool,
-    shadow_diagnostics: Option<GeneralizationShadowDiagnostics>,
     analysis_duration_ms: u64,
     progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<NativeVisionSummary, NativeVisionError> {
@@ -122,6 +120,5 @@ pub(crate) fn build_summary(
             decode_thread_count: session.decode_threads,
             fast_decode_enabled: session.fast_decode_enabled,
         },
-        shadow_diagnostics,
     })
 }

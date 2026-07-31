@@ -1,9 +1,9 @@
 use super::types::NormalizedBox;
 
-/// Cheap scene-local motion proposal used when a learned video-saliency model
-/// is unavailable. Global changes are rejected as camera motion/cuts; the
-/// connected component around the strongest residual cell becomes the action
-/// proposal consumed by the importance ranker.
+/// Cheap scene-local motion proposal on every detection sample.
+/// Global changes are rejected as camera motion/cuts; the connected component
+/// around the strongest residual cell becomes the action proposal consumed by
+/// the importance ranker.
 pub fn detect_motion_saliency(
     previous: &[u8],
     current: &[u8],

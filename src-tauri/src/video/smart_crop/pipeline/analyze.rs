@@ -37,15 +37,13 @@ pub fn analyze(
             "setup",
             &format!("preparing pipeline resources={}", resource_dir.display()),
         );
-        let init = PipelineSetup::prepare(
+        let mut setup = PipelineSetup::prepare(
             resource_dir,
             cancelled.clone(),
             vision_ablation,
             &mut progress,
         )?;
-        diagnostics::append("setup", "workers and shadow models initialized");
-        let mut setup = init.setup;
-        let mut shadow_runner = init.shadow_runner;
+        diagnostics::append("setup", "workers initialized");
         diagnostics::append("decode", "opening FFmpeg decode session");
         let mut session = DecodeSession::open(&file_path, start_time, end_time)?;
         let total_duration = session.total_duration();
@@ -55,7 +53,6 @@ pub fn analyze(
         );
         let decode_stats = session.run(
             &mut setup,
-            &mut shadow_runner,
             cancelled.clone(),
             &mut progress,
         )?;
@@ -92,7 +89,6 @@ pub fn analyze(
         let merged_result = merge_samples(
             decode_stats.sample_count,
             &drain.spool,
-            &mut shadow_runner,
             tracking_enabled,
             &mut progress,
         );
@@ -109,7 +105,6 @@ pub fn analyze(
                 merged.pose_device,
             ),
         );
-        let shadow_diagnostics = shadow_runner.finish();
         build_summary(
             &session,
             decode_stats,
@@ -119,7 +114,6 @@ pub fn analyze(
             worker_metrics,
             merged,
             tracking_enabled,
-            shadow_diagnostics,
             analysis_started.elapsed().as_millis() as u64,
             &mut progress,
         )

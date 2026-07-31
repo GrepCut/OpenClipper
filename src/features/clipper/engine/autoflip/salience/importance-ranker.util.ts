@@ -32,12 +32,10 @@ const SIGNAL_POLICY: Record<SalientSignalType, SignalPolicy> = {
   head: { kind: "head", source: "head", prior: 0.82 },
   screen: { kind: "screen", source: "object", prior: 0.82 },
   motion: { kind: "action", source: "motion", prior: 0.66 },
-  video_saliency: { kind: "action", source: "video-saliency", prior: 0.86 },
   active_speaker: { kind: "speaker", source: "active-speaker", prior: 0.96 },
 };
 
 const EXTERNAL_SIGNAL_TYPE: Record<ImportanceSignalKind, SalientSignalType> = {
-  "video-saliency": "video_saliency",
   "active-speaker": "active_speaker",
   head: "head",
   screen: "screen",
@@ -63,11 +61,6 @@ interface CandidateCluster {
   candidates: Candidate[];
   trackId?: number;
   projectIdentityId?: string;
-}
-
-interface SaliencyStabilityState {
-  previous: ImportanceRegion | null;
-  consecutive: number;
 }
 
 interface TemporalPersonObservation {
@@ -280,11 +273,9 @@ function signalCandidate(region: SalientRegion): Candidate {
     identityAmbiguous: region.identityAmbiguous,
     projectIdentityId: region.projectIdentityId,
     trust: region.trust
-      ?? (policy.source === "video-saliency"
-        ? "video-saliency"
-        : policy.kind === "person" || policy.kind === "face" || policy.kind === "head" || policy.kind === "speaker"
-          ? "unverified-person"
-          : "object"),
+      ?? (policy.kind === "person" || policy.kind === "face" || policy.kind === "head" || policy.kind === "speaker"
+        ? "unverified-person"
+        : "object"),
   };
 }
 
@@ -354,10 +345,8 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
     .reduce((box, candidate) => unionBoxes(box, candidate.box), (contextCandidates[0] ?? focus).box);
   const trust = semantic.some((candidate) => candidate.trust === "verified-person")
     ? "verified-person"
-    : semantic.some((candidate) => candidate.trust === "video-saliency")
-      ? "video-saliency"
-      : semantic.some((candidate) => candidate.trust === "unverified-person")
-        ? "unverified-person"
+    : semantic.some((candidate) => candidate.trust === "unverified-person")
+      ? "unverified-person"
       : semantic.some((candidate) => candidate.trust === "object")
         ? "object"
         : "unverified-person";
@@ -462,7 +451,6 @@ function rankFrame(
   time: number,
   previous: ImportanceRegion[],
   compositionScores?: ReadonlyMap<string, number>,
-  saliencyState?: SaliencyStabilityState,
   temporalPersonState?: TemporalPersonFallbackState,
   conversationPairState?: ConversationPairState,
 ): { regions: ImportanceRegion[]; targetEvidence: TargetEvidence } {
@@ -488,27 +476,15 @@ function rankFrame(
     }).sort((a, b) => b.importanceScore - a.importanceScore);
 
   if (!ranked.length) return { regions: ranked, targetEvidence: evidenceSummary(ranked, new Set(), "no-candidate") };
-  const saliency = ranked.find((region) => region.trust === "video-saliency" && region.confidence >= 0.6);
-  if (saliencyState) {
-    saliencyState.consecutive = saliency && saliencyState.previous
-      && intersectionOverUnion(saliency.contentBox, saliencyState.previous.contentBox) >= 0.35
-      ? saliencyState.consecutive + 1
-      : saliency ? 1 : 0;
-    saliencyState.previous = saliency ?? null;
-  }
   const verifiedPeople = ranked.filter((region) => region.trust === "verified-person");
-  const stableSaliency = saliencyState && saliencyState.consecutive >= 3 ? saliency : undefined;
   const qualifiedTemporalIds = temporalPersonState
     ? observeTemporalPeople(ranked, time, temporalPersonState)
     : new Set<string>();
   // Never turn a YOLOX-only pseudo-person into a required camera target. A
-  // real person wins; otherwise a temporally stable ViNet region gets the
-  // animation fallback, then independent objects retain product-video use.
+  // real person wins; otherwise independent objects retain product-video use.
   const eligibleUnordered = verifiedPeople.length
     ? verifiedPeople
-    : stableSaliency
-      ? [stableSaliency]
-      : ranked.filter((region) => region.trust === "object");
+    : ranked.filter((region) => region.trust === "object");
   const maximumFocusArea = Math.max(0, ...eligibleUnordered.filter(isHumanRegion).map((region) => boxArea(region.box)));
   const eligible = [...eligibleUnordered].sort((left, right) =>
     targetSelectionScore(right, maximumFocusArea) - targetSelectionScore(left, maximumFocusArea));
@@ -618,14 +594,11 @@ export function buildImportanceTimeline(
 ): ImportanceRegionSample[] {
   let previous: ImportanceRegion[] = [];
   let previousObservedTime = Number.NEGATIVE_INFINITY;
-  const saliencyState: SaliencyStabilityState = { previous: null, consecutive: 0 };
   const temporalPersonState: TemporalPersonFallbackState = { observations: new Map() };
   const conversationPairState: ConversationPairState = { memory: null };
   return keyframes.map((keyframe) => {
     if (keyframe.isShotChange || keyframe.time - previousObservedTime > 0.6) {
       previous = [];
-      saliencyState.previous = null;
-      saliencyState.consecutive = 0;
       temporalPersonState.observations.clear();
       conversationPairState.memory = null;
     }
@@ -634,7 +607,6 @@ export function buildImportanceTimeline(
       keyframe.time,
       previous,
       compositionScores,
-      saliencyState,
       temporalPersonState,
       conversationPairState,
     );

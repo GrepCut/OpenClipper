@@ -8,7 +8,6 @@ pub mod internal;
 pub mod pipeline;
 #[cfg(windows)]
 pub mod preprocess;
-pub mod shadow;
 #[cfg(windows)]
 pub mod vision;
 pub mod vision_logic;

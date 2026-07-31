@@ -49,30 +49,3 @@ copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions: The above copyright
 notice and this permission notice shall be included in all copies or
 substantial portions of the Software.
-
-## OSNet x0.25
-
-The bundled `osnet_x0_25_msmt17.onnx` is a deterministic ONNX export of the
-OSNet x0.25 MSMT17 checkpoint from deep-person-reid. OSNet is distributed
-under the MIT License. See <https://github.com/KaiyangZhou/deep-person-reid>.
-
-Feeds person re-identification embeddings used by canonical-person track
-association across frames.
-
-## TransNetV2
-
-The bundled `transnetv2.onnx` is a deterministic ONNX export of the TransNetV2
-shot-boundary model. TransNetV2 is distributed under the Apache License 2.0.
-See <https://github.com/soCzech/TransNetV2>.
-
-Drives production scene-cut resets for the AutoFlip tracker.
-
-## ViNet-S
-
-The bundled `vinet-s-saliency.onnx` is a deterministic ONNX export of the
-ViNet++ ViNet-S saliency checkpoint (SHA256
-`803e6d265d46d3f4f3d7ec2c6c2f3b4511f9ba176aa12e348ac317788ca0dc68`).
-ViNet++ is distributed under CC BY-NC-SA 4.0. See
-`reference-algorithms/video-saliency/vinet-v2/`.
-
-Feeds the `video-saliency` importance signal used in crop framing decisions.

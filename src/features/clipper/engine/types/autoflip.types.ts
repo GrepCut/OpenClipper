@@ -22,7 +22,6 @@ export type SalientSignalType =
   | "head"
   | "screen"
   | "motion"
-  | "video_saliency"
   | "active_speaker";
 
 export interface SalientRegion {

@@ -8,18 +8,12 @@ use super::super::internal::{
     FaceJob, FaceWorkerMsg, ObjectJob, ObjectWorkerMsg, VisionAblationConfig, WorkerMetrics,
     FACE_WORKERS, OBJECT_FRAME_CAPACITY, OBJECT_WORKERS, QUEUE_CAPACITY,
 };
-use super::super::shadow::{GeneralizationShadowConfig, GeneralizationShadowRunner};
 use super::super::vision::{fp16_variant_path, resource_paths, NativeVisionError};
 use super::super::workers::{
     spawn_face_policy, spawn_face_worker, spawn_object_policy, spawn_object_worker,
 };
 use super::spool::{spawn_result_spooler, SpoolOutput};
 use super::types::NativeVisionProgress;
-
-pub(crate) struct PipelineInit {
-    pub setup: PipelineSetup,
-    pub shadow_runner: GeneralizationShadowRunner,
-}
 
 pub(crate) struct PipelineSetup {
     pub face_msg_sender: mpsc::Sender<FaceWorkerMsg>,
@@ -45,14 +39,13 @@ impl PipelineSetup {
         cancelled: Arc<AtomicBool>,
         vision_ablation: VisionAblationConfig,
         progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
-    ) -> Result<PipelineInit, NativeVisionError> {
+    ) -> Result<PipelineSetup, NativeVisionError> {
         let resources = resource_paths(resource_dir);
         let face_model_path = resources.face;
         let pose_model_path = resources.pose;
         let yolox_model_path = resources.yolox;
         let yolox_fp16_path = fp16_variant_path(&yolox_model_path);
         let yolox_labels_path = resources.yolox_labels;
-        let shadow_config = GeneralizationShadowConfig::resolve();
         diagnostics::append(
             "setup",
             &format!(
@@ -64,12 +57,6 @@ impl PipelineSetup {
                 pose_model_path.display(),
                 yolox_labels_path.display(),
             ),
-        );
-        let shadow_runner = GeneralizationShadowRunner::open(
-            shadow_config,
-            &resources.transnet,
-            &resources.osnet,
-            &resources.vinet,
         );
         for path in [
             &face_model_path,
@@ -192,25 +179,22 @@ impl PipelineSetup {
             vision_ablation,
         );
 
-        Ok(PipelineInit {
-            setup: PipelineSetup {
-                face_msg_sender,
-                face_job_sender,
-                object_base_job_sender,
-                object_control_job_sender,
-                object_frame_permit_sender,
-                object_frame_permit_receiver,
-                object_msg_sender,
-                result_spooler,
-                face_workers,
-                object_workers,
-                face_policy,
-                object_policy,
-                face_preprocess_time_us,
-                pose_preprocess_time_us,
-                worker_metrics,
-            },
-            shadow_runner,
+        Ok(PipelineSetup {
+            face_msg_sender,
+            face_job_sender,
+            object_base_job_sender,
+            object_control_job_sender,
+            object_frame_permit_sender,
+            object_frame_permit_receiver,
+            object_msg_sender,
+            result_spooler,
+            face_workers,
+            object_workers,
+            face_policy,
+            object_policy,
+            face_preprocess_time_us,
+            pose_preprocess_time_us,
+            worker_metrics,
         })
     }
 }

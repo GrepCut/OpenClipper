@@ -27,10 +27,7 @@
     "models:verify": "python models_automation\\models_manager.py verify",
     "models:promote": "python models_automation\\models_manager.py promote",
     "models:rollback": "python models_automation\\models_manager.py rollback",
-    "models:status": "python models_automation\\models_manager.py status",
-    "clipper-vision:sync": "python scripts/models/sync_clipper_vision_from_public.py",
-    "clipper-vision:sync:dry": "python scripts/models/sync_clipper_vision_from_public.py --dry-run",
-    "clipper-vision:prepare-generalization": "python scripts/models/prepare_generalization_winml.py && python scripts/models/sync_clipper_vision_from_public.py"
+    "models:status": "python models_automation\\models_manager.py status"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.24.2",

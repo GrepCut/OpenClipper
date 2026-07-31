@@ -65,8 +65,6 @@ export interface SubjectDetectionSample {
   sceneCut?: boolean;
   /** Global camera motion residual from ByteTrack GMC (normalized displacement). */
   cameraMotionResidual?: number;
-  /** OSNet appearance embedding when multiple people are present (multi-person scenes). */
-  reidEmbedding?: number[];
   /** Present when the exact AutoFlip model could not be initialized. */
   degradedReason?: string;
   /** Scene-local fused identities. Predicted-only snapshots are diagnostic and cannot create layout targets. */
@@ -123,7 +121,6 @@ export interface MotionSample {
 
 /** Optional semantic signals produced by specialised local analyzers. */
 export type ImportanceSignalKind =
-  | "video-saliency"
   | "active-speaker"
   | "head"
   | "screen"
@@ -158,7 +155,6 @@ export type ImportanceRegionSource =
   | "person"
   | "object"
   | "motion"
-  | "video-saliency"
   | "active-speaker";
 
 /** How safely a region may take control of automatic framing. */
@@ -167,7 +163,6 @@ export type ImportanceRegionTrust =
   | "unverified-person"
   /** A detector-only person that passed the local continuity gate. */
   | "temporally-qualified-person"
-  | "video-saliency"
   | "object";
 
 export type CompositionEntityKind = "person" | "object";

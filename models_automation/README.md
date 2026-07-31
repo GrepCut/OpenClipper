@@ -23,11 +23,9 @@ verified cache.
 
 ## WinML bundle (`clipper-vision`)
 
-Generalization models (OSNet, TransNetV2, ViNet) are not included in `r2_mirror`.
-Tauri WinML loads them from `src-tauri/resources/models/clipper-vision/`, bundled
-at build time. After changing ONNX files in `public/models/`, run:
+Tauri WinML loads vision models from `src-tauri/resources/models/clipper-vision/`, bundled
+at build time:
 
 ```powershell
-npm run clipper-vision:sync
 npm run tauri:build:fast
 ```

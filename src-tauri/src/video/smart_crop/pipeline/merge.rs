@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use super::super::diagnostics;
 use super::super::internal::{FaceResult, ObjectResult};
-use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::{NativeVisionDevice, NativeVisionError};
 use super::super::vision_logic::{box_iou, SubjectDetection};
 use super::spool::{decode_face_record, decode_object_record, SpoolOutput};
@@ -44,7 +43,6 @@ const PROGRESS_RESULT_BATCH: usize = 32;
 pub(crate) fn merge_samples(
     sample_count: usize,
     spool: &SpoolOutput,
-    shadow_runner: &mut GeneralizationShadowRunner,
     tracking_enabled: bool,
     progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<MergeOutput, NativeVisionError> {
@@ -176,21 +174,7 @@ pub(crate) fn merge_samples(
                 });
             }
         }
-        let person_boxes: Vec<_> = detections
-            .iter()
-            .filter(|item| item.label.eq_ignore_ascii_case("person"))
-            .collect();
-        let person_box = person_boxes
-            .iter()
-            .max_by(|left, right| {
-                left.score
-                    .partial_cmp(&right.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .map(|item| item.box_);
-        let reid_embedding =
-            shadow_runner.record_reid_context(object.time, person_boxes.len(), person_box);
-        let mut importance_signals: Vec<NativeImportanceSignalRegion> = object
+        let importance_signals: Vec<NativeImportanceSignalRegion> = object
             .motion_signal
             .into_iter()
             .map(|(box_, confidence)| NativeImportanceSignalRegion {
@@ -199,13 +183,6 @@ pub(crate) fn merge_samples(
                 confidence,
             })
             .collect();
-        if let Some(saliency) = shadow_runner.latest_saliency() {
-            importance_signals.push(NativeImportanceSignalRegion {
-                box_: saliency.box_,
-                kind: "video-saliency",
-                confidence: saliency.confidence,
-            });
-        }
         let subject = NativeSubjectSample {
             time: object.time,
             detections,
@@ -215,7 +192,6 @@ pub(crate) fn merge_samples(
             model_id: "clipper-vision-v5-yolox-s-scrfd10g-tiled",
             scene_cut: face.scene_cut.then_some(true),
             camera_motion_residual,
-            reid_embedding,
         };
         let face_sample = face.face_bucket.then(|| NativeFaceSample {
             time: face.time,

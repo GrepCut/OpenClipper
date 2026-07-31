@@ -14,9 +14,6 @@ pub enum VisionModel {
     Face,
     YoloX,
     Pose,
-    TransNet,
-    ReId,
-    ViNet,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]

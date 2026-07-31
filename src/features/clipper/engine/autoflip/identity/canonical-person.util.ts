@@ -20,25 +20,6 @@ interface TrackState extends CanonicalPersonTrack {
   poseSourceId?: number;
   previousCenter?: { x: number; y: number; time: number };
   dropoutStartedAt?: number;
-  lastReidEmbedding?: number[];
-}
-
-const REID_SIMILARITY_THRESHOLD = 0.6; // ponytail: fixed threshold; upgrade path = per-cohort calibration
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let index = 0; index < a.length; index++) {
-    const left = a[index]!;
-    const right = b[index]!;
-    dot += left * right;
-    normA += left * left;
-    normB += right * right;
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom > EPSILON ? dot / denom : 0;
 }
 
 interface Evidence<T> {
@@ -88,7 +69,6 @@ function associationScore(
   evidence: Evidence<unknown>,
   kind: "person" | "face" | "pose",
   time: number,
-  reidEmbedding?: number[],
 ): number {
   const box = trackBox(track);
   if (!box || time - track.lastObservedTime > MAX_DROPOUT_SEC + EPSILON) return Number.NEGATIVE_INFINITY;
@@ -102,10 +82,6 @@ function associationScore(
     : Number(containsCenter(evidence.box, track.faceBox ?? box) || containsCenter(box, evidence.box));
   const continuity = evidence.sourceId != null && evidence.sourceId === priorId ? 2.5 : 0;
   let score = continuity + overlap * 1.6 + containment * 0.9 + Math.max(0, 0.65 - distance) * 1.4;
-  if (kind === "person" && reidEmbedding?.length && track.lastReidEmbedding?.length) {
-    const similarity = cosineSimilarity(reidEmbedding, track.lastReidEmbedding);
-    if (similarity > REID_SIMILARITY_THRESHOLD) score += similarity * 1.5;
-  }
   const geometryValid = continuity > 0 || overlap >= 0.08 || containment > 0 || distance <= 0.28;
   return geometryValid ? score : Number.NEGATIVE_INFINITY;
 }
@@ -124,12 +100,11 @@ function assignGlobally<T>(
   tracks: TrackState[],
   kind: "person" | "face" | "pose",
   time: number,
-  reidEmbedding?: number[],
 ): Map<number, { track: TrackState; confidence: number; ambiguous: boolean }> {
   if (evidence.length === 0 || tracks.length === 0) return new Map();
 
   const scores = evidence.map((item) => tracks.map((track) =>
-    associationScore(track, item, kind, time, reidEmbedding)));
+    associationScore(track, item, kind, time)));
   const eligible = scores.map((row) => row.map((score) => Number.isFinite(score) && score >= 0.45));
   const best = maximumWeightAssignment(scores, eligible, tracks.length);
   const result = new Map<number, { track: TrackState; confidence: number; ambiguous: boolean }>();
@@ -286,7 +261,7 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
 
     const people = observedPersonEvidence(sample);
     const primary = people.filter((item) => !item.predicted);
-    const personAssignments = assignGlobally(primary, tracks, "person", sample.time, sample.reidEmbedding);
+    const personAssignments = assignGlobally(primary, tracks, "person", sample.time);
     const assignedPeople = new Map<SubjectDetection, { track: TrackState; confidence: number; ambiguous: boolean }>();
     for (const [index, assignment] of personAssignments) assignedPeople.set(primary[index]!.value, assignment);
     for (const item of primary) {
@@ -345,7 +320,7 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
       telemetry.births++;
     }
     const secondaryPeople = people.filter((item) => item.predicted);
-    const secondaryAssignments = assignGlobally(secondaryPeople, tracks, "person", sample.time, sample.reidEmbedding);
+    const secondaryAssignments = assignGlobally(secondaryPeople, tracks, "person", sample.time);
     for (const [index, assignment] of secondaryAssignments) assignedPeople.set(secondaryPeople[index]!.value, assignment);
 
     const touch = (track: TrackState, box: NormalizedBox, confidence: number, observed: boolean) => {
@@ -420,12 +395,6 @@ export function buildCanonicalPersonTracks(samples: SubjectDetectionSample[]): C
 
     for (const track of tracks) {
       if (sample.time > track.lastObservedTime + EPSILON) track.dropoutStartedAt ??= track.lastObservedTime;
-    }
-    if (sample.reidEmbedding?.length) {
-      const primaryTrack = [...assignedPeople.values()]
-        .filter((assignment) => assignment.confidence > 0)
-        .sort((left, right) => right.confidence - left.confidence)[0]?.track;
-      if (primaryTrack) primaryTrack.lastReidEmbedding = sample.reidEmbedding;
     }
     if (tracks.some((track) => track.identityAmbiguous)) telemetry.ambiguousSamples++;
     return {

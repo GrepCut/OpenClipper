@@ -120,7 +120,7 @@ Analyzer version: `autoflip-v43-snap-layout-on-cut`. Vision bundle: `clipper-vis
 
 **Native (Windows)** — FFmpeg decode and WinML/DirectML inference in [`src-tauri/src/video/smart_crop/`](src-tauri/src/video/smart_crop/), started via `start_clipper_winml_analysis`:
 
-- Shot boundaries on every decoded frame (histogram + frame-diff); optional TransNetV2 fuse via `CLIPPER_USE_TRANSNET_CUTS=1` or `CLIPPER_ENABLE_SHADOW=1`
+- Shot boundaries on every decoded frame (histogram + frame-diff)
 - Detectors at **5 FPS** (200 ms cadence): SCRFD faces, YOLOX objects, MoveNet pose fallback
 - **ByteTrack v2** on three streams (person / face / pose); trackers reset on scene cuts
 - Cheap motion-grid saliency on every detection sample (no model)
@@ -152,21 +152,13 @@ Production models ship in [`src-tauri/resources/models/clipper-vision/`](src-tau
 | MoveNet MultiPose | Pose fallback; injects person boxes when YOLOX misses |
 | ByteTrack v2 | Stable `trackId` per stream; reset on scene cuts |
 
-Shadow models (off by default; set `CLIPPER_ENABLE_SHADOW=1`, or `CLIPPER_USE_TRANSNET_CUTS=1` for TransNet only):
-
-| Model | Role |
-|-------|------|
-| TransNetV2 | ML shot-boundary fuse alongside histogram cuts |
-| ViNet-S | Video saliency (`video-saliency` importance signal) |
-| OSNet | Re-ID embeddings for composition-memory association |
-
-`lr_asd_ava.onnx` is bundled and the TypeScript active-speaker policy exists, but native WinML inference is not wired yet. Motion-grid saliency always runs as a fallback when ViNet is off.
+`lr_asd_ava.onnx` is bundled and the TypeScript active-speaker policy exists, but native WinML inference is not wired yet. Cheap motion-grid saliency runs on every detection sample (no model).
 
 ### Identity and composition
 
 - `trackId` — ByteTrack trajectory on native detections
 - `canonicalId` — scene-local fusion of person + face + pose (Hungarian assignment)
-- `projectIdentityId` — clip-wide entity after full-clip observation (OSNet cosine or IoU fallback when shadow is on)
+- `projectIdentityId` — clip-wide entity after full-clip observation (IoU association)
 
 YOLOX person boxes enter composition memory only when corroborated by a face or pose (avoids graphics/mannequins). Composition memory biases salience across the clip without persisting biometric embeddings.
 
@@ -196,7 +188,7 @@ Headless benchmarks (`--benchmark-run`) evaluate reframe quality via focus-hit m
 
 ASR models (Parakeet, Whisper) download on first use into `%APPDATA%\com.openclipper.app\models\`. For local dev without CDN, place files under `public/models/<model-id>/` (see per-model READMEs there).
 
-WinML vision models ship in `src-tauri/resources/models/clipper-vision/`. After editing ONNX in `public/models/`, run `npm run clipper-vision:sync` before building.
+WinML vision models ship in `src-tauri/resources/models/clipper-vision/`.
 
 CDN publishing workflow: [`models_automation/README.md`](models_automation/README.md).
 

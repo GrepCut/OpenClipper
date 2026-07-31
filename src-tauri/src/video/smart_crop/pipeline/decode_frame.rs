@@ -8,7 +8,6 @@ use super::super::internal::{
     AnalysisFrame, FaceJob, FaceJobKind, ObjectFramePermit, ObjectJob, ObjectJobKind,
     DETECTION_FPS, FACE_BUCKET_INTERVAL, OBJECT_FRAME_CAPACITY,
 };
-use super::super::shadow::GeneralizationShadowRunner;
 use super::super::vision::NativeVisionError;
 use super::decode_session::{DecodeFrameState, DecodeSessionMeta};
 use super::setup::PipelineSetup;
@@ -16,11 +15,8 @@ use super::types::{NativeVisionProgress, RgbColor, StaticFeatureSample};
 use crate::video::ffmpeg::border::detect_border_features;
 use crate::video::ffmpeg::histogram::compute_autoflip_histogram_raw;
 
-/// Near-duplicate cut stamps (histogram + TransNet) collapse into one entry.
+/// Near-duplicate cut stamps collapse into one entry.
 const SCENE_CUT_DEDUPE_SEC: f64 = 0.15;
-/// TransNet scores the window center; only latch `pending_scene_cut` when that
-/// center is near the current detection sample.
-const TRANSNET_PENDING_SLACK_SEC: f64 = 0.3;
 /// Progress is for UI only. Sending it for every 200 ms sample creates
 /// thousands of WebView messages on long clips.
 const PROGRESS_SAMPLE_STRIDE: usize = 50;
@@ -44,7 +40,6 @@ pub(crate) fn process_decoded_frame(
     meta: &DecodeSessionMeta,
     decoded: &ffmpeg_next::frame::Video,
     setup: &mut PipelineSetup,
-    shadow_runner: &mut GeneralizationShadowRunner,
     cancelled: &Arc<AtomicBool>,
     progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<bool, NativeVisionError> {
@@ -74,7 +69,7 @@ pub(crate) fn process_decoded_frame(
     let relative = timestamp - meta.start_time;
     state.frame_timestamps.push(relative);
 
-    // Shot boundary on every decoded frame (AutoFlip cadence); ML stays sparse.
+    // Shot boundary on every decoded frame (AutoFlip cadence).
     {
         let started = Instant::now();
         state
@@ -131,23 +126,7 @@ pub(crate) fn process_decoded_frame(
         meta.rotation,
     );
     state.t_copy_rotate += started.elapsed().as_micros();
-    let transnet_cut_time = shadow_runner.push_frame(
-        &rgb,
-        width as usize,
-        height as usize,
-        relative,
-        state.pending_scene_cut,
-        None,
-        0,
-    );
-    if let Some(cut_time) = transnet_cut_time {
-        let near_now = (relative - cut_time).abs() <= TRANSNET_PENDING_SLACK_SEC;
-        record_scene_cut(state, cut_time, near_now);
-    }
-    let border = if state.sample_count < 3
-        || state.pending_scene_cut
-        || transnet_cut_time.is_some()
-        || state.last_border_features.is_none()
+    let border = if state.sample_count < 3 || state.pending_scene_cut || state.last_border_features.is_none()
     {
         let started = Instant::now();
         let b = detect_border_features(&rgb, width as usize * 3, width as usize, height as usize);

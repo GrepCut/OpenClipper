@@ -1,7 +1,6 @@
 use serde::Serialize;
 
 use super::super::internal::{ContentRect, NativeFaceBox};
-use super::super::shadow::GeneralizationShadowDiagnostics;
 use super::super::vision::NativeVisionDevice;
 use super::super::vision_logic::{
     AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection,
@@ -31,8 +30,6 @@ pub struct NativeSubjectSample {
     pub(crate) scene_cut: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) camera_motion_residual: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) reid_embedding: Option<Vec<f32>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -136,8 +133,6 @@ pub struct NativeVisionSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tracker_version: Option<&'static str>,
     pub(crate) metrics: NativeVisionMetrics,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) shadow_diagnostics: Option<GeneralizationShadowDiagnostics>,
 }
 
 #[derive(Clone, Serialize)]

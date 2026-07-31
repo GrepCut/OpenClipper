@@ -11,7 +11,6 @@ import {
 } from "../../../../shared/utils/tauri-native-jobs.util";
 import { FaceSampleCache } from "./cache.util";
 import type {
-  GeneralizationShadowDiagnostics,
   NativeVisionAnalysisSummary,
   NativeVisionCommandSummary,
   NativeVisionDevice,
