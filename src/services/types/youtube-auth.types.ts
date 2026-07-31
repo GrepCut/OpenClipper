@@ -9,8 +9,17 @@ export type YoutubePublishJobStatus =
 
 export type YoutubeConnectionReason = "no_refresh_token" | "api_check_failed";
 
+export interface SocialConnectionSummary {
+  id: string;
+  displayName: string | null;
+  externalAccountId: string | null;
+  googleEmail?: string | null;
+}
+
 export interface YoutubeStatusResponse {
+  connections: SocialConnectionSummary[];
   connected: boolean;
+  /** @deprecated Use connections[].displayName */
   channelTitle?: string;
   reason?: YoutubeConnectionReason;
 }
@@ -40,6 +49,7 @@ export interface YoutubePublishJobStatusResponse {
 export interface PublishClipperToYoutubeParams {
   projectId: string;
   exportId: string;
+  connectionId?: string;
   video: File;
   clipIndex: number;
   formatId: string;

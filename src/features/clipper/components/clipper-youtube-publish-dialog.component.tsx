@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Box,
   Button,
@@ -31,8 +31,10 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
   sourceFileName,
   defaultConnected,
   accountLabel,
+  accountConnections,
   publishPlatform: requestedPlatform,
   onRequestConnect,
+  onPublishComplete,
 }) => {
   const { theme } = useClipperUi();
   const publish = useClipperSocialPublish({
@@ -40,10 +42,27 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
     result,
     sourceFileName,
     defaultConnected,
+    accountConnections,
     requestedPlatform,
     projectId,
     onRequestConnect,
+    onPublishComplete,
   });
+
+  const activeAccountLabel = useMemo(() => {
+    const selected = publish.accountConnections.find(
+      (connection) => connection.id === publish.selectedConnectionId,
+    );
+    return (
+      selected?.displayName ??
+      selected?.googleEmail ??
+      accountLabel
+    );
+  }, [
+    publish.accountConnections,
+    publish.selectedConnectionId,
+    accountLabel,
+  ]);
 
   return (
     <StyledModal
@@ -81,14 +100,16 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
           <Box flex={1}>
             <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
               {defaultConnected
-                ? accountLabel
-                  ? `Connected: ${accountLabel}`
+                ? activeAccountLabel
+                  ? `Connected: ${activeAccountLabel}`
                   : `${publish.platformLabel} connected`
                 : `${publish.platformLabel} not connected`}
             </Text>
             <Text fontSize="xs" color={theme.text.muted}>
               {defaultConnected
-                ? "Upload uses your linked account."
+                ? publish.accountConnections.length > 1
+                  ? "Choose which linked account to publish to."
+                  : "Upload uses your linked account."
                 : "Connect your account before publishing."}
             </Text>
           </Box>
@@ -103,6 +124,38 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
             </Button>
           ) : null}
         </HStack>
+        ) : null}
+
+        {defaultConnected && publish.accountConnections.length > 1 ? (
+          <Box>
+            <Text fontSize="sm" mb={2} color={theme.text.distinct}>
+              Account
+            </Text>
+            <VStack align="stretch" gap={2}>
+              {publish.accountConnections.map((connection) => {
+                const selected = connection.id === publish.selectedConnectionId;
+                return (
+                  <Button
+                    key={connection.id}
+                    size="sm"
+                    justifyContent="flex-start"
+                    borderRadius="xl"
+                    variant={selected ? "solid" : "outline"}
+                    bg={selected ? clipperTheme.accent : "transparent"}
+                    color={theme.text.primary}
+                    borderColor={theme.surface.elevated}
+                    onClick={() => publish.setSelectedConnectionId(connection.id)}
+                    disabled={publish.isPublishing}
+                  >
+                    {connection.displayName ||
+                      connection.googleEmail ||
+                      connection.externalAccountId ||
+                      "Connected account"}
+                  </Button>
+                );
+              })}
+            </VStack>
+          </Box>
         ) : null}
 
         {!publish.isTikTok ? (

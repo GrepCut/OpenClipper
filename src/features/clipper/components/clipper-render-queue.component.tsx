@@ -10,6 +10,7 @@ import {
 } from "../shared/render-progress.util";
 import { CLIPPER_FORMAT_DEFS, getClipperFormatDef } from "../shared/formats.util";
 import { resultsForClip, sortExportsByDate } from "../shared/export-results.util";
+import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperClipPreview, ClipperFormatResult, ClipperPipelineState } from "../shared/state.util";
 import { ClipperExportFormatRow, type ClipperPublishTarget } from "./clipper-export-format-row.component";
 import { ClipperProgressBar } from "./clipper-progress-bar.component";
@@ -25,6 +26,7 @@ interface ClipperRenderQueueProps {
   onOpenFolder: () => void;
   onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
   onRerenderFormat: (formatId: string, clipIndex: number) => void;
+  onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
 }
 
 function clipTimeLabel(preview: ClipperClipPreview): string {
@@ -45,6 +47,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
   onOpenFolder,
   onPublish,
   onRerenderFormat,
+  onMetadataSaved,
 }) => {
   const { theme } = useClipperUi();
 
@@ -91,6 +94,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
         onOpenFolder={onOpenFolder}
         onPublish={onPublish}
         onRerender={onRerenderFormat}
+        onMetadataSaved={onMetadataSaved}
       />
     );
   };

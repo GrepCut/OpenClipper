@@ -34,6 +34,13 @@ export interface ClipperFormatResult {
   /** Present only for in-memory fallback exports. */
   blob?: Blob;
   file?: File;
+  transcriptPlain?: string;
+  transcriptTimestamped?: string;
+  socialTitle?: string;
+  socialShortDescription?: string;
+  socialDescription?: string;
+  socialDescriptionTimestamped?: string;
+  socialHashtags?: string;
 }
 
 export interface ClipperPipelineState {

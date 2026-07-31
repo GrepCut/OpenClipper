@@ -5,8 +5,10 @@ import { OutlinedActionButton } from "../../../shared/components/buttons/outline
 import { CLIPPER_FORMAT_DEFS, getClipperCardFrameSize } from "../shared/formats.util";
 import { formatBytes } from "../shared/logger.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
+import { ClipperExportMetadataPanel } from "./clipper-export-metadata-panel.component";
 
 export type ClipperPublishTarget = "facebook" | "instagram" | "tiktok" | "youtube" | "x";
 
@@ -25,6 +27,7 @@ interface ClipperExportFormatRowProps {
   onOpenFolder: () => void;
   onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
   onRerender: (formatId: string, clipIndex: number) => void;
+  onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
 }
 
 function formatExportedAt(exportedAt: string): string {
@@ -40,6 +43,7 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
   onOpenFolder,
   onPublish,
   onRerender,
+  onMetadataSaved,
 }) => {
   const { theme } = useClipperUi();
   const frame = getClipperCardFrameSize(result.formatId, THUMB_HEIGHT);
@@ -107,34 +111,37 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
         </Box>
       </Flex>
 
-      <HStack align="center" gap={2} flex={1} minW={0}>
-        <Flex
-          w={`${PLATFORM_ICON_SIZE}px`}
-          minW={`${PLATFORM_ICON_SIZE}px`}
-          h={`${PLATFORM_ICON_SIZE}px`}
-          align="center"
-          justify="center"
-          flexShrink={0}
-        >
-          <ClipperPlatformIcon platform={result.platform} size={PLATFORM_ICON_SIZE} />
-        </Flex>
-        <VStack align="start" gap={1} flex={1} minW={0}>
-          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
-            {result.label}
-          </Text>
-          <Text fontSize="xs" color={theme.text.muted}>
-            {clipLabel}
-            {isMissing ? " · Lost media" : ""}
-            {" · "}
-            {result.width}×{result.height} · {formatBytes(result.fileSize)}
-          </Text>
-          {exportedAtLabel ? (
-            <Text fontSize="xs" color={theme.text.muted}>
-              Exported {exportedAtLabel}
+      <VStack align="stretch" gap={0} flex={1} minW={0}>
+        <HStack align="center" gap={2} w="full">
+          <Flex
+            w={`${PLATFORM_ICON_SIZE}px`}
+            minW={`${PLATFORM_ICON_SIZE}px`}
+            h={`${PLATFORM_ICON_SIZE}px`}
+            align="center"
+            justify="center"
+            flexShrink={0}
+          >
+            <ClipperPlatformIcon platform={result.platform} size={PLATFORM_ICON_SIZE} />
+          </Flex>
+          <VStack align="start" gap={1} flex={1} minW={0}>
+            <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
+              {result.label}
             </Text>
-          ) : null}
-        </VStack>
-      </HStack>
+            <Text fontSize="xs" color={theme.text.muted}>
+              {clipLabel}
+              {isMissing ? " · Lost media" : ""}
+              {" · "}
+              {result.width}×{result.height} · {formatBytes(result.fileSize)}
+            </Text>
+            {exportedAtLabel ? (
+              <Text fontSize="xs" color={theme.text.muted}>
+                Exported {exportedAtLabel}
+              </Text>
+            ) : null}
+          </VStack>
+        </HStack>
+        <ClipperExportMetadataPanel result={result} onMetadataSaved={onMetadataSaved} />
+      </VStack>
 
       <VStack
         align="stretch"

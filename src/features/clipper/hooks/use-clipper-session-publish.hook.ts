@@ -4,6 +4,7 @@ import { youtubeAuthService } from "../../../services/youtube-auth.service";
 import {
   oauthFlowForPlatform,
   socialAuthService,
+  type SocialConnectionSummary,
   type SocialPublishablePlatform,
 } from "../../../services/social-auth.service";
 import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
@@ -32,11 +33,8 @@ export function useClipperSessionPublish({
   const [queuePublishTargetPlatform, setQueuePublishTargetPlatform] =
     useState<ClipperPublishTarget>("youtube");
 
-  const {
-    isConnected: isYoutubeConnected,
-    channelTitle: youtubeChannelTitle,
-    refreshStatus: refreshYoutubeStatus,
-  } = useYoutubeStore();
+  const youtubeConnections = useYoutubeStore((s) => s.connections);
+  const refreshYoutubeStatus = useYoutubeStore((s) => s.refreshStatus);
   const socialPlatforms = useSocialStore((s) => s.platforms);
   const refreshSocial = useSocialStore((s) => s.refreshAll);
 
@@ -79,18 +77,17 @@ export function useClipperSessionPublish({
   }, [queuePublishTarget, queuePublishTargetPlatform]);
 
   const queuePublishConnection = useMemo(() => {
-    if (queuePublishPlatform === "youtube") {
-      return {
-        connected: isYoutubeConnected,
-        accountLabel: youtubeChannelTitle,
-      };
-    }
-    const platformState = socialPlatforms[queuePublishPlatform];
+    const connections: SocialConnectionSummary[] =
+      queuePublishPlatform === "youtube"
+        ? youtubeConnections
+        : socialPlatforms[queuePublishPlatform]?.connections ?? [];
+
     return {
-      connected: platformState?.connected ?? false,
-      accountLabel: platformState?.displayName ?? null,
+      connected: connections.length > 0,
+      accountLabel: connections[0]?.displayName ?? null,
+      accountConnections: connections,
     };
-  }, [queuePublishPlatform, isYoutubeConnected, youtubeChannelTitle, socialPlatforms]);
+  }, [queuePublishPlatform, youtubeConnections, socialPlatforms]);
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;

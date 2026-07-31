@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
 import { FolderOpen } from "lucide-react";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { ClipperExportHistoryList } from "./clipper-export-history-list.component";
 import type { ClipperPublishTarget } from "./clipper-export-format-row.component";
@@ -25,6 +26,7 @@ interface ClipperExportsViewProps {
   sourceFileName: string | null;
   projectId: string;
   onRefreshHistory: () => void;
+  onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
 }
 
 export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
@@ -32,6 +34,7 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
   sourceFileName,
   projectId,
   onRefreshHistory,
+  onMetadataSaved,
 }) => {
   const { theme, outlineButton } = useClipperUi();
   const navigate = useNavigate();
@@ -42,8 +45,8 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
   );
   const totalExports = exportHistory.length;
   const {
+    connections: youtubeConnections,
     isConnected: isYoutubeConnected,
-    channelTitle: youtubeChannelTitle,
     refreshStatus: refreshYoutubeStatus,
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((s) => s.platforms);
@@ -69,22 +72,24 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
     return publishTargetPlatform;
   }, [publishTarget, publishTargetPlatform]);
 
-  const { connected, accountLabel } = useMemo(() => {
+  const { connected, accountLabel, accountConnections } = useMemo(() => {
     if (publishPlatform === "youtube") {
       return {
         connected: isYoutubeConnected,
-        accountLabel: youtubeChannelTitle,
+        accountLabel: youtubeConnections[0]?.displayName ?? null,
+        accountConnections: youtubeConnections,
       };
     }
     const state = socialPlatforms[publishPlatform];
     return {
       connected: state?.connected ?? false,
       accountLabel: state?.displayName ?? null,
+      accountConnections: state?.connections ?? [],
     };
   }, [
     publishPlatform,
     isYoutubeConnected,
-    youtubeChannelTitle,
+    youtubeConnections,
     socialPlatforms,
   ]);
 
@@ -153,6 +158,7 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
           setPublishTargetPlatform(target);
           setPublishTarget(result);
         }}
+        onMetadataSaved={onMetadataSaved}
       />
 
       <ClipperSocialPublishDialog
@@ -163,6 +169,7 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
         sourceFileName={sourceFileName}
         defaultConnected={connected}
         accountLabel={accountLabel}
+        accountConnections={accountConnections}
         publishPlatform={publishPlatform}
         onRequestConnect={handleRequestConnect}
       />

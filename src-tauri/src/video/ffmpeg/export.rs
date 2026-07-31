@@ -437,8 +437,7 @@ pub fn export_format_native_blocking(
     };
 
     let caption_overlay_dir = temp_dir.join("caption_frames");
-    let caption_overlay_pattern = caption_overlay_dir.join("captions_%06d.png");
-    let caption_fps = if let Some(json) = caption_scene_json.filter(|j| !j.trim().is_empty()) {
+    let caption_overlay = if let Some(json) = caption_scene_json.filter(|j| !j.trim().is_empty()) {
         let scene: CaptionScene = serde_json::from_str(json)
             .map_err(|e| format!("Invalid caption scene JSON: {e}"))?;
         let fonts_dir = resource_fonts_dir(app);
@@ -449,7 +448,7 @@ pub fn export_format_native_blocking(
             &caption_overlay_dir,
             duration_sec,
         )?;
-        Some((spec.fps, spec.frame_count))
+        Some((spec.dir.join(&spec.pattern), spec.fps, spec.frame_count))
     } else {
         None
     };
@@ -458,12 +457,8 @@ pub fn export_format_native_blocking(
     let (filter_complex, map_args) = build_filter_complex(
         timeline,
         ass_path.as_deref(),
-        if caption_fps.is_some() {
-            Some(caption_overlay_pattern.as_path())
-        } else {
-            None
-        },
-        caption_fps.map(|(fps, _)| fps),
+        caption_overlay.as_ref().map(|(path, _, _)| path.as_path()),
+        caption_overlay.as_ref().map(|(_, fps, _)| *fps),
         mute_audio,
         has_audio,
     )?;
@@ -482,17 +477,14 @@ pub fn export_format_native_blocking(
         "-i".into(),
         input_path.to_string_lossy().to_string(),
     ];
-    if let Some((fps, _frame_count)) = caption_fps {
+    if let Some((overlay_path, fps, _frame_count)) = &caption_overlay {
         args.extend([
             "-framerate".into(),
             format!("{fps:.3}"),
             "-start_number".into(),
             "0".into(),
             "-i".into(),
-            caption_overlay_dir
-                .join("captions_%06d.png")
-                .to_string_lossy()
-                .to_string(),
+            overlay_path.to_string_lossy().to_string(),
         ]);
     }
     args.extend([

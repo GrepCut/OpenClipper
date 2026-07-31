@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, VStack } from "@chakra-ui/react";
 import { deriveRegionsFromLayoutTracks } from "../../engine/reframe/collage";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
@@ -50,10 +50,17 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     onAutoPartsSegmentLengthChange,
     onResetAutoParts,
     autoPartsResegmenting,
+    settingsDrawerVisible = true,
   } = props;
 
   const { theme } = useClipperUi();
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<ClipperSettingsDrawerPanel | null>(null);
+
+  useEffect(() => {
+    if (!settingsDrawerVisible) {
+      setActiveSettingsPanel(null);
+    }
+  }, [settingsDrawerVisible]);
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>(
     clipSourceMode === "ai" ? "ai" : "auto-parts",
   );
@@ -186,6 +193,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
         settings={settings}
         words={activeClip?.words ?? []}
         onUpdateSettings={onUpdateSettings}
+        visible={settingsDrawerVisible}
       />
     </VStack>
   );

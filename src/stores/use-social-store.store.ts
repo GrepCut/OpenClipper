@@ -1,8 +1,12 @@
 import { create } from "zustand";
 import { socialAuthService } from "../services/social-auth.service";
-import type { SocialPublishablePlatform } from "../services/types/social-auth.types";
+import type {
+  SocialConnectionSummary,
+  SocialPublishablePlatform,
+} from "../services/types/social-auth.types";
 
 type PlatformState = {
+  connections: SocialConnectionSummary[];
   connected: boolean;
   displayName: string | null;
   isChecking: boolean;
@@ -12,14 +16,14 @@ type SocialStore = {
   platforms: Record<SocialPublishablePlatform, PlatformState>;
   refreshStatus: (platform: SocialPublishablePlatform) => Promise<void>;
   refreshAll: () => Promise<void>;
-  setConnected: (
+  setConnections: (
     platform: SocialPublishablePlatform,
-    connected: boolean,
-    displayName?: string | null,
+    connections: SocialConnectionSummary[],
   ) => void;
 };
 
 const empty = (): PlatformState => ({
+  connections: [],
   connected: false,
   displayName: null,
   isChecking: false,
@@ -36,14 +40,15 @@ const INITIAL: Record<SocialPublishablePlatform, PlatformState> = {
 export const useSocialStore = create<SocialStore>((set, get) => ({
   platforms: INITIAL,
 
-  setConnected: (platform, connected, displayName = null) => {
+  setConnections: (platform, connections) => {
     set((state) => ({
       platforms: {
         ...state.platforms,
         [platform]: {
           ...state.platforms[platform],
-          connected,
-          displayName,
+          connections,
+          connected: connections.length > 0,
+          displayName: connections[0]?.displayName ?? null,
           isChecking: false,
         },
       },
@@ -59,13 +64,9 @@ export const useSocialStore = create<SocialStore>((set, get) => ({
     }));
     try {
       const status = await socialAuthService.checkConnection(platform);
-      get().setConnected(
-        platform,
-        status.connected,
-        status.displayName ?? null,
-      );
+      get().setConnections(platform, status.connections ?? []);
     } catch {
-      get().setConnected(platform, false, null);
+      get().setConnections(platform, []);
     }
   },
 

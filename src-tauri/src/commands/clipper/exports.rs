@@ -1,0 +1,142 @@
+use tauri::State;
+
+use crate::storage::database::LocalDb;
+use crate::storage::export_cleanup;
+use crate::storage::repository::export_map_repository::{
+    ClipperExportMapItem, ExportMapRepository,
+};
+use crate::storage::repository::export_publish_repository::{
+    ClipperExportPublishRecord, ClipperExportPublishUpsertInput, ExportPublishRepository,
+};
+use crate::storage::repository::export_repository::{
+    ClipperExportRecord, ClipperExportSocialPatch, ClipperExportUpsertInput, ExportRepository,
+    SocialPatchMode,
+};
+
+#[tauri::command]
+pub async fn clipper_export_upsert(
+    db: State<'_, LocalDb>,
+    project_id: String,
+    export: ClipperExportUpsertInput,
+) -> Result<ClipperExportRecord, String> {
+    ExportRepository::upsert(&db.database, &project_id, export)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn clipper_exports_list(
+    db: State<'_, LocalDb>,
+    project_id: String,
+) -> Result<Vec<ClipperExportRecord>, String> {
+    ExportRepository::list_by_project(&db.database, &project_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn clipper_export_get(
+    db: State<'_, LocalDb>,
+    export_id: String,
+) -> Result<ClipperExportRecord, String> {
+    ExportRepository::get_by_id(&db.database, &export_id)
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?
+        .ok_or_else(|| format!("Export not found: {export_id}"))
+}
+
+#[tauri::command]
+pub async fn clipper_exports_list_all(
+    db: State<'_, LocalDb>,
+    project_id: Option<String>,
+) -> Result<Vec<ClipperExportMapItem>, String> {
+    ExportMapRepository::list_all(&db.database, project_id.as_deref())
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clipper_export_publish_upsert(
+    db: State<'_, LocalDb>,
+    publish: ClipperExportPublishUpsertInput,
+) -> Result<ClipperExportPublishRecord, String> {
+    ExportPublishRepository::upsert(&db.database, publish)
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clipper_export_publishes_list(
+    db: State<'_, LocalDb>,
+    export_id: String,
+) -> Result<Vec<ClipperExportPublishRecord>, String> {
+    ExportPublishRepository::list_by_export_id(&db.database, &export_id)
+        .await
+        .map_err(|e: crate::infra::error::DbError| e.to_string())
+}
+
+#[tauri::command]
+pub async fn clipper_export_patch_social(
+    db: State<'_, LocalDb>,
+    export_id: String,
+    patch: ClipperExportSocialPatch,
+    mode: SocialPatchMode,
+) -> Result<ClipperExportRecord, String> {
+    ExportRepository::patch_social_metadata(&db.database, &export_id, patch, mode)
+        .await
+        .map_err(Into::into)
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipperExportsPurgeResult {
+    pub removed_missing_on_disk: usize,
+    pub removed_orphaned_projects: u64,
+}
+
+#[tauri::command]
+pub async fn clipper_exports_purge_missing(
+    app: tauri::AppHandle,
+    db: State<'_, LocalDb>,
+    project_id: Option<String>,
+) -> Result<ClipperExportsPurgeResult, String> {
+    let removed_missing_on_disk = export_cleanup::purge_missing_on_disk(
+        &app,
+        &db.database,
+        project_id.as_deref(),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    let removed_orphaned_projects =
+        export_cleanup::delete_orphaned_project_exports(&db.database)
+            .await
+            .map_err(|error| error.to_string())?;
+
+    Ok(ClipperExportsPurgeResult {
+        removed_missing_on_disk,
+        removed_orphaned_projects,
+    })
+}
+
+#[tauri::command]
+pub fn get_open_clipper_mcp_http_url(mcp: State<'_, crate::mcp::McpHttpServer>) -> String {
+    mcp.base_url.clone()
+}
+
+#[tauri::command]
+pub fn get_open_clipper_mcp_path() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe.parent().ok_or_else(|| "Cannot resolve app directory".to_string())?;
+    let mcp_name = if cfg!(windows) {
+        "open-clipper-mcp.exe"
+    } else {
+        "open-clipper-mcp"
+    };
+    let path = dir.join(mcp_name);
+    if path.exists() {
+        Ok(path.to_string_lossy().into_owned())
+    } else {
+        Ok(path.to_string_lossy().into_owned())
+    }
+}

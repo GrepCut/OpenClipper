@@ -11,14 +11,17 @@ import {
   flushClipperProjectSettingsSave,
   scheduleClipperProjectSettingsSave,
 } from "../../persistence/settings-autosave.util";
-import { fetchClipperExports } from "../../persistence/clipper-db-api.util";
+import {
+  fetchClipperExportRecords,
+} from "./export-manifest-resolve.util";
+import { loadClipperExportsFromDb } from "../../persistence/clipper-export-db-load.util";
 import type { ClipperProjectMetadata } from "../../persistence/project-metadata.util";
-import { loadClipperExportsFromManifest } from "../../persistence/export-files.util";
 import { releasePlayableMediaUrl } from "../../persistence/tauri-media.util";
 import { deriveInitialPipelineState } from "../../pipeline/resume.util";
 import { DEFAULT_CLIPPER_SETTINGS, type ClipperSettings } from "../../settings/settings.util";
 import { saveClipperSettings } from "../../settings/settings-storage.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
+import type { ExportSocialFields } from "../../persistence/clipper-export-social.util";
 import type { ClipperStage } from "../../shared/stages.util";
 import type { ClipperLoadedProject } from "../use-clipper-project-loader.hook";
 import type { Project } from "../../../../services/projects.service";
@@ -29,7 +32,6 @@ import {
   METADATA_IMMEDIATE_FLUSH_STAGES,
   type ClipperPipelineRefs,
 } from "./clipper-pipeline.types";
-import { resolveClipperExportManifest } from "./export-manifest-resolve.util";
 
 export interface UseClipperPipelineCoreResult {
   projectId: string;
@@ -54,6 +56,7 @@ export interface UseClipperPipelineCoreResult {
   reset: () => void;
   setActiveClipIndex: (index: number) => void;
   hydrateExportsFromDisk: () => Promise<ClipperFormatResult[]>;
+  updateExportMetadata: (exportId: string, fields: ExportSocialFields) => void;
 }
 
 export function useClipperPipelineCore(
@@ -82,10 +85,7 @@ export function useClipperPipelineCore(
   } = refs;
 
   const hydrateExportsFromDisk = useCallback(async (): Promise<ClipperFormatResult[]> => {
-    const manifest = await resolveClipperExportManifest(project.id);
-    if (!manifest?.exports.length) return [];
-
-    const restored = await loadClipperExportsFromManifest(project.id, manifest);
+    const restored = await loadClipperExportsFromDb(project.id);
     if (!restored.length) return [];
 
     for (const r of restored) {
@@ -202,6 +202,23 @@ export function useClipperPipelineCore(
     [activeClipIndexRef, persistMetadata, sessionRef],
   );
 
+  const updateExportMetadata = useCallback(
+    (exportId: string, fields: ExportSocialFields) => {
+      patchPipelineState(setState, (draft) => {
+        draft.exportHistory = draft.exportHistory.map((entry) =>
+          entry.id === exportId ? { ...entry, ...fields } : entry,
+        );
+        draft.clipPreviews = draft.clipPreviews.map((preview) => ({
+          ...preview,
+          results: preview.results.map((entry) =>
+            entry.id === exportId ? { ...entry, ...fields } : entry,
+          ),
+        }));
+      });
+    },
+    [setState],
+  );
+
   useEffect(() => {
     if (!loaded) return;
     void hydrateExportsFromDisk();
@@ -209,7 +226,7 @@ export function useClipperPipelineCore(
 
   useEffect(() => {
     if (!loaded) return;
-    void fetchClipperExports(project.id)
+    void fetchClipperExportRecords(project.id)
       .then((exports) => setPersistedExportCount(exports.length))
       .catch(() => setPersistedExportCount(0));
   }, [loaded, project.id]);
@@ -251,5 +268,6 @@ export function useClipperPipelineCore(
     reset,
     setActiveClipIndex,
     hydrateExportsFromDisk,
+    updateExportMetadata,
   };
 }

@@ -26,6 +26,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     confirmRange,
     rerenderFormat,
     refreshExportHistory,
+    updateExportMetadata,
     reset,
     sourceUrl,
     rangeLocked,
@@ -79,7 +80,10 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
 
       {visibility.previewKeepAlive && (
         <Box display={visibility.showPreview ? undefined : "none"} w="full" h="full">
-          <ClipperSessionPreviewPanel session={session} />
+          <ClipperSessionPreviewPanel
+            session={session}
+            settingsDrawerVisible={visibility.showPreview}
+          />
         </Box>
       )}
 
@@ -129,6 +133,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onOpenFolder={handleOpenExportsFolder}
           onPublish={publish.openPublishDialog}
           onRerenderFormat={(formatId, clipIndex) => void rerenderFormat(formatId, clipIndex)}
+          onMetadataSaved={updateExportMetadata}
         />
         </>
       )}
@@ -139,6 +144,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           sourceFileName={state.sourceFileName}
           projectId={project.id}
           onRefreshHistory={refreshExportHistory}
+          onMetadataSaved={updateExportMetadata}
         />
       )}
 
@@ -150,6 +156,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
         sourceFileName={state.sourceFileName}
         defaultConnected={publish.queuePublishConnection.connected}
         accountLabel={publish.queuePublishConnection.accountLabel}
+        accountConnections={publish.queuePublishConnection.accountConnections}
         publishPlatform={publish.queuePublishPlatform}
         onRequestConnect={publish.handleRequestConnect}
       />

@@ -139,26 +139,6 @@ export async function appendClipperExportManifestEntry(
     version: CLIPPER_EXPORT_MANIFEST_VERSION,
     exports: nextExports,
   });
-
-  void import("./clipper-db-api.util")
-    .then(({ createClipperExport }) =>
-      createClipperExport(projectId, {
-        id: entry.id,
-        clipIndex: entry.clipIndex,
-        formatId: entry.formatId,
-        fileName: entry.fileName,
-        relativePath: entry.relativePath,
-        width: entry.width,
-        height: entry.height,
-        fileSize: entry.fileSize,
-        exportedAt: entry.exportedAt,
-        clipStartSec: entry.clipStartSec,
-        clipEndSec: entry.clipEndSec,
-      }),
-    )
-    .catch((error) => {
-      clipperWarn("export manifest: DB create failed", { projectId, error });
-    });
 }
 
 function manifestEntryToMissingResult(

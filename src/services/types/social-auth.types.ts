@@ -5,7 +5,7 @@ export type SocialPublishablePlatform =
   | "tiktok"
   | "x";
 
-export type SocialOAuthFlow = "meta" | "instagram" | "tiktok" | "x";
+export type SocialOAuthFlow = "youtube" | "meta" | "instagram" | "tiktok" | "x";
 
 export type SocialPublishJobStatus =
   | "pending"
@@ -16,7 +16,15 @@ export type SocialPublishJobStatus =
 
 export type SocialPrivacyStatus = "private" | "unlisted" | "public";
 
+export interface SocialConnectionSummary {
+  id: string;
+  displayName: string | null;
+  externalAccountId: string | null;
+  googleEmail?: string | null;
+}
+
 export interface SocialStatusResponse {
+  connections: SocialConnectionSummary[];
   connected: boolean;
   displayName?: string;
   reason?: string;
@@ -36,6 +44,7 @@ export interface MetaTargetsResponse {
   selectionRequired: boolean;
   profileName: string | null;
   targets: MetaPublishTarget[];
+  metaConnectionId: string | null;
 }
 
 export interface SocialPublishResponse {
@@ -59,6 +68,7 @@ export interface SocialPublishJobStatusResponse {
 
 export interface PublishClipperToSocialParams {
   platform: SocialPublishablePlatform;
+  connectionId?: string;
   projectId: string;
   exportId: string;
   video: File;
@@ -108,6 +118,7 @@ export interface TikTokPostOptions {
 export interface PublishClipperToTikTokParams {
   projectId: string;
   exportId: string;
+  connectionId?: string;
   clipIndex: number;
   formatId: string;
   video: File;
@@ -137,7 +148,7 @@ export function publishPlatformForFormat(
 /** OAuth flow used to connect a publish platform. */
 export function oauthFlowForPlatform(
   platform: SocialPublishablePlatform,
-): SocialOAuthFlow | "youtube" {
+): SocialOAuthFlow {
   if (platform === "facebook") return "meta";
   if (platform === "instagram") return "instagram";
   if (platform === "youtube") return "youtube";

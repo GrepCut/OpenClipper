@@ -1,8 +1,9 @@
 mod app;
 mod clipper;
 mod commands;
-mod infra;
-mod storage;
+pub mod infra;
+pub mod mcp;
+pub mod storage;
 pub mod transcription;
 mod video;
 

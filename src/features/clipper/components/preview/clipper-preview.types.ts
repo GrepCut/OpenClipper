@@ -51,6 +51,8 @@ export interface ClipperPreviewProps {
   onAutoPartsSegmentLengthChange: (lengthSec: AutoPartsSegmentLengthSec) => void;
   onResetAutoParts?: () => void;
   autoPartsResegmenting?: boolean;
+  /** Show the captions settings drawer and T trigger (preview screen only). */
+  settingsDrawerVisible?: boolean;
 }
 
 export interface UseClipperPreviewPlaybackParams {

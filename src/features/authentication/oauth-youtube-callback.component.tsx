@@ -30,10 +30,7 @@ export function OAuthYoutubeCallback() {
     console.log("[YouTube Auth] Verifying YouTube connection after OAuth…");
     const statusResponse = await youtubeAuthService.checkYoutubeConnection();
     console.log("[YouTube Auth] Verification status response", statusResponse);
-    useYoutubeStore.getState().setConnected(
-      statusResponse.connected,
-      statusResponse.channelTitle ?? null,
-    );
+    useYoutubeStore.getState().setConnections(statusResponse.connections ?? []);
 
     if (!statusResponse.connected) {
       console.error("[YouTube Auth] Verification failed: connected=false", statusResponse);

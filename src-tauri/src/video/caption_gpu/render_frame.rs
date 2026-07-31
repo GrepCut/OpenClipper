@@ -47,71 +47,6 @@ pub fn probe_caption_gpu() -> bool {
     })
 }
 
-pub fn render_hello_png(path: &Path) -> Result<(), String> {
-    let mut ctx = CaptionGpuContext::new(None)?;
-    let scene = CaptionScene {
-        output_width: 640,
-        output_height: 360,
-        fps: 30.0,
-        preset_id: "hello".into(),
-        font_family: "Inter".into(),
-        font_weight: 700,
-        font_style: "normal".into(),
-        font_size_ratio: 0.08,
-        line_height_ratio: 1.1,
-        word_gap_em: 0.22,
-        letter_spacing_em: 0.0,
-        uppercase: false,
-        max_width_ratio: 0.9,
-        anchor_y: 0.5,
-        text_color: "#FFFFFF".into(),
-        active_text_color: "#FFE45E".into(),
-        active_color: "#FFE45E".into(),
-        outline_color: "#000000".into(),
-        outline_width_em: 0.08,
-        shadow_color: "#000000".into(),
-        shadow_blur_em: 0.12,
-        shadow_offset_x_em: 0.04,
-        shadow_offset_y_em: 0.04,
-        plate_style: CaptionPlateStyle::Group,
-        plate_color: "#111111".into(),
-        plate_opacity: 0.72,
-        plate_radius_em: 0.18,
-        plate_padding_x_em: 0.35,
-        plate_padding_y_em: 0.18,
-        active_effect: CaptionActiveEffect::Color,
-        active_gradient: None,
-        active_padding_x_em: 0.2,
-        active_padding_y_em: 0.1,
-        active_radius_em: 0.2,
-        active_transition_sec: 0.12,
-        active_scale: 1.08,
-        active_rotation_deg: 0.0,
-        entrance: crate::video::caption_gpu::scene::CaptionEntrance::GroupFade,
-        entrance_duration_sec: 0.2,
-        entrance_scale_from: 1.0,
-        entrance_blur_em: 0.0,
-        inactive_opacity: 1.0,
-        active_outline_width_em: None,
-        group_scale_to: None,
-        secondary_font_family: None,
-        secondary_font_size_scale: None,
-        accent_colors: vec![],
-        renderer: CaptionRendererKind::Phrase,
-        groups: vec![crate::video::caption_gpu::scene::CaptionSceneGroup {
-            start: 0.0,
-            end: 2.0,
-            words: vec![crate::video::caption_gpu::scene::CaptionSceneWord {
-                text: "GPU captions".into(),
-                start: 0.0,
-                end: 2.0,
-            }],
-        }],
-    };
-    let rgba = render_scene_frame(&mut ctx, &scene, 0.5)?;
-    save_png(path, &rgba, scene.output_width, scene.output_height)
-}
-
 impl CaptionGpuContext {
     pub fn new(resource_fonts_dir: Option<&Path>) -> Result<Self, String> {
         let (device, queue) =
@@ -255,7 +190,7 @@ fn render_karaoke_frame(
     draw_plate(base, width, height, scene, &layout, group_alpha);
 
     let mut texts = Vec::new();
-    let mut transforms = Vec::new();
+    let transforms = Vec::new();
     for line in &layout.lines {
         for placement in &line.words {
             let word = &group.words[placement.index];

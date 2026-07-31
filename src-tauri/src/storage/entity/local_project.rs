@@ -21,6 +21,8 @@ pub struct Model {
     pub created_at: String,
     #[sea_orm(indexed, column_type = "Text")]
     pub updated_at: String,
+    #[sea_orm(indexed, column_type = "Text", nullable)]
+    pub clipper_owner_id: Option<String>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -40,6 +40,13 @@ export interface ClipperSocialPublishDialogProps {
   sourceFileName: string | null;
   defaultConnected: boolean;
   accountLabel: string | null;
+  accountConnections: Array<{
+    id: string;
+    displayName: string | null;
+    externalAccountId: string | null;
+    googleEmail?: string | null;
+  }>;
   publishPlatform?: SocialPublishablePlatform;
   onRequestConnect: (platform: SocialPublishablePlatform) => void;
+  onPublishComplete?: (record: import("../persistence/clipper-export-db-api.util").ClipperExportPublishRecord) => void;
 }

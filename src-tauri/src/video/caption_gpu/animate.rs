@@ -36,6 +36,7 @@ pub fn ease_out_back(progress: f64) -> f64 {
 pub struct WordMotion {
     pub opacity: f64,
     pub scale: f64,
+    #[allow(dead_code)]
     pub blur_em: f64,
     pub translate_y_em: f64,
 }

@@ -120,6 +120,8 @@ interface ClipperSettingsDrawerProps {
   settings: ClipperSettings;
   words: WordCue[];
   onUpdateSettings: (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => void;
+  /** When false, hides the T trigger and captions drawer (e.g. off the preview screen). */
+  visible?: boolean;
 }
 
 export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
@@ -128,10 +130,15 @@ export const ClipperSettingsDrawer: React.FC<ClipperSettingsDrawerProps> = ({
   settings,
   words,
   onUpdateSettings,
+  visible = true,
 }) => {
   const { theme, scrollbarCss } = useClipperUi();
-  const open = activePanel !== null;
+  const open = visible && activePanel !== null;
   const panelTitle = "Captions";
+
+  if (!visible) {
+    return null;
+  }
 
   return (
     <>

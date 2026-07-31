@@ -20,6 +20,8 @@ import {
 } from "../components/clipper-home-nav-toggle.component";
 import { ClipperIntegrationsView } from "../components/clipper-integrations-view.component";
 import { ClipperHomeSettingsView } from "../components/clipper-home-settings-view.component";
+import { ClipperPublishView } from "../components/clipper-publish-view.component";
+import { ClipperOwnersView } from "../components/clipper-owners-view.component";
 import { CreateClipperProjectModal } from "./create-clipper-project-modal.component";
 import { ClipperTauriGate } from "./clipper-tauri-gate.component";
 import { openClipperProjectsDir } from "../persistence/project-data-files.util";
@@ -44,7 +46,9 @@ export function ClipperHomePage() {
     const requested = searchParams.get("tab");
     if (
       requested !== "integrations" &&
-      requested !== "settings"
+      requested !== "settings" &&
+      requested !== "publish" &&
+      requested !== "owners"
     ) {
       return;
     }
@@ -103,6 +107,10 @@ export function ClipperHomePage() {
           <ClipperIntegrationsView />
         ) : activeTab === "settings" ? (
           <ClipperHomeSettingsView />
+        ) : activeTab === "publish" ? (
+          <ClipperPublishView />
+        ) : activeTab === "owners" ? (
+          <ClipperOwnersView />
         ) : (
           <VStack align="stretch" gap={8} flex="1" minH={0}>
             <HStack justify="space-between" align="start" flexWrap="wrap" gap={4} flexShrink={0}>

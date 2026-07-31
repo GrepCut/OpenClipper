@@ -25,6 +25,7 @@ const FLOW_VERIFY_PLATFORMS: Record<
   SocialOAuthFlow,
   SocialPublishablePlatform[]
 > = {
+  youtube: ["youtube"],
   meta: ["facebook", "instagram"],
   instagram: ["instagram"],
   tiktok: ["tiktok"],
@@ -32,6 +33,7 @@ const FLOW_VERIFY_PLATFORMS: Record<
 };
 
 const FLOW_LABELS: Record<SocialOAuthFlow, string> = {
+  youtube: "YouTube",
   meta: "Meta",
   instagram: "Instagram",
   tiktok: "TikTok",
@@ -60,11 +62,7 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
         const statusResponse = await socialAuthService.checkConnection(platform);
         useSocialStore
           .getState()
-          .setConnected(
-            platform,
-            statusResponse.connected,
-            statusResponse.displayName ?? null,
-          );
+          .setConnections(platform, statusResponse.connections ?? []);
         if (statusResponse.connected) anyConnected = true;
       }
       if (!anyConnected) {

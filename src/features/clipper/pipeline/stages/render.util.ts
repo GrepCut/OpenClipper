@@ -3,16 +3,18 @@ import type { ClipperFormatResult } from "../../shared/state.util";
 import { resolveClipperOutputSize } from "../../engine/render/frame-draw.util";
 import { renderClipperFormat, type ClipperClipWindow } from "../../engine/render/index";
 import type { ClipperFrameContext } from "../../engine/render/index";
-import { clipperError, clipperTimer, clipperWarn } from "../../shared/logger.util";
+import { isTauri } from "../../../../shared/utils/platform.util";
+import { clipperError, clipperTimer } from "../../shared/logger.util";
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
-import { findClipByIndex } from "../../engine/segmentation";
+import { findClipByIndex, type ClipperGeneratedClip } from "../../engine/segmentation";
 import {
-  appendClipperExportManifestEntry,
   buildClipperExportFileName,
   createClipperExportId,
   createClipperExportSink,
 } from "../../persistence/export-files.util";
+import { persistClipperExport } from "../../persistence/clipper-export-persist.util";
+import type { ClipperExportRecord } from "../../persistence/clipper-export-db-api.util";
 export interface RenderStageInput {
   projectId: string;
   enabledFormatIds: string[];
@@ -32,11 +34,35 @@ function trackPreviewUrl(previewUrl: string, previewUrls: string[]): void {
   }
 }
 
+function metadataFromRecord(
+  record: ClipperExportRecord,
+): Pick<
+  ClipperFormatResult,
+  | "transcriptPlain"
+  | "transcriptTimestamped"
+  | "socialTitle"
+  | "socialShortDescription"
+  | "socialDescription"
+  | "socialDescriptionTimestamped"
+  | "socialHashtags"
+> {
+  return {
+    transcriptPlain: record.transcriptPlain,
+    transcriptTimestamped: record.transcriptTimestamped,
+    socialTitle: record.socialTitle,
+    socialShortDescription: record.socialShortDescription,
+    socialDescription: record.socialDescription,
+    socialDescriptionTimestamped: record.socialDescriptionTimestamped,
+    socialHashtags: record.socialHashtags,
+  };
+}
+
 async function renderFormatToResult(
   rangeFile: File,
   formatDef: ClipperFormatDef,
   frameContext: ClipperFrameContext,
   clipWindow: ClipperClipWindow,
+  clip: ClipperGeneratedClip,
   /** Overall envelope (min start, max end) across clipWindow.segments — for display/manifest metadata only. */
   envelope: { startSec: number; endSec: number },
   input: {
@@ -76,7 +102,7 @@ async function renderFormatToResult(
       const disk = await sink.finalize();
       trackPreviewUrl(disk.previewUrl, previewUrls);
       const exportedAtIso = exportedAt.toISOString();
-      await appendClipperExportManifestEntry(input.projectId, {
+      const dbRecord = await persistClipperExport(input.projectId, clip, {
         id: exportId,
         clipIndex: input.clipIndex,
         formatId: formatDef.id,
@@ -106,6 +132,7 @@ async function renderFormatToResult(
         displayPath: disk.displayPath,
         filePath: disk.filePath,
         file: disk.file,
+        ...metadataFromRecord(dbRecord),
       };
     }
 
@@ -113,8 +140,10 @@ async function renderFormatToResult(
       throw new Error("Disk export sink was unavailable.");
     }
 
-    if (!sink) {
-      clipperWarn("render: disk sink unavailable — using in-memory export", { fileName });
+    if (isTauri()) {
+      throw new Error(
+        "Disk export sink was unavailable. Export was not saved — check storage permissions and retry.",
+      );
     }
 
     const previewUrl = URL.createObjectURL(encodeResult.blob);
@@ -178,6 +207,7 @@ export async function runRenderClipJob(
         formatDef,
         frameContext,
         clipWindow,
+        clip,
         envelope,
         input,
         {
@@ -226,6 +256,7 @@ export async function runRerenderFormat(
       formatDef,
       frameContext,
       clipWindow,
+      clip,
       envelope,
       {
         projectId: input.projectId,

@@ -8,10 +8,12 @@ type SessionView = ReturnType<typeof useClipperSessionView>;
 
 export interface ClipperSessionPreviewPanelProps {
   session: SessionView;
+  settingsDrawerVisible?: boolean;
 }
 
 export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProps> = ({
   session,
+  settingsDrawerVisible = true,
 }) => {
   const { theme, errorPanel } = useClipperUi();
   const {
@@ -114,6 +116,7 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
           void resegmentAutoParts(autoPartsSegmentLengthSec, { force: true });
         }}
         autoPartsResegmenting={autoPartsResegmenting}
+        settingsDrawerVisible={settingsDrawerVisible}
       />
     </>
   );

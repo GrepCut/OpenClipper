@@ -68,6 +68,7 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     renderExports: render.renderExports,
     rerenderFormat: render.rerenderFormat,
     refreshExportHistory: render.refreshExportHistory,
+    updateExportMetadata: core.updateExportMetadata,
     reset,
     download: render.download,
     setActiveClipIndex,

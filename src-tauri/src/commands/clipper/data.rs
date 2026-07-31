@@ -29,7 +29,15 @@ pub fn ensure_clipper_project_data_dir(
 }
 
 #[tauri::command]
-pub fn remove_clipper_project_data_dir(app: AppHandle, project_id: String) -> Result<(), String> {
+pub async fn remove_clipper_project_data_dir(
+    app: AppHandle,
+    db: tauri::State<'_, crate::storage::database::LocalDb>,
+    project_id: String,
+) -> Result<(), String> {
+    crate::storage::export_cleanup::delete_project_exports(&db.database, &project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+
     let path = clipper_project_root(&app, &project_id)?;
     if path.exists() {
         fs::remove_dir_all(&path).map_err(|e| e.to_string())?;

@@ -13,7 +13,6 @@ pub struct WordPlacement {
 
 #[derive(Debug, Clone)]
 pub struct LineLayout {
-    pub baseline: f32,
     pub width: f32,
     pub words: Vec<WordPlacement>,
 }
@@ -21,7 +20,6 @@ pub struct LineLayout {
 #[derive(Debug, Clone)]
 pub struct CaptionLayout {
     pub font_px: f32,
-    pub line_height: f32,
     pub lines: Vec<LineLayout>,
     pub top: f32,
     pub bottom: f32,
@@ -218,7 +216,6 @@ pub fn build_caption_layout(
                 })
                 .collect();
             LineLayout {
-                baseline: top + font_px + line_index as f32 * line_height,
                 width: line_width,
                 words,
             }
@@ -232,7 +229,6 @@ pub fn build_caption_layout(
 
     CaptionLayout {
         font_px,
-        line_height,
         lines,
         top,
         bottom: top + total_height,

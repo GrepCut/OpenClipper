@@ -39,18 +39,6 @@ pub fn make_font_system(resource_fonts_dir: Option<&Path>) -> FontSystem {
     FontSystem::new_with_locale_and_db("en-US".to_string(), db)
 }
 
-pub fn resolve_family_name(db: &Database, requested: &str) -> String {
-    if query_family_id(db, requested).is_some() {
-        return requested.to_string();
-    }
-    for candidate in CAPTION_FAMILIES {
-        if query_family_id(db, candidate).is_some() {
-            return (*candidate).to_string();
-        }
-    }
-    "Inter".to_string()
-}
-
 fn query_family_id(db: &Database, family: &str) -> Option<klyff::fontdb::ID> {
     db.query(&Query {
         families: &[klyff::fontdb::Family::Name(family)],

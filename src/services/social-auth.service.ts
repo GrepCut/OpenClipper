@@ -74,9 +74,13 @@ export const socialAuthService = {
 
   disconnect(
     platform: SocialPublishablePlatform,
+    connectionId?: string,
   ): Promise<SocialDisconnectResponse> {
+    const params = connectionId
+      ? `?connectionId=${encodeURIComponent(connectionId)}`
+      : "";
     return apiClient
-      .get<SocialDisconnectResponse>(`/social/${platform}/disconnect`)
+      .get<SocialDisconnectResponse>(`/social/${platform}/disconnect${params}`)
       .then((res) => res.data);
   },
 
@@ -85,8 +89,11 @@ export const socialAuthService = {
     return response.data;
   },
 
-  async selectMetaTarget(pageId: string): Promise<void> {
-    await apiClient.post("/social/meta/targets/select", { pageId });
+  async selectMetaTarget(pageId: string, metaConnectionId?: string): Promise<void> {
+    await apiClient.post("/social/meta/targets/select", {
+      pageId,
+      metaConnectionId,
+    });
   },
 
   async publishClipperExport(
@@ -108,6 +115,9 @@ export const socialAuthService = {
       formData.append("description", params.description);
     }
     formData.append("privacyStatus", params.privacyStatus);
+    if (params.connectionId) {
+      formData.append("connectionId", params.connectionId);
+    }
     formData.append("video", params.video);
 
     const response = await apiClient.post<SocialPublishResponse>(
@@ -138,9 +148,12 @@ export const socialAuthService = {
     return response.data;
   },
 
-  async getTikTokCreatorInfo(): Promise<TikTokCreatorInfo> {
+  async getTikTokCreatorInfo(connectionId?: string): Promise<TikTokCreatorInfo> {
+    const params = connectionId
+      ? `?connectionId=${encodeURIComponent(connectionId)}`
+      : "";
     const response = await apiClient.get<TikTokCreatorInfo>(
-      "/social/tiktok/creator-info",
+      `/social/tiktok/creator-info${params}`,
     );
     return response.data;
   },
@@ -155,6 +168,7 @@ export const socialAuthService = {
     }>("/social/tiktok/clipper/staging", {
       projectId: params.projectId,
       exportId: params.exportId,
+      connectionId: params.connectionId,
       clipIndex: params.clipIndex,
       formatId: params.formatId,
       fileName: params.video.name || "clip.mp4",

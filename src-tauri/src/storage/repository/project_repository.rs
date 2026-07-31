@@ -27,6 +27,14 @@ pub struct ProjectListResult {
     pub total: i64,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub project_type: String,
+}
+
 pub struct ProjectRepository;
 
 impl ProjectRepository {
@@ -37,6 +45,7 @@ impl ProjectRepository {
     ) -> DbResult<Value> {
         let id = value_string(&project, "id")
             .ok_or_else(|| DbError::message("Project id is required"))?;
+        let existing = Entity::find_by_id(id.clone()).one(database).await?;
         let name = value_string(&project, "name")
             .ok_or_else(|| DbError::message("Project name is required"))?;
         let description = value_string(&project, "description");
@@ -56,6 +65,7 @@ impl ProjectRepository {
             payload_json: sea_orm::Set(project.clone().into()),
             created_at: sea_orm::Set(created_at),
             updated_at: sea_orm::Set(updated_at),
+            clipper_owner_id: sea_orm::Set(existing.and_then(|row| row.clipper_owner_id)),
         };
 
         Entity::insert(active_model)
@@ -150,6 +160,25 @@ impl ProjectRepository {
             .exec(database)
             .await?;
         Ok(())
+    }
+
+    pub async fn list_summaries(
+        database: &DatabaseConnection,
+        project_type: Option<&str>,
+    ) -> DbResult<Vec<ProjectSummary>> {
+        let mut query = Entity::find().order_by_desc(Column::UpdatedAt);
+        if let Some(project_type) = project_type {
+            query = query.filter(Column::ProjectType.eq(project_type));
+        }
+        let rows = query.all(database).await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| ProjectSummary {
+                id: row.id,
+                name: row.name,
+                project_type: row.project_type,
+            })
+            .collect())
     }
 }
 

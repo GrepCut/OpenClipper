@@ -1,0 +1,161 @@
+import React, { useCallback } from "react";
+import { Box, Center, HStack, Text, VStack } from "@chakra-ui/react";
+import { CheckCircle2, ExternalLink } from "lucide-react";
+import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
+import { AppLoader } from "../../../shared/components/app-loader.component";
+import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
+import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
+import type { ClipperFormatResult } from "../shared/state.util";
+import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
+import { ClipperExportMetadataPanel } from "./clipper-export-metadata-panel.component";
+import { getClipperFormatDef } from "../shared/formats.util";
+
+interface ClipperPublishDetailPanelProps {
+  item: ClipperExportMapItem | null;
+  result: ClipperFormatResult | null;
+  mediaLoading: boolean;
+  canPublish: boolean;
+  onPublish: () => void;
+  onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
+  connectedSplit?: boolean;
+}
+
+export function ClipperPublishDetailPanel({
+  item,
+  result,
+  mediaLoading,
+  canPublish,
+  onPublish,
+  onMetadataSaved,
+  connectedSplit = false,
+}: ClipperPublishDetailPanelProps) {
+  const { theme } = useClipperUi();
+
+  const handleMetadataSaved = useCallback(
+    (exportId: string, fields: ExportSocialFields) => {
+      onMetadataSaved(exportId, fields);
+    },
+    [onMetadataSaved],
+  );
+
+  if (!item || !result) {
+    return (
+      <Box
+        h="full"
+        borderRadius={connectedSplit ? 0 : "2xl"}
+        border={connectedSplit ? "none" : "1px dashed"}
+        borderColor={theme.dashboard.border}
+        bg={connectedSplit ? "transparent" : theme.background.card}
+        p={8}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        overflow="auto"
+      >
+        <Text color={theme.text.muted} textAlign="center">
+          Select an export node on the map to preview, edit metadata, and publish.
+        </Text>
+      </Box>
+    );
+  }
+
+  const formatDef = getClipperFormatDef(item.formatId);
+  const watchUrl = item.publishStatus?.watchUrl;
+
+  return (
+    <VStack
+      align="stretch"
+      h="full"
+      gap={4}
+      borderRadius={connectedSplit ? 0 : "2xl"}
+      border={connectedSplit ? "none" : "1px solid"}
+      borderColor={theme.border.primary}
+      bg={connectedSplit ? "transparent" : theme.background.card}
+      p={4}
+      overflow="auto"
+    >
+      <HStack justify="space-between" align="start" gap={3}>
+        <VStack align="start" gap={1} flex={1}>
+          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
+            {item.projectName}
+          </Text>
+          <Text fontSize="xs" color={theme.text.muted}>
+            Clip {item.clipIndex + 1} · {item.formatLabel}
+          </Text>
+        </VStack>
+        {formatDef ? <ClipperPlatformIcon platform={formatDef.platform} size={36} /> : null}
+      </HStack>
+
+      {item.isPublished ? (
+        <HStack
+          gap={2}
+          p={3}
+          borderRadius="xl"
+          bg="rgba(34, 197, 94, 0.12)"
+          border="1px solid"
+          borderColor="rgba(34, 197, 94, 0.35)"
+        >
+          <CheckCircle2 size={18} color="#22c55e" />
+          <Text fontSize="sm" color={theme.text.primary} flex={1}>
+            Published to {item.formatLabel}
+          </Text>
+          {watchUrl ? (
+            <Box asChild>
+              <a href={watchUrl} target="_blank" rel="noopener noreferrer">
+                <OutlinedActionButton
+                  size="sm"
+                  startIcon={<ExternalLink size={14} />}
+                >
+                  Open
+                </OutlinedActionButton>
+              </a>
+            </Box>
+          ) : null}
+        </HStack>
+      ) : null}
+
+      <Box
+        borderRadius="xl"
+        overflow="hidden"
+        bg={theme.background.surface}
+        border="1px solid"
+        borderColor={theme.surface.hover}
+        minH="180px"
+      >
+        {mediaLoading ? (
+          <Center minH="180px">
+            <AppLoader />
+          </Center>
+        ) : result.isMissing ? (
+          <Center minH="180px" px={4}>
+            <Text fontSize="sm" color={theme.text.muted} textAlign="center">
+              Export file not found on disk.
+            </Text>
+          </Center>
+        ) : (
+          <video
+            src={result.previewUrl}
+            controls
+            style={{ width: "100%", display: "block", maxHeight: "280px" }}
+          />
+        )}
+      </Box>
+
+      <ClipperExportMetadataPanel
+        result={result}
+        onMetadataSaved={handleMetadataSaved}
+        variant="inline"
+      />
+
+      <OutlinedActionButton
+        width="100%"
+        justifyContent="center"
+        onClick={onPublish}
+        disabled={!canPublish || result.isMissing || item.isPublished}
+      >
+        {item.isPublished ? "Already published" : `Publish to ${item.formatLabel}`}
+      </OutlinedActionButton>
+    </VStack>
+  );
+}

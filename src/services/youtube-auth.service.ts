@@ -1,6 +1,7 @@
 import { apiClient } from "../shared/utils/api-client.util";
 import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
-import { buildOAuthLoginUrl } from "../features/authentication/build-oauth-login-url.util";
+import { getAuthClient } from "../shared/utils/auth-client.util";
+import { logIntegration } from "../shared/utils/integration-logger.util";
 import type {
   PublishClipperToYoutubeParams,
   YoutubeDisconnectResponse,
@@ -13,12 +14,34 @@ export * from "./types/youtube-auth.types";
 
 export const youtubeAuthService = {
   async redirectToYoutubeConnect(returnPath?: string): Promise<void> {
-    const redirectUrl = buildOAuthLoginUrl("/auth/google/youtube/login", returnPath);
-    console.log("[YouTube Auth] redirectToYoutubeConnect", {
+    const client = getAuthClient();
+    const params = new URLSearchParams();
+    params.append("client", client);
+    if (returnPath) params.append("returnPath", returnPath);
+
+    logIntegration("oauth.connect_start", {
+      flow: "youtube",
+      client,
       returnPath: returnPath ?? null,
-      redirectUrl,
     });
-    await openExternalAuthUrl(redirectUrl);
+
+    const response = await apiClient.get<{ url: string }>(
+      `/social/youtube/authorize?${params.toString()}`,
+    );
+
+    logIntegration("oauth.authorize_url_received", {
+      flow: "youtube",
+      client,
+      url: response.data.url,
+    });
+
+    await openExternalAuthUrl(response.data.url);
+
+    logIntegration("oauth.browser_opened", {
+      flow: "youtube",
+      client,
+      url: response.data.url,
+    });
   },
 
   async checkYoutubeConnection(): Promise<YoutubeStatusResponse> {
@@ -38,9 +61,12 @@ export const youtubeAuthService = {
     }
   },
 
-  disconnectYoutube(): Promise<YoutubeDisconnectResponse> {
+  disconnectYoutube(connectionId?: string): Promise<YoutubeDisconnectResponse> {
+    const params = connectionId
+      ? `?connectionId=${encodeURIComponent(connectionId)}`
+      : "";
     return apiClient
-      .get<YoutubeDisconnectResponse>("/auth/google/youtube/disconnect")
+      .get<YoutubeDisconnectResponse>(`/auth/google/youtube/disconnect${params}`)
       .then((res) => res.data);
   },
 
@@ -65,6 +91,9 @@ export const youtubeAuthService = {
       formData.append("description", params.description);
     }
     formData.append("privacyStatus", params.privacyStatus);
+    if (params.connectionId) {
+      formData.append("connectionId", params.connectionId);
+    }
     formData.append("video", params.video);
 
     const response = await apiClient.post<YoutubePublishResponse>(

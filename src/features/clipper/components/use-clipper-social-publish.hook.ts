@@ -5,6 +5,7 @@ import {
   oauthFlowForPlatform,
   publishPlatformForFormat,
   socialAuthService,
+  type SocialConnectionSummary,
   type SocialPrivacyStatus,
   type SocialPublishablePlatform,
   type TikTokCreatorInfo,
@@ -15,27 +16,75 @@ import { appToast } from "../../../shared/utils/toast.service";
 import { resolveClipperExportUploadFile } from "../persistence/resolve-export-upload-file.util";
 import { getPreciseVideoDuration } from "../lib/media/get-precise-video-duration.util";
 import { PLATFORM_LABELS } from "./clipper-social-publish-dialog.constants";
+import { isTauri } from "../../../shared/utils/platform.util";
+import {
+  upsertClipperExportPublish,
+  type ClipperExportPublishRecord,
+} from "../persistence/clipper-export-db-api.util";
+
+function normalizePublishStatus(
+  status: string,
+  watchUrl?: string,
+): ClipperExportPublishRecord["status"] {
+  if (status === "failed") return "failed";
+  if (status === "succeeded" || watchUrl) return "succeeded";
+  return "pending";
+}
+
+async function persistPublishRecord(
+  input: {
+    exportId: string;
+    platform: SocialPublishablePlatform;
+    status: ClipperExportPublishRecord["status"];
+    jobId?: string;
+    watchUrl?: string;
+    externalId?: string;
+    errorMessage?: string;
+  },
+  onComplete?: (record: ClipperExportPublishRecord) => void,
+): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const record = await upsertClipperExportPublish({
+      exportId: input.exportId,
+      platform: input.platform,
+      status: input.status,
+      jobId: input.jobId,
+      watchUrl: input.watchUrl,
+      externalId: input.externalId,
+      errorMessage: input.errorMessage,
+    });
+    onComplete?.(record);
+  } catch {
+    // Non-blocking — publish API already succeeded or failed
+  }
+}
 
 export function useClipperSocialPublish({
   isOpen,
   result,
   sourceFileName,
   defaultConnected,
+  accountConnections,
   requestedPlatform,
   projectId,
   onRequestConnect,
+  onPublishComplete,
 }: {
   isOpen: boolean;
   result: ClipperFormatResult | null;
   sourceFileName: string | null;
   defaultConnected: boolean;
+  accountConnections: SocialConnectionSummary[];
   requestedPlatform?: SocialPublishablePlatform;
   projectId: string;
   onRequestConnect: (platform: SocialPublishablePlatform) => void;
+  onPublishComplete?: (record: ClipperExportPublishRecord) => void;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [privacyStatus, setPrivacyStatus] = useState<SocialPrivacyStatus>("private");
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPhase, setUploadPhase] = useState<"uploading" | "publishing">("uploading");
@@ -60,18 +109,29 @@ export function useClipperSocialPublish({
 
   const platformLabel = PLATFORM_LABELS[platform];
   const isTikTok = platform === "tiktok";
+  const activeConnectionId = selectedConnectionId ?? accountConnections[0]?.id ?? null;
 
   const defaultTitle = useMemo(() => {
     if (!result) return "";
+    const socialTitle = result.socialTitle?.trim();
+    if (socialTitle) return socialTitle;
     const base = sourceFileName?.replace(/\.[^.]+$/, "") || "Clip";
     return `${base} — Clip ${result.clipIndex + 1} (${result.label})`;
   }, [result, sourceFileName]);
 
+  const defaultDescription = useMemo(() => {
+    if (!result) return "";
+    const long = result.socialDescription?.trim();
+    if (long) return long;
+    return result.socialShortDescription?.trim() ?? "";
+  }, [result]);
+
   useEffect(() => {
     if (!isOpen) return;
     setTitle(defaultTitle);
-    setDescription("");
+    setDescription(defaultDescription);
     setPrivacyStatus("private");
+    setSelectedConnectionId(accountConnections[0]?.id ?? null);
     setUploadProgress(0);
     setUploadPhase("uploading");
     setWatchUrl(null);
@@ -85,24 +145,31 @@ export function useClipperSocialPublish({
     setIsAigc(false);
     setMusicUsageConfirmed(false);
     setTikTokError(null);
-  }, [isOpen, defaultTitle]);
+  }, [isOpen, defaultTitle, defaultDescription, accountConnections]);
 
   useEffect(() => {
-    if (!isOpen || !isTikTok || !defaultConnected) return;
+    if (!isOpen || !isTikTok || !defaultConnected || !activeConnectionId) return;
     let cancelled = false;
-    void socialAuthService.getTikTokCreatorInfo()
+    void socialAuthService.getTikTokCreatorInfo(activeConnectionId)
       .then((creator) => { if (!cancelled) setTikTokCreator(creator); })
       .catch((error: unknown) => {
-        if (!cancelled) setTikTokError(error instanceof Error ? error.message : "Could not load TikTok account settings.");
+        if (!cancelled) {
+          setTikTokError(error instanceof Error ? error.message : "Could not load TikTok account settings.");
+        }
       });
     return () => { cancelled = true; };
-  }, [isOpen, isTikTok, defaultConnected]);
+  }, [isOpen, isTikTok, defaultConnected, activeConnectionId]);
 
   const handlePublish = async () => {
     if (!result || !title.trim()) return;
 
     if (!defaultConnected) {
       onRequestConnect(platform);
+      return;
+    }
+
+    if (!activeConnectionId) {
+      appToast.error("No account selected", `Connect a ${platformLabel} account before publishing.`);
       return;
     }
 
@@ -135,6 +202,7 @@ export function useClipperSocialPublish({
         response = await socialAuthService.publishClipperToTikTok({
           projectId,
           exportId: result.id,
+          connectionId: activeConnectionId,
           video,
           clipIndex: result.clipIndex,
           formatId: result.formatId,
@@ -157,6 +225,7 @@ export function useClipperSocialPublish({
         const yt = await youtubeAuthService.publishClipperExport({
           projectId,
           exportId: result.id,
+          connectionId: activeConnectionId,
           video,
           clipIndex: result.clipIndex,
           formatId: result.formatId,
@@ -176,6 +245,7 @@ export function useClipperSocialPublish({
       } else {
         response = await socialAuthService.publishClipperExport({
           platform,
+          connectionId: activeConnectionId,
           projectId,
           exportId: result.id,
           video,
@@ -208,6 +278,19 @@ export function useClipperSocialPublish({
         setWatchUrl(response.watchUrl);
       }
 
+      const publishStatus = normalizePublishStatus(response.status, response.watchUrl);
+      await persistPublishRecord(
+        {
+          exportId: result.id,
+          platform,
+          status: publishStatus,
+          jobId: response.jobId,
+          watchUrl: response.watchUrl,
+          externalId: response.externalId,
+        },
+        onPublishComplete,
+      );
+
       if (response.status === "processing") {
         appToast.success("TikTok is processing", "Your post will be updated when TikTok finishes processing it.");
       } else {
@@ -218,6 +301,17 @@ export function useClipperSocialPublish({
         (error as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ||
         (error instanceof Error ? error.message : `${platformLabel} upload failed`);
+      if (result) {
+        await persistPublishRecord(
+          {
+            exportId: result.id,
+            platform,
+            status: "failed",
+            errorMessage: message,
+          },
+          onPublishComplete,
+        );
+      }
       appToast.error("Publish failed", message);
     } finally {
       setIsPublishing(false);
@@ -234,6 +328,9 @@ export function useClipperSocialPublish({
     setDescription,
     privacyStatus,
     setPrivacyStatus,
+    selectedConnectionId: activeConnectionId,
+    setSelectedConnectionId,
+    accountConnections,
     isPublishing,
     uploadProgress,
     uploadPhase,
@@ -257,6 +354,9 @@ export function useClipperSocialPublish({
     setMusicUsageConfirmed,
     tiktokError,
     handlePublish,
-    submitDisabled: !result || !title.trim() || (isTikTok && (!tiktokPrivacy || !musicUsageConfirmed || !tiktokCreator?.canPost)),
+    submitDisabled:
+      !result ||
+      !title.trim() ||
+      (isTikTok && (!tiktokPrivacy || !musicUsageConfirmed || !tiktokCreator?.canPost)),
   };
 }

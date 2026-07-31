@@ -62,6 +62,16 @@ pub(crate) fn clipper_export_file_path(
     Ok(clipper_project_exports_dir(app, project_id)?.join(file_name))
 }
 
+pub(crate) fn clipper_export_file_exists(
+    app: &AppHandle,
+    project_id: &str,
+    file_name: &str,
+) -> bool {
+    clipper_export_file_path(app, project_id, file_name)
+        .map(|path| path.is_file())
+        .unwrap_or(false)
+}
+
 pub(crate) async fn extract_segment_to_project_data(
     app: &AppHandle,
     project_id: &str,

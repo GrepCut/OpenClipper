@@ -1,5 +1,10 @@
 pub mod m001_initial;
 pub mod m002_shared_workspace;
+pub mod m003_clipper_exports;
+pub mod m004_clipper_export_publishes;
+pub mod m005_clipper_exports_manifest_sync;
+pub mod m008_repair_clipper_export_publishes;
+pub mod m009_clipper_owners;
 
 use chrono::Utc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, Statement};
@@ -24,6 +29,11 @@ impl ManualMigrator {
         vec![
             Box::new(m001_initial::M001Initial),
             Box::new(m002_shared_workspace::M002SharedWorkspace),
+            Box::new(m003_clipper_exports::M003ClipperExports),
+            Box::new(m004_clipper_export_publishes::M004ClipperExportPublishes),
+            Box::new(m005_clipper_exports_manifest_sync::M005ClipperExportsManifestSync),
+            Box::new(m008_repair_clipper_export_publishes::M008RepairClipperExportPublishes),
+            Box::new(m009_clipper_owners::M009ClipperOwners),
         ]
     }
 

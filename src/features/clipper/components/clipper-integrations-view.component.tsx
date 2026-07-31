@@ -10,6 +10,7 @@ import { youtubeAuthService } from "../../../services/youtube-auth.service";
 import { socialAuthService } from "../../../services/social-auth.service";
 import type {
   MetaTargetsResponse,
+  SocialConnectionSummary,
   SocialOAuthFlow,
   SocialPublishablePlatform,
 } from "../../../services/types/social-auth.types";
@@ -27,90 +28,118 @@ import { logIntegration } from "../../../shared/utils/integration-logger.util";
 
 const INTEGRATIONS_RETURN_PATH = "/clipper?tab=integrations";
 
-interface IntegrationRowProps {
+interface PlatformIntegrationSectionProps {
   name: string;
   icon: React.ReactNode;
-  isActive: boolean;
+  subtitle?: string;
+  connections: SocialConnectionSummary[];
   isChecking: boolean;
-  subtitle?: string | null;
-  onConnect?: () => void;
+  onConnect: () => void;
   isConnecting?: boolean;
-  onDisconnect?: () => void;
-  isDisconnecting?: boolean;
+  onDisconnect: (connectionId: string) => void;
+  disconnectingConnectionId?: string | null;
 }
 
-function IntegrationRow({
+function PlatformIntegrationSection({
   name,
   icon,
-  isActive,
-  isChecking,
   subtitle,
+  connections,
+  isChecking,
   onConnect,
   isConnecting = false,
   onDisconnect,
-  isDisconnecting = false,
-}: IntegrationRowProps) {
+  disconnectingConnectionId,
+}: PlatformIntegrationSectionProps) {
   const { theme, mode } = useTheme();
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
 
   return (
     <Box bg={rowBg} borderRadius="2xl" p={{ base: 4, md: 5 }}>
-      <HStack justify="space-between" align="center" gap={4}>
-        <HStack gap={3} minW={0} flex={1}>
-          <Box flexShrink={0} color={theme.text.muted}>
-            {icon}
-          </Box>
-          <VStack align="start" gap={0.5} minW={0}>
-            <Text fontWeight="semibold" color={theme.text.primary}>
-              {name}
-            </Text>
-            {subtitle ? (
-              <Text fontSize="sm" color={theme.text.muted} lineClamp={1}>
-                {subtitle}
-              </Text>
-            ) : null}
-          </VStack>
-        </HStack>
-
-        {isChecking ? (
-          <OutlinedActionButton disabled whiteSpace="nowrap">
-            Checking…
-          </OutlinedActionButton>
-        ) : isActive ? (
-          <HStack gap={2} flexShrink={0}>
-            <Box
-              px={2.5}
-              py={0.5}
-              borderRadius="full"
-              bg={mode === "dark" ? theme.brand.purpleSoftAlpha12 : theme.brand.toggleActiveBg}
-              color={colors.purple.medium}
-              fontSize="xs"
-              fontWeight="semibold"
-              whiteSpace="nowrap"
-            >
-              Active
+      <VStack align="stretch" gap={3}>
+        <HStack justify="space-between" align="center" gap={4}>
+          <HStack gap={3} minW={0} flex={1}>
+            <Box flexShrink={0} color={theme.text.muted}>
+              {icon}
             </Box>
-            {onDisconnect ? (
-              <OutlinedActionButton
-                tone="danger"
-                loading={isDisconnecting}
-                onClick={onDisconnect}
-                whiteSpace="nowrap"
-              >
-                Disconnect
-              </OutlinedActionButton>
-            ) : null}
+            <VStack align="start" gap={0.5} minW={0}>
+              <Text fontWeight="semibold" color={theme.text.primary}>
+                {name}
+              </Text>
+              {subtitle ? (
+                <Text fontSize="sm" color={theme.text.muted}>
+                  {subtitle}
+                </Text>
+              ) : null}
+            </VStack>
           </HStack>
-        ) : onConnect ? (
           <OutlinedActionButton
             loading={isConnecting}
             onClick={onConnect}
             whiteSpace="nowrap"
           >
-            Connect {name}
+            Add account
           </OutlinedActionButton>
-        ) : null}
-      </HStack>
+        </HStack>
+
+        {isChecking ? (
+          <Text fontSize="sm" color={theme.text.muted}>
+            Checking connected accounts…
+          </Text>
+        ) : connections.length === 0 ? (
+          <Text fontSize="sm" color={theme.text.muted}>
+            No accounts connected yet.
+          </Text>
+        ) : (
+          <VStack align="stretch" gap={2}>
+            {connections.map((connection) => (
+              <HStack
+                key={connection.id}
+                justify="space-between"
+                align="center"
+                gap={3}
+                p={3}
+                borderRadius="xl"
+                border="1px solid"
+                borderColor={theme.dashboard.border}
+              >
+                <VStack align="start" gap={0} minW={0}>
+                  <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
+                    {connection.displayName || connection.externalAccountId || "Connected account"}
+                  </Text>
+                  {connection.googleEmail || connection.externalAccountId ? (
+                    <Text fontSize="xs" color={theme.text.muted} lineClamp={1}>
+                      {connection.googleEmail ?? connection.externalAccountId}
+                    </Text>
+                  ) : null}
+                </VStack>
+                <HStack gap={2} flexShrink={0}>
+                  <Box
+                    px={2.5}
+                    py={0.5}
+                    borderRadius="full"
+                    bg={mode === "dark" ? theme.brand.purpleSoftAlpha12 : theme.brand.toggleActiveBg}
+                    color={colors.purple.medium}
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    whiteSpace="nowrap"
+                  >
+                    Active
+                  </Box>
+                  <OutlinedActionButton
+                    tone="danger"
+                    loading={disconnectingConnectionId === connection.id}
+                    onClick={() => onDisconnect(connection.id)}
+                    whiteSpace="nowrap"
+                  >
+                    Disconnect
+                  </OutlinedActionButton>
+                </HStack>
+              </HStack>
+            ))}
+          </VStack>
+        )}
+      </VStack>
     </Box>
   );
 }
@@ -134,22 +163,16 @@ function XIcon() {
 const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const { theme } = useTheme();
   const {
-    isConnected: isYoutubeConnected,
-    channelTitle: youtubeChannelTitle,
+    connections: youtubeConnections,
     isChecking: isYoutubeChecking,
     refreshStatus: refreshYoutubeStatus,
-    setConnected: setYoutubeConnected,
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((s) => s.platforms);
   const refreshSocial = useSocialStore((s) => s.refreshAll);
 
   const [isYoutubeConnecting, setIsYoutubeConnecting] = useState(false);
-  const [connectingFlow, setConnectingFlow] = useState<SocialOAuthFlow | null>(
-    null,
-  );
-  const [disconnectingPlatform, setDisconnectingPlatform] = useState<
-    SocialPublishablePlatform | "youtube" | null
-  >(null);
+  const [connectingFlow, setConnectingFlow] = useState<SocialOAuthFlow | null>(null);
+  const [disconnectingConnectionId, setDisconnectingConnectionId] = useState<string | null>(null);
   const [metaTargets, setMetaTargets] = useState<MetaTargetsResponse | null>(null);
   const [selectedMetaPageId, setSelectedMetaPageId] = useState<string | null>(null);
   const [isSavingMetaTarget, setIsSavingMetaTarget] = useState(false);
@@ -180,10 +203,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
     void youtubeAuthService
       .redirectToYoutubeConnect(INTEGRATIONS_RETURN_PATH)
       .catch(() => {
-        appToast.error(
-          "Could not open YouTube",
-          "Please try again.",
-        );
+        appToast.error("Could not open YouTube", "Please try again.");
       })
       .finally(() => {
         setIsYoutubeConnecting(false);
@@ -196,25 +216,20 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
     void socialAuthService
       .redirectToConnect(flow, INTEGRATIONS_RETURN_PATH)
       .catch(() => {
-        appToast.error(
-          "Could not start connection",
-          "Please try again.",
-        );
+        appToast.error("Could not start connection", "Please try again.");
       })
       .finally(() => {
         setConnectingFlow(null);
       });
   }, []);
 
-  const handleDisconnectYoutube = useCallback(() => {
-    setDisconnectingPlatform("youtube");
-    logIntegration("integrations.disconnect_clicked", { platform: "youtube" });
+  const handleDisconnectYoutube = useCallback((connectionId: string) => {
+    setDisconnectingConnectionId(connectionId);
+    logIntegration("integrations.disconnect_clicked", { platform: "youtube", connectionId });
     void youtubeAuthService
-      .disconnectYoutube()
-      .then(() => {
-        setYoutubeConnected(false, null);
-        appToast.success("YouTube disconnected");
-      })
+      .disconnectYoutube(connectionId)
+      .then(() => refreshYoutubeStatus())
+      .then(() => appToast.success("YouTube disconnected"))
       .catch((error: unknown) => {
         appToast.error(
           "Could not disconnect YouTube",
@@ -222,16 +237,16 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
         );
       })
       .finally(() => {
-        setDisconnectingPlatform(null);
+        setDisconnectingConnectionId(null);
       });
-  }, [setYoutubeConnected]);
+  }, [refreshYoutubeStatus]);
 
   const handleDisconnectSocial = useCallback(
-    (platform: SocialPublishablePlatform) => {
-      setDisconnectingPlatform(platform);
-      logIntegration("integrations.disconnect_clicked", { platform });
+    (platform: SocialPublishablePlatform, connectionId: string) => {
+      setDisconnectingConnectionId(connectionId);
+      logIntegration("integrations.disconnect_clicked", { platform, connectionId });
       void socialAuthService
-        .disconnect(platform)
+        .disconnect(platform, connectionId)
         .then(async () => {
           await refreshSocial();
           appToast.success("Disconnected");
@@ -243,7 +258,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           );
         })
         .finally(() => {
-          setDisconnectingPlatform(null);
+          setDisconnectingConnectionId(null);
         });
     },
     [refreshSocial],
@@ -253,10 +268,10 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
     if (!selectedMetaPageId) return;
     setIsSavingMetaTarget(true);
     void socialAuthService
-      .selectMetaTarget(selectedMetaPageId)
+      .selectMetaTarget(selectedMetaPageId, metaTargets?.metaConnectionId ?? undefined)
       .then(async () => {
         await Promise.all([refreshSocial(), loadMetaTargets()]);
-        appToast.success("Meta connected", "Your Facebook Page and linked Instagram account are ready.");
+        appToast.success("Facebook Page connected");
       })
       .catch((error: unknown) => {
         appToast.error(
@@ -265,7 +280,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
         );
       })
       .finally(() => setIsSavingMetaTarget(false));
-  }, [loadMetaTargets, refreshSocial, selectedMetaPageId]);
+  }, [loadMetaTargets, metaTargets?.metaConnectionId, refreshSocial, selectedMetaPageId]);
 
   const fb = socialPlatforms.facebook;
   const ig = socialPlatforms.instagram;
@@ -283,77 +298,70 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           Integrations
         </SecondaryMainTitle>
         <Text color={theme.text.muted}>
-          Connected services used for storage and publishing across your Clipper
-          projects.
+          Connect multiple accounts per platform. Publishing lets you choose which linked account to use.
         </Text>
       </VStack>
 
       <VStack align="stretch" gap={3}>
-        <IntegrationRow
+        <PlatformIntegrationSection
           name="YouTube"
           icon={<Youtube size={20} color="#FF0000" />}
-          isActive={isYoutubeConnected}
+          subtitle="Each Google account or Brand Account is a separate connection."
+          connections={youtubeConnections}
           isChecking={isYoutubeChecking}
-          subtitle={isYoutubeConnected ? youtubeChannelTitle : null}
           onConnect={handleConnectYoutube}
           isConnecting={isYoutubeConnecting}
           onDisconnect={handleDisconnectYoutube}
-          isDisconnecting={disconnectingPlatform === "youtube"}
+          disconnectingConnectionId={disconnectingConnectionId}
         />
-        <IntegrationRow
+        <PlatformIntegrationSection
           name="Facebook"
           icon={<Facebook size={20} />}
-          isActive={fb.connected}
+          subtitle="Each Meta OAuth flow can add one Facebook Page."
+          connections={fb.connections}
           isChecking={fb.isChecking}
-          subtitle={fb.connected ? fb.displayName : "Via Meta (Page)"}
           onConnect={() => handleConnectSocial("meta")}
           isConnecting={connectingFlow === "meta"}
-          onDisconnect={() => handleDisconnectSocial("facebook")}
-          isDisconnecting={disconnectingPlatform === "facebook"}
+          onDisconnect={(connectionId) => handleDisconnectSocial("facebook", connectionId)}
+          disconnectingConnectionId={disconnectingConnectionId}
         />
-        <IntegrationRow
+        <PlatformIntegrationSection
           name="Instagram"
           icon={<Instagram size={20} />}
-          isActive={ig.connected}
+          subtitle="Instagram Business or Creator accounts via Instagram Login."
+          connections={ig.connections}
           isChecking={ig.isChecking}
-          subtitle={
-            ig.connected
-              ? ig.displayName
-              : "Connect an Instagram Business or Creator account"
-          }
           onConnect={() => handleConnectSocial("instagram")}
           isConnecting={connectingFlow === "instagram"}
-          onDisconnect={() => handleDisconnectSocial("instagram")}
-          isDisconnecting={disconnectingPlatform === "instagram"}
+          onDisconnect={(connectionId) => handleDisconnectSocial("instagram", connectionId)}
+          disconnectingConnectionId={disconnectingConnectionId}
         />
-        <IntegrationRow
+        <PlatformIntegrationSection
           name="TikTok"
           icon={<TikTokIcon />}
-          isActive={tt.connected}
+          connections={tt.connections}
           isChecking={tt.isChecking}
-          subtitle={tt.connected ? tt.displayName : null}
           onConnect={() => handleConnectSocial("tiktok")}
           isConnecting={connectingFlow === "tiktok"}
-          onDisconnect={() => handleDisconnectSocial("tiktok")}
-          isDisconnecting={disconnectingPlatform === "tiktok"}
+          onDisconnect={(connectionId) => handleDisconnectSocial("tiktok", connectionId)}
+          disconnectingConnectionId={disconnectingConnectionId}
         />
-        <IntegrationRow
+        <PlatformIntegrationSection
           name="X"
           icon={<XIcon />}
-          isActive={x.connected}
+          connections={x.connections}
           isChecking={x.isChecking}
-          subtitle={x.connected ? x.displayName : null}
           onConnect={() => handleConnectSocial("x")}
           isConnecting={connectingFlow === "x"}
-          onDisconnect={() => handleDisconnectSocial("x")}
-          isDisconnecting={disconnectingPlatform === "x"}
+          onDisconnect={(connectionId) => handleDisconnectSocial("x", connectionId)}
+          disconnectingConnectionId={disconnectingConnectionId}
         />
       </VStack>
 
       <StyledModal
         isOpen={metaTargets?.selectionRequired === true}
         onClose={() => setMetaTargets(null)}
-        title="Choose your Meta publishing destination"
+        title="Choose your Facebook Page"
         size="md"
         isLoading={isSavingMetaTarget}
         closeOnOverlayClick={!isSavingMetaTarget}
@@ -361,8 +369,8 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
         <VStack align="stretch" gap={3}>
           <Text fontSize="sm" color={theme.text.muted}>
             {metaTargets?.profileName
-              ? `Choose the Facebook Page to use with ${metaTargets.profileName}.`
-              : "Choose the Facebook Page to use for publishing."}
+              ? `Choose the Facebook Page to add for ${metaTargets.profileName}.`
+              : "Choose the Facebook Page to add for publishing."}
           </Text>
           {(metaTargets?.targets ?? []).map((target) => {
             const selected = target.id === selectedMetaPageId;
@@ -402,7 +410,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
             disabled={!selectedMetaPageId}
             onClick={handleSelectMetaTarget}
           >
-            Use selected Page
+            Add selected Page
           </OutlinedActionButton>
         </VStack>
       </StyledModal>

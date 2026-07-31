@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::app::{protocols, window};
 use crate::invoke_handler;
 use crate::storage::database;
@@ -27,7 +29,47 @@ pub fn run() {
         .setup(|app| {
             app.manage(ParakeetService::new(app.handle().clone()));
             let local_db = tauri::async_runtime::block_on(database::initialize_database(app.handle())).map_err(std::io::Error::other)?;
+            let db_for_mcp = Arc::new(local_db.database.clone());
+            let db_for_cleanup = local_db.database.clone();
+            let app_for_cleanup = app.handle().clone();
             app.manage(local_db);
+            tauri::async_runtime::spawn(async move {
+                match crate::storage::export_cleanup::purge_missing_on_disk(
+                    &app_for_cleanup,
+                    &db_for_cleanup,
+                    None,
+                )
+                .await
+                {
+                    Ok(count) if count > 0 => {
+                        log::info!("Purged {count} clipper exports missing on disk");
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        log::warn!("Failed to purge missing clipper exports: {error}");
+                    }
+                }
+
+                match crate::storage::export_cleanup::delete_orphaned_project_exports(&db_for_cleanup)
+                    .await
+                {
+                    Ok(count) if count > 0 => {
+                        log::info!("Purged {count} orphaned clipper exports");
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        log::warn!("Failed to purge orphaned clipper exports: {error}");
+                    }
+                }
+            });
+            let mcp_port = crate::mcp::resolve_mcp_http_port();
+            if let Ok(mcp_http) = tauri::async_runtime::block_on(
+                crate::mcp::start_mcp_http_server(db_for_mcp, mcp_port),
+            ) {
+                app.manage(mcp_http);
+            } else {
+                log::error!("Open Clipper MCP HTTP server failed to start on port {mcp_port}");
+            }
             #[cfg(any(windows, target_os = "linux"))]
             { use tauri_plugin_deep_link::DeepLinkExt; app.deep_link().register_all()?; }
             #[cfg(windows)]
