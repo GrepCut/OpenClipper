@@ -11,7 +11,6 @@ Requires: numpy, onnx, onnxruntime, onnxconverter-common
 from __future__ import annotations
 
 import hashlib
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -26,14 +25,10 @@ BUNDLE = ROOT / "src-tauri/resources/models/clipper-vision"
 BATCH_PARITY_SIZE = 2
 
 YOLOX_SOURCE = ROOT / "public/models/yolox_s/yolox_s.onnx"
-YOLOX_PUBLIC_FP32 = ROOT / "public/models/yolox_s/yolox_s.winml.onnx"
-YOLOX_PUBLIC_FP16 = ROOT / "public/models/yolox_s/yolox_s.winml.fp16.onnx"
 YOLOX_BUNDLE_FP32 = BUNDLE / "yolox_s.onnx"
 YOLOX_BUNDLE_FP16 = BUNDLE / "yolox_s.fp16.onnx"
 
 SCRFD_SOURCE = ROOT / "public/models/scrfd_10g/scrfd_10g_bnkps.onnx"
-SCRFD_PUBLIC_FP32 = ROOT / "public/models/scrfd_10g/scrfd_10g_bnkps.winml.onnx"
-SCRFD_PUBLIC_FP16 = ROOT / "public/models/scrfd_10g/scrfd_10g_bnkps.winml.fp16.onnx"
 SCRFD_BUNDLE_FP32 = BUNDLE / "scrfd_10g_bnkps.onnx"
 SCRFD_BUNDLE_FP16 = BUNDLE / "scrfd_10g_bnkps.fp16.onnx"
 
@@ -193,17 +188,12 @@ def assert_fp16_parity(
 def save_pair(
     fp32_model: onnx.ModelProto,
     fp16_model: onnx.ModelProto,
-    public_fp32: Path,
-    public_fp16: Path,
     bundle_fp32: Path,
     bundle_fp16: Path,
 ) -> None:
-    public_fp32.parent.mkdir(parents=True, exist_ok=True)
     BUNDLE.mkdir(parents=True, exist_ok=True)
-    onnx.save(fp32_model, public_fp32)
-    onnx.save(fp16_model, public_fp16)
-    shutil.copyfile(public_fp32, bundle_fp32)
-    shutil.copyfile(public_fp16, bundle_fp16)
+    onnx.save(fp32_model, bundle_fp32)
+    onnx.save(fp16_model, bundle_fp16)
 
 
 def report(label: str, paths: tuple[Path, Path], batch_error: float, fp16_error: tuple[float, float]) -> None:
@@ -228,7 +218,6 @@ def main() -> None:
     )
     save_pair(
         yolox_dynamic, yolox_fp16,
-        YOLOX_PUBLIC_FP32, YOLOX_PUBLIC_FP16,
         YOLOX_BUNDLE_FP32, YOLOX_BUNDLE_FP16,
     )
 
@@ -246,7 +235,6 @@ def main() -> None:
     )
     save_pair(
         scrfd_dynamic, scrfd_fp16,
-        SCRFD_PUBLIC_FP32, SCRFD_PUBLIC_FP16,
         SCRFD_BUNDLE_FP32, SCRFD_BUNDLE_FP16,
     )
 

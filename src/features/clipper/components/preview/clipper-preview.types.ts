@@ -3,10 +3,6 @@ import type { Theme } from "../../../../theme";
 import type { CollageRegion } from "../../engine/reframe/collage";
 import type { ClipperFrameContext } from "../../engine/render/index";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
-import type {
-  ClipperAiChatMessage,
-  ClipperAiClipPickerModel,
-} from "../../persistence/ai-clip-api.util";
 import type { AutoPartsSegmentLengthSec } from "../../persistence/project-metadata.util";
 import type { ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
@@ -24,17 +20,6 @@ export interface ClipperPreviewProps {
   activeClipIndex: number;
   onSelectClip: (index: number) => void;
   onClipSourceModeChange: (mode: ClipSourceMode) => void;
-  aiChatMessages: ClipperAiChatMessage[];
-  aiChatLoading: boolean;
-  aiChatError: string | null;
-  aiChatThinking: string;
-  aiChatProgressChars: number;
-  aiChatModel: ClipperAiClipPickerModel;
-  onAiChatModelChange: (model: ClipperAiClipPickerModel) => void;
-  onSendAiChatMessage: (message: string, preset?: string) => void;
-  onLoadAiChatHistory: () => void;
-  onNewAiChat?: () => void;
-  aiCurrentClipsJsonChars?: number;
   onDeleteAiClip?: (index: number) => void;
   onDeleteAutoPartsClip?: (index: number) => void;
   settings: ClipperSettings;
@@ -43,8 +28,6 @@ export interface ClipperPreviewProps {
   sourceFileName: string | null;
   isRendering?: boolean;
   onOpenRenderQueue: () => void;
-  /** Blocks AI tab when account is not available; returns false when blocked. */
-  guardAccount?: () => boolean;
   disabledCollageRegionIds: string[];
   onToggleCollageRegion: (regionId: string) => void;
   autoPartsSegmentLengthSec: AutoPartsSegmentLengthSec;

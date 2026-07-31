@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React from "react";
 import { Box, Text } from "@chakra-ui/react";
 import { ClipperPreview } from "../preview/clipper-preview.component";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
@@ -27,32 +27,13 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     resegmentAutoParts,
     autoPartsSegmentLengthSec,
     autoPartsResegmenting,
-    loadAiChatHistory,
-    sendAiClipChatMessage,
-    startNewAiChat,
     deleteAiClip,
     deleteAutoPartsClip,
-    aiCurrentClipsJsonChars,
-    aiChatMessages,
-    aiChatLoading,
-    aiChatError,
-    aiChatThinking,
-    aiChatProgressChars,
-    aiChatModel,
-    setAiChatModel,
     disabledCollageRegionIds,
     toggleCollageRegion,
     isRendering,
-    canUseAccountFeatures,
-    publish,
     renderQueue,
   } = session;
-
-  const guardAccount = useCallback(() => {
-    if (canUseAccountFeatures) return true;
-    publish.requestAccount();
-    return false;
-  }, [canUseAccountFeatures, publish]);
 
   return (
     <>
@@ -73,39 +54,15 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         clipSourceMode={state.clipSourceMode ?? "auto-parts"}
         activeClipIndex={state.activeClipIndex}
         onSelectClip={setActiveClipIndex}
-        onClipSourceModeChange={(mode) => {
-          if (mode === "ai" && !guardAccount()) return;
-          setClipSourceMode(mode);
-        }}
-        aiChatMessages={aiChatMessages}
-        aiChatLoading={aiChatLoading}
-        aiChatError={aiChatError}
-        aiChatThinking={aiChatThinking}
-        aiChatProgressChars={aiChatProgressChars}
-        aiChatModel={aiChatModel}
-        onAiChatModelChange={setAiChatModel}
-        onSendAiChatMessage={(message, preset) => {
-          if (!guardAccount()) return;
-          void sendAiClipChatMessage(message, { preset });
-        }}
-        onLoadAiChatHistory={() => {
-          if (!canUseAccountFeatures) return;
-          void loadAiChatHistory();
-        }}
-        onNewAiChat={() => {
-          if (!guardAccount()) return;
-          void startNewAiChat();
-        }}
+        onClipSourceModeChange={setClipSourceMode}
         onDeleteAiClip={deleteAiClip}
         onDeleteAutoPartsClip={deleteAutoPartsClip}
-        aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
         settings={settings}
         onUpdateSettings={updateSettings}
         getFrameContext={getFrameContext}
         sourceFileName={state.sourceFileName}
         isRendering={isRendering}
         onOpenRenderQueue={renderQueue.openRenderQueue}
-        guardAccount={guardAccount}
         disabledCollageRegionIds={disabledCollageRegionIds}
         onToggleCollageRegion={toggleCollageRegion}
         autoPartsSegmentLengthSec={autoPartsSegmentLengthSec}

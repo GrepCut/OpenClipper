@@ -1,12 +1,9 @@
 import type { CollageRegion } from "../engine/types/collage.types";
-import type {
-  ClipperAiChatMessage,
-  ClipperAiClipPickerModel,
-} from "../persistence/ai-clip-api.util";
 import type { ClipperClipPreview, ClipSourceMode, WordCue } from "../shared/state.util";
 import type { AutoPartsSegmentLengthSec } from "../persistence/project-metadata.util";
 
 export interface ClipperClipsSectionProps {
+  projectId: string;
   clipPreviews: ClipperClipPreview[];
   autoPartsClipPreviews: ClipperClipPreview[];
   aiClipPreviews: ClipperClipPreview[];
@@ -15,17 +12,6 @@ export interface ClipperClipsSectionProps {
   onSelectClip: (index: number) => void;
   onDeleteAiClip?: (index: number) => void;
   onDeleteAutoPartsClip?: (index: number) => void;
-  aiChatMessages: ClipperAiChatMessage[];
-  aiChatLoading: boolean;
-  aiChatError: string | null;
-  aiChatThinking: string;
-  aiChatProgressChars: number;
-  aiChatModel: ClipperAiClipPickerModel;
-  onAiChatModelChange: (model: ClipperAiClipPickerModel) => void;
-  onSendAiChatMessage: (message: string, preset?: string) => void;
-  onLoadAiChatHistory: () => void;
-  onNewAiChat?: () => void;
-  aiCurrentClipsJsonChars?: number;
   rangeWords: WordCue[];
   collageRegions: CollageRegion[];
   disabledCollageRegionIds: string[];

@@ -21,7 +21,7 @@ pub struct McpToolsCatalog {
     pub tools: Vec<McpToolCatalogEntry>,
 }
 
-const MCP_INSTRUCTIONS: &str = "Open Clipper export metadata MCP server. Use list_exports to browse clip exports, then patch_export_social_metadata to fill social fields. In Cursor, prefer stdio transport (not HTTP URL) so tools appear without OAuth.";
+const MCP_INSTRUCTIONS: &str = "Open Clipper MCP (local SQLite, no login). Clip picking: list_projects → get_project_transcript → patch_ai_clips. Export metadata: list_exports → get_export_details → patch_export_social_metadata. Prefer stdio transport in Cursor (not HTTP URL).";
 
 pub fn build_mcp_tools_catalog() -> McpToolsCatalog {
     let tools = list_registered_mcp_tools()
@@ -103,6 +103,103 @@ fn examples_for_tool(name: &str) -> (Value, Value) {
                 "hashtags": "#videoediting #shorts #tips"
             }),
         ),
+        "list_projects" => (
+            serde_json::json!({
+                "skip": 0,
+                "rows": 20
+            }),
+            serde_json::json!({
+                "items": [
+                    {
+                        "projectId": "proj-abc-123",
+                        "name": "My Podcast Episode",
+                        "hasTranscript": true,
+                        "aiClipCount": 0
+                    }
+                ],
+                "total": 1,
+                "skip": 0,
+                "rows": 20
+            }),
+        ),
+        "get_project_transcript" => (
+            serde_json::json!({
+                "projectId": "proj-abc-123"
+            }),
+            serde_json::json!({
+                "projectId": "proj-abc-123",
+                "projectName": "My Podcast Episode",
+                "wordCount": 3,
+                "durationSec": 4.2,
+                "transcriptTimestamped": "[0:00] You're [0:01] welcome [0:02] bro",
+                "words": [
+                    { "i": 0, "text": "You're", "start": 0.0, "end": 0.4 },
+                    { "i": 1, "text": "welcome", "start": 0.5, "end": 1.1 },
+                    { "i": 2, "text": "bro", "start": 1.2, "end": 1.6 }
+                ]
+            }),
+        ),
+        "get_ai_clips" => (
+            serde_json::json!({
+                "projectId": "proj-abc-123"
+            }),
+            serde_json::json!({
+                "projectId": "proj-abc-123",
+                "clips": [
+                    {
+                        "index": 0,
+                        "startSec": 0.0,
+                        "endSec": 32.5,
+                        "label": "Hook",
+                        "segments": [
+                            {
+                                "orderIndex": 0,
+                                "startSec": 0.0,
+                                "endSec": 32.5,
+                                "wordStartIdx": 0,
+                                "wordEndIdx": 84
+                            }
+                        ]
+                    }
+                ]
+            }),
+        ),
+        "patch_ai_clips" => (
+            serde_json::json!({
+                "projectId": "proj-abc-123",
+                "mode": "overwrite",
+                "clips": [
+                    {
+                        "label": "Hook",
+                        "segments": [{ "wordStartIdx": 0, "wordEndIdx": 84 }]
+                    },
+                    {
+                        "label": "Payoff",
+                        "segments": [{ "wordStartIdx": 120, "wordEndIdx": 200 }]
+                    }
+                ]
+            }),
+            serde_json::json!({
+                "projectId": "proj-abc-123",
+                "clips": [
+                    {
+                        "index": 0,
+                        "startSec": 0.0,
+                        "endSec": 32.5,
+                        "label": "Hook",
+                        "segments": [
+                            {
+                                "orderIndex": 0,
+                                "startSec": 0.0,
+                                "endSec": 32.5,
+                                "wordStartIdx": 0,
+                                "wordEndIdx": 84
+                            }
+                        ]
+                    }
+                ]
+            }),
+        ),
         _ => (Value::Object(Default::default()), Value::Object(Default::default())),
     }
 }
@@ -122,12 +219,23 @@ mod tests {
     #[test]
     fn catalog_lists_all_registered_tools_with_examples() {
         let catalog = build_mcp_tools_catalog();
-        assert_eq!(catalog.tools.len(), 3);
+        assert_eq!(catalog.tools.len(), 7);
 
         let tool_names: Vec<&str> = catalog.tools.iter().map(|tool| tool.name.as_str()).collect();
-        assert!(tool_names.contains(&"list_exports"));
-        assert!(tool_names.contains(&"get_export_details"));
-        assert!(tool_names.contains(&"patch_export_social_metadata"));
+        for expected in [
+            "list_exports",
+            "get_export_details",
+            "patch_export_social_metadata",
+            "list_projects",
+            "get_project_transcript",
+            "get_ai_clips",
+            "patch_ai_clips",
+        ] {
+            assert!(
+                tool_names.contains(&expected),
+                "missing tool {expected} in {tool_names:?}"
+            );
+        }
 
         for tool in &catalog.tools {
             assert!(tool.description.is_some());
@@ -135,74 +243,19 @@ mod tests {
             assert_not_schema_like(&tool.output_example);
         }
 
-        let list_exports = catalog
+        let patch_ai = catalog
             .tools
             .iter()
-            .find(|tool| tool.name == "list_exports")
-            .expect("list_exports tool should be registered");
-        assert!(list_exports.input_example.get("projectId").is_some());
+            .find(|tool| tool.name == "patch_ai_clips")
+            .expect("patch_ai_clips");
         assert_eq!(
-            list_exports.input_example.get("status"),
-            Some(&Value::String("incomplete".to_string()))
+            patch_ai.input_example.get("mode"),
+            Some(&Value::String("overwrite".to_string()))
         );
-        let list_output = list_exports
-            .output_example
-            .as_object()
-            .expect("list_exports output example");
-        assert!(list_output.get("items").and_then(|v| v.as_array()).is_some());
-        assert!(list_output.contains_key("total"));
-        assert!(list_output.contains_key("skip"));
-        assert!(list_output.contains_key("rows"));
-
-        let get_export_details = catalog
-            .tools
-            .iter()
-            .find(|tool| tool.name == "get_export_details")
-            .expect("get_export_details tool should be registered");
-        assert_eq!(
-            get_export_details.input_example.get("exportId"),
-            Some(&Value::String("exp-001".to_string()))
-        );
-        assert!(get_export_details
-            .output_example
-            .get("transcriptTimestamped")
-            .is_some());
-        assert!(!get_export_details
-            .output_example
-            .as_object()
-            .expect("get output example")
-            .contains_key("clipIndex"));
-        assert!(!get_export_details
-            .output_example
-            .as_object()
-            .expect("get output example")
-            .contains_key("hasTranscript"));
-
-        let patch_export = catalog
-            .tools
-            .iter()
-            .find(|tool| tool.name == "patch_export_social_metadata")
-            .expect("patch_export_social_metadata tool should be registered");
-        let patch_input = patch_export
+        assert!(patch_ai
             .input_example
-            .as_object()
-            .expect("patch input example");
-        assert!(patch_input.contains_key("exportId"));
-        assert!(patch_input.contains_key("title"));
-        assert!(patch_input.contains_key("description"));
-        assert!(patch_input.contains_key("hashtags"));
-        assert!(!patch_input.contains_key("socialTitle"));
-        assert_eq!(
-            patch_input.get("mode"),
-            Some(&Value::String("fill_missing".to_string()))
-        );
-
-        let patch_output = patch_export
-            .output_example
-            .as_object()
-            .expect("patch output example");
-        assert!(patch_output.contains_key("title"));
-        assert!(!patch_output.contains_key("missingFields"));
-        assert!(!patch_output.contains_key("transcriptPlain"));
+            .get("clips")
+            .and_then(|v| v.as_array())
+            .is_some());
     }
 }

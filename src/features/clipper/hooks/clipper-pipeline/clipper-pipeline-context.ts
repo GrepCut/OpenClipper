@@ -30,7 +30,6 @@ export function usePipelineRefs(
   const loadedResumeKeyRef = useRef<string | null>(null);
   const aiClipsMetaRef = useRef<ClipperPipelineRefs["aiClipsMetaRef"]["current"]>([]);
   const reporterRef = useRef(createThrottledReporter(createReporter(setState)));
-  const aiChatAbortRef = useRef<AbortController | null>(null);
 
   return {
     abortRef,
@@ -42,7 +41,6 @@ export function usePipelineRefs(
     loadedResumeKeyRef,
     aiClipsMetaRef,
     reporterRef,
-    aiChatAbortRef,
   };
 }
 

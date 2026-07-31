@@ -17,7 +17,7 @@ impl WinMlModel {
     /// tiny single-frame benchmark leaves the GPU idle during real detection.
     /// CPU is therefore only a compatibility fallback. fp16 parity with fp32
     /// is validated offline by
-    /// scripts/models/make_derived_clipper_vision_models.py.
+    /// scripts/models/prepare_balanced_autoflip_models.py.
     pub(super) fn calibrate(
         fp32_path: &Path,
         fp16_path: Option<&Path>,

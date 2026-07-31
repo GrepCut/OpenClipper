@@ -1,19 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchClipperExportsAll,
   purgeClipperExportsMissing,
   type ClipperExportMapItem,
 } from "../persistence/clipper-export-db-api.util";
+import {
+  CLIPPER_EXPORT_EXTERNAL_SYNC_MS,
+  exportMapItemsVisuallyEqual,
+} from "../persistence/clipper-export-map-sync.util";
 import { onClipperExportsChanged } from "../persistence/clipper-export-events.util";
 import { onClipperOwnersChanged } from "../persistence/clipper-owner-events.util";
 import { clipperError } from "../shared/logger.util";
 import {
   buildPublishGraphData,
+  mapItemToFormatResult,
   resolveExportMapItemMedia,
   type PublishGraphData,
   type PublishSelection,
 } from "../shared/clipper-publish-graph.util";
 import type { ClipperFormatResult } from "../shared/state.util";
+
+interface LoadExportsOptions {
+  purge?: boolean;
+}
 
 export function useClipperPublishMap() {
   const [items, setItems] = useState<ClipperExportMapItem[]>([]);
@@ -21,6 +30,8 @@ export function useClipperPublishMap() {
   const [selection, setSelection] = useState<PublishSelection>({ kind: "none" });
   const [selectedResult, setSelectedResult] = useState<ClipperFormatResult | null>(null);
   const [mediaLoading, setMediaLoading] = useState(false);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const graphData: PublishGraphData = useMemo(
     () => buildPublishGraphData(items),
@@ -54,14 +65,17 @@ export function useClipperPublishMap() {
     };
   }, [selectedProjectId, selectedProjectItems]);
 
-  const loadExports = useCallback(async (showLoading = true) => {
+  const loadExports = useCallback(async (showLoading = true, options?: LoadExportsOptions) => {
+    const purge = options?.purge !== false;
     if (showLoading) setLoading(true);
     try {
-      await purgeClipperExportsMissing().catch((error) => {
-        clipperError("publish-map: purge missing exports failed", error);
-      });
+      if (purge) {
+        await purgeClipperExportsMissing().catch((error) => {
+          clipperError("publish-map: purge missing exports failed", error);
+        });
+      }
       const next = await fetchClipperExportsAll();
-      setItems(next);
+      setItems((prev) => (exportMapItemsVisuallyEqual(prev, next) ? prev : next));
     } catch (error) {
       clipperError("publish-map: refresh failed", error);
       setItems([]);
@@ -75,13 +89,13 @@ export function useClipperPublishMap() {
   useEffect(() => {
     void loadExports(true);
     const unsubscribeExports = onClipperExportsChanged(() => {
-      void loadExports(false);
+      void loadExports(false, { purge: false });
     });
     const unsubscribeOwners = onClipperOwnersChanged(() => {
-      void loadExports(false);
+      void loadExports(false, { purge: false });
     });
     const onFocus = () => {
-      void loadExports(false);
+      void loadExports(false, { purge: false });
     };
     window.addEventListener("focus", onFocus);
     return () => {
@@ -92,14 +106,30 @@ export function useClipperPublishMap() {
   }, [loadExports]);
 
   useEffect(() => {
-    if (!selectedItem) {
+    const interval = window.setInterval(() => {
+      void loadExports(false, { purge: false });
+    }, CLIPPER_EXPORT_EXTERNAL_SYNC_MS);
+    return () => window.clearInterval(interval);
+  }, [loadExports]);
+
+  const selectedItemFileName = selectedItem?.fileName;
+  const selectedItemProjectId = selectedItem?.projectId;
+
+  useEffect(() => {
+    if (!selectedExportId || !selectedItemFileName || !selectedItemProjectId) {
+      setSelectedResult(null);
+      return;
+    }
+
+    const item = itemsRef.current.find((entry) => entry.id === selectedExportId);
+    if (!item) {
       setSelectedResult(null);
       return;
     }
 
     let cancelled = false;
     setMediaLoading(true);
-    void resolveExportMapItemMedia(selectedItem)
+    void resolveExportMapItemMedia(item)
       .then((result) => {
         if (!cancelled) setSelectedResult(result);
       })
@@ -110,7 +140,31 @@ export function useClipperPublishMap() {
     return () => {
       cancelled = true;
     };
-  }, [selectedItem]);
+  }, [selectedExportId, selectedItemFileName, selectedItemProjectId]);
+
+  useEffect(() => {
+    if (!selectedItem || !selectedResult || selectedItem.id !== selectedResult.id) return;
+
+    const metadataChanged =
+      selectedItem.socialTitle !== selectedResult.socialTitle ||
+      selectedItem.socialShortDescription !== selectedResult.socialShortDescription ||
+      selectedItem.socialDescription !== selectedResult.socialDescription ||
+      selectedItem.socialDescriptionTimestamped !== selectedResult.socialDescriptionTimestamped ||
+      selectedItem.socialHashtags !== selectedResult.socialHashtags ||
+      selectedItem.transcriptPlain !== selectedResult.transcriptPlain ||
+      selectedItem.transcriptTimestamped !== selectedResult.transcriptTimestamped;
+
+    if (!metadataChanged) return;
+
+    setSelectedResult(
+      mapItemToFormatResult(
+        selectedItem,
+        selectedResult.previewUrl,
+        selectedResult.filePath,
+        selectedResult.file,
+      ),
+    );
+  }, [selectedItem, selectedResult]);
 
   const selectNode = useCallback((nodeId: string | null, nodeType?: string) => {
     if (!nodeId) {

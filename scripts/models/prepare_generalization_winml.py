@@ -15,10 +15,11 @@ import torch
 from safetensors.torch import load_file
 
 ROOT = Path(__file__).resolve().parents[2]
+BUNDLE = ROOT / "src-tauri/resources/models/clipper-vision"
 VINET_REFERENCE = ROOT / "reference-algorithms/video-saliency/vinet-v2/ViNet_S"
 
 VINET_WEIGHTS = ROOT / "public/models/vinet/vinet-s-saliency.safetensors"
-VINET_ONNX = ROOT / "public/models/vinet/vinet-s-saliency.onnx"
+VINET_ONNX = BUNDLE / "vinet-s-saliency.onnx"
 
 VINET_CLIPS = 32
 VINET_HEIGHT = 224

@@ -111,8 +111,6 @@ function TranscriptDisplay({
       borderColor={theme.surface.hover}
       bg={theme.surface.faint}
       p={3}
-      maxH="200px"
-      overflow="auto"
     >
       <Text fontSize="sm" lineHeight="1.6">
         {chunks.map((chunk, index) => (

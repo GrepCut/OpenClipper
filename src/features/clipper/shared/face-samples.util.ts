@@ -1,4 +1,4 @@
-/** Pixel-space face bounding box from native WinML BlazeFace. */
+/** Pixel-space face bounding box from native WinML SCRFD. */
 export interface FaceBox {
   x: number;
   y: number;

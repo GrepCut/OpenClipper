@@ -11,6 +11,7 @@ import type { ClipperPreviewSidePanelProps } from "./clipper-preview.types";
 
 export function ClipperPreviewSidePanel({
   theme,
+  projectId,
   clipPreviews,
   safeAutoPartsPreviews,
   safeAiPreviews,
@@ -19,17 +20,6 @@ export function ClipperPreviewSidePanel({
   onSelectClip,
   onDeleteAiClip,
   onDeleteAutoPartsClip,
-  aiChatMessages,
-  aiChatLoading,
-  aiChatError,
-  aiChatThinking,
-  aiChatProgressChars,
-  aiChatModel,
-  onAiChatModelChange,
-  onSendAiChatMessage,
-  onLoadAiChatHistory,
-  onNewAiChat,
-  aiCurrentClipsJsonChars,
   state,
   collageRegions,
   disabledCollageRegionIds,
@@ -115,6 +105,7 @@ export function ClipperPreviewSidePanel({
 
       <Box flex="1" minH={0} overflow="hidden" display="flex" flexDirection="column">
         <ClipperClipsSection
+          projectId={projectId}
           clipPreviews={clipPreviews}
           autoPartsClipPreviews={safeAutoPartsPreviews}
           aiClipPreviews={safeAiPreviews}
@@ -123,17 +114,6 @@ export function ClipperPreviewSidePanel({
           onSelectClip={onSelectClip}
           onDeleteAiClip={onDeleteAiClip}
           onDeleteAutoPartsClip={onDeleteAutoPartsClip}
-          aiChatMessages={aiChatMessages}
-          aiChatLoading={aiChatLoading}
-          aiChatError={aiChatError}
-          aiChatThinking={aiChatThinking}
-          aiChatProgressChars={aiChatProgressChars}
-          aiChatModel={aiChatModel}
-          onAiChatModelChange={onAiChatModelChange}
-          onSendAiChatMessage={onSendAiChatMessage}
-          onLoadAiChatHistory={onLoadAiChatHistory}
-          onNewAiChat={onNewAiChat}
-          aiCurrentClipsJsonChars={aiCurrentClipsJsonChars}
           rangeWords={state.rangeWords}
           collageRegions={collageRegions}
           disabledCollageRegionIds={disabledCollageRegionIds}

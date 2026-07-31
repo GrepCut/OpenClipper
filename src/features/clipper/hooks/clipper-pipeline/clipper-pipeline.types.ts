@@ -29,7 +29,6 @@ export interface ClipperPipelineRefs {
   loadedResumeKeyRef: React.MutableRefObject<string | null>;
   aiClipsMetaRef: React.MutableRefObject<ClipperClipPayload[]>;
   reporterRef: React.MutableRefObject<PipelineReporter>;
-  aiChatAbortRef: React.MutableRefObject<AbortController | null>;
 }
 
 export interface ClipperPipelineCoreDeps {

@@ -44,12 +44,6 @@ public/models/whisper-large-v3-turbo-dml/*
 !public/models/whisper-large-v3-turbo-dml/README.md
 !public/models/whisper-large-v3-turbo-dml/config.json
 
-# HT-Demucs vocals isolate model (large ONNX; sideload / CDN)
-public/models/htdemucs-ft-vocals-onnx/*
-!public/models/htdemucs-ft-vocals-onnx/.gitkeep
-!public/models/htdemucs-ft-vocals-onnx/README.md
-!public/models/htdemucs-ft-vocals-onnx/config.json
-
 public/models/uvr-mdx-net-voc-ft/*
 !public/models/uvr-mdx-net-voc-ft/.gitkeep
 !public/models/uvr-mdx-net-voc-ft/README.md

@@ -1,15 +1,12 @@
-import { useMemo } from "react";
-
-import { buildFrameContext } from "../../pipeline/session.util";
-import { INITIAL_PIPELINE_STATE } from "./clipper-pipeline.types";
-import { payloadClipToWordSegments } from "./clip-preview.util";
-import type { UseClipperPipelineOptions } from "./clipper-pipeline.types";
 import { useClipperPipelineAi } from "./use-clipper-pipeline-ai.hook";
 import { useClipperPipelineClips } from "./use-clipper-pipeline-clips.hook";
 import { useClipperPipelineCore } from "./use-clipper-pipeline-core.hook";
 import { useClipperPipelineRender } from "./use-clipper-pipeline-render.hook";
 import { useClipperPipelineWorkflow } from "./use-clipper-pipeline-workflow.hook";
 import { useClipperResume } from "../use-clipper-resume.hook";
+import { buildFrameContext } from "../../pipeline/session.util";
+import { INITIAL_PIPELINE_STATE } from "./clipper-pipeline.types";
+import type { UseClipperPipelineOptions } from "./clipper-pipeline.types";
 
 export function useClipperPipeline({ project, token, loaded }: UseClipperPipelineOptions) {
   const core = useClipperPipelineCore(project, loaded);
@@ -23,7 +20,7 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     reset,
     setActiveClipIndex,
   } = core;
-  const { sessionRef, activeClipIndexRef, metadataRef, aiClipsMetaRef } = refs;
+  const { sessionRef, activeClipIndexRef, metadataRef } = refs;
 
   const workflow = useClipperPipelineWorkflow(core, project, token);
   const clips = useClipperPipelineClips(core);
@@ -48,14 +45,6 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     activeClipIndexRef,
   });
 
-  const aiCurrentClipsJsonChars = useMemo(() => {
-    const payload = aiClipsMetaRef.current.map((clip) => ({
-      segments: payloadClipToWordSegments(clip),
-      label: clip.label,
-    }));
-    return JSON.stringify(payload).length;
-  }, [aiClipsMetaRef, state.aiClipPreviews]);
-
   return {
     state,
     settings,
@@ -76,19 +65,8 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     resegmentAutoParts: clips.resegmentAutoParts,
     autoPartsSegmentLengthSec: clips.autoPartsSegmentLengthSec,
     autoPartsResegmenting: clips.autoPartsResegmenting,
-    loadAiChatHistory: ai.loadAiChatHistory,
-    sendAiClipChatMessage: ai.sendAiClipChatMessage,
-    startNewAiChat: ai.startNewAiChat,
     deleteAiClip: ai.deleteAiClip,
     deleteAutoPartsClip: clips.deleteAutoPartsClip,
-    aiChatMessages: ai.aiChatMessages,
-    aiChatLoading: ai.aiChatLoading,
-    aiChatError: ai.aiChatError,
-    aiChatThinking: ai.aiChatThinking,
-    aiChatProgressChars: ai.aiChatProgressChars,
-    aiChatModel: ai.aiChatModel,
-    setAiChatModel: ai.setAiChatModel,
-    aiCurrentClipsJsonChars,
     getFrameContext: () => {
       const session = sessionRef.current;
       if (!session) return null;

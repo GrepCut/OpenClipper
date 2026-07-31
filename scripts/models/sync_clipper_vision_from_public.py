@@ -62,17 +62,25 @@ def sync_models(dry_run: bool) -> int:
             print(f"clipper-vision sync: {name}: missing onnxFile", file=sys.stderr)
             return 1
 
-        source = resolve_onnx_source(source_path, onnx_file)
         destination = BUNDLE_DIR / onnx_file
-        if not source.is_file():
-            missing.append(f"{name}: {source.relative_to(ROOT)}")
-            continue
+        source_suffix = Path(source_path).suffix.lower()
+        if source_suffix == ".safetensors":
+            if not destination.is_file():
+                missing.append(f"{name}: {destination.relative_to(ROOT)}")
+                continue
+            actual_hash = sha256(destination)
+            needs_copy = False
+        else:
+            source = resolve_onnx_source(source_path, onnx_file)
+            if not source.is_file():
+                missing.append(f"{name}: {source.relative_to(ROOT)}")
+                continue
+            actual_hash = sha256(source)
+            destination_exists = destination.is_file()
+            destination_hash = sha256(destination) if destination_exists else None
+            needs_copy = destination_hash != actual_hash
 
-        actual_hash = sha256(source)
         expected_hash = entry.get("onnxSha256")
-        destination_exists = destination.is_file()
-        destination_hash = sha256(destination) if destination_exists else None
-        needs_copy = destination_hash != actual_hash
         needs_hash_update = expected_hash != actual_hash
 
         if needs_copy:

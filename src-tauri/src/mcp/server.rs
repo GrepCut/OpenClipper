@@ -9,6 +9,10 @@ use rmcp::{
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 
+use crate::mcp::ai_clips::{
+    get_ai_clips_response, get_project_transcript_response, list_projects_response,
+    patch_ai_clips_response, pretty_json, ListProjectsParams, PatchAiClipsParams, ProjectIdParams,
+};
 use crate::mcp::helpers::format_platform;
 use crate::mcp::list_exports::{list_exports_response, ListExportsParams};
 use crate::storage::repository::export_map_repository::ExportMapRepository;
@@ -179,6 +183,49 @@ impl OpenClipperMcpServer {
         .map_err(|e| e.to_string())?;
         serde_json::to_string_pretty(&patch_result(&updated)).map_err(|e| e.to_string())
     }
+
+    #[tool(
+        description = "List clipper projects with transcript and AI clip counts. Pagination: skip/rows (default rows=20)"
+    )]
+    async fn list_projects(
+        &self,
+        Parameters(params): Parameters<ListProjectsParams>,
+    ) -> Result<String, String> {
+        let response = list_projects_response(self.database.as_ref(), params).await?;
+        pretty_json(&response)
+    }
+
+    #[tool(
+        description = "Get project range transcript with word indices for AI clip picking. Use word.i as wordStartIdx/wordEndIdx in patch_ai_clips"
+    )]
+    async fn get_project_transcript(
+        &self,
+        Parameters(params): Parameters<ProjectIdParams>,
+    ) -> Result<String, String> {
+        let response =
+            get_project_transcript_response(self.database.as_ref(), &params.project_id).await?;
+        pretty_json(&response)
+    }
+
+    #[tool(description = "Get current AI clips for a project (word-index segments)")]
+    async fn get_ai_clips(
+        &self,
+        Parameters(params): Parameters<ProjectIdParams>,
+    ) -> Result<String, String> {
+        let response = get_ai_clips_response(self.database.as_ref(), &params.project_id).await?;
+        pretty_json(&response)
+    }
+
+    #[tool(
+        description = "Write AI clips from word-index segments. mode: overwrite (default, replace all) or append. Preview UI updates within ~0.5s when Generate with LLM tab is open — no login required"
+    )]
+    async fn patch_ai_clips(
+        &self,
+        Parameters(params): Parameters<PatchAiClipsParams>,
+    ) -> Result<String, String> {
+        let response = patch_ai_clips_response(self.database.as_ref(), params).await?;
+        pretty_json(&response)
+    }
 }
 
 pub fn list_registered_mcp_tools() -> Vec<rmcp::model::Tool> {
@@ -194,7 +241,7 @@ impl ServerHandler for OpenClipperMcpServer {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "Open Clipper export metadata MCP server. Workflow: 1) list_exports — find exports with missing metadata; 2) get_export_details — read transcript and current title/description/hashtags; 3) patch_export_social_metadata — write title, description, hashtags (mode fill_missing by default). In Cursor, use stdio transport (not HTTP URL) so tools appear without OAuth.",
+                "Open Clipper MCP (local SQLite, no login). Clip picking: list_projects → get_project_transcript → patch_ai_clips (word indices). Export metadata: list_exports → get_export_details → patch_export_social_metadata (fill_missing default). In Cursor prefer stdio transport (not HTTP URL) to avoid OAuth.",
             )
     }
 }
@@ -285,7 +332,7 @@ mod tests {
     #[test]
     fn registered_tools_have_no_output_schema() {
         let tools = list_registered_mcp_tools();
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 7);
         for tool in tools {
             assert!(
                 tool.output_schema.is_none(),

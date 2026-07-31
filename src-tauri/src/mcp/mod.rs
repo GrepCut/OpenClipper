@@ -1,3 +1,4 @@
+mod ai_clips;
 mod catalog;
 mod helpers;
 mod http_server;

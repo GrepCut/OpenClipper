@@ -25,17 +25,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     activeClipIndex,
     onSelectClip,
     onClipSourceModeChange,
-    aiChatMessages,
-    aiChatLoading,
-    aiChatError,
-    aiChatThinking,
-    aiChatProgressChars,
-    aiChatModel,
-    onAiChatModelChange,
-    onSendAiChatMessage,
-    onLoadAiChatHistory,
-    onNewAiChat,
-    aiCurrentClipsJsonChars,
     onDeleteAiClip,
     onDeleteAutoPartsClip,
     settings,
@@ -43,7 +32,6 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     getFrameContext,
     sourceFileName,
     onOpenRenderQueue,
-    guardAccount,
     disabledCollageRegionIds,
     onToggleCollageRegion,
     autoPartsSegmentLengthSec,
@@ -67,14 +55,13 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
 
   const handleSidePanelTabChange = useCallback((tab: SidePanelTab) => {
     if (tab === "ai") {
-      if (guardAccount && !guardAccount()) return;
       onClipSourceModeChange("ai");
       setSidePanelTab("ai");
       return;
     }
     onClipSourceModeChange("auto-parts");
     setSidePanelTab("auto-parts");
-  }, [guardAccount, onClipSourceModeChange]);
+  }, [onClipSourceModeChange]);
 
   const safeAutoPartsPreviews = autoPartsClipPreviews ?? [];
   const safeAiPreviews = aiClipPreviews ?? [];

@@ -16,18 +16,6 @@
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&logoColor=fff&style=flat)](https://www.linkedin.com/in/adam-zi%C3%B3%C5%82ko-9b6603351/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
 
-## Status
-
-**Open Clipper is in active development.** The desktop app focuses on turning long-form footage into short clips you can publish:
-
-- Smart crop and subject tracking for vertical and social formats
-- Local speech-to-text (Whisper, Parakeet) with optional GPU acceleration on Windows
-- Export pipeline with metadata, transcripts, and multi-platform publishing
-- MCP server so AI agents can list exports and work with your clip library
-- Tauri desktop app with a React UI — models download on demand into `%APPDATA%\com.openclipper.app\models\`
-
-Try the product at [grepcut.com](https://grepcut.com/). Source and issues live in [GrepCut/OpenClipper](https://github.com/GrepCut/OpenClipper).
-
 ## Prerequisites
 
 Windows is the primary development target today.
@@ -88,7 +76,7 @@ if (Test-Path $targetFast) {
 
 ## MCP
 
-Open Clipper exposes export metadata to AI agents over two transports:
+Open Clipper exposes local project data to AI agents over two transports (no login):
 
 | Transport | When it works | Endpoint |
 |-----------|---------------|----------|
@@ -97,7 +85,9 @@ Open Clipper exposes export metadata to AI agents over two transports:
 
 Both transports read the same SQLite database (`%APPDATA%\com.openclipper.app\clipper.sqlite3`, or `OPEN_CLIPPER_DB_PATH`).
 
-**Tools:** `list_exports`, `get_export_details`, `patch_export_social_metadata`
+**Clip picking (Preview → Generate with LLM):** `list_projects` → `get_project_transcript` → `patch_ai_clips` (word indices). The tab is MCP-only — no in-app chat — and refreshes within ~0.5s when clips are written.
+
+**Export metadata:** `list_exports` → `get_export_details` → `patch_export_social_metadata`
 
 **Cursor setup:** Prefer stdio over the HTTP URL — it avoids OAuth/`mcp_auth` gating. The **MCP** tab in the app copies a ready-made JSON snippet with the correct binary path.
 
@@ -120,6 +110,88 @@ This runs automatically during `tauri:build` and `tauri:build:fast` (via `before
 
 Bundle identifier: `com.openclipper.app`
 
+## Reframe engine
+
+The reframe engine converts source footage into per-format smart crops (e.g. 9:16). It is a modernized port of Google [AutoFlip](https://github.com/google/mediapipe/tree/master/mediapipe/examples/desktop/autoflip): shot boundaries, salient keyframes, and a polynomial/kinematic camera path that keeps a cover-sized crop window on required subjects instead of silently discarding them.
+
+Analyzer version: `autoflip-v43-snap-layout-on-cut`. Vision bundle: `clipper-vision-v5-yolox-s-scrfd10g-tiled`.
+
+### Two-tier pipeline
+
+**Native (Windows)** — FFmpeg decode and WinML/DirectML inference in [`src-tauri/src/video/smart_crop/`](src-tauri/src/video/smart_crop/), started via `start_clipper_winml_analysis`:
+
+- Shot boundaries on every decoded frame (histogram + frame-diff); optional TransNetV2 fuse via `CLIPPER_USE_TRANSNET_CUTS=1` or `CLIPPER_ENABLE_SHADOW=1`
+- Detectors at **5 FPS** (200 ms cadence): SCRFD faces, YOLOX objects, MoveNet pose fallback
+- **ByteTrack v2** on three streams (person / face / pose); trackers reset on scene cuts
+- Cheap motion-grid saliency on every detection sample (no model)
+
+**TypeScript graph** — [`src/features/clipper/engine/autoflip/`](src/features/clipper/engine/autoflip) (`buildAutoFlipTrack`):
+
+- Canonical identity fusion, composition memory, importance timeline
+- Per-format camera path (polynomial or kinematic, scene-split)
+- Visibility controller + layout arbiter → compact `layoutTracks` for preview and export
+
+```mermaid
+flowchart LR
+  decode[FFmpegDecode] --> cuts[SceneCuts]
+  cuts --> winml[WinMLDetectTrack_5fps]
+  winml --> identity[SalienceAndIdentity]
+  identity --> camera[AutoFlipCameraPath]
+  camera --> layout[VisibilityAndLayout]
+  layout --> render[CropExport]
+```
+
+### Models
+
+Production models ship in [`src-tauri/resources/models/clipper-vision/`](src-tauri/resources/models/clipper-vision/) (see **Models** below for sync/CDN).
+
+| Model | Role |
+|-------|------|
+| YOLOX-S | Person/object boxes; tiled recovery on long edge |
+| SCRFD-10G | Face boxes + 5 keypoints; tiled recovery |
+| MoveNet MultiPose | Pose fallback; injects person boxes when YOLOX misses |
+| ByteTrack v2 | Stable `trackId` per stream; reset on scene cuts |
+
+Shadow models (off by default; set `CLIPPER_ENABLE_SHADOW=1`, or `CLIPPER_USE_TRANSNET_CUTS=1` for TransNet only):
+
+| Model | Role |
+|-------|------|
+| TransNetV2 | ML shot-boundary fuse alongside histogram cuts |
+| ViNet-S | Video saliency (`video-saliency` importance signal) |
+| OSNet | Re-ID embeddings for composition-memory association |
+
+`lr_asd_ava.onnx` is bundled and the TypeScript active-speaker policy exists, but native WinML inference is not wired yet. Motion-grid saliency always runs as a fallback when ViNet is off.
+
+### Identity and composition
+
+- `trackId` — ByteTrack trajectory on native detections
+- `canonicalId` — scene-local fusion of person + face + pose (Hungarian assignment)
+- `projectIdentityId` — clip-wide entity after full-clip observation (OSNet cosine or IoU fallback when shadow is on)
+
+YOLOX person boxes enter composition memory only when corroborated by a face or pose (avoids graphics/mannequins). Composition memory biases salience across the clip without persisting biometric embeddings.
+
+### Camera path
+
+Scenes come from native `sceneCuts`; long scenes are chunked. Steady motion uses a polynomial path solver; tracking motion uses a kinematic solver (both ported from AutoFlip). The cover-crop window moves to keep required subjects visible rather than silently discarding them — min zoom scale `0.65`, and scenes shorter than 8 s avoid aggressive zoom (1 s when source aspect already matches the target). Tracks are stored at 5 Hz; the renderer interpolates between samples.
+
+### Visibility and layout
+
+Per-format layout modes: `single-crop`, `split` (2–3 panels), or `contain` (letterbox padding). Split layouts apply only to portrait/square targets — 16:9 never splits.
+
+A visibility controller plans single vs split crops with a rescue ladder (shifted crop, wider crop, emergency primary, stable split). An arbiter chooses between that semantic plan and a legacy `aspectTracks` baseline. Preview and export read compact `layoutTracks` keyed by aspect id (`9-16`, `16-9`, `1-1`, `4-5`); the full analysis blob keeps diagnostics and arbitration scores.
+
+### Code map
+
+| Area | Path |
+|------|------|
+| Native pipeline | [`src-tauri/src/video/smart_crop/`](src-tauri/src/video/smart_crop/) |
+| Tauri command | `start_clipper_winml_analysis` in [`src-tauri/src/commands/clipper/video.rs`](src-tauri/src/commands/clipper/video.rs) |
+| AutoFlip graph | [`src/features/clipper/engine/autoflip/build-track.util.ts`](src/features/clipper/engine/autoflip/build-track.util.ts) |
+| Pipeline stages | [`analyze-faces.util.ts`](src/features/clipper/pipeline/stages/analyze-faces.util.ts), [`analyze-subjects.util.ts`](src/features/clipper/pipeline/stages/analyze-subjects.util.ts) |
+| Types and output | [`src/features/clipper/shared/smart-crop.util.ts`](src/features/clipper/shared/smart-crop.util.ts) |
+
+Headless benchmarks (`--benchmark-run`) evaluate reframe quality via focus-hit metrics and optional miss-frame export.
+
 ## Models
 
 ASR models (Parakeet, Whisper) download on first use into `%APPDATA%\com.openclipper.app\models\`. For local dev without CDN, place files under `public/models/<model-id>/` (see per-model READMEs there).
@@ -128,11 +200,13 @@ WinML vision models ship in `src-tauri/resources/models/clipper-vision/`. After 
 
 CDN publishing workflow: [`models_automation/README.md`](models_automation/README.md).
 
-## Parakeet DirectML (Windows)
+## DirectML (Windows GPU)
 
-Local Parakeet transcription can use GPU via DirectML. Debug builds prefer ONNX files under `public/models/nemo-parakeet-tdt-0.6b-v3-int8/` when present; production uses the AppData cache (or `PARAKEET_MODEL_DIR` / `SHERPA_ONNX_MODEL_DIR`).
+On Windows, most local ML runs on GPU through DirectML: WinML vision (reframe), ASR (Parakeet and Whisper via sherpa-onnx), and optional MDX vocals isolation. Vision models use the system WinML/DirectML stack; no extra build is required for those.
 
-The default `sherpa-onnx` prebuilt libraries are CPU-only. To enable DirectML:
+ASR (Parakeet / Whisper) needs a DirectML-enabled `sherpa-onnx` build. Stock prebuilt libs are CPU-only. Debug builds prefer ONNX under `public/models/<model-id>/` when present; production uses the AppData cache (or `PARAKEET_MODEL_DIR` / `SHERPA_ONNX_MODEL_DIR`).
+
+To enable GPU ASR:
 
 1. Install **Visual Studio 2022** with the **Windows 10 SDK**, plus **CMake** and **Git**
 2. Build native libs (one-time, ~15–30 min):

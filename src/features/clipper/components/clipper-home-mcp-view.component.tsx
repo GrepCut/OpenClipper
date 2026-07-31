@@ -198,9 +198,6 @@ export function ClipperHomeMcpView() {
         >
           MCP
         </SecondaryMainTitle>
-        <Text color={theme.text.muted} fontSize="md" lineHeight="1.6" maxW="48em">
-          {catalog.instructions}
-        </Text>
       </VStack>
 
       <Box bg={panelBg} borderRadius="2xl" p={{ base: 4, md: 5 }}>
