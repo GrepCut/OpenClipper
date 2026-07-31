@@ -14,8 +14,7 @@ dist-ssr
 .env
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 .cursor
 .idea
 .DS_Store
@@ -67,3 +66,7 @@ models_automation/prepared_models.json
 models_automation/__pycache__/
 scripts/models/__pycache__/
 benchmark-replays/
+
+# Staged MCP binary (scripts/stage-open-clipper-mcp.mjs)
+src-tauri/bin/*
+!src-tauri/bin/.gitkeep
