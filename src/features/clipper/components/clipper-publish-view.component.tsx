@@ -17,7 +17,10 @@ import {
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
+import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
 import { useClipperPublishMap } from "../hooks/use-clipper-publish-map.hook";
+import { resolveExportMapItemMedia } from "../shared/clipper-publish-graph.util";
+import type { ClipperFormatResult } from "../shared/state.util";
 import { ClipperPublishGraph } from "./clipper-publish-graph.component";
 import { ClipperPublishDetailPanel } from "./clipper-publish-detail-panel.component";
 import { ClipperPublishProjectPanel } from "./clipper-publish-project-panel.component";
@@ -47,12 +50,14 @@ export function ClipperPublishView() {
     selectedProject,
     selectedResult,
     selectNode,
-    selectExport,
     refresh,
     updateItemPublishStatus,
   } = useClipperPublishMap();
 
   const [publishOpen, setPublishOpen] = useState(false);
+  const [publishItem, setPublishItem] = useState<ClipperExportMapItem | null>(null);
+  const [publishResult, setPublishResult] = useState<ClipperFormatResult | null>(null);
+  const [publishLoadingExportId, setPublishLoadingExportId] = useState<string | null>(null);
 
   const {
     connections: youtubeConnections,
@@ -69,10 +74,10 @@ export function ClipperPublishView() {
   }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
 
   const publishPlatform: SocialPublishablePlatform = useMemo(() => {
-    if (!selectedItem) return "youtube";
-    const formatPlatform = selectedItem.platform === "twitter" ? "twitter" : selectedItem.platform;
+    if (!publishItem) return "youtube";
+    const formatPlatform = publishItem.platform === "twitter" ? "twitter" : publishItem.platform;
     return publishPlatformForFormat(formatPlatform) ?? "youtube";
-  }, [selectedItem]);
+  }, [publishItem]);
 
   const { connected, accountLabel, accountConnections } = useMemo(() => {
     if (publishPlatform === "youtube") {
@@ -113,14 +118,40 @@ export function ClipperPublishView() {
     [canUseAccountFeatures, location.pathname],
   );
 
-  const handleOpenPublish = useCallback(() => {
-    if (!selectedResult || selectedResult.isMissing) return;
-    if (!canUseAccountFeatures) {
-      requestAccount();
-      return;
-    }
-    setPublishOpen(true);
-  }, [canUseAccountFeatures, requestAccount, selectedResult]);
+  const handlePublishExport = useCallback(
+    async (item: ClipperExportMapItem) => {
+      if (!item.clipperOwnerId) {
+        appToast.error("Owner required", "Assign an owner to this project before publishing.");
+        return;
+      }
+      if (!canUseAccountFeatures) {
+        requestAccount();
+        return;
+      }
+
+      setPublishLoadingExportId(item.id);
+      try {
+        const result = await resolveExportMapItemMedia(item);
+        if (result.isMissing) {
+          appToast.error("Export missing", "The export file was not found on disk.");
+          return;
+        }
+        setPublishItem(item);
+        setPublishResult(result);
+        setPublishOpen(true);
+      } finally {
+        setPublishLoadingExportId(null);
+      }
+    },
+    [canUseAccountFeatures, requestAccount],
+  );
+
+  const handlePublishDialogClose = useCallback(() => {
+    setPublishOpen(false);
+    setPublishItem(null);
+    setPublishResult(null);
+    void refresh();
+  }, [refresh]);
 
   const handleMetadataSaved = useCallback(
     (_exportId: string, _fields: ExportSocialFields) => {
@@ -132,11 +163,6 @@ export function ClipperPublishView() {
   const handleExportDeleted = useCallback(() => {
     selectNode(null);
   }, [selectNode]);
-
-  const handlePublishDialogClose = useCallback(() => {
-    setPublishOpen(false);
-    void refresh();
-  }, [refresh]);
 
   return (
     <VStack align="stretch" gap={6} flex="1" minH={0}>
@@ -187,8 +213,6 @@ export function ClipperPublishView() {
                 item={selectedItem}
                 result={selectedResult}
                 mediaLoading={mediaLoading}
-                canPublish={canUseAccountFeatures}
-                onPublish={handleOpenPublish}
                 onMetadataSaved={handleMetadataSaved}
                 onDeleted={handleExportDeleted}
                 connectedSplit
@@ -201,6 +225,9 @@ export function ClipperPublishView() {
             ) : (
               <ClipperPublishProjectPanel
                 project={selectedProject}
+                canPublish={canUseAccountFeatures}
+                publishLoadingExportId={publishLoadingExportId}
+                onPublishExport={(item) => void handlePublishExport(item)}
                 connectedSplit
               />
             )
@@ -211,17 +238,17 @@ export function ClipperPublishView() {
       <ClipperSocialPublishDialog
         isOpen={publishOpen}
         onClose={handlePublishDialogClose}
-        projectId={selectedItem?.projectId ?? ""}
-        result={selectedResult}
-        sourceFileName={selectedItem?.projectName ?? null}
+        projectId={publishItem?.projectId ?? ""}
+        result={publishResult}
+        sourceFileName={publishItem?.projectName ?? null}
         defaultConnected={connected}
         accountLabel={accountLabel}
         accountConnections={accountConnections}
         publishPlatform={publishPlatform}
         onRequestConnect={handleRequestConnect}
         onPublishComplete={(record) => {
-          if (!selectedItem) return;
-          updateItemPublishStatus(selectedItem.id, record);
+          if (!publishItem) return;
+          updateItemPublishStatus(publishItem.id, record);
         }}
       />
     </VStack>

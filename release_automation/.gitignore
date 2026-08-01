@@ -1,0 +1,5 @@
+r2_mirror/
+_rolled_back/
+prepared_release.json
+__pycache__/
+*.pyc

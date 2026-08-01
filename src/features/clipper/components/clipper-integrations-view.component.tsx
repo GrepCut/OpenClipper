@@ -38,6 +38,7 @@ interface PlatformIntegrationSectionProps {
   isConnecting?: boolean;
   onDisconnect: (connectionId: string) => void;
   disconnectingConnectionId?: string | null;
+  comingSoon?: boolean;
 }
 
 function PlatformIntegrationSection({
@@ -50,6 +51,7 @@ function PlatformIntegrationSection({
   isConnecting = false,
   onDisconnect,
   disconnectingConnectionId,
+  comingSoon = false,
 }: PlatformIntegrationSectionProps) {
   const { theme, mode } = useTheme();
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
@@ -73,13 +75,32 @@ function PlatformIntegrationSection({
               ) : null}
             </VStack>
           </HStack>
-          <OutlinedActionButton
-            loading={isConnecting}
-            onClick={onConnect}
-            whiteSpace="nowrap"
-          >
-            Add account
-          </OutlinedActionButton>
+          <HStack gap={2} flexShrink={0}>
+            {comingSoon ? (
+              <Box
+                px={2.5}
+                py={0.5}
+                borderRadius="full"
+                border="1px solid"
+                borderColor={theme.dashboard.border}
+                bg={mode === "dark" ? theme.surface.active : "gray.100"}
+                color={theme.text.muted}
+                fontSize="xs"
+                fontWeight="semibold"
+                whiteSpace="nowrap"
+              >
+                Coming soon
+              </Box>
+            ) : null}
+            <OutlinedActionButton
+              loading={isConnecting}
+              onClick={onConnect}
+              whiteSpace="nowrap"
+              disabled={comingSoon}
+            >
+              Add account
+            </OutlinedActionButton>
+          </HStack>
         </HStack>
 
         {isChecking ? (
@@ -324,6 +345,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "meta"}
           onDisconnect={(connectionId) => handleDisconnectSocial("facebook", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
         <PlatformIntegrationSection
           name="Instagram"
@@ -335,6 +357,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "instagram"}
           onDisconnect={(connectionId) => handleDisconnectSocial("instagram", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
         <PlatformIntegrationSection
           name="TikTok"
@@ -345,6 +368,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "tiktok"}
           onDisconnect={(connectionId) => handleDisconnectSocial("tiktok", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
         <PlatformIntegrationSection
           name="X"

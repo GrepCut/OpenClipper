@@ -18,8 +18,6 @@ interface ClipperPublishDetailPanelProps {
   item: ClipperExportMapItem | null;
   result: ClipperFormatResult | null;
   mediaLoading: boolean;
-  canPublish: boolean;
-  onPublish: () => void;
   onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
   onDeleted: () => void;
   connectedSplit?: boolean;
@@ -29,8 +27,6 @@ export function ClipperPublishDetailPanel({
   item,
   result,
   mediaLoading,
-  canPublish,
-  onPublish,
   onMetadataSaved,
   onDeleted,
   connectedSplit = false,
@@ -77,7 +73,7 @@ export function ClipperPublishDetailPanel({
         overflow="auto"
       >
         <Text color={theme.text.muted} textAlign="center">
-          Select an export node on the map to preview, edit metadata, and publish.
+          Select an export node on the map to preview and edit metadata.
         </Text>
       </Box>
     );
@@ -91,22 +87,14 @@ export function ClipperPublishDetailPanel({
       align="stretch"
       h="full"
       minH={0}
-      gap={0}
+      gap={4}
+      p={4}
       borderRadius={connectedSplit ? 0 : "2xl"}
       border={connectedSplit ? "none" : "1px solid"}
       borderColor={theme.border.primary}
       bg={connectedSplit ? "transparent" : theme.background.card}
-      overflow="hidden"
+      overflow="auto"
     >
-      <VStack
-        align="stretch"
-        flex={1}
-        minH={0}
-        gap={4}
-        p={4}
-        pb={3}
-        overflow="auto"
-      >
       <HStack justify="space-between" align="start" gap={3}>
         <VStack align="start" gap={1} flex={1}>
           <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
@@ -179,28 +167,14 @@ export function ClipperPublishDetailPanel({
         onMetadataSaved={handleMetadataSaved}
         variant="inline"
       />
-      </VStack>
 
       <VStack
         align="stretch"
-        flexShrink={0}
         gap={3}
-        px={4}
         pt={2}
-        pb={4}
         borderTop="1px solid"
         borderColor={theme.surface.hover}
-        bg={connectedSplit ? theme.background.card : theme.background.tertiary}
       >
-        <OutlinedActionButton
-          width="100%"
-          justifyContent="center"
-          onClick={onPublish}
-          disabled={!canPublish || result.isMissing || item.isPublished}
-        >
-          {item.isPublished ? "Already published" : `Publish to ${item.formatLabel}`}
-        </OutlinedActionButton>
-
         <SlideToDeleteControl
           label="Slide to delete"
           onComplete={handleSlideDelete}

@@ -1,6 +1,6 @@
 [package]
 name = "open-clipper"
-version = "0.1.0"
+version = "26.8.1"
 description = "Open Clipper desktop app"
 authors = ["GrepCut"]
 license = "MIT"
@@ -36,13 +36,14 @@ dirs = "6"
 ffmpeg-next = { git = "https://github.com/zmwangx/rust-ffmpeg.git", version = "8.1.0" }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
 image = "0.25.6"
 fast_image_resize = "4.2.3"
 lapjv = "0.3.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 url = "2"
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2", "json"] }
 sha2 = "0.10"
 sherpa-onnx = { path = "vendor/sherpa-onnx", default-features = false, features = ["shared"] }
 crossbeam-channel = "0.5"

@@ -1,7 +1,7 @@
 {
   "name": "open-clipper",
   "private": true,
-  "version": "0.1.0",
+  "version": "26.8.1",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -14,8 +14,8 @@
     "test": "vitest run src/features/clipper/persistence/clipper-export-social.util.spec.ts",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:dev": "node scripts/run-tauri.mjs dev",
+    "tauri:build": "node scripts/run-tauri.mjs build",
     "tauri:build:fast": "cross-env CARGO_TARGET_DIR=target-fast CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_INCREMENTAL=true CARGO_PROFILE_RELEASE_OPT_LEVEL=2 CARGO_PROFILE_RELEASE_STRIP=none tauri build --no-bundle",
     "tauri:preview": "src-tauri\\target\\release\\open-clipper.exe",
     "tauri:preview:fast": "src-tauri\\target-fast\\release\\open-clipper.exe",
@@ -27,7 +27,12 @@
     "models:verify": "python models_automation\\models_manager.py verify",
     "models:promote": "python models_automation\\models_manager.py promote",
     "models:rollback": "python models_automation\\models_manager.py rollback",
-    "models:status": "python models_automation\\models_manager.py status"
+    "models:status": "python models_automation\\models_manager.py status",
+    "release:prepare": "python release_automation\\release_manager.py prepare",
+    "release:verify-build": "python release_automation\\release_manager.py verify-build",
+    "release:promote": "python release_automation\\release_manager.py promote --base-url https://updates.grepcut.com/open-clipper --notes \"Open Clipper desktop release\"",
+    "release:desktop": "npm run release:prepare && npm run tauri:build && npm run release:verify-build",
+    "release:clean-install": "powershell -ExecutionPolicy Bypass -File release_automation\\clean-install.ps1"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.24.2",

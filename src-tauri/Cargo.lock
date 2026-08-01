@@ -3857,7 +3857,7 @@ dependencies = [
 
 [[package]]
 name = "open-clipper"
-version = "0.1.0"
+version = "26.8.1"
 dependencies = [
  "anyhow",
  "axum",

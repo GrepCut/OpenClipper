@@ -15,6 +15,7 @@ import { DesktopAuthBridge } from "./features/authentication/desktop-auth-bridge
 import { isTauri } from "./shared/utils/platform.util";
 import { ensureTauriFrontendSession } from "./shared/utils/tauri-native-jobs.util";
 import { ClipperTauriGate } from "./features/clipper/pages/clipper-tauri-gate.component";
+import { AppUpdateInitializer } from "./features/settings/app-update-initializer.component";
 
 const AuthPage = lazy(() =>
   import("./features/authentication/auth-page.component").then((m) => ({
@@ -202,10 +203,12 @@ function App() {
     <ThemeProvider defaultMode="dark">
       <ChakraProvider value={system}>
         <FrontendReadySignal />
-        <Toaster />
-        <Router basename={isTauri() ? "/" : import.meta.env.BASE_URL.replace(/\/+$/, "") || "/"}>
-          <AppContent />
-        </Router>
+        <AppUpdateInitializer>
+          <Toaster />
+          <Router basename={isTauri() ? "/" : import.meta.env.BASE_URL.replace(/\/+$/, "") || "/"}>
+            <AppContent />
+          </Router>
+        </AppUpdateInitializer>
       </ChakraProvider>
     </ThemeProvider>
   );

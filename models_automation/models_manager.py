@@ -25,7 +25,11 @@ ROLLBACK_ROOT = MIRROR_ROOT / "_rollback" / "previous"
 
 # Only browser/Tauri download-on-demand assets belong in the CDN. Native
 # clipper-vision models are deliberately bundled under src-tauri/resources.
-MODEL_DIRECTORIES = ("nemo-parakeet-tdt-0.6b-v3-int8",)
+MODEL_DIRECTORIES = (
+    "nemo-parakeet-tdt-0.6b-v3-int8",
+    "uvr-mdx-net-voc-ft",
+    "whisper-large-v3-turbo-dml",
+)
 EXCLUDED_PARTS = {"test_wavs"}
 EXCLUDED_NAMES = {".gitkeep", "README.md"}
 

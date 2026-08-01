@@ -2,6 +2,7 @@ import { Text, VStack } from "@chakra-ui/react";
 import { useTheme } from "../../../theme";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 import { TranscriptionSection } from "./settings/transcription-section.component";
+import { AppUpdateCard } from "../../settings/app-update-card.component";
 
 export function ClipperHomeSettingsView() {
   const { theme } = useTheme();
@@ -21,6 +22,7 @@ export function ClipperHomeSettingsView() {
         </Text>
       </VStack>
 
+      <AppUpdateCard />
       <TranscriptionSection variant="flat" />
     </VStack>
   );

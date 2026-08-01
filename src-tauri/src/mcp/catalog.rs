@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::mcp::server::list_registered_mcp_tools;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpToolCatalogEntry {
     pub name: String,
@@ -16,23 +16,74 @@ pub struct McpToolCatalogEntry {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct McpToolsCatalog {
-    pub instructions: String,
+pub struct McpToolSection {
+    pub id: String,
+    pub title: String,
+    pub description: String,
     pub tools: Vec<McpToolCatalogEntry>,
 }
 
-const MCP_INSTRUCTIONS: &str = "Open Clipper MCP (local SQLite, no login). Clip picking: list_projects → get_project_transcript → patch_ai_clips. Export metadata: list_exports → get_export_details → patch_export_social_metadata. Prefer stdio transport in Cursor (not HTTP URL).";
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpToolsCatalog {
+    pub instructions: String,
+    pub sections: Vec<McpToolSection>,
+}
+
+const MCP_INSTRUCTIONS: &str = "Open Clipper MCP (local SQLite, no login). Clipping: list_projects → get_project_transcript → patch_ai_clips. Publish: list_exports → get_export_details → patch_export_social_metadata. Prefer stdio transport in Cursor (not HTTP URL).";
+
+const PUBLISH_TOOL_NAMES: &[&str] = &[
+    "list_exports",
+    "get_export_details",
+    "patch_export_social_metadata",
+];
+
+const CLIPPING_TOOL_NAMES: &[&str] = &[
+    "list_projects",
+    "get_project_transcript",
+    "get_ai_clips",
+    "patch_ai_clips",
+];
 
 pub fn build_mcp_tools_catalog() -> McpToolsCatalog {
-    let tools = list_registered_mcp_tools()
+    let tools: Vec<McpToolCatalogEntry> = list_registered_mcp_tools()
         .into_iter()
         .map(tool_to_catalog_entry)
         .collect();
 
     McpToolsCatalog {
         instructions: MCP_INSTRUCTIONS.to_string(),
-        tools,
+        sections: vec![
+            McpToolSection {
+                id: "clipping".to_string(),
+                title: "Clipping".to_string(),
+                description: "Pick AI clips from project transcripts using word indices.".to_string(),
+                tools: tools_for_section(&tools, CLIPPING_TOOL_NAMES),
+            },
+            McpToolSection {
+                id: "publish".to_string(),
+                title: "Publish".to_string(),
+                description: "Fill social metadata (title, description, hashtags) on exported clips."
+                    .to_string(),
+                tools: tools_for_section(&tools, PUBLISH_TOOL_NAMES),
+            },
+        ],
     }
+}
+
+fn tools_for_section(
+    tools: &[McpToolCatalogEntry],
+    names: &[&str],
+) -> Vec<McpToolCatalogEntry> {
+    names
+        .iter()
+        .filter_map(|name| {
+            tools
+                .iter()
+                .find(|tool| tool.name == *name)
+                .cloned()
+        })
+        .collect()
 }
 
 fn tool_to_catalog_entry(tool: Tool) -> McpToolCatalogEntry {
@@ -219,9 +270,30 @@ mod tests {
     #[test]
     fn catalog_lists_all_registered_tools_with_examples() {
         let catalog = build_mcp_tools_catalog();
-        assert_eq!(catalog.tools.len(), 7);
+        assert_eq!(catalog.sections.len(), 2);
 
-        let tool_names: Vec<&str> = catalog.tools.iter().map(|tool| tool.name.as_str()).collect();
+        let clipping = catalog
+            .sections
+            .iter()
+            .find(|section| section.id == "clipping")
+            .expect("clipping section");
+        let publish = catalog
+            .sections
+            .iter()
+            .find(|section| section.id == "publish")
+            .expect("publish section");
+
+        assert_eq!(clipping.title, "Clipping");
+        assert_eq!(publish.title, "Publish");
+        assert_eq!(clipping.tools.len(), 4);
+        assert_eq!(publish.tools.len(), 3);
+
+        let tool_names: Vec<&str> = catalog
+            .sections
+            .iter()
+            .flat_map(|section| section.tools.iter())
+            .map(|tool| tool.name.as_str())
+            .collect();
         for expected in [
             "list_exports",
             "get_export_details",
@@ -237,13 +309,17 @@ mod tests {
             );
         }
 
-        for tool in &catalog.tools {
+        for tool in catalog
+            .sections
+            .iter()
+            .flat_map(|section| section.tools.iter())
+        {
             assert!(tool.description.is_some());
             assert_not_schema_like(&tool.input_example);
             assert_not_schema_like(&tool.output_example);
         }
 
-        let patch_ai = catalog
+        let patch_ai = clipping
             .tools
             .iter()
             .find(|tool| tool.name == "patch_ai_clips")

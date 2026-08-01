@@ -8,6 +8,12 @@ use rmcp::{
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+
+use crate::clipper::exports_notify::{
+    ClipperExportsChangedEvent, EXPORTS_CHANGED_REASON_MCP, emit_exports_changed,
+    notify_exports_changed_http,
+};
 
 use crate::mcp::ai_clips::{
     get_ai_clips_response, get_project_transcript_response, list_projects_response,
@@ -23,6 +29,7 @@ use crate::storage::repository::export_repository::{
 #[derive(Debug, Clone)]
 pub struct OpenClipperMcpServer {
     database: Arc<DatabaseConnection>,
+    app: Option<AppHandle>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -30,6 +37,15 @@ impl OpenClipperMcpServer {
     pub fn new(database: Arc<DatabaseConnection>) -> Self {
         Self {
             database,
+            app: None,
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    pub fn with_app(database: Arc<DatabaseConnection>, app: AppHandle) -> Self {
+        Self {
+            database,
+            app: Some(app),
             tool_router: Self::tool_router(),
         }
     }
@@ -181,6 +197,18 @@ impl OpenClipperMcpServer {
         )
         .await
         .map_err(|e| e.to_string())?;
+
+        let event = ClipperExportsChangedEvent::new(
+            Some(updated.project_id.clone()),
+            Some(updated.id.clone()),
+            EXPORTS_CHANGED_REASON_MCP,
+        );
+        if let Some(app) = &self.app {
+            emit_exports_changed(app, event);
+        } else {
+            notify_exports_changed_http(event);
+        }
+
         serde_json::to_string_pretty(&patch_result(&updated)).map_err(|e| e.to_string())
     }
 

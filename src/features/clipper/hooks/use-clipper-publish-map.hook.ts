@@ -5,10 +5,9 @@ import {
   type ClipperExportMapItem,
 } from "../persistence/clipper-export-db-api.util";
 import {
-  CLIPPER_EXPORT_EXTERNAL_SYNC_MS,
   exportMapItemsVisuallyEqual,
 } from "../persistence/clipper-export-map-sync.util";
-import { onClipperExportsChanged } from "../persistence/clipper-export-events.util";
+import { subscribeClipperExportsChanged } from "../persistence/clipper-export-events.util";
 import { onClipperOwnersChanged } from "../persistence/clipper-owner-events.util";
 import { clipperError } from "../shared/logger.util";
 import {
@@ -88,7 +87,7 @@ export function useClipperPublishMap() {
 
   useEffect(() => {
     void loadExports(true);
-    const unsubscribeExports = onClipperExportsChanged(() => {
+    const unsubscribeExports = subscribeClipperExportsChanged(() => {
       void loadExports(false, { purge: false });
     });
     const unsubscribeOwners = onClipperOwnersChanged(() => {
@@ -103,13 +102,6 @@ export function useClipperPublishMap() {
       unsubscribeOwners();
       window.removeEventListener("focus", onFocus);
     };
-  }, [loadExports]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      void loadExports(false, { purge: false });
-    }, CLIPPER_EXPORT_EXTERNAL_SYNC_MS);
-    return () => window.clearInterval(interval);
   }, [loadExports]);
 
   const selectedItemFileName = selectedItem?.fileName;
