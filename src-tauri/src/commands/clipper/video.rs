@@ -1,7 +1,3 @@
-use crate::clipper::data::{clipper_export_file_path, clipper_project_exports_dir, validate_export_file_name};
-use crate::video::ffmpeg::export::{
-    cancel_native_export, export_format_native_blocking, NativeCropTimeline, NativeExportResult,
-};
 use crate::video::ffmpeg::frames::{extract_clipper_segment_blocking, snap_to_keyframe_blocking};
 use crate::video::jobs::registry::{NativeJobEmitter, NativeJobRegistry};
 use std::sync::atomic::Ordering;
@@ -178,56 +174,4 @@ pub async fn extract_clipper_segment(
     .await
     .map_err(|e| format!("Task join error: {e}"))??;
     Ok(tauri::ipc::Response::new(bytes))
-}
-
-#[command]
-pub fn probe_caption_gpu() -> bool {
-    crate::video::caption_gpu::probe_caption_gpu()
-}
-
-#[command]
-pub async fn export_clipper_format_native(
-    app: AppHandle,
-    job_id: String,
-    project_id: String,
-    input_path: String,
-    output_file_name: String,
-    timeline_json: String,
-    ass_content: Option<String>,
-    caption_scene_json: Option<String>,
-    quality: String,
-    mute_audio: bool,
-    duration_sec: f64,
-) -> Result<NativeExportResult, String> {
-    validate_export_file_name(&output_file_name)?;
-    let timeline: NativeCropTimeline = serde_json::from_str(&timeline_json)
-        .map_err(|e| format!("Invalid crop timeline JSON: {e}"))?;
-    let exports_dir = clipper_project_exports_dir(&app, &project_id)?;
-    std::fs::create_dir_all(&exports_dir).map_err(|e| e.to_string())?;
-    let output_path = clipper_export_file_path(&app, &project_id, &output_file_name)?;
-    let input = std::path::PathBuf::from(input_path);
-
-    let app_for_task = app.clone();
-    let job_id_task = job_id.clone();
-    tokio::task::spawn_blocking(move || {
-        export_format_native_blocking(
-            &app_for_task,
-            &job_id_task,
-            &input,
-            &output_path,
-            &timeline,
-            ass_content.as_deref(),
-            caption_scene_json.as_deref(),
-            &quality,
-            mute_audio,
-            duration_sec,
-        )
-    })
-    .await
-    .map_err(|e| format!("Native export join error: {e}"))?
-}
-
-#[command]
-pub fn cancel_clipper_native_export(job_id: String) -> bool {
-    cancel_native_export(&job_id)
 }

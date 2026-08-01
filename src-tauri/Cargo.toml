@@ -54,13 +54,6 @@ hound = "3.5"
 ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "load-dynamic", "directml"] }
 ndarray = "0.16"
 realfft = "3.4"
-klyff = "0.1.3"
-klyff_msdf = "0.1.3"
-wgpu = { version = "27.0.1", default-features = false, features = ["std", "wgsl"] }
-pollster = "0.4"
-glam = { version = "0.31.0", features = ["bytemuck"] }
-bytemuck = "1"
-fontdb = { version = "0.23", default-features = false }
 rmcp = { version = "3.0.1", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
 anyhow = "1.0.104"
 schemars = "1.2.2"
