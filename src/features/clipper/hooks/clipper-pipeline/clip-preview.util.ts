@@ -36,6 +36,13 @@ export function clipsToPayload(
         rangeDurationSec,
         undefined,
         envelope,
+        {
+          usePaddedTimes: false,
+          segmentTimes: clip.segments.map((segment) => ({
+            startSec: segment.startSec,
+            endSec: segment.endSec,
+          })),
+        },
       );
       if (withIndices) return withIndices;
     }

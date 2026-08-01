@@ -93,7 +93,7 @@ function boundariesFromClipWindows(
   for (const clip of sorted) {
     boundaries.push(clip.endSec);
   }
-  if (boundaries[0] > 0.05) boundaries.unshift(0);
+  if (boundaries[0] > 0.05) boundaries[0] = 0;
   if (Math.abs(boundaries[boundaries.length - 1] - rangeDurationSec) > 0.05) {
     boundaries[boundaries.length - 1] = rangeDurationSec;
   }
