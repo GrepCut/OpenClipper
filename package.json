@@ -1,7 +1,7 @@
 {
   "name": "open-clipper",
   "private": true,
-  "version": "26.8.1",
+  "version": "26.8.2",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -30,7 +30,7 @@
     "models:status": "python models_automation\\models_manager.py status",
     "release:prepare": "python release_automation\\release_manager.py prepare",
     "release:verify-build": "python release_automation\\release_manager.py verify-build",
-    "release:promote": "python release_automation\\release_manager.py promote --base-url https://updates.grepcut.com/open-clipper --notes \"Open Clipper desktop release\"",
+    "release:promote": "python release_automation\\release_manager.py promote --base-url https://updates.openclipper.grepcut.com --notes \"Open Clipper desktop release\"",
     "release:desktop": "npm run release:prepare && npm run tauri:build && npm run release:verify-build",
     "release:clean-install": "powershell -ExecutionPolicy Bypass -File release_automation\\clean-install.ps1"
   },

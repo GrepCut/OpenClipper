@@ -36,6 +36,8 @@ npm run release:desktop
 
 This command generates the `.exe` and `.exe.sig` files in `src-tauri\target\release\bundle\nsis\`.
 
+The NSIS installer must bundle native ML runtime DLLs (for example `sherpa-onnx-c-api.dll`) beside `open-clipper.exe`. `npm run release:verify-build` fails early if those DLLs are missing from the installer.
+
 ## Step 3: Verify the Build (Verify)
 
 Ensure the built artifacts match the prepared version.
@@ -62,12 +64,20 @@ After completing the steps above, upload the contents of:
 
 `open-clipper\release_automation\r2_mirror\`
 
-to Cloudflare R2 under the `open-clipper/` prefix.
+to the `open-clipper-updates` Cloudflare R2 bucket at `https://updates.openclipper.grepcut.com`.
+
+Upload `r2_mirror/` directly to the bucket root (no extra prefix).
 
 Files to upload:
 
-1. `open-clipper/windows/x86_64/latest.json`
-2. `open-clipper/windows/x86_64/releases/<version>/*` (installer and signature)
+1. `windows/x86_64/latest.json`
+2. `windows/x86_64/releases/<version>/*` (installer and signature)
+
+### R2 setup (one-time)
+
+1. Create bucket `open-clipper-updates` (separate from the models bucket).
+2. Attach custom domain `updates.openclipper.grepcut.com` via R2 Custom Domains.
+3. Add DNS CNAME `updates.openclipper` pointing to the Cloudflare endpoint (same pattern as `models.openclipper.grepcut.com`).
 
 ## Step 6: Activate in Admin Panel
 

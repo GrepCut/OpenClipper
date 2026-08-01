@@ -1,6 +1,6 @@
 # Release Automation
 
-Local release mirror for Open Clipper desktop updater artifacts. This directory mirrors the layout that can later be uploaded to Cloudflare R2 under the `open-clipper/` prefix.
+Local release mirror for Open Clipper desktop updater artifacts. This directory mirrors the layout that can later be uploaded to the `open-clipper-updates` Cloudflare R2 bucket at `https://updates.openclipper.grepcut.com`.
 
 ## Supported Flow
 
@@ -64,8 +64,8 @@ release_automation/
           checksums.json
 ```
 
-Upload the contents of `r2_mirror/` to Cloudflare R2 under the `open-clipper/` prefix (for example `open-clipper/windows/x86_64/latest.json`).
+Upload the contents of `r2_mirror/` directly to the R2 bucket root (for example `windows/x86_64/latest.json`).
 
-Default public base URL: `https://updates.grepcut.com/open-clipper`
+Default public base URL: `https://updates.openclipper.grepcut.com`
 
 After upload, activate the release in the GrepCut admin panel under **Open Clipper Updates** with the platform URL and signature from `latest.json`.

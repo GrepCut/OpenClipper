@@ -16,8 +16,10 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +41,7 @@ MIRROR_ROOT = SCRIPT_DIR / "r2_mirror"
 ROLLBACK_ROOT = SCRIPT_DIR / "_rolled_back"
 
 PRODUCT_NAME = "Open Clipper"
-DEFAULT_BASE_URL = "https://updates.grepcut.com/open-clipper"
+DEFAULT_BASE_URL = "https://updates.openclipper.grepcut.com"
 PLATFORM_KEY = "windows-x86_64"
 PLATFORM_DIR = Path("windows") / "x86_64"
 DEFAULT_CHANNEL = "stable"
@@ -49,6 +51,11 @@ WINDOWS_BUNDLE_MAX_PATCH = 65535
 VERSION_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
 EXE_PATTERN = re.compile(
     rf"^{re.escape(PRODUCT_NAME)}_(?P<version>\d+\.\d+\.\d+)_x64-setup\.exe$"
+)
+REQUIRED_INSTALLER_DLLS = (
+    "sherpa-onnx-c-api.dll",
+    "DirectML.dll",
+    "onnxruntime_ort.dll",
 )
 
 
@@ -457,6 +464,66 @@ def file_info(path: Path) -> dict[str, Any]:
     }
 
 
+def find_7z_executable() -> Path | None:
+    for candidate in (
+        Path(r"C:\Program Files\7-Zip\7z.exe"),
+        Path(r"C:\Program Files (x86)\7-Zip\7z.exe"),
+    ):
+        if candidate.is_file():
+            return candidate
+
+    resolved = shutil.which("7z")
+    return Path(resolved) if resolved else None
+
+
+def installer_entry_names(path: Path) -> set[str]:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return set(archive.namelist())
+    except zipfile.BadZipFile:
+        pass
+
+    seven_zip = find_7z_executable()
+    if seven_zip is None:
+        fail(
+            f"Cannot inspect installer archive {path}: not a zip file and 7-Zip was not found. "
+            "Install 7-Zip or verify the installer manually."
+        )
+
+    result = subprocess.run(
+        [str(seven_zip), "l", "-ba", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip()
+        fail(f"7-Zip failed to list installer {path}: {stderr}")
+
+    entries: set[str] = set()
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        name = stripped.split()[-1]
+        entries.add(name.replace("\\", "/"))
+    return entries
+
+
+def verify_installer_runtime_dlls(installer: Path) -> None:
+    entries = installer_entry_names(installer)
+    basenames = {Path(entry).name for entry in entries}
+    missing = [
+        dll for dll in REQUIRED_INSTALLER_DLLS if dll not in basenames
+    ]
+    if missing:
+        fail(
+            "Installer is missing required Windows runtime DLL(s) beside open-clipper.exe: "
+            f"{', '.join(missing)}. "
+            "Rebuild with npm run tauri:build after staging sherpa DirectML libs."
+        )
+
+
 def find_built_artifacts(version: str | None = None) -> BuiltArtifacts:
     nsis_dir = BUNDLE_DIR / "nsis"
     msi_dir = BUNDLE_DIR / "msi"
@@ -585,6 +652,7 @@ def prepare(args: argparse.Namespace) -> None:
 def verify_build(args: argparse.Namespace) -> None:
     expected_version = resolve_expected_version(args.version)
     artifacts = verify_build_version(expected_version)
+    verify_installer_runtime_dlls(artifacts.exe)
     print(f"Verified build for {expected_version}")
     print(f"Installer: {artifacts.exe}")
     if artifacts.msi:

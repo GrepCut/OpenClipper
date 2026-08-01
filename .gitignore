@@ -67,3 +67,7 @@ src-tauri/bin/*
 
 # Generated at build time by scripts/run-tauri.mjs
 src-tauri/tauri.updater.generated.json
+
+# Staged Windows ML runtime DLLs (scripts/stage-windows-runtime-dlls.mjs)
+src-tauri/resources/win-runtime/*
+!src-tauri/resources/win-runtime/.gitkeep
