@@ -3,11 +3,13 @@ use crate::transcription::{
     vocals_isolate::{self, VocalsIsolateModelStatus},
     ParakeetCapability, ParakeetModelStatus, ParakeetService, ParakeetTranscribeRequest,
     LocalTranscriptionProgress, ParakeetTranscriptionProgress, ParakeetTranscriptionResult,
-    TranscriptionError,
+    PrepareTranscriptionAudioResult, TranscriptionError,
     WhisperModelStatus, WhisperTranscribeRequest, WhisperTranscriptionResult,
 };
+use crate::clipper::data::validate_clipper_audio_path;
 use crate::video::{NativeJobEmitter, NativeJobRegistry};
 use crossbeam_channel;
+use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -60,6 +62,7 @@ fn resolve_asr_audio_path(
                 }
                 Ok(())
             }),
+            cancelled,
         )?
     };
     if let Some(callback) = on_progress.as_deref_mut() {
@@ -68,7 +71,7 @@ fn resolve_asr_audio_path(
             chunk_index: 0,
             chunk_count: 0,
             ratio: last_ratio.max(1.0),
-            provider: Some(provider),
+            provider: Some(provider.clone()),
         })?;
     }
     Ok(output.to_string_lossy().into_owned())
@@ -391,4 +394,74 @@ pub async fn download_vocals_isolate_model(app: tauri::AppHandle) -> Result<(), 
     .await
     .map_err(|error| format!("Vocals model download task failed: {error}"))?
     .map(|_| ())
+}
+
+#[tauri::command]
+pub fn start_prepare_transcription_audio(
+    session_id: String,
+    job_id: String,
+    request: WhisperTranscribeRequest,
+    app: AppHandle,
+    webview: WebviewWindow,
+    jobs: State<'_, NativeJobRegistry>,
+) -> Result<(), String> {
+    let registry = jobs.inner().clone();
+    let cancelled = registry.register(&session_id, &job_id)?;
+    let emitter = NativeJobEmitter::new(webview, session_id.clone(), job_id.clone(), cancelled.clone());
+    let finish_registry = registry.clone();
+    let finish_session_id = session_id.clone();
+    let finish_job_id = job_id.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let (progress_tx, progress_rx) = crossbeam_channel::unbounded::<LocalTranscriptionProgress>();
+        let forward_cancelled = cancelled.clone();
+        let forward_emitter = emitter.clone();
+        let forward_handle = tauri::async_runtime::spawn(async move {
+            while let Ok(progress) = progress_rx.recv() {
+                if forward_cancelled.load(Ordering::Acquire) || forward_emitter.progress(&progress).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let joined = tauri::async_runtime::spawn_blocking({
+            let cancelled = cancelled.clone();
+            move || -> Result<PrepareTranscriptionAudioResult, String> {
+                let mut progress_cb =
+                    |progress: LocalTranscriptionProgress| progress_tx.send(progress).map_err(|error| error.to_string());
+                let audio_path = resolve_asr_audio_path(
+                    &app,
+                    &request.audio_path,
+                    request.isolate_vocals,
+                    Some(&cancelled),
+                    Some(&mut progress_cb),
+                )?;
+                Ok(PrepareTranscriptionAudioResult { audio_path })
+            }
+        })
+        .await;
+
+        let _ = forward_handle.await;
+        if !cancelled.load(Ordering::Acquire) {
+            match joined {
+                Ok(Ok(result)) => { let _ = emitter.result(&result); }
+                Ok(Err(error)) => { let _ = emitter.error(&serde_json::json!({ "message": error, "fatal": true })); }
+                Err(error) => { let _ = emitter.error(&serde_json::json!({ "message": format!("Prepare audio task join error: {error}"), "fatal": true })); }
+            }
+        }
+        finish_registry.finish(&finish_session_id, &finish_job_id);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn read_transcription_audio_bytes(
+    app: AppHandle,
+    path: String,
+) -> Result<Vec<u8>, String> {
+    let resolved = validate_clipper_audio_path(&app, &path)?;
+    tauri::async_runtime::spawn_blocking(move || fs::read(&resolved).map_err(|error| error.to_string()))
+        .await
+        .map_err(|error| format!("Read audio task failed: {error}"))?
 }

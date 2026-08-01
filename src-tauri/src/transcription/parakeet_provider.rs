@@ -1,9 +1,11 @@
+use super::diag_log;
 use super::parakeet_tokens::{
     extract_timestamped_tokens, group_words_into_segments, merge_sentencepiece_tokens,
 };
 use super::types::{
     ParakeetTranscriptionProgress, ParakeetTranscriptionResult, TranscriptionError,
 };
+use serde_json::json;
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig, Wave};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -90,7 +92,13 @@ impl ParakeetProvider {
         })?;
 
         let wave = Wave::read(audio_path_str).ok_or_else(|| {
-            TranscriptionError::InvalidAudio("Nie udało się odczytać audio".into())
+            let err = TranscriptionError::InvalidAudio("Nie udało się odczytać audio".into());
+            diag_log::append_error(
+                "parakeet_wav",
+                &err.to_string(),
+                json!({ "audio_path": audio_path_str }),
+            );
+            err
         })?;
 
         let duration_ms = if wave.sample_rate() > 0 {
@@ -98,6 +106,13 @@ impl ParakeetProvider {
         } else {
             0
         };
+        let duration_sec = duration_ms as f64 / 1000.0;
+        if duration_sec > super::whisper_genai::MAX_ASR_AUDIO_SECONDS {
+            return Err(TranscriptionError::InvalidAudio(format!(
+                "Audio clip is too long for local Parakeet ({duration_sec:.1}s). Maximum is {:.0}s.",
+                super::whisper_genai::MAX_ASR_AUDIO_SECONDS
+            )));
+        }
 
         let sample_rate = wave.sample_rate();
         if sample_rate <= 0 {
@@ -177,6 +192,18 @@ impl ParakeetProvider {
             "Parakeet: provider={} audio_seconds={audio_seconds:.2} chunks={chunk_count} processing_ms={processing_time_ms} real_time_factor={:.3}",
             self.provider_name,
             processing_time_ms as f64 / duration_ms.max(1) as f64,
+        );
+
+        diag_log::append(
+            "PARAKEET_DONE",
+            json!({
+                "engine": "parakeet",
+                "provider": self.provider_name,
+                "duration_ms": duration_ms,
+                "processing_time_ms": processing_time_ms,
+                "word_count": words.len(),
+                "chunk_count": chunk_count,
+            }),
         );
 
         Ok(ParakeetTranscriptionResult {

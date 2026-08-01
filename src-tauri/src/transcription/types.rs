@@ -91,6 +91,12 @@ pub struct WhisperTranscribeRequest {
 
 pub type WhisperTranscriptionResult = ParakeetTranscriptionResult;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareTranscriptionAudioResult {
+    pub audio_path: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TranscriptionError {
     #[error("Model lokalny nie jest zainstalowany")]

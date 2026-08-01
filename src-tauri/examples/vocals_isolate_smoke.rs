@@ -111,7 +111,7 @@ fn main() {
     println!("Output: {}", output_wav.display());
 
     let started = Instant::now();
-    match isolate_vocals_with_model(&model_dir, &input_wav, &output_wav, None) {
+    match isolate_vocals_with_model(&model_dir, &input_wav, &output_wav, None, None) {
         Ok(provider) => {
             let elapsed = started.elapsed();
             match wav_rms_and_len(&output_wav) {

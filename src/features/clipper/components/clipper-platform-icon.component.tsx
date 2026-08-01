@@ -10,6 +10,7 @@ export const CLIPPER_CARD_BADGE_INSET = CLIPPER_PLATFORM_BADGE_SIZE / 2 + 6;
 
 const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
   youtube: asset("/clipper/youtube-logo.webp"),
+  "youtube-shorts": asset("/clipper/youtube-shorts-logo.webp"),
   instagram: asset("/clipper/instagram-logo.webp"),
   tiktok: asset("/clipper/tiktok-logo.webp"),
   twitter: asset("/clipper/x-logo.webp"),

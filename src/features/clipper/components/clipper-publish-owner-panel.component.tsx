@@ -3,8 +3,7 @@ import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
 import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
-import type { ClipperPlatform } from "../shared/formats.util";
+import { ClipperOwnerChannelPlatformIcon } from "./clipper-owner-channel-platform-icon.component";
 
 interface ClipperPublishOwnerPanelProps {
   ownerId: string | null;
@@ -93,7 +92,7 @@ export function ClipperPublishOwnerPanel({
               px={3}
               py={2}
             >
-              <ClipperPlatformIcon platform={channel.platform as ClipperPlatform} size={20} />
+              <ClipperOwnerChannelPlatformIcon platform={channel.platform} size={20} />
               <VStack align="start" gap={0}>
                 <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
                   {platformLabel(channel.platform)}

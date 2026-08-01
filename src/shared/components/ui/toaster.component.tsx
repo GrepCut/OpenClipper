@@ -69,6 +69,9 @@ const accentColor: Record<string, string> = {
  * toasts without needing to wrap custom renders in Toast.Root.
  */
 const toastGlobalStyles = `
+  [data-scope="toast"] {
+    z-index: 10000 !important;
+  }
   [data-scope="toast"][data-part="root"] {
     transform-origin: bottom left;
     will-change: transform, opacity;

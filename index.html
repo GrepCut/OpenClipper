@@ -32,6 +32,13 @@
 
       #open-clipper-boot-shell > div {
         display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0;
+      }
+
+      #open-clipper-boot-shell > div > div:first-child {
+        display: flex;
         align-items: center;
         gap: 14px;
         font-size: 18px;
@@ -39,10 +46,27 @@
         letter-spacing: -0.01em;
       }
 
-      #open-clipper-boot-shell img {
+      #open-clipper-boot-shell img,
+      #open-clipper-boot-shell .boot-logo {
         width: 34px;
         height: 34px;
         object-fit: contain;
+        flex-shrink: 0;
+      }
+
+      #open-clipper-boot-shell .boot-fallback {
+        display: none;
+        margin-top: 18px;
+        max-width: 360px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.45;
+        color: #94a3b8;
+      }
+
+      #open-clipper-boot-shell.boot-stalled .boot-fallback {
+        display: block;
       }
     </style>
   </head>
@@ -50,8 +74,16 @@
   <body>
     <div id="open-clipper-boot-shell" role="status" aria-label="Open Clipper is starting">
       <div>
-        <img src="./clipper/clipper-logo.png" alt="" />
-        <span>Open Clipper</span>
+        <div>
+          <svg class="boot-logo" viewBox="0 0 34 34" aria-hidden="true" focusable="false">
+            <rect width="34" height="34" rx="8" fill="#0B1B3A" />
+            <path d="M10 8 L24 17 L10 26 Z" fill="#38BDF8" />
+          </svg>
+          <span>Open Clipper</span>
+        </div>
+        <p class="boot-fallback">
+          Startup is taking longer than expected. Close and reopen Open Clipper if this screen does not disappear.
+        </p>
       </div>
     </div>
     <div id="root"></div>
@@ -134,6 +166,15 @@
         window.setTimeout(function () {
           report("info", "frontend event loop heartbeat after 1 second");
         }, 1000);
+
+        window.setTimeout(function () {
+          if (interactiveReported) return;
+          var shell = document.getElementById("open-clipper-boot-shell");
+          if (shell) shell.classList.add("boot-stalled");
+          report("warn", "boot shell still visible after startup timeout", {
+            navigationMs: Math.round(performance.now()),
+          });
+        }, 20000);
 
         // Observe #root so we can report when React commits its first content
         var root = document.getElementById("root");

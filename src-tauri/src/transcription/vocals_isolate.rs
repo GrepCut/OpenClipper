@@ -2,6 +2,8 @@
 //! Host STFT → ORT spectrogram core → iSTFT (UVR / audio-separator convention).
 
 use crate::infra::model_cache::download_model_file_to_cache;
+use crate::transcription::diag_log;
+use crate::transcription::types::TranscriptionError;
 use ort::session::Session;
 use ort::value::Tensor;
 use realfft::num_complex::Complex;
@@ -10,7 +12,11 @@ use std::{
     f32::consts::PI,
     fs,
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, OnceLock,
+    },
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Manager};
 
@@ -35,6 +41,13 @@ static DOWNLOAD_LOCK: Mutex<()> = Mutex::new(());
 static ORT_INIT: Mutex<bool> = Mutex::new(false);
 static SESSION_CACHE: Mutex<Option<CachedSession>> = Mutex::new(None);
 static HANN_WINDOW: OnceLock<Vec<f32>> = OnceLock::new();
+
+/// Drops the cached ORT session so ASR models can use GPU memory without contention.
+pub fn release_cached_session() {
+    if let Ok(mut cache) = SESSION_CACHE.lock() {
+        *cache = None;
+    }
+}
 
 struct CachedSession {
     onnx_path: PathBuf,
@@ -481,10 +494,37 @@ fn build_session(onnx_path: &Path) -> Result<(Session, String), String> {
     Ok((session, provider_label))
 }
 
-fn get_or_create_session(onnx_path: &Path) -> Result<(std::sync::MutexGuard<'_, Option<CachedSession>>, String), String> {
-    let mut cache = SESSION_CACHE
-        .lock()
-        .map_err(|_| "Session cache lock poisoned".to_string())?;
+fn check_cancelled(cancelled: Option<&AtomicBool>) -> Result<(), String> {
+    if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        diag_log::append("VOCALS_CANCELLED", serde_json::json!({}));
+        return Err(TranscriptionError::Cancelled.to_string());
+    }
+    Ok(())
+}
+
+fn get_or_create_session(
+    onnx_path: &Path,
+) -> Result<(std::sync::MutexGuard<'static, Option<CachedSession>>, String, bool), String> {
+    let started = Instant::now();
+    let mut cache = loop {
+        match SESSION_CACHE.try_lock() {
+            Ok(guard) => break guard,
+            Err(std::sync::TryLockError::WouldBlock) => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return Err("Session cache lock poisoned".to_string());
+            }
+        }
+    };
+    if started.elapsed() > Duration::from_millis(500) {
+        diag_log::append(
+            "VOCALS_SESSION_WAIT",
+            serde_json::json!({
+                "wait_ms": started.elapsed().as_millis(),
+            }),
+        );
+    }
     let needs_rebuild = match cache.as_ref() {
         Some(cached) => cached.onnx_path != onnx_path,
         None => true,
@@ -496,13 +536,27 @@ fn get_or_create_session(onnx_path: &Path) -> Result<(std::sync::MutexGuard<'_, 
             session,
             provider: provider.clone(),
         });
-        return Ok((cache, provider));
+        diag_log::append(
+            "VOCALS_SESSION",
+            serde_json::json!({
+                "provider": &provider,
+                "cache_hit": false,
+            }),
+        );
+        return Ok((cache, provider, true));
     }
     let provider = cache
         .as_ref()
         .map(|c| c.provider.clone())
         .unwrap_or_else(|| "cpu".into());
-    Ok((cache, provider))
+    diag_log::append(
+        "VOCALS_SESSION",
+        serde_json::json!({
+            "provider": &provider,
+            "cache_hit": true,
+        }),
+    );
+    Ok((cache, provider, false))
 }
 
 /// Isolate vocals using an explicit model directory (smoke / tests).
@@ -511,6 +565,7 @@ pub fn isolate_vocals_with_model(
     input_wav: &Path,
     output_wav: &Path,
     on_progress: Option<&mut dyn FnMut(f64) -> Result<(), String>>,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<String, String> {
     if !installed(model_path) {
         return Err(format!(
@@ -518,7 +573,13 @@ pub fn isolate_vocals_with_model(
             model_path.display()
         ));
     }
-    isolate_vocals_at_model(model_path, input_wav, output_wav, on_progress)
+    isolate_vocals_at_model(
+        model_path,
+        input_wav,
+        output_wav,
+        on_progress,
+        cancelled,
+    )
 }
 
 /// Isolate vocals from `input_wav` into `output_wav` (16 kHz mono PCM for ASR).
@@ -527,6 +588,7 @@ pub fn isolate_vocals_to_wav(
     input_wav: &Path,
     output_wav: &Path,
     on_progress: Option<&mut dyn FnMut(f64) -> Result<(), String>>,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<String, String> {
     let model_path = model_dir(app)?;
     if !installed(&model_path) {
@@ -535,7 +597,13 @@ pub fn isolate_vocals_to_wav(
                 .into(),
         );
     }
-    isolate_vocals_at_model(&model_path, input_wav, output_wav, on_progress)
+    isolate_vocals_at_model(
+        &model_path,
+        input_wav,
+        output_wav,
+        on_progress,
+        cancelled,
+    )
 }
 
 fn isolate_vocals_at_model(
@@ -543,8 +611,17 @@ fn isolate_vocals_at_model(
     input_wav: &Path,
     output_wav: &Path,
     mut on_progress: Option<&mut dyn FnMut(f64) -> Result<(), String>>,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<String, String> {
     let onnx_path = model_path.join(ONNX_FILE);
+
+    diag_log::append(
+        "VOCALS_START",
+        serde_json::json!({
+            "input": input_wav.display().to_string(),
+            "output": output_wav.display().to_string(),
+        }),
+    );
 
     let exe_dir = std::env::current_exe()
         .ok()
@@ -552,9 +629,13 @@ fn isolate_vocals_at_model(
         .unwrap_or_else(|| PathBuf::from("."));
     ensure_ort_loaded(&exe_dir)?;
 
+    check_cancelled(cancelled)?;
+
     let (interleaved, sample_rate, channels) = read_wav_f32(input_wav)?;
     if channels == 0 {
-        return Err("WAV nie ma kanałów".into());
+        let err = "WAV nie ma kanałów".to_string();
+        diag_log::append_error("vocals_wav", &err, serde_json::json!({}));
+        return Err(err);
     }
     let (left, right) = interleaved_to_planar_stereo(&interleaved, channels);
     let left = resample_linear(&left, sample_rate, SAMPLE_RATE);
@@ -572,7 +653,7 @@ fn isolate_vocals_at_model(
     let left_n: Vec<f32> = left.iter().map(|s| s / peak).collect();
     let right_n: Vec<f32> = right.iter().map(|s| s / peak).collect();
 
-    let (mut cache, active_provider) = get_or_create_session(&onnx_path)?;
+    let (mut cache, active_provider, _session_rebuilt) = get_or_create_session(&onnx_path)?;
     let session = &mut cache
         .as_mut()
         .ok_or_else(|| "Brak sesji ORT".to_string())?
@@ -593,6 +674,8 @@ fn isolate_vocals_at_model(
     let mut chunk_index = 0usize;
     let mut i = 0usize;
     while i < n_sample + pad {
+        check_cancelled(cancelled)?;
+
         let end = i + CHUNK_SIZE;
         if end > mix_l.len() {
             break;
@@ -627,10 +710,17 @@ fn isolate_vocals_at_model(
 
         chunk_index += 1;
         if let Some(callback) = on_progress.as_deref_mut() {
-            callback(chunk_index as f64 / chunk_count as f64)?;
+            let chunk_ratio = chunk_index as f64 / chunk_count as f64;
+            // Reserve the final percent for post-processing (resample + WAV write).
+            let display_ratio = (chunk_ratio * 0.99).min(0.99);
+            callback(display_ratio)?;
         }
         i += GEN_SIZE;
     }
+
+    // Release the session cache lock before post-processing so other jobs
+    // cannot deadlock waiting for the same mutex.
+    drop(cache);
 
     out_l.truncate(n_sample);
     out_r.truncate(n_sample);
@@ -638,13 +728,53 @@ fn isolate_vocals_at_model(
         *sample *= peak;
     }
 
+    diag_log::append(
+        "VOCALS_INFER_DONE",
+        serde_json::json!({
+            "duration_sec": total_len as f64 / SAMPLE_RATE as f64,
+            "output_samples": n_sample,
+            "chunk_count": chunk_count,
+        }),
+    );
+
+    check_cancelled(cancelled)?;
+
+    diag_log::append(
+        "VOCALS_POSTPROCESS",
+        serde_json::json!({
+            "duration_sec": total_len as f64 / SAMPLE_RATE as f64,
+            "output_samples": n_sample,
+        }),
+    );
+
     let mono = stereo_to_mono(&out_l, &out_r);
     let mono_16k = resample_linear(&mono, SAMPLE_RATE, ASR_SAMPLE_RATE);
+
+    check_cancelled(cancelled)?;
+
     if let Some(parent) = output_wav.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("Nie udało się utworzyć katalogu wyjściowego: {error}"))?;
     }
+
+    if let Some(callback) = on_progress.as_deref_mut() {
+        callback(0.995)?;
+    }
+
     write_wav_f32_mono(output_wav, &mono_16k, ASR_SAMPLE_RATE)?;
+
+    if let Some(callback) = on_progress.as_deref_mut() {
+        callback(1.0)?;
+    }
+
+    diag_log::append(
+        "VOCALS_DONE",
+        serde_json::json!({
+            "provider": &active_provider,
+            "duration_sec": total_len as f64 / SAMPLE_RATE as f64,
+            "output_samples": mono_16k.len(),
+        }),
+    );
     Ok(active_provider)
 }
 

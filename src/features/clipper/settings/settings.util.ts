@@ -9,7 +9,27 @@ export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
 export type ClipperCaptionPosition = "top" | "center" | "bottom";
 export type ClipperCaptionSize = "small" | "medium" | "large";
-export type ClipperTranscriptionEngine = "parakeet" | "whisper";
+export type ClipperTranscriptionEngine =
+  | "parakeet"
+  | "whisper"
+  | "groq"
+  | "openrouter";
+
+export const CLIPPER_TRANSCRIPTION_ENGINES = [
+  "parakeet",
+  "whisper",
+  "groq",
+  "openrouter",
+] as const satisfies readonly ClipperTranscriptionEngine[];
+
+export function isClipperTranscriptionEngine(
+  value: unknown,
+): value is ClipperTranscriptionEngine {
+  return (
+    typeof value === "string" &&
+    (CLIPPER_TRANSCRIPTION_ENGINES as readonly string[]).includes(value)
+  );
+}
 
 export interface ClipperCaptionSettings {
   enabled: boolean;
@@ -36,8 +56,11 @@ export interface ClipperAudioSettings {
   peakCeiling: number;
 }
 
+export type ClipperIsolateVocalsMode = "on" | "off";
+
 export interface ClipperTranscriptionSettings {
   engine: ClipperTranscriptionEngine;
+  isolateVocals: ClipperIsolateVocalsMode;
 }
 
 export interface ClipperSettings {
@@ -69,7 +92,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     wordsPerGroup: 4,
   },
   formats: {
-    enabledFormatIds: ["tiktok"],
+    enabledFormatIds: ["tiktok", "youtube-shorts"],
     quality: "standard",
     resolutionCap: "source",
     filenameTemplate: "{name}-clip-{clip}-{platform}",
@@ -84,6 +107,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   },
   transcription: {
     engine: "parakeet",
+    isolateVocals: "on",
   },
   lastDurationPresetSec: 60,
 };
@@ -139,7 +163,14 @@ export function mergeClipperSettings(
     formats: { ...base.formats, ...partial.formats },
     audio: { ...base.audio, ...partial.audio },
     transcription: {
-      engine: partial.transcription?.engine === "whisper" ? "whisper" : base.transcription.engine,
+      engine: isClipperTranscriptionEngine(partial.transcription?.engine)
+        ? partial.transcription.engine
+        : base.transcription.engine,
+      isolateVocals:
+        partial.transcription?.isolateVocals === "on" ||
+        partial.transcription?.isolateVocals === "off"
+          ? partial.transcription.isolateVocals
+          : base.transcription.isolateVocals,
     },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };

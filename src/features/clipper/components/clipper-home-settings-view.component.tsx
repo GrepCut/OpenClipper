@@ -17,7 +17,7 @@ export function ClipperHomeSettingsView() {
           Settings
         </SecondaryMainTitle>
         <Text color={theme.text.muted} fontSize="md" lineHeight="1.6" maxW="36em">
-          Manage the local speech model used for captions.
+          Choose a local or cloud speech-to-text provider for captions. Cloud providers use your own API keys stored locally in SQLite.
         </Text>
       </VStack>
 

@@ -216,6 +216,15 @@ npm run tauri:dev
 
 `npm run sherpa:directml` writes `SHERPA_ONNX_LIB_DIR` to [`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml) pointing at `third_party/sherpa-onnx-directml/install/lib`.
 
+## Roadmap
+
+Planned work — not yet shipped:
+
+- [ ] **Auto-updater & GitHub Releases** — in-app update checks and installs from [GitHub Releases](https://github.com/GrepCut/OpenClipper/releases)
+- [ ] **Model hosting on Cloudflare R2** — after the models sync workflow, publish ASR and vision bundles to R2 for CDN delivery
+- [ ] **Social provider verification** — account verification for TikTok, YouTube, and X before publishing clips
+- [ ] **Benchmark** — headless test-dataset benchmarks for reframe quality (focus-hit metrics, miss-frame export)
+
 ## Contributing
 
 Questions, bug reports, and feature ideas are welcome. [Join the Discord](https://discord.gg/2uXgrUpe) or [open an issue](https://github.com/GrepCut/OpenClipper/issues). Please follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).

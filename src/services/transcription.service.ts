@@ -15,22 +15,42 @@ import type {
 import { debugLogger } from "../shared/utils/noop-logger.util";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../shared/utils/platform.util";
-import { ensureClipperProjectDataDir } from "../features/clipper/persistence/project-data-files.util";
 import {
   createTauriNativeJobId,
   runTauriNativeJob,
 } from "../shared/utils/tauri-native-jobs.util";
+import { transcriptionApiKeysService } from "./transcription-api-keys.service";
+import {
+  logTranscriptionDiag,
+} from "../shared/utils/transcription-diag-log.util";
+import {
+  GROQ_WHISPER_MODEL,
+  OPENROUTER_WHISPER_MODEL,
+  transcribeCloudAudioChunks,
+} from "./cloud-transcription.service";
+import { prepareCloudAudioChunks } from "./cloud-transcribe-audio.util";
+import type { ClipperTranscriptionEngine } from "../features/clipper/settings/settings.util";
 
 const NAMESPACE = "transcription";
-const TRANSCRIBE_AUDIO_WAV = "transcribe-audio.wav";
 
 const exactKey = (mediaFileId: string, cacheKey: string) =>
   `${mediaFileId}:${cacheKey}`;
 const latestKey = (mediaFileId: string) => `${mediaFileId}:latest`;
-export type LocalTranscriptionEngine = "parakeet" | "whisper";
 
-const engineId = (engine: LocalTranscriptionEngine) =>
-  engine === "whisper" ? "whisper_local" : "parakeet_local";
+export type LocalTranscriptionEngine = ClipperTranscriptionEngine;
+
+export function isCloudTranscriptionEngine(
+  engine: LocalTranscriptionEngine,
+): engine is "groq" | "openrouter" {
+  return engine === "groq" || engine === "openrouter";
+}
+
+const engineId = (engine: LocalTranscriptionEngine) => {
+  if (engine === "whisper") return "whisper_local";
+  if (engine === "groq") return "groq";
+  if (engine === "openrouter") return "openrouter";
+  return "parakeet_local";
+};
 
 // Prevent old single-pass Whisper results from being restored after the
 // chunked decoder is shipped.
@@ -38,6 +58,14 @@ const engineCacheId = (
   engine: LocalTranscriptionEngine,
   isolateVocals = false,
 ) => {
+  if (engine === "groq") {
+    const base = `${engineId(engine)}:${GROQ_WHISPER_MODEL}`;
+    return isolateVocals ? `${base}:vocals-v2` : base;
+  }
+  if (engine === "openrouter") {
+    const base = `${engineId(engine)}:${OPENROUTER_WHISPER_MODEL}`;
+    return isolateVocals ? `${base}:vocals-v2` : base;
+  }
   const base =
     engine === "whisper" ? `${engineId(engine)}:chunked-v5` : engineId(engine);
   return isolateVocals ? `${base}:vocals-v2` : base;
@@ -74,36 +102,61 @@ async function cacheTranscription(
 function mapParakeetResultToTranscription(
   result: ParakeetTranscriptionResult,
   mediaFileId: string,
+  engine: LocalTranscriptionEngine = "parakeet",
 ): Transcription {
   return {
     id: crypto.randomUUID(),
     mediaFileId,
-    engine: "parakeet_local",
+    engine: engineId(engine),
     segments: result.segments,
     words: result.words,
   };
 }
 
-async function prepareWavPathForTranscription(
-  wavBytes: Uint8Array,
-  projectId: string,
+interface PrepareTranscriptionAudioResult {
+  audioPath: string;
+}
+
+async function prepareAudioForCloud(
+  audioPath: string,
+  options?: {
+    signal?: AbortSignal;
+    isolateVocals?: boolean;
+    onProgress?: (progress: LocalTranscriptionProgress) => void;
+    diagRunId?: string;
+  },
 ): Promise<string> {
-  await ensureClipperProjectDataDir(projectId);
-  await invoke("write_clipper_project_data_raw", wavBytes, {
-    headers: {
-      "x-clipper-project-id": projectId,
-      "x-clipper-file-name": TRANSCRIBE_AUDIO_WAV,
+  if (options?.signal?.aborted) {
+    throw new DOMException("Conversion aborted", "AbortError");
+  }
+  if (!options?.isolateVocals) {
+    return audioPath;
+  }
+  const prepared = await runTauriNativeJob<
+    LocalTranscriptionProgress,
+    PrepareTranscriptionAudioResult
+  >({
+    jobId: createTauriNativeJobId("prepare-audio"),
+    startCommand: "start_prepare_transcription_audio",
+    args: {
+      request: {
+        audioPath,
+        isolateVocals: true,
+      },
     },
+    signal: options?.signal,
+    onProgress: (progress) => options?.onProgress?.(progress),
   });
-  return invoke<string>("get_clipper_project_data_file_path", {
-    projectId,
-    fileName: TRANSCRIBE_AUDIO_WAV,
+  logTranscriptionDiag("CLOUD_PREPARE_DONE", {
+    runId: options?.diagRunId,
+    audioPath: prepared.audioPath,
   });
+  return prepared.audioPath;
 }
 
 export const transcriptionService = {
   transcribe: async (
-    wavBytes: Uint8Array,
+    audioPath: string,
     mediaFileId: string,
     projectId: string,
     options?: {
@@ -113,6 +166,7 @@ export const transcriptionService = {
       engine?: LocalTranscriptionEngine;
       language?: string;
       isolateVocals?: boolean;
+      diagRunId?: string;
       onProgress?: (progress: LocalTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
@@ -136,19 +190,100 @@ export const transcriptionService = {
       projectId,
       cacheKey,
       engine: engineId(engine),
-      wavBytes: wavBytes.byteLength,
+      audioPath,
     });
-
     try {
       if (!isTauri()) {
         throw new Error("Lokalna transkrypcja wymaga aplikacji desktopowej.");
       }
-      if (!wavBytes.byteLength) {
+      if (!audioPath) {
         throw new Error(
           "Local transcription audio is unavailable. Try selecting the clip range again.",
         );
       }
-      const audioPath = await prepareWavPathForTranscription(wavBytes, projectId);
+
+      if (isCloudTranscriptionEngine(engine)) {
+        const apiKey = await transcriptionApiKeysService.get(engine);
+        if (!apiKey) {
+          throw new Error(
+            `Configure your ${engine === "groq" ? "Groq" : "OpenRouter"} API key in Settings before transcribing.`,
+          );
+        }
+        const clipDurationSec =
+          options?.clipEndSec != null && options?.clipStartSec != null
+            ? options.clipEndSec - options.clipStartSec
+            : null;
+        const preparedAudioPath = await prepareAudioForCloud(audioPath, {
+          signal: options?.signal,
+          isolateVocals,
+          onProgress: options?.onProgress,
+          diagRunId: options?.diagRunId,
+        });
+        if (options?.signal?.aborted) {
+          throw new DOMException("Conversion aborted", "AbortError");
+        }
+        if (clipDurationSec == null || clipDurationSec <= 0) {
+          throw new Error("Cloud transcription requires a valid clip duration.");
+        }
+        options?.onProgress?.({
+          phase: "compressing_audio",
+          chunkIndex: 0,
+          chunkCount: 0,
+          ratio: 0,
+          provider: engine,
+        });
+        const cloudChunks = await prepareCloudAudioChunks(
+          preparedAudioPath,
+          clipDurationSec,
+          {
+            signal: options?.signal,
+            onProgress: (ratio, chunkIndex, chunkCount) => {
+              options?.onProgress?.({
+                phase: "compressing_audio",
+                chunkIndex,
+                chunkCount,
+                ratio,
+                provider: engine,
+              });
+            },
+          },
+        );
+        logTranscriptionDiag("CLOUD_AUDIO_READY", {
+          runId: options?.diagRunId,
+          chunkCount: cloudChunks.length,
+          totalBytes: cloudChunks.reduce((sum, chunk) => sum + chunk.bytes.byteLength, 0),
+        });
+        const transcription = await transcribeCloudAudioChunks(
+          engine,
+          apiKey,
+          cloudChunks,
+          mediaFileId,
+          {
+            signal: options?.signal,
+            diagRunId: options?.diagRunId,
+            onProgress: (phase, ratio, chunkIndex, chunkCount) => {
+              options?.onProgress?.({
+                phase,
+                chunkIndex,
+                chunkCount,
+                ratio,
+                provider: engine,
+              });
+            },
+          },
+        );
+        debugLogger.log("transcription", `${engine} cloud transcription success`, {
+          mediaFileId,
+          durationMs: Date.now() - startTime,
+        });
+        return cacheTranscription(
+          projectId,
+          mediaFileId,
+          cacheKey,
+          transcription,
+        );
+      }
+
       if (options?.signal?.aborted) {
         throw new DOMException("Conversion aborted", "AbortError");
       }
@@ -172,8 +307,11 @@ export const transcriptionService = {
         signal: options?.signal,
         onProgress: (progress) => options?.onProgress?.(progress),
       });
-      const transcription = mapParakeetResultToTranscription(result, mediaFileId);
-      transcription.engine = engineId(engine);
+      const transcription = mapParakeetResultToTranscription(
+        result,
+        mediaFileId,
+        engine,
+      );
       debugLogger.log("transcription", `${engine} transcription success`, {
         mediaFileId,
         durationMs: Date.now() - startTime,
@@ -191,6 +329,12 @@ export const transcriptionService = {
         mediaFileId,
         engine: engineId(engine),
         durationMs: Date.now() - startTime,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      logTranscriptionDiag("TRANSCRIBE_ERROR", {
+        runId: options?.diagRunId,
+        step: "transcribe_service",
+        engine: engineId(engine),
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

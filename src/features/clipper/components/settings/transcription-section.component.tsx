@@ -12,6 +12,7 @@ import { ClipperProgressBar } from "../clipper-progress-bar.component";
 import { SettingSection } from "./setting-controls.component";
 import { DeleteParakeetModelModal } from "./delete-parakeet-model-modal.component";
 import { TranscriptionModelRow } from "./transcription-model-row.component";
+import { CloudTranscriptionProviderRow } from "./cloud-transcription-provider-row.component";
 import { useWhisperModelStatus } from "../../hooks/use-whisper-model-status.hook";
 import { useVocalsIsolateModelStatus } from "../../hooks/use-vocals-isolate-model-status.hook";
 import { loadClipperSettings, saveClipperSettings } from "../../settings/settings-storage.util";
@@ -128,6 +129,22 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
           }
           onDownload={() => void whisper.handleDownload()}
           onDeleteOpen={() => void whisper.handleDelete()}
+        />
+        <CloudTranscriptionProviderRow
+          provider="groq"
+          name="Groq Whisper Large v3 Turbo"
+          description="Cloud speech-to-text via your Groq API key. Audio is vocals-isolated locally, then sent to Groq."
+          keyHint="Groq API key from console.groq.com"
+          selected={activeEngine === "groq"}
+          onSelect={() => selectEngine("groq")}
+        />
+        <CloudTranscriptionProviderRow
+          provider="openrouter"
+          name="OpenRouter Whisper Large v3 Turbo"
+          description="Cloud speech-to-text via your OpenRouter API key. Audio is vocals-isolated locally, then sent to OpenRouter."
+          keyHint="OpenRouter API key from openrouter.ai"
+          selected={activeEngine === "openrouter"}
+          onSelect={() => selectEngine("openrouter")}
         />
         {deleteModal}
       </>
