@@ -23,35 +23,30 @@ Free, open-source Windows desktop app for turning long videos into short, platfo
 
 ## Features
 
-Open Clipper is a local-first Opus Clip Pro alternative: import a long-form video, transcribe it, pick clips, reframe for every platform, style captions, and publish — without watermarks or cloud lock-in.
-
 ### From upload to transcript in one flow
 
 Import your long-form video, then transcribe with local **Whisper v3 Turbo** or **Parakeet**, or cloud speech recognition via your **OpenRouter** or **Groq** API key. Optional **MDX vocals isolation** reduces music hallucinations on songs before ASR runs.
 
-<video src="public/clipper/demos/processing.webm" width="720" autoplay loop muted playsinline></video>
+[processing.webm](https://github.com/user-attachments/assets/1c0a85bc-8891-4638-89ec-622f351b18a5)
 
 ### Autoreframe engine
 
 Face and subject detection runs on your GPU in the same pass. At scene cuts, the engine plans a smooth camera path for each platform format so speakers stay in frame. When two people won't fit in one crop, split view kicks in. Preview **9:16**, **4:5**, **1:1**, and **16:9** from one source.
 
-<video src="public/clipper/demos/reframe.webm" width="720" autoplay loop muted playsinline></video>
+[reframe.webm](https://github.com/user-attachments/assets/eb602467-42a6-4a72-8ec3-1d2248995db6)
+
 
 ### Styled subtitles from your transcript
 
 Choose from **20+ caption presets**: karaoke, kinetic, podcast, gaming. Position and size them to match your brand.
 
-<video src="public/clipper/demos/subtiles.webm" width="720" autoplay loop muted playsinline></video>
+[subtiles.webm](https://github.com/user-attachments/assets/32372ec2-1a9e-46f8-a18a-162c72cd144c)
 
 ### Batch render, one-click publish
 
 Queue clips across formats, track render progress, and publish directly to **TikTok**, **YouTube**, **Instagram**, **Facebook**, and **X**.
 
-<video src="public/clipper/demos/render-queue.webm" width="720" autoplay loop muted playsinline></video>
-
-### AI clip picking (MCP)
-
-The **Preview → Generate with LLM** tab exposes project transcripts to AI agents over MCP (HTTP or stdio). Agents pick clip boundaries by word index; the UI refreshes within ~0.5s when clips are written. See [MCP](#mcp) below.
+[render-queue.webm](https://github.com/user-attachments/assets/068b656b-4654-463c-b67d-78f7fc628900)
 
 ## Prerequisites
 
