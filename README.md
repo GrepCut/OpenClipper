@@ -33,8 +33,7 @@ Import your long-form video, then transcribe with local **Whisper v3 Turbo** or 
 
 Face and subject detection runs on your GPU in the same pass. At scene cuts, the engine plans a smooth camera path for each platform format so speakers stay in frame. When two people won't fit in one crop, split view kicks in. Preview **9:16**, **4:5**, **1:1**, and **16:9** from one source.
 
-[reframe.webm](https://github.com/user-attachments/assets/eb602467-42a6-4a72-8ec3-1d2248995db6)
-
+[reframe.webm](https://github.com/user-attachments/assets/137f5c0e-7eeb-4649-a700-66d7340786f2)
 
 ### Styled subtitles from your transcript
 
