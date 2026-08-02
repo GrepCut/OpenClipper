@@ -5,16 +5,53 @@
     </td>
     <td align="right">
       <h1>Open Clipper</h1>
-      <h3 style="margin-top: -10px;">AI-powered video clipping and publishing by <a href="https://grepcut.com/">GrepCut</a>.</h3>
+      <h3 style="margin-top: -10px;">AI-powered video clipping and publishing by <a href="https://grepcut.com/">GrepCut</a>. <a href="https://grepcut.com/en/open-clipper">Product page</a></h3>
     </td>
   </tr>
 </table>
 
-[![Website](https://img.shields.io/badge/website-grepcut.com-111?logo=google-chrome&logoColor=fff&style=flat)](https://grepcut.com/)
+[![Website](https://img.shields.io/badge/website-open_clipper-111?logo=google-chrome&logoColor=fff&style=flat)](https://grepcut.com/en/open-clipper)
+[![GrepCut](https://img.shields.io/badge/GrepCut-grepcut.com-111?style=flat)](https://grepcut.com/)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=fff&style=flat)](https://discord.gg/2uXgrUpe)
 [![X](https://img.shields.io/badge/follow-%40GrepCut-000?logo=x&logoColor=fff&style=flat)](https://x.com/GrepCut)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&logoColor=fff&style=flat)](https://www.linkedin.com/in/adam-zi%C3%B3%C5%82ko-9b6603351/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
+
+Free, open-source Windows desktop app for turning long videos into short, platform-ready clips. Local or cloud transcription (Whisper, Parakeet), scene-aware autoreframe, styled captions, and batch export to TikTok, YouTube, Instagram, and more.
+
+**Download:** [grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper)
+
+## Features
+
+Open Clipper is a local-first Opus Clip Pro alternative: import a long-form video, transcribe it, pick clips, reframe for every platform, style captions, and publish — without watermarks or cloud lock-in.
+
+### From upload to transcript in one flow
+
+Import your long-form video, then transcribe with local **Whisper v3 Turbo** or **Parakeet**, or cloud speech recognition via your **OpenRouter** or **Groq** API key. Optional **MDX vocals isolation** reduces music hallucinations on songs before ASR runs.
+
+<video src="public/clipper/demos/processing.webm" width="720" autoplay loop muted playsinline></video>
+
+### Autoreframe engine
+
+Face and subject detection runs on your GPU in the same pass. At scene cuts, the engine plans a smooth camera path for each platform format so speakers stay in frame. When two people won't fit in one crop, split view kicks in. Preview **9:16**, **4:5**, **1:1**, and **16:9** from one source.
+
+<video src="public/clipper/demos/reframe.webm" width="720" autoplay loop muted playsinline></video>
+
+### Styled subtitles from your transcript
+
+Choose from **20+ caption presets**: karaoke, kinetic, podcast, gaming. Position and size them to match your brand.
+
+<video src="public/clipper/demos/subtiles.webm" width="720" autoplay loop muted playsinline></video>
+
+### Batch render, one-click publish
+
+Queue clips across formats, track render progress, and publish directly to **TikTok**, **YouTube**, **Instagram**, **Facebook**, and **X**.
+
+<video src="public/clipper/demos/render-queue.webm" width="720" autoplay loop muted playsinline></video>
+
+### AI clip picking (MCP)
+
+The **Preview → Generate with LLM** tab exposes project transcripts to AI agents over MCP (HTTP or stdio). Agents pick clip boundaries by word index; the UI refreshes within ~0.5s when clips are written. See [MCP](#mcp) below.
 
 ## Prerequisites
 

@@ -71,3 +71,6 @@ src-tauri/tauri.updater.generated.json
 # Staged Windows ML runtime DLLs (scripts/stage-windows-runtime-dlls.mjs)
 src-tauri/resources/win-runtime/*
 !src-tauri/resources/win-runtime/.gitkeep
+
+# Fast Cargo build cache (npm run tauri:build:fast sets CARGO_TARGET_DIR=target-fast)
+target-fast/

@@ -5,6 +5,8 @@ import {
 } from "../../../../services/transcription.service";
 import {
   extractClipAudioForTranscription,
+  hasTranscribableAudioTrack,
+  NoTranscribableAudioError,
   type PreparedTranscriptionAudio,
 } from "../../engine/audio";
 import { buildWordCuesForTranscription } from "../../engine/transcript";
@@ -101,6 +103,21 @@ export async function runTranscribeStage(
   reporter.stageDetail("Preparing audio", 0);
 
   const rangeFile = session.rangeTrimmedFile ?? session.trimmedFile;
+  const transcriptionSource = rangeFile ?? session.sourceFile;
+  if (!(await hasTranscribableAudioTrack(transcriptionSource))) {
+    session.audioEnvelope = null;
+    clipperLog("transcribe: no audio track, skipping ASR", {
+      fileName: transcriptionSource.name,
+    });
+    logTranscriptionDiag("TRANSCRIBE_SKIP", {
+      runId: diagRunId,
+      reason: "no_audio_track",
+    });
+    reporter.stageProgress(1);
+    reporter.stageDetail(null, null);
+    return [];
+  }
+
   let transcriptionAudio: PreparedTranscriptionAudio;
   try {
     transcriptionAudio = await extractClipAudioForTranscription(
@@ -119,6 +136,19 @@ export async function runTranscribeStage(
     );
   } catch (error) {
     if (options.signal.aborted) throw error;
+    if (error instanceof NoTranscribableAudioError) {
+      session.audioEnvelope = null;
+      clipperLog("transcribe: no audio track, skipping ASR", {
+        fileName: transcriptionSource.name,
+      });
+      logTranscriptionDiag("TRANSCRIBE_SKIP", {
+        runId: diagRunId,
+        reason: "no_audio_track",
+      });
+      reporter.stageProgress(1);
+      reporter.stageDetail(null, null);
+      return [];
+    }
     session.audioEnvelope = null;
     clipperLog(
       "transcribe: audio extract failed",

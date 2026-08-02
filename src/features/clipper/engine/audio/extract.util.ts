@@ -16,6 +16,35 @@ import {
 
 const TRANSCRIBE_SAMPLE_RATE = 16_000;
 
+export class NoTranscribableAudioError extends Error {
+  constructor(message = "No audio track in this file.") {
+    super(message);
+    this.name = "NoTranscribableAudioError";
+  }
+}
+
+/** Returns false for video-only files (no primary audio track). */
+export async function hasTranscribableAudioTrack(file: File): Promise<boolean> {
+  const input = await createMediabunnyInput(file);
+  try {
+    return (await input.getPrimaryAudioTrack()) != null;
+  } finally {
+    input.dispose();
+  }
+}
+
+function isVideoOnlyConversion(conversion: {
+  discardedTracks: Array<{ track: { type: string }; reason: string }>;
+}): boolean {
+  const { discardedTracks } = conversion;
+  const audioTracks = discardedTracks.filter((entry) => entry.track.type === "audio");
+  return (
+    discardedTracks.length > 0 &&
+    discardedTracks.every((entry) => entry.reason === "discarded_by_user") &&
+    audioTracks.length === 0
+  );
+}
+
 const mediabunnyAudioConfig = {
   codec: "pcm-s16" as const,
   numberOfChannels: 1,
@@ -90,6 +119,10 @@ export async function extractClipAudioForTranscription(
 
   let audioPath: string;
   try {
+    if ((await input.getPrimaryAudioTrack()) == null) {
+      throw new NoTranscribableAudioError();
+    }
+
     progress.report({ ratio: null, stage: "reading" });
     const output = new Output({ format: new WavOutputFormat(), target });
     const { Conversion } = await import("mediabunny");
@@ -101,6 +134,9 @@ export async function extractClipAudioForTranscription(
       trim: convertConfig.trim,
     });
     if (!conversion.isValid) {
+      if (isVideoOnlyConversion(conversion)) {
+        throw new NoTranscribableAudioError();
+      }
       throw new Error("Could not convert audio for transcription.");
     }
     conversion.onProgress = (ratio) =>

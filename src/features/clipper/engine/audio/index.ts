@@ -1,4 +1,8 @@
-export { extractClipAudioForTranscription } from "./extract.util";
+export {
+  extractClipAudioForTranscription,
+  hasTranscribableAudioTrack,
+  NoTranscribableAudioError,
+} from "./extract.util";
 export {
   appendRmsSamples,
   createRmsEnvelopeAccumulator,
