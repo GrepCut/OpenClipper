@@ -1,10 +1,10 @@
 import { Box, HStack, Spinner, Text } from "@chakra-ui/react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../shared/hooks/use-auth.hook";
-import { rememberAuthReturnPath } from "../../shared/auth/auth-return-path.util";
-import type { User } from "../../shared/types/auth.types";
-import { useTheme } from "../../theme";
-import { clipperTheme } from "../clipper/shared/theme.util";
+import { useAuth } from "../../../shared/hooks/use-auth.hook";
+import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
+import type { User } from "../../../shared/types/auth.types";
+import { useTheme } from "../../../theme";
+import { clipperTheme } from "../../clipper/shared/theme.util";
 
 function getUserDisplayName(user: User): string {
   const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();

@@ -345,7 +345,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "meta"}
           onDisconnect={(connectionId) => handleDisconnectSocial("facebook", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
-          comingSoon
         />
         <PlatformIntegrationSection
           name="Instagram"
@@ -357,7 +356,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "instagram"}
           onDisconnect={(connectionId) => handleDisconnectSocial("instagram", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
-          comingSoon
         />
         <PlatformIntegrationSection
           name="TikTok"

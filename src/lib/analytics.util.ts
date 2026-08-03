@@ -1,5 +1,3 @@
-import { isWeb } from "../shared/utils/platform.util";
-
 export type AnalyticsEventParams = Record<string, string | number | boolean>;
 
 declare global {
@@ -16,6 +14,5 @@ function gtag(...args: unknown[]) {
 }
 
 export function trackEvent(name: string, params?: AnalyticsEventParams) {
-  if (!isWeb()) return;
   gtag("event", name, params);
 }

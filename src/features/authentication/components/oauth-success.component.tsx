@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../shared/hooks/use-auth.hook";
-import { appToast } from "../../shared/utils/toast.service";
-import { isTauri } from "../../shared/utils/platform.util";
-import { OAuthProcessingLayout } from "./components/oauth-processing-layout.component";
+import { useAuth } from "../../../shared/hooks/use-auth.hook";
+import { appToast } from "../../../shared/utils/toast.service";
+import { isTauri } from "../../../shared/utils/platform.util";
+import { OAuthProcessingLayout } from "./oauth-processing-layout.component";
 import { exchangeDesktopTicketIfNeeded } from "./oauth-callback-utils.util";
-import { trackEvent } from "../../lib/analytics.util";
-import { consumeAuthReturnPath } from "../../shared/auth/auth-return-path.util";
+import { trackEvent } from "../../../lib/analytics.util";
+import { consumeAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
 
 export function OAuthSuccess() {
   const navigate = useNavigate();

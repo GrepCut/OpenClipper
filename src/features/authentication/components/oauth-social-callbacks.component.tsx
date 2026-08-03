@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AppLoader } from "../../shared/components/app-loader.component";
-import { socialAuthService } from "../../services/social-auth.service";
+import { AppLoader } from "../../../shared/components/app-loader.component";
+import { socialAuthService } from "../../../services/social-auth.service";
 import type {
   SocialOAuthFlow,
   SocialPublishablePlatform,
-} from "../../services/types/social-auth.types";
-import { useAuth } from "../../shared/hooks/use-auth.hook";
-import { isTauri } from "../../shared/utils/platform.util";
-import { useSocialStore } from "../../stores/use-social-store.store";
-import { useTheme } from "../../theme";
-import { OAuthProcessingLayout } from "./components/oauth-processing-layout.component";
+} from "../../../services/types/social-auth.types";
+import { useAuth } from "../../../shared/hooks/use-auth.hook";
+import { isTauri } from "../../../shared/utils/platform.util";
+import { useSocialStore } from "../../../stores/use-social-store.store";
+import { useTheme } from "../../../theme";
+import { OAuthProcessingLayout } from "./oauth-processing-layout.component";
 import {
   exchangeDesktopTicketIfNeeded,
   handleOAuthConnectionFailure,
@@ -19,7 +19,7 @@ import {
   resolveOAuthReturnPath,
   type OAuthConnectionStatus,
 } from "./oauth-callback-utils.util";
-import { logIntegration } from "../../shared/utils/integration-logger.util";
+import { logIntegration } from "../../../shared/utils/integration-logger.util";
 
 const FLOW_VERIFY_PLATFORMS: Record<
   SocialOAuthFlow,

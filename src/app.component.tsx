@@ -6,49 +6,48 @@ import {
   Navigate,
 } from "react-router-dom";
 import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
-import { AuthInitializer } from "./features/authentication/auth-initalizer.component";
-import { PublicRoute } from "./features/authentication/public-route.component";
+import { AuthInitializer } from "./features/authentication/components/auth-initalizer.component";
+import { PublicRoute } from "./features/authentication/components/public-route.component";
 import { ThemeProvider, useTheme } from "./theme";
 import { ProjectLoadingScreen } from "./shared/components/project-loading-screen.component";
 import { Toaster } from "./shared/components/ui/toaster.component";
-import { DesktopAuthBridge } from "./features/authentication/desktop-auth-bridge.component";
+import { DesktopAuthBridge } from "./features/authentication/components/desktop-auth-bridge.component";
 import { isTauri } from "./shared/utils/platform.util";
 import { ensureTauriFrontendSession } from "./shared/utils/tauri-native-jobs.util";
-import { ClipperTauriGate } from "./features/clipper/pages/clipper-tauri-gate.component";
 import { AppUpdateInitializer } from "./features/settings/app-update-initializer.component";
 
 const AuthPage = lazy(() =>
-  import("./features/authentication/auth-page.component").then((m) => ({
+  import("./features/authentication/components/auth-page.component").then((m) => ({
     default: m.AuthPage,
   })),
 );
 const OAuthSuccess = lazy(() =>
-  import("./features/authentication/oauth-success.component").then((m) => ({
+  import("./features/authentication/components/oauth-success.component").then((m) => ({
     default: m.OAuthSuccess,
   })),
 );
 const OAuthYoutubeCallback = lazy(() =>
-  import("./features/authentication/oauth-youtube-callback.component").then((m) => ({
+  import("./features/authentication/components/oauth-youtube-callback.component").then((m) => ({
     default: m.OAuthYoutubeCallback,
   })),
 );
 const OAuthMetaCallback = lazy(() =>
-  import("./features/authentication/oauth-social-callbacks.component").then((m) => ({
+  import("./features/authentication/components/oauth-social-callbacks.component").then((m) => ({
     default: m.OAuthMetaCallback,
   })),
 );
 const OAuthInstagramCallback = lazy(() =>
-  import("./features/authentication/oauth-social-callbacks.component").then((m) => ({
+  import("./features/authentication/components/oauth-social-callbacks.component").then((m) => ({
     default: m.OAuthInstagramCallback,
   })),
 );
 const OAuthTikTokCallback = lazy(() =>
-  import("./features/authentication/oauth-social-callbacks.component").then((m) => ({
+  import("./features/authentication/components/oauth-social-callbacks.component").then((m) => ({
     default: m.OAuthTikTokCallback,
   })),
 );
 const OAuthXCallback = lazy(() =>
-  import("./features/authentication/oauth-social-callbacks.component").then((m) => ({
+  import("./features/authentication/components/oauth-social-callbacks.component").then((m) => ({
     default: m.OAuthXCallback,
   })),
 );

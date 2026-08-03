@@ -7,7 +7,7 @@ import { useTauriTitleBarHandlers } from "../../../shared/hooks/use-tauri-title-
 import { asset } from "../../../shared/utils/asset.util";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { colors, useTheme } from "../../../theme";
-import { AccountHeaderAction } from "../../authentication/account-header-action.component";
+import { AccountHeaderAction } from "../../authentication/components/account-header-action.component";
 
 export interface ClipperLayoutStep {
   current?: number;
