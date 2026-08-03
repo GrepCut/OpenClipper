@@ -7,9 +7,16 @@ export interface McpToolCatalogEntry {
   outputExample: unknown;
 }
 
+export interface McpToolSection {
+  id: string;
+  title: string;
+  description: string;
+  tools: McpToolCatalogEntry[];
+}
+
 export interface McpToolsCatalog {
   instructions: string;
-  tools: McpToolCatalogEntry[];
+  sections: McpToolSection[];
 }
 
 export async function fetchOpenClipperMcpToolsCatalog(): Promise<McpToolsCatalog> {

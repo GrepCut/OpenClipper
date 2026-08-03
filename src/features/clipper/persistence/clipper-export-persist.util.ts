@@ -1,7 +1,6 @@
 import type { ClipperGeneratedClip } from "../engine/segmentation";
 import { buildClipExportTranscript } from "./export-transcript.util";
 import { upsertClipperExport, type ClipperExportRecord } from "./clipper-export-db-api.util";
-import { emitClipperExportsChanged } from "./clipper-export-events.util";
 
 export interface PersistClipperExportDiskMeta {
   id: string;
@@ -17,7 +16,7 @@ export interface PersistClipperExportDiskMeta {
   clipEndSec: number;
 }
 
-/** Single write path: upsert clipper_exports with transcript, then notify listeners. */
+/** Single write path: upsert clipper_exports with transcript. Backend emits change events. */
 export async function persistClipperExport(
   projectId: string,
   clip: ClipperGeneratedClip,
@@ -29,6 +28,5 @@ export async function persistClipperExport(
     transcriptPlain,
     transcriptTimestamped,
   });
-  emitClipperExportsChanged(projectId);
   return record;
 }

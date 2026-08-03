@@ -1,4 +1,5 @@
 import type { ClipperAspectPresetId } from "../../../shared/formats.util";
+import { getClipperFormatDef } from "../../../shared/formats.util";
 import type { NormalizedBox, SubjectDetectionSample } from "../../../shared/smart-crop.util";
 import { computeTargetCropSize } from "../../autoflip/geometry/frame-crop-region.util";
 import {
@@ -427,7 +428,7 @@ export function deriveRegionsFromLayoutTracks(
   primaryFormatId = "tiktok",
 ): CollageRegion[] {
   if (!smartCropAnalysis?.layoutTracks) return [];
-  const aspectId = primaryFormatId === "tiktok" ? "9-16" : primaryFormatId;
+  const aspectId = getClipperFormatDef(primaryFormatId)?.aspectId ?? primaryFormatId;
   const track = smartCropAnalysis.layoutTracks[primaryFormatId]
     ?? smartCropAnalysis.layoutTracks[aspectId]
     ?? smartCropAnalysis.layoutTracks.default

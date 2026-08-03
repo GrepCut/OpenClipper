@@ -15,7 +15,7 @@ export interface Transcription {
   id: string;
   mediaFileId: string;
   language?: string;
-  engine?: "parakeet_local" | "whisper_local";
+  engine?: "parakeet_local" | "whisper_local" | "groq" | "openrouter";
   segments: TranscriptionSegment[];
   words?: TranscriptionWord[];
 }

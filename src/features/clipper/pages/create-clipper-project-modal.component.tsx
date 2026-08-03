@@ -35,11 +35,13 @@ export function CreateClipperProjectModal({
   const [description, setDescription] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const handleClose = () => {
     setName("");
     setDescription("");
     setSubmissionError(null);
+    setNameError(null);
     onClose();
   };
 
@@ -47,12 +49,13 @@ export function CreateClipperProjectModal({
     if (isLoading) return;
 
     if (!name.trim()) {
-      appToast.error("Error", "Project name is required");
+      setNameError("Project name is required");
       return;
     }
 
     setIsLoading(true);
     setSubmissionError(null);
+    setNameError(null);
 
     try {
       const project = await createClipperProject({
@@ -90,9 +93,9 @@ export function CreateClipperProjectModal({
         <StyledModalFooter
           onCancel={handleClose}
           onSubmit={() => void handleSubmit()}
-          submitText="Create & upload video"
+          submitText="Create project"
           isLoading={isLoading}
-          submitDisabled={isLoading}
+          submitDisabled={isLoading || !name.trim()}
         />
       }
     >
@@ -101,7 +104,7 @@ export function CreateClipperProjectModal({
           <StyledAlert status="error" title="Creation Failed" description={submissionError} />
         )}
 
-        <Field.Root required>
+        <Field.Root required invalid={!!nameError}>
           <Field.Label color={theme.text.primary}>
             <SpecificTitle fontSize="sm">Project name</SpecificTitle>
           </Field.Label>
@@ -111,11 +114,13 @@ export function CreateClipperProjectModal({
             onChange={(e) => {
               setName(e.target.value);
               if (submissionError) setSubmissionError(null);
+              if (nameError) setNameError(null);
             }}
             borderRadius="2xl"
             maxLength={255}
             disabled={isLoading}
           />
+          {nameError && <Field.ErrorText>{nameError}</Field.ErrorText>}
         </Field.Root>
 
         <Field.Root>

@@ -1,7 +1,7 @@
 import { aspectRatioFromId, evenInt } from "../lib/media/video-draw.util";
 import { CLIPPER_CARD_BADGE_INSET } from "../components/clipper-platform-icon.component";
 
-export type ClipperPlatform = "instagram" | "tiktok" | "youtube" | "twitter";
+export type ClipperPlatform = "instagram" | "tiktok" | "youtube" | "youtube-shorts" | "twitter";
 
 /** Ids from `ASPECT_PRESETS` in `tools/shared/video-draw.ts`. */
 export type ClipperAspectPresetId = "16-9" | "9-16" | "1-1" | "4-5";
@@ -40,6 +40,15 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     id: "tiktok",
     platform: "tiktok",
     label: "TikTok",
+    aspectId: "9-16",
+    mode: "crop",
+    description: "Vertical 9:16",
+    isDefaultEnabled: true,
+  },
+  {
+    id: "youtube-shorts",
+    platform: "youtube-shorts",
+    label: "YouTube Shorts",
     aspectId: "9-16",
     mode: "crop",
     description: "Vertical 9:16",

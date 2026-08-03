@@ -1,8 +1,5 @@
 import type { ClipperExportMapItem } from "./clipper-export-db-api.util";
 
-/** Polling interval for publish map and external metadata sync (MCP writes). */
-export const CLIPPER_EXPORT_EXTERNAL_SYNC_MS = 500;
-
 function missingFieldsKey(fields: string[]): string {
   return fields.join(",");
 }

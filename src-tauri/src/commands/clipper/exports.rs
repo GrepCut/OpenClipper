@@ -3,6 +3,10 @@ use std::fs;
 use tauri::{AppHandle, State};
 
 use crate::clipper::data::clipper_export_file_path;
+use crate::clipper::exports_notify::{
+    ClipperExportsChangedEvent, EXPORTS_CHANGED_REASON_DELETE, EXPORTS_CHANGED_REASON_PATCH_SOCIAL,
+    EXPORTS_CHANGED_REASON_PUBLISH, EXPORTS_CHANGED_REASON_UPSERT, emit_exports_changed,
+};
 use crate::storage::database::LocalDb;
 use crate::storage::export_cleanup;
 use crate::storage::repository::export_map_repository::{
@@ -18,13 +22,24 @@ use crate::storage::repository::export_repository::{
 
 #[tauri::command]
 pub async fn clipper_export_upsert(
+    app: AppHandle,
     db: State<'_, LocalDb>,
     project_id: String,
     export: ClipperExportUpsertInput,
 ) -> Result<ClipperExportRecord, String> {
-    ExportRepository::upsert(&db.database, &project_id, export)
+    let export_id = export.id.clone();
+    let record = ExportRepository::upsert(&db.database, &project_id, export)
         .await
-        .map_err(Into::into)
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?;
+    emit_exports_changed(
+        &app,
+        ClipperExportsChangedEvent::new(
+            Some(project_id),
+            Some(export_id),
+            EXPORTS_CHANGED_REASON_UPSERT,
+        ),
+    );
+    Ok(record)
 }
 
 #[tauri::command]
@@ -60,12 +75,19 @@ pub async fn clipper_exports_list_all(
 
 #[tauri::command]
 pub async fn clipper_export_publish_upsert(
+    app: AppHandle,
     db: State<'_, LocalDb>,
     publish: ClipperExportPublishUpsertInput,
 ) -> Result<ClipperExportPublishRecord, String> {
-    ExportPublishRepository::upsert(&db.database, publish)
+    let export_id = publish.export_id.clone();
+    let record = ExportPublishRepository::upsert(&db.database, publish)
         .await
-        .map_err(|e: crate::infra::error::DbError| e.to_string())
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?;
+    emit_exports_changed(
+        &app,
+        ClipperExportsChangedEvent::new(None, Some(export_id), EXPORTS_CHANGED_REASON_PUBLISH),
+    );
+    Ok(record)
 }
 
 #[tauri::command]
@@ -80,14 +102,24 @@ pub async fn clipper_export_publishes_list(
 
 #[tauri::command]
 pub async fn clipper_export_patch_social(
+    app: AppHandle,
     db: State<'_, LocalDb>,
     export_id: String,
     patch: ClipperExportSocialPatch,
     mode: SocialPatchMode,
 ) -> Result<ClipperExportRecord, String> {
-    ExportRepository::patch_social_metadata(&db.database, &export_id, patch, mode)
+    let record = ExportRepository::patch_social_metadata(&db.database, &export_id, patch, mode)
         .await
-        .map_err(Into::into)
+        .map_err(|e: crate::infra::error::DbError| e.to_string())?;
+    emit_exports_changed(
+        &app,
+        ClipperExportsChangedEvent::new(
+            Some(record.project_id.clone()),
+            Some(record.id.clone()),
+            EXPORTS_CHANGED_REASON_PATCH_SOCIAL,
+        ),
+    );
+    Ok(record)
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -108,6 +140,8 @@ pub async fn clipper_export_delete(
         .map_err(|e: crate::infra::error::DbError| e.to_string())?
         .ok_or_else(|| format!("Export not found: {export_id}"))?;
 
+    let project_id = export.project_id.clone();
+    let deleted_export_id = export_id.clone();
     let path = clipper_export_file_path(&app, &export.project_id, &export.file_name)?;
     if path.exists() {
         fs::remove_file(&path).map_err(|e| e.to_string())?;
@@ -119,6 +153,15 @@ pub async fn clipper_export_delete(
     ExportRepository::delete_by_ids(&db.database, &[export_id])
         .await
         .map_err(|e: crate::infra::error::DbError| e.to_string())?;
+
+    emit_exports_changed(
+        &app,
+        ClipperExportsChangedEvent::new(
+            Some(project_id),
+            Some(deleted_export_id),
+            EXPORTS_CHANGED_REASON_DELETE,
+        ),
+    );
 
     Ok(())
 }

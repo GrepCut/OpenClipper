@@ -22,6 +22,7 @@ pub fn missing_social_fields(record: &ClipperExportRecord) -> Vec<String> {
 pub fn format_platform(format_id: &str) -> &'static str {
     match format_id {
         "youtube" => "youtube",
+        "youtube-shorts" => "youtube-shorts",
         "instagram" => "instagram",
         "tiktok" => "tiktok",
         "instagram-portrait" => "instagram",
@@ -32,7 +33,7 @@ pub fn format_platform(format_id: &str) -> &'static str {
 
 pub fn publish_platform(format_id: &str) -> &'static str {
     match format_id {
-        "youtube" => "youtube",
+        "youtube" | "youtube-shorts" => "youtube",
         "instagram" | "instagram-portrait" => "instagram",
         "tiktok" => "tiktok",
         "twitter" => "x",
@@ -43,6 +44,7 @@ pub fn publish_platform(format_id: &str) -> &'static str {
 pub fn format_label(format_id: &str) -> &'static str {
     match format_id {
         "youtube" => "YouTube",
+        "youtube-shorts" => "YouTube Shorts",
         "instagram" => "Instagram",
         "tiktok" => "TikTok",
         "instagram-portrait" => "Instagram Portrait",

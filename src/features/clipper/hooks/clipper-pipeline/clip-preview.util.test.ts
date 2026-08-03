@@ -23,6 +23,15 @@ function clipsToPayloadWithWords(
         rangeWords,
         undefined,
         rangeDurationSec,
+        undefined,
+        undefined,
+        {
+          usePaddedTimes: false,
+          segmentTimes: clip.segments.map((segment) => ({
+            startSec: segment.startSec,
+            endSec: segment.endSec,
+          })),
+        },
       );
       if (withIndices) return withIndices;
     }
@@ -82,5 +91,22 @@ describe("clipsToPayload word indices", () => {
     const payload = clipsToPayloadWithWords(clips, [], 60);
     assert.equal(payload[0].segments[0].wordStartIdx, undefined);
     assert.equal(payload[0].segments[0].wordEndIdx, undefined);
+  });
+
+  it("keeps clip envelope at 0 when first word starts after silence", () => {
+    const rangeWords: WordCue[] = [
+      { text: "when", start: 1.0, end: 1.3 },
+      { text: "every", start: 1.4, end: 1.7 },
+    ];
+    const clips = [makeClip(0, 0, 60, rangeWords)];
+
+    const payload = clipsToPayloadWithWords(clips, rangeWords, 70);
+
+    assert.equal(payload.length, 1);
+    assert.equal(payload[0].startSec, 0);
+    assert.equal(payload[0].endSec, 60);
+    assert.equal(payload[0].segments[0].startSec, 0);
+    assert.equal(payload[0].segments[0].wordStartIdx, 0);
+    assert.equal(payload[0].segments[0].wordEndIdx, 1);
   });
 });

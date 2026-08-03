@@ -42,6 +42,12 @@ export function deriveWordRangesFromClip(
   return groupContiguousWordIndices(indices);
 }
 
+export interface ClipPayloadFromWordRangesOptions {
+  /** When false, uses segmentTimes (or base word times) instead of padded pre/post-roll windows. */
+  usePaddedTimes?: boolean;
+  segmentTimes?: Array<{ startSec: number; endSec: number }>;
+}
+
 export function clipPayloadFromWordRanges(
   index: number,
   segments: AiClipSegmentRange[],
@@ -50,10 +56,27 @@ export function clipPayloadFromWordRanges(
   rangeDurationSec = Infinity,
   margins?: WordMarginOptions,
   envelope?: RmsEnvelope,
+  options: ClipPayloadFromWordRangesOptions = {},
 ): ClipperClipPayload | null {
   if (!segments.length || !rangeWords.length) return null;
 
-  const windows = padSegmentWindows(segments, rangeWords, rangeDurationSec, margins, envelope);
+  const usePaddedTimes = options.usePaddedTimes ?? true;
+  const windows = usePaddedTimes
+    ? padSegmentWindows(segments, rangeWords, rangeDurationSec, margins, envelope)
+    : segments.map((segment, orderIndex) => {
+        const override = options.segmentTimes?.[orderIndex];
+        if (override) return override;
+        const startWord = rangeWords[segment.wordStartIdx];
+        const endWord = rangeWords[segment.wordEndIdx];
+        if (!startWord || !endWord) {
+          throw new Error(`Invalid word index range ${segment.wordStartIdx}..${segment.wordEndIdx}`);
+        }
+        return {
+          startSec: Math.max(0, startWord.start),
+          endSec: Math.min(rangeDurationSec, endWord.end),
+        };
+      });
+
   const payloadSegments = segments.map((segment, orderIndex) => {
     const window = windows[orderIndex]!;
     return {

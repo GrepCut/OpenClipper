@@ -3,6 +3,11 @@ macro_rules! invoke_handler {
     () => {
         tauri::generate_handler![
             crate::commands::frontend::frontend_ready,
+            crate::commands::frontend::frontend_startup_log,
+            crate::commands::app_updates::get_app_name,
+            crate::commands::app_updates::get_app_version,
+            crate::commands::app_updates::check_for_app_update,
+            crate::commands::app_updates::install_app_update,
             crate::infra::integration_log::append_integration_log,
             crate::commands::clipper::video::start_clipper_winml_analysis,
             crate::commands::clipper::video::cancel_clipper_native_job,
@@ -15,6 +20,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::data::read_clipper_project_data_file,
             crate::commands::clipper::data::write_clipper_project_data_file,
             crate::commands::clipper::data::write_clipper_project_data_bytes,
+            crate::commands::clipper::data::write_clipper_project_data_bytes_at,
             crate::commands::clipper::data::write_clipper_project_data_raw,
             crate::commands::clipper::data::get_clipper_project_data_file_path,
             crate::commands::clipper::data::extract_clipper_segment_to_project_data,
@@ -68,6 +74,9 @@ macro_rules! invoke_handler {
             crate::commands::transcription::get_vocals_isolate_model_status,
             crate::commands::transcription::download_vocals_isolate_model,
             crate::commands::transcription::delete_vocals_isolate_model,
+            crate::commands::transcription::start_prepare_transcription_audio,
+            crate::commands::transcription::read_transcription_audio_bytes,
+            crate::transcription::diag_log::append_transcription_diag_log,
         ]
     };
 }

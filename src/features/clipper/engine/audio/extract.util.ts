@@ -1,6 +1,12 @@
-import { WavOutputFormat } from "mediabunny";
-import { convertWithMediabunnyBuffer } from "../../lib/convert/mediabunny-convert.util";
-import { clipperLog, formatBytes } from "../../shared/logger.util";
+import { WavOutputFormat, Output, StreamTarget } from "mediabunny";
+import { isTauri } from "../../../../shared/utils/platform.util";
+import { createMediabunnyInput } from "../../lib/media/mediabunny-file-source.util";
+import { createThrottledProgressReporter } from "../../lib/convert/throttled-progress.util";
+import { createClipperTranscriptionAudioSink } from "../../persistence/transcription-audio-sink.util";
+import { clipperLog } from "../../shared/logger.util";
+import {
+  logTranscriptionDiag,
+} from "../../../../shared/utils/transcription-diag-log.util";
 import type { PreparedTranscriptionAudio } from "../types/audio.types";
 import {
   appendRmsSamples,
@@ -10,62 +16,146 @@ import {
 
 const TRANSCRIBE_SAMPLE_RATE = 16_000;
 
+export class NoTranscribableAudioError extends Error {
+  constructor(message = "No audio track in this file.") {
+    super(message);
+    this.name = "NoTranscribableAudioError";
+  }
+}
+
+/** Returns false for video-only files (no primary audio track). */
+export async function hasTranscribableAudioTrack(file: File): Promise<boolean> {
+  const input = await createMediabunnyInput(file);
+  try {
+    return (await input.getPrimaryAudioTrack()) != null;
+  } finally {
+    input.dispose();
+  }
+}
+
+function isVideoOnlyConversion(conversion: {
+  discardedTracks: Array<{ track: { type: string }; reason: string }>;
+}): boolean {
+  const { discardedTracks } = conversion;
+  const audioTracks = discardedTracks.filter((entry) => entry.track.type === "audio");
+  return (
+    discardedTracks.length > 0 &&
+    discardedTracks.every((entry) => entry.reason === "discarded_by_user") &&
+    audioTracks.length === 0
+  );
+}
+
+const mediabunnyAudioConfig = {
+  codec: "pcm-s16" as const,
+  numberOfChannels: 1,
+  sampleRate: TRANSCRIBE_SAMPLE_RATE,
+};
+
 /**
- * Extracts mono 16 kHz PCM WAV for the local recognizer. MP3 encoding was
- * unused by local transcription and consumed CPU on long clips.
+ * Extracts mono 16 kHz PCM WAV for the local recognizer. In Tauri, streams
+ * directly to project data on disk instead of holding the full WAV in RAM.
  */
 export async function extractClipAudioForTranscription(
   file: File,
   startSec: number,
   endSec: number,
-  options: { signal?: AbortSignal; onProgress?: (ratio: number) => void } = {},
+  options: {
+    projectId: string;
+    signal?: AbortSignal;
+    onProgress?: (ratio: number) => void;
+    diagRunId?: string;
+  },
 ): Promise<PreparedTranscriptionAudio> {
   clipperLog("audio: extracting PCM WAV via mediabunny", {
     startSec,
     endSec,
     fileName: file.name,
+    streamToDisk: isTauri(),
   });
 
   const envelope = createRmsEnvelopeAccumulator(TRANSCRIBE_SAMPLE_RATE);
+  const processSample = (sample: {
+    numberOfChannels: number;
+    sampleRate: number;
+    numberOfFrames: number;
+    copyTo: (destination: Float32Array, options: { format: "f32"; planeIndex: number }) => void;
+  }) => {
+    if (
+      sample.numberOfChannels !== 1 ||
+      sample.sampleRate !== TRANSCRIBE_SAMPLE_RATE
+    ) {
+      throw new Error(
+        "Transcription audio was not converted to mono 16 kHz PCM.",
+      );
+    }
+    const pcmChunk = new Float32Array(sample.numberOfFrames);
+    sample.copyTo(pcmChunk, { format: "f32", planeIndex: 0 });
+    appendRmsSamples(envelope, pcmChunk);
+    return sample;
+  };
 
-  const buffer = await convertWithMediabunnyBuffer(
-    file,
-    {
-      createFormat: () => new WavOutputFormat(),
-      mimeType: "audio/wav",
-      video: { discard: true },
-      audio: {
-        codec: "pcm-s16",
-        numberOfChannels: 1,
-        sampleRate: TRANSCRIBE_SAMPLE_RATE,
-        process: (sample) => {
-          if (
-            sample.numberOfChannels !== 1 ||
-            sample.sampleRate !== TRANSCRIBE_SAMPLE_RATE
-          ) {
-            throw new Error(
-              "Transcription audio was not converted to mono 16 kHz PCM.",
-            );
-          }
-          const pcmChunk = new Float32Array(sample.numberOfFrames);
-          sample.copyTo(pcmChunk, { format: "f32", planeIndex: 0 });
-          appendRmsSamples(envelope, pcmChunk);
-          return sample;
-        },
-      },
-      trim: { start: startSec, end: endSec },
-      stage: "extracting",
+  const convertConfig = {
+    createFormat: () => new WavOutputFormat(),
+    mimeType: "audio/wav",
+    video: { discard: true },
+    audio: {
+      ...mediabunnyAudioConfig,
+      process: processSample,
     },
-    {
-      signal: options.signal,
-      onProgress: ({ ratio }) => options.onProgress?.(ratio ?? 0),
-    },
+    trim: { start: startSec, end: endSec },
+    stage: "extracting" as const,
+  };
+
+  if (!isTauri()) {
+    throw new Error("Local transcription audio extraction requires the desktop app.");
+  }
+
+  const sink = await createClipperTranscriptionAudioSink(options.projectId);
+  const target = new StreamTarget(sink.writable, { chunked: true });
+  const input = await createMediabunnyInput(file);
+  const progress = createThrottledProgressReporter((progress) =>
+    options.onProgress?.(progress.ratio ?? 0),
   );
 
-  if (!buffer || buffer.byteLength <= 0) {
-    throw new Error(
-      "Could not extract audio from this clip. The file may be silent or use an unsupported codec.",
-    );
+  let audioPath: string;
+  try {
+    if ((await input.getPrimaryAudioTrack()) == null) {
+      throw new NoTranscribableAudioError();
+    }
+
+    progress.report({ ratio: null, stage: "reading" });
+    const output = new Output({ format: new WavOutputFormat(), target });
+    const { Conversion } = await import("mediabunny");
+    const conversion = await Conversion.init({
+      input,
+      output,
+      video: convertConfig.video,
+      audio: convertConfig.audio,
+      trim: convertConfig.trim,
+    });
+    if (!conversion.isValid) {
+      if (isVideoOnlyConversion(conversion)) {
+        throw new NoTranscribableAudioError();
+      }
+      throw new Error("Could not convert audio for transcription.");
+    }
+    conversion.onProgress = (ratio) =>
+      progress.report({ ratio, stage: convertConfig.stage });
+    const cancelConversion = () => void conversion.cancel();
+    options.signal?.addEventListener("abort", cancelConversion, { once: true });
+    try {
+      await conversion.execute();
+    } finally {
+      options.signal?.removeEventListener("abort", cancelConversion);
+    }
+    if (options.signal?.aborted) {
+      throw new DOMException("Conversion aborted", "AbortError");
+    }
+    progress.report({ ratio: 1, stage: "finalizing" });
+    audioPath = await sink.finalize();
+  } finally {
+    input.dispose();
+    progress.dispose();
   }
 
   const audioEnvelope = finishRmsEnvelope(envelope, TRANSCRIBE_SAMPLE_RATE);
@@ -75,10 +165,15 @@ export async function extractClipAudioForTranscription(
     );
   }
 
-  const wavBytes = new Uint8Array(buffer);
-  clipperLog("audio: PCM WAV ready", {
-    wavSize: formatBytes(wavBytes.byteLength),
+  clipperLog("audio: PCM WAV ready on disk", {
+    audioPath,
     rmsHops: audioEnvelope.values.length,
   });
-  return { wavBytes, audioEnvelope };
+  logTranscriptionDiag("AUDIO_READY", {
+    runId: options.diagRunId,
+    audioPath,
+    durationSec: endSec - startSec,
+    rmsHops: audioEnvelope.values.length,
+  });
+  return { audioPath, audioEnvelope };
 }

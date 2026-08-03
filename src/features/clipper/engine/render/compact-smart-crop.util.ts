@@ -16,6 +16,7 @@ const FORMAT_ASPECTS = [
   ["youtube", "16-9"],
   ["instagram", "1-1"],
   ["tiktok", "9-16"],
+  ["youtube-shorts", "9-16"],
   ["instagram-portrait", "4-5"],
   ["twitter", "16-9"],
 ] as const;

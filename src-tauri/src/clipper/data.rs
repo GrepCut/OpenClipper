@@ -72,6 +72,26 @@ pub(crate) fn clipper_export_file_exists(
         .unwrap_or(false)
 }
 
+pub(crate) fn validate_clipper_audio_path(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
+    let candidate = Path::new(path);
+    if !candidate.is_absolute() {
+        return Err("Audio path must be absolute.".to_string());
+    }
+    let root = clipper_projects_root(app)?
+        .canonicalize()
+        .map_err(|error| format!("Cannot resolve clipper projects root: {error}"))?;
+    let resolved = candidate
+        .canonicalize()
+        .map_err(|error| format!("Invalid audio path: {error}"))?;
+    if !resolved.starts_with(&root) {
+        return Err("Audio path is outside clipper project data.".to_string());
+    }
+    if !resolved.is_file() {
+        return Err("Audio file not found.".to_string());
+    }
+    Ok(resolved)
+}
+
 pub(crate) async fn extract_segment_to_project_data(
     app: &AppHandle,
     project_id: &str,
@@ -112,6 +132,32 @@ pub(crate) fn write_export_file_bytes_at(
         .write(true)
         .open(&path)
         .map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(position))
+        .map_err(|e| e.to_string())?;
+    file.write_all(contents).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn write_project_data_file_bytes_at(
+    app: &AppHandle,
+    project_id: &str,
+    file_name: &str,
+    position: u64,
+    contents: &[u8],
+) -> Result<(), String> {
+    validate_export_file_name(file_name)?;
+    let dir = clipper_project_data_dir(app, project_id)?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(file_name);
+    let mut file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    if position == 0 {
+        file.set_len(0).map_err(|e| e.to_string())?;
+    }
     file.seek(SeekFrom::Start(position))
         .map_err(|e| e.to_string())?;
     file.write_all(contents).map_err(|e| e.to_string())?;

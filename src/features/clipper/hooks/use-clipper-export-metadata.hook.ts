@@ -11,7 +11,7 @@ import {
   socialFieldsFromResult,
   type ExportSocialFields,
 } from "../persistence/clipper-export-social.util";
-import { CLIPPER_EXPORT_EXTERNAL_SYNC_MS } from "../persistence/clipper-export-map-sync.util";
+import { subscribeClipperExportsChanged } from "../persistence/clipper-export-events.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 
 export function useClipperExportMetadata({
@@ -100,11 +100,11 @@ export function useClipperExportMetadata({
 
   useEffect(() => {
     if (!watchExternal || !canEdit || dirty || isSaving) return;
-    const interval = window.setInterval(() => {
+    return subscribeClipperExportsChanged((detail) => {
+      if (detail.exportId && detail.exportId !== result.id) return;
       void refresh({ silent: true });
-    }, CLIPPER_EXPORT_EXTERNAL_SYNC_MS);
-    return () => window.clearInterval(interval);
-  }, [canEdit, dirty, isSaving, refresh, watchExternal]);
+    });
+  }, [canEdit, dirty, isSaving, refresh, result.id, watchExternal]);
 
   return {
     canEdit,

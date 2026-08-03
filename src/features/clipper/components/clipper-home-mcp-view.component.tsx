@@ -14,6 +14,7 @@ import { buildMcpConfigSnippet } from "../persistence/clipper-export-social.util
 import {
   fetchOpenClipperMcpToolsCatalog,
   type McpToolCatalogEntry,
+  type McpToolSection,
   type McpToolsCatalog,
 } from "../persistence/clipper-mcp-catalog-api.util";
 
@@ -36,6 +37,36 @@ function formatExample(example: unknown): string {
 interface McpToolCardProps {
   tool: McpToolCatalogEntry;
   defaultExpanded: boolean;
+}
+
+function McpToolSectionBlock({
+  section,
+  defaultExpandedToolIndex,
+}: {
+  section: McpToolSection;
+  defaultExpandedToolIndex: number | null;
+}) {
+  const { theme } = useTheme();
+
+  return (
+    <VStack align="stretch" gap={4}>
+      <VStack align="start" gap={1}>
+        <Text fontWeight="semibold" color={theme.text.primary}>
+          {section.title} ({section.tools.length})
+        </Text>
+        <Text fontSize="sm" color={theme.text.muted} lineHeight="1.6">
+          {section.description}
+        </Text>
+      </VStack>
+      {section.tools.map((tool, index) => (
+        <McpToolCard
+          key={tool.name}
+          tool={tool}
+          defaultExpanded={index === defaultExpandedToolIndex}
+        />
+      ))}
+    </VStack>
+  );
 }
 
 function McpToolCard({ tool, defaultExpanded }: McpToolCardProps) {
@@ -277,12 +308,13 @@ export function ClipperHomeMcpView() {
         </VStack>
       </Box>
 
-      <VStack align="stretch" gap={4}>
-        <Text fontWeight="semibold" color={theme.text.primary}>
-          Tools ({catalog.tools.length})
-        </Text>
-        {catalog.tools.map((tool, index) => (
-          <McpToolCard key={tool.name} tool={tool} defaultExpanded={index === 0} />
+      <VStack align="stretch" gap={10}>
+        {catalog.sections.map((section, sectionIndex) => (
+          <McpToolSectionBlock
+            key={section.id}
+            section={section}
+            defaultExpandedToolIndex={sectionIndex === 0 ? 0 : null}
+          />
         ))}
       </VStack>
     </VStack>

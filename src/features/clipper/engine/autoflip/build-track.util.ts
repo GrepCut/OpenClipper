@@ -354,6 +354,7 @@ export function primaryCropAspectRatio(enabledFormatIds: string[]): number {
     case "twitter":
       return 16 / 9;
     case "tiktok":
+    case "youtube-shorts":
     default:
       return 9 / 16;
   }

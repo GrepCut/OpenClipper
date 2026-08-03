@@ -1,6 +1,6 @@
 export interface PreparedTranscriptionAudio {
-  /** Ready-to-write mono 16 kHz PCM WAV for the native recognizer. */
-  wavBytes: Uint8Array;
+  /** Absolute path to mono 16 kHz PCM WAV for the native recognizer. */
+  audioPath: string;
   /** Calculated while decoding, avoiding retention of all PCM samples. */
   audioEnvelope: RmsEnvelope;
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "totalSize": 670479304,
+  "totalSize": 1773978491,
   "files": [
     {
       "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/decoder.int8.onnx",
@@ -26,6 +26,36 @@
       "path": "models/nemo-parakeet-tdt-0.6b-v3-int8/tokens.txt",
       "size": 93939,
       "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+    },
+    {
+      "path": "models/uvr-mdx-net-voc-ft/UVR-MDX-NET-Voc_FT.onnx",
+      "size": 66762490,
+      "sha256": "534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111"
+    },
+    {
+      "path": "models/uvr-mdx-net-voc-ft/config.json",
+      "size": 230,
+      "sha256": "030b75c3fb8fd32abce2eb25a054d2c563e690412c73d90cf6962d67b9dd8826"
+    },
+    {
+      "path": "models/whisper-large-v3-turbo-dml/config.json",
+      "size": 116,
+      "sha256": "85db03c1bb22e320bd2fc387e6d26c27c486e21428772b211dad5bf7440d1c2c"
+    },
+    {
+      "path": "models/whisper-large-v3-turbo-dml/decoder.int8.onnx",
+      "size": 361152887,
+      "sha256": "0f5e075e6d6a4ea709e62b3664ded0b65ed0ce0359b1d83c1eafa3834e73648a"
+    },
+    {
+      "path": "models/whisper-large-v3-turbo-dml/encoder.int8.onnx",
+      "size": 674716477,
+      "sha256": "7ebe57d95ba00e478a6fa218c98da9e2368170f236ead2289c25d3ae04b11947"
+    },
+    {
+      "path": "models/whisper-large-v3-turbo-dml/tokens.txt",
+      "size": 866987,
+      "sha256": "febeed8e568f92d9ca984580bc2e6b605b867dc5ba4486f9646de381b44a8226"
     }
   ]
 }

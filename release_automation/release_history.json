@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "active": {
+    "windows-x86_64": "26.8.2"
+  },
+  "releases": [
+    {
+      "version": "26.8.1",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-08-01T10:53:41Z",
+      "pubDate": "2026-08-01T10:53:41Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": null,
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.8.1",
+      "files": [
+        {
+          "name": "Open Clipper_26.8.1_x64-setup.exe",
+          "size": 113986891,
+          "sha256": "bedbdb345ae13b323a8477b963303ac9d6c56fb877d16e74a643e9146ce37588"
+        },
+        {
+          "name": "Open Clipper_26.8.1_x64-setup.exe.sig",
+          "size": 424,
+          "sha256": "b631dc733c49712c700a8f4c2bec0f39f1ba9af966083d21ec5aa53de0fba54f"
+        }
+      ]
+    },
+    {
+      "version": "26.8.2",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-08-01T11:24:14Z",
+      "pubDate": "2026-08-01T11:24:14Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": "26.8.1",
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.8.2",
+      "files": [
+        {
+          "name": "Open Clipper_26.8.2_x64-setup.exe",
+          "size": 132895048,
+          "sha256": "c99f3f35a3892fc30f66b5af4f676d391ac889265cc8ed066198248341c1236a"
+        },
+        {
+          "name": "Open Clipper_26.8.2_x64-setup.exe.sig",
+          "size": 424,
+          "sha256": "4d21fced3c2f348578a4049082105028ee4682d5402cb997b33ae853b8445555"
+        }
+      ]
+    }
+  ],
+  "rollbacks": []
+}

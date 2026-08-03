@@ -1,5 +1,6 @@
 //! Native Whisper runner backed by sherpa-onnx engine and DirectML/GPU.
 
+use super::diag_log;
 use super::parakeet_tokens::{
     ensure_monotonic_word_ends, extract_timestamped_tokens_for_whisper,
     group_words_into_segments, merge_sentencepiece_tokens,
@@ -9,6 +10,7 @@ use super::types::{
     TranscriptionWord, WhisperModelStatus,
 };
 use crate::infra::model_cache::download_model_file_to_cache;
+use serde_json::json;
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineRecognizerResult, OfflineWhisperModelConfig,
     Wave,
@@ -44,41 +46,13 @@ const OVERLAP_DEDUPE_SECONDS: f64 = 0.75;
 const WHISPER_FEATURE_DIM: i32 = 128;
 /// Multilingual Whisper tail padding (samples after the last speech frame).
 const WHISPER_TAIL_PADDINGS: i32 = 300;
+/// Reject clips longer than this before loading the full WAV into memory.
+pub const MAX_ASR_AUDIO_SECONDS: f64 = 900.0;
 /// Dense decode loops (chars / second of covered span) trigger n-gram truncation.
 const COMPRESSION_CHARS_PER_SEC: f64 = 60.0;
 
 
 static DOWNLOAD_LOCK: Mutex<()> = Mutex::new(());
-
-/// Helper function to write rich diagnostic logs to Downloads/whisper_transcription_log.json
-pub fn append_diag_log(stage: &str, details: serde_json::Value) {
-    if let Some(mut download_dir) = dirs::download_dir() {
-        download_dir.push("whisper_transcription_log.json");
-        let timestamp = chrono::Local::now().to_rfc3339();
-        let log_entry = serde_json::json!({
-            "timestamp": timestamp,
-            "stage": stage,
-            "details": details
-        });
-
-        log::info!("[WhisperDiag] [{stage}] {}", serde_json::to_string(&details).unwrap_or_default());
-
-        let mut logs: Vec<serde_json::Value> = if download_dir.exists() {
-            fs::read_to_string(&download_dir)
-                .ok()
-                .and_then(|content| serde_json::from_str(&content).ok())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        logs.push(log_entry);
-
-        if let Ok(formatted) = serde_json::to_string_pretty(&logs) {
-            let _ = fs::write(&download_dir, formatted);
-        }
-    }
-}
 
 pub fn model_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -150,7 +124,7 @@ pub fn transcribe(
     let model_dir = match model_dir(app) {
         Ok(d) => d,
         Err(e) => {
-            append_diag_log("1_INIT_ERROR", serde_json::json!({ "error": e }));
+            diag_log::append_error("whisper_model_dir", &e, serde_json::json!({}));
             return Err(e);
         }
     };
@@ -209,51 +183,24 @@ where
 
     let audio_path_buf = PathBuf::from(audio_path);
     let audio_exists = audio_path_buf.is_file();
-    let audio_size_bytes = if audio_exists {
-        fs::metadata(&audio_path_buf).map(|m| m.len()).unwrap_or(0)
-    } else {
-        0
-    };
-
-    let files_status: Vec<serde_json::Value> = REQUIRED_FILES.iter().map(|f| {
-        let p = model_dir.join(f);
-        let exists = p.is_file();
-        let size = if exists { fs::metadata(&p).map(|m| m.len()).unwrap_or(0) } else { 0 };
-        serde_json::json!({
-            "file": f,
-            "exists": exists,
-            "size_bytes": size,
-            "full_path": p.display().to_string()
-        })
-    }).collect();
-
-    append_diag_log("1_INIT_START", serde_json::json!({
-        "audio_path": audio_path,
-        "audio_exists": audio_exists,
-        "audio_size_bytes": audio_size_bytes,
-        "model_dir": model_dir.display().to_string(),
-        "target_language": target_language,
-        "required_files": files_status
-    }));
 
     if !installed(&model_dir) {
         let err = format!("Whisper model is incomplete or missing at {}", model_dir.display());
-        append_diag_log("1_INIT_ERROR", serde_json::json!({ "error": &err }));
+        diag_log::append_error("whisper_model", &err, json!({}));
         return Err(TranscriptionError::ModelNotInstalled.to_string());
     }
 
     if !audio_exists {
         let err = format!("Input WAV file does not exist at {}", audio_path);
-        append_diag_log("1_INIT_ERROR", serde_json::json!({ "error": &err }));
+        diag_log::append_error("whisper_audio", &err, json!({ "audio_path": audio_path }));
         return Err(TranscriptionError::InvalidAudio("Plik WAV nie istnieje".into()).to_string());
     }
 
-    append_diag_log("2_WAV_READING", serde_json::json!({ "status": "Reading WAV header & samples" }));
     let wave = match Wave::read(audio_path) {
         Some(w) => w,
         None => {
             let err = format!("Failed to parse WAV file at {audio_path}");
-            append_diag_log("2_WAV_ERROR", serde_json::json!({ "error": &err }));
+            diag_log::append_error("whisper_wav", &err, json!({ "audio_path": audio_path }));
             return Err(TranscriptionError::InvalidAudio("Nie udało się odczytać pliku audio WAV".into()).to_string());
         }
     };
@@ -262,7 +209,7 @@ where
     let sample_count = wave.samples().len();
     if sample_rate <= 0 {
         let err = format!("Invalid WAV sample rate: {sample_rate}");
-        append_diag_log("2_WAV_ERROR", serde_json::json!({ "error": &err }));
+        diag_log::append_error("whisper_wav", &err, json!({}));
         return Err(TranscriptionError::InvalidAudio("Nieprawidłowy sample rate".into()).to_string());
     }
     if sample_count == 0 {
@@ -270,24 +217,31 @@ where
     }
 
     let duration_ms = (sample_count as u64 * 1000) / sample_rate as u64;
-    append_diag_log("2_WAV_SUCCESS", serde_json::json!({
-        "sample_rate": sample_rate,
-        "sample_count": sample_count,
-        "duration_ms": duration_ms,
-        "duration_sec": duration_ms as f64 / 1000.0
-    }));
+    let duration_sec = duration_ms as f64 / 1000.0;
+    if duration_sec > MAX_ASR_AUDIO_SECONDS {
+        let err = format!(
+            "Audio clip is too long for local Whisper ({duration_sec:.1}s). Maximum is {:.0}s.",
+            MAX_ASR_AUDIO_SECONDS
+        );
+        diag_log::append_error(
+            "whisper_duration",
+            &err,
+            json!({ "duration_sec": duration_sec }),
+        );
+        return Err(TranscriptionError::InvalidAudio(err).to_string());
+    }
 
     let encoder_path = match required_model_path(&model_dir, "encoder.int8.onnx") {
         Ok(p) => p,
         Err(e) => {
-            append_diag_log("3_MODEL_PATH_ERROR", serde_json::json!({ "error": e.to_string() }));
+            diag_log::append_error("whisper_model", &e.to_string(), json!({}));
             return Err(e.to_string());
         }
     };
     let decoder_path = match required_model_path(&model_dir, "decoder.int8.onnx") {
         Ok(p) => p,
         Err(e) => {
-            append_diag_log("3_MODEL_PATH_ERROR", serde_json::json!({ "error": e.to_string() }));
+            diag_log::append_error("whisper_model", &e.to_string(), json!({}));
             return Err(e.to_string());
         }
     };
@@ -295,7 +249,7 @@ where
     let tokens_path = match required_model_path(&model_dir, "tokens.txt") {
         Ok(p) => p,
         Err(e) => {
-            append_diag_log("3_MODEL_PATH_ERROR", serde_json::json!({ "error": e.to_string() }));
+            diag_log::append_error("whisper_model", &e.to_string(), json!({}));
             return Err(e.to_string());
         }
     };
@@ -322,18 +276,8 @@ where
 
     let create_recognizer = |provider: &str, language: Option<&str>| -> Result<(OfflineRecognizer, &'static str), String> {
         let preferred = if provider == "cpu" { "cpu" } else { "directml" };
-        append_diag_log("3_RECOGNIZER_CREATING", serde_json::json!({
-            "preferred_provider": preferred,
-            "encoder_path": encoder_path,
-            "decoder_path": decoder_path,
-            "tokens_path": tokens_path,
-            "num_threads": 4,
-            "feature_dim": WHISPER_FEATURE_DIM,
-            "tail_paddings": WHISPER_TAIL_PADDINGS,
-            "language": language.unwrap_or("auto"),
-        }));
 
-        let create_start = Instant::now();
+        let _create_start = Instant::now();
         if preferred == "directml" {
             let recognizer_result = std::panic::catch_unwind(|| {
                 let config = build_config("directml", language);
@@ -341,47 +285,23 @@ where
             });
             match recognizer_result {
                 Ok(Some(rec)) => {
-                    append_diag_log("3_RECOGNIZER_SUCCESS", serde_json::json!({
-                        "provider": "directml",
-                        "create_ms": create_start.elapsed().as_millis(),
-                        "feature_dim": WHISPER_FEATURE_DIM,
-                        "tail_paddings": WHISPER_TAIL_PADDINGS,
-                        "language": language.unwrap_or("auto"),
-                    }));
                     return Ok((rec, "directml"));
                 }
-                Ok(None) => {
-                    append_diag_log("3_RECOGNIZER_DIRECTML_FAILED", serde_json::json!({
-                        "message": "DirectML provider creation returned None, trying CPU fallback..."
-                    }));
-                }
-                Err(panic_err) => {
-                    append_diag_log("3_RECOGNIZER_PANIC", serde_json::json!({
-                        "panic": format!("{panic_err:?}")
-                    }));
-                }
+                Ok(None) => {}
+                Err(_) => {}
             }
         }
 
-        let cpu_start = Instant::now();
+        let _cpu_start = Instant::now();
         let cpu_res = std::panic::catch_unwind(|| {
             let config = build_config("cpu", language);
             OfflineRecognizer::create(&config)
         });
         match cpu_res {
-            Ok(Some(rec)) => {
-                append_diag_log("3_RECOGNIZER_SUCCESS", serde_json::json!({
-                    "provider": "cpu",
-                    "create_ms": cpu_start.elapsed().as_millis(),
-                    "feature_dim": WHISPER_FEATURE_DIM,
-                    "tail_paddings": WHISPER_TAIL_PADDINGS,
-                    "language": language.unwrap_or("auto"),
-                }));
-                Ok((rec, "cpu"))
-            }
+            Ok(Some(rec)) => Ok((rec, "cpu")),
             _ => {
                 let err = "Nie udało się utworzyć silnika sherpa-onnx Whisper (zarówno DirectML jak i CPU fallback).".to_string();
-                append_diag_log("3_RECOGNIZER_FATAL", serde_json::json!({ "error": &err }));
+                diag_log::append_error("whisper_recognizer", &err, serde_json::json!({}));
                 Err(err)
             }
         }
@@ -390,17 +310,6 @@ where
     let (mut recognizer, mut active_provider) = create_recognizer("directml", target_language)?;
     let mut locked_language: Option<String> = target_language.map(|s| s.to_string());
     let mut language_candidates: Vec<(String, usize)> = Vec::new();
-
-    append_diag_log("4_DECODE_STARTING", serde_json::json!({
-        "provider": active_provider,
-        "sample_rate": sample_rate,
-        "sample_count": sample_count,
-        "chunk_seconds": WHISPER_CHUNK_SECONDS,
-        "chunk_overlap_seconds": WHISPER_CHUNK_OVERLAP_SECONDS,
-        "feature_dim": WHISPER_FEATURE_DIM,
-        "tail_paddings": WHISPER_TAIL_PADDINGS,
-        "language_mode": locked_language.as_deref().unwrap_or("auto")
-    }));
 
     let _decode_start = Instant::now();
     let total_audio_sec = (duration_ms as f64 / 1000.0).max(0.1);
@@ -425,12 +334,12 @@ where
             Ok(Some(result)) => result,
             Ok(None) => {
                 let err = format!("Model Whisper nie zwrócił wyniku dla fragmentu {}/{}", chunk_index + 1, chunk_count);
-                append_diag_log("4_DECODE_EMPTY", serde_json::json!({ "error": &err }));
+                diag_log::append_error("whisper_decode", &err, serde_json::json!({ "chunk_index": chunk_index }));
                 return Err(err);
             }
             Err(panic_err) => {
                 let panic_msg = format!("Panic during Whisper decode for chunk {}/{}: {:?}", chunk_index + 1, chunk_count, panic_err);
-                append_diag_log("4_DECODE_PANIC", serde_json::json!({ "panic": &panic_msg }));
+                diag_log::append_error("whisper_decode", &panic_msg, serde_json::json!({ "chunk_index": chunk_index }));
                 return Err(panic_msg);
             }
         };
@@ -456,36 +365,21 @@ where
                         .max_by_key(|(_, weight)| *weight)
                         .cloned()
                 };
-                if let Some((best_lang, best_weight)) = best {
-                    append_diag_log("4_LANGUAGE_LOCKED", serde_json::json!({
-                        "language_locked": best_lang,
-                        "from_chunk_index": chunk_index,
-                        "weight": best_weight,
-                        "candidates": language_candidates.iter().map(|(lang, weight)| {
-                            serde_json::json!({ "lang": lang, "weight": weight })
-                        }).collect::<Vec<_>>(),
-                        "result_lang": result.lang,
-                    }));
+                if let Some((best_lang, _best_weight)) = best {
                     locked_language = Some(best_lang.clone());
                     if chunk_index + 1 < chunk_count {
-                        match create_recognizer(active_provider, Some(best_lang.as_str())) {
-                            Ok((rec, provider)) => {
-                                recognizer = rec;
-                                active_provider = provider;
-                            }
-                            Err(err) => {
-                                append_diag_log("4_LANGUAGE_LOCK_RECREATE_FAILED", serde_json::json!({
-                                    "error": err,
-                                    "continuing_with_auto": true,
-                                }));
-                            }
+                        if let Ok((rec, provider)) =
+                            create_recognizer(active_provider, Some(best_lang.as_str()))
+                        {
+                            recognizer = rec;
+                            active_provider = provider;
                         }
                     }
                 }
             }
         }
 
-        let (mut chunk_words, timing_source) =
+        let (mut chunk_words, _timing_source) =
             words_from_chunk(&result, chunk.duration_seconds(sample_rate));
         for word in &mut chunk_words {
             word.start_time = (word.start_time + chunk.start_seconds(sample_rate)).clamp(0.0, total_audio_sec);
@@ -493,7 +387,6 @@ where
         }
         sanitize_chunk_words(&mut chunk_words);
 
-        let before_count = words.len();
         merge_chunk_words(
             &mut words,
             &chunk_words,
@@ -502,27 +395,6 @@ where
             total_audio_sec,
             chunk_index == 0,
         );
-        let words_count = words.len().saturating_sub(before_count);
-        let first_start = words
-            .iter()
-            .skip(before_count)
-            .map(|w| w.start_time)
-            .next();
-        let last_end = words.last().map(|w| w.end_time);
-
-        append_diag_log("4_DECODE_CHUNK_SUCCESS", serde_json::json!({
-            "chunk_index": chunk_index,
-            "chunk_count": chunk_count,
-            "start_sec": chunk.start_seconds(sample_rate),
-            "end_sec": chunk.end_seconds(sample_rate),
-            "raw_text_len": result.text.len(),
-            "raw_tokens_count": result.tokens.len(),
-            "timing_source": timing_source,
-            "words_count": words_count,
-            "first_start": first_start,
-            "last_end": last_end,
-            "language_locked": locked_language,
-        }));
 
         if let Some(callback) = on_progress.as_deref_mut() {
             callback(LocalTranscriptionProgress {
@@ -544,22 +416,18 @@ where
 
     let processing_time_ms = started.elapsed().as_millis() as u64;
 
-    let sample_preview = text.chars().take(100).collect::<String>();
-    append_diag_log("5_TRANSCRIPTION_COMPLETE", serde_json::json!({
-        "status": "SUCCESS",
-        "text_len": text.len(),
-        "words_count": words.len(),
-        "segments_count": segments.len(),
-        "duration_ms": duration_ms,
-        "processing_time_ms": processing_time_ms,
-        "active_provider": active_provider,
-        "chunk_count": chunk_count,
-        "chunk_seconds": WHISPER_CHUNK_SECONDS,
-        "chunk_overlap_seconds": WHISPER_CHUNK_OVERLAP_SECONDS,
-        "feature_dim": WHISPER_FEATURE_DIM,
-        "language_locked": locked_language,
-        "preview": sample_preview
-    }));
+    diag_log::append(
+        "WHISPER_DONE",
+        serde_json::json!({
+            "engine": "whisper",
+            "provider": active_provider,
+            "duration_ms": duration_ms,
+            "processing_time_ms": processing_time_ms,
+            "word_count": words.len(),
+            "chunk_count": chunk_count,
+            "language": locked_language,
+        }),
+    );
 
     Ok(ParakeetTranscriptionResult {
         text,

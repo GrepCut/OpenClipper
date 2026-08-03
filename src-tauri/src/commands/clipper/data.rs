@@ -1,7 +1,7 @@
 use crate::clipper::data::{
     clipper_export_file_path, clipper_project_data_dir, clipper_project_exports_dir,
     clipper_project_root, clipper_projects_root, extract_segment_to_project_data,
-    validate_export_file_name, write_export_file_bytes_at,
+    validate_export_file_name, write_export_file_bytes_at, write_project_data_file_bytes_at,
 };
 use std::fs;
 use tauri::ipc::{InvokeBody, Request};
@@ -81,6 +81,17 @@ pub fn write_clipper_project_data_bytes(
     let dir = clipper_project_data_dir(&app, &project_id)?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     fs::write(dir.join(file_name), contents).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn write_clipper_project_data_bytes_at(
+    app: AppHandle,
+    project_id: String,
+    file_name: String,
+    position: u64,
+    contents: Vec<u8>,
+) -> Result<(), String> {
+    write_project_data_file_bytes_at(&app, &project_id, &file_name, position, &contents)
 }
 
 #[tauri::command]

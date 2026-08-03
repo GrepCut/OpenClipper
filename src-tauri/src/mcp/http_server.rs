@@ -1,14 +1,22 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
+use axum::{
+    Json, Router,
+    http::StatusCode,
+    routing::post,
+};
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager,
     StreamableHttpServerConfig, StreamableHttpService,
 };
 use sea_orm::DatabaseConnection;
+use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::clipper::exports_notify::{
+    ClipperExportsChangedEvent, enqueue_exports_changed,
+};
 use crate::mcp::server::OpenClipperMcpServer;
 
 pub const DEFAULT_MCP_HTTP_PORT: u16 = 12742;
@@ -37,10 +45,21 @@ fn allowed_hosts_for_port(port: u16) -> Vec<String> {
     ]
 }
 
+async fn handle_exports_changed(
+    Json(detail): Json<ClipperExportsChangedEvent>,
+) -> StatusCode {
+    enqueue_exports_changed(detail);
+    StatusCode::NO_CONTENT
+}
+
 pub async fn start_mcp_http_server(
+    app: AppHandle,
     database: Arc<DatabaseConnection>,
     port: u16,
 ) -> Result<McpHttpServer, String> {
+    let app_for_mcp = app.clone();
+    crate::clipper::exports_notify::spawn_exports_notify_listener(app);
+
     let cancel = CancellationToken::new();
     let config = StreamableHttpServerConfig::default()
         .with_cancellation_token(cancel.clone())
@@ -50,14 +69,20 @@ pub async fn start_mcp_http_server(
     let mut session_manager = LocalSessionManager::default();
     session_manager.session_config.keep_alive = Some(Duration::from_secs(MCP_SESSION_KEEP_ALIVE_SECS));
 
+    let app_for_mcp = app_for_mcp.clone();
     let service: StreamableHttpService<OpenClipperMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
-            move || Ok(OpenClipperMcpServer::new(database.clone())),
+            move || Ok(OpenClipperMcpServer::with_app(database.clone(), app_for_mcp.clone())),
             Arc::new(session_manager),
             config,
         );
 
-    let router = Router::new().nest_service("/mcp", service);
+    let router = Router::new()
+        .route(
+            "/mcp/internal/exports-changed",
+            post(handle_exports_changed),
+        )
+        .nest_service("/mcp", service);
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await

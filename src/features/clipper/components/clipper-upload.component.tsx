@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
 import { UploadCloud } from "lucide-react";
 import { clipperTheme } from "../shared/theme.util";
@@ -59,28 +59,6 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
       inputRef.current?.click();
     }
   }, [disabled, chooseNativeFile]);
-
-  useEffect(() => {
-    if (disabled) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Enter") return;
-      const target = e.target as HTMLElement | null;
-      const isInput =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable);
-      if (isInput) return;
-
-      e.preventDefault();
-      chooseFile();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [disabled, chooseFile]);
 
   const stroke = dragActive ? clipperTheme.accentGlow : theme.surface.focus;
   const radiusPx = 28;

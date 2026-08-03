@@ -35,6 +35,20 @@
       "fileCount": 13,
       "totalSize": 2425468006,
       "cdnBaseUrl": "https://models.openclipper.grepcut.com/v1"
+    },
+    {
+      "promotedAt": "2026-08-01T08:16:58Z",
+      "manifestSha256": "50bea177b2ca377441336d86841d6781916822991ac49e1a5a35ea09d4fa5745",
+      "fileCount": 5,
+      "totalSize": 670479304,
+      "cdnBaseUrl": "https://models.openclipper.grepcut.com/v1"
+    },
+    {
+      "promotedAt": "2026-08-01T08:20:19Z",
+      "manifestSha256": "050943e875ecf8092d590e9339cd9f0358df619e9b0cc192936c5d063f36ae96",
+      "fileCount": 11,
+      "totalSize": 1773978491,
+      "cdnBaseUrl": "https://models.openclipper.grepcut.com/v1"
     }
   ]
 }

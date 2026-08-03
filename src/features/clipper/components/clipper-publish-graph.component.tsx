@@ -23,6 +23,7 @@ const CHARGE_STRENGTH = -560;
 
 const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
   youtube: asset("/clipper/youtube-logo.webp"),
+  "youtube-shorts": asset("/clipper/youtube-shorts-logo.webp"),
   instagram: asset("/clipper/instagram-logo.webp"),
   tiktok: asset("/clipper/tiktok-logo.webp"),
   twitter: asset("/clipper/x-logo.webp"),

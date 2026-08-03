@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::app::{protocols, window};
 use crate::invoke_handler;
@@ -21,8 +21,11 @@ pub fn run() {
     }));
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_deep_link::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     protocols::register(builder)
         .manage(NativeJobRegistry::default())
+        .manage(crate::commands::app_updates::PendingUpdate(Mutex::new(None)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(invoke_handler!())
@@ -64,7 +67,7 @@ pub fn run() {
             });
             let mcp_port = crate::mcp::resolve_mcp_http_port();
             if let Ok(mcp_http) = tauri::async_runtime::block_on(
-                crate::mcp::start_mcp_http_server(db_for_mcp, mcp_port),
+                crate::mcp::start_mcp_http_server(app.handle().clone(), db_for_mcp, mcp_port),
             ) {
                 app.manage(mcp_http);
             } else {
@@ -73,7 +76,10 @@ pub fn run() {
             #[cfg(any(windows, target_os = "linux"))]
             { use tauri_plugin_deep_link::DeepLinkExt; app.deep_link().register_all()?; }
             #[cfg(windows)]
-            if let Some(window) = app.get_webview_window("main") { window::apply_webview_background(&window); }
+            if let Some(window) = app.get_webview_window("main") {
+                window::apply_webview_background(&window);
+                window::attach_webview_crash_recovery(&window);
+            }
             // The main window is intentionally created hidden to avoid a white WebView
             // flash. Always reveal it once native initialization has completed: without
             // this fallback a production/preview launch can remain running but invisible.
