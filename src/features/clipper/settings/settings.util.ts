@@ -63,11 +63,17 @@ export interface ClipperTranscriptionSettings {
   isolateVocals: ClipperIsolateVocalsMode;
 }
 
+export interface ClipperPublishSettings {
+  /** Custom agent prompt for MCP fill-metadata workflow. Empty = built-in default. */
+  fillMetadataAgentPrompt: string;
+}
+
 export interface ClipperSettings {
   captions: ClipperCaptionSettings;
   formats: ClipperFormatSettings;
   audio: ClipperAudioSettings;
   transcription: ClipperTranscriptionSettings;
+  publish: ClipperPublishSettings;
   /** Last duration preset picked on the trim-select stage, remembered across uploads. */
   lastDurationPresetSec: number;
 }
@@ -108,6 +114,9 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   transcription: {
     engine: "parakeet",
     isolateVocals: "on",
+  },
+  publish: {
+    fillMetadataAgentPrompt: "",
   },
   lastDurationPresetSec: 60,
 };
@@ -171,6 +180,12 @@ export function mergeClipperSettings(
         partial.transcription?.isolateVocals === "off"
           ? partial.transcription.isolateVocals
           : base.transcription.isolateVocals,
+    },
+    publish: {
+      fillMetadataAgentPrompt:
+        typeof partial.publish?.fillMetadataAgentPrompt === "string"
+          ? partial.publish.fillMetadataAgentPrompt
+          : base.publish.fillMetadataAgentPrompt,
     },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };

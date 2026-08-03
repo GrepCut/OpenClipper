@@ -24,10 +24,12 @@ interface ClipperExportFormatRowProps {
   result: ClipperFormatResult;
   isRerendering: boolean;
   showRerender?: boolean;
-  onOpenFolder: () => void;
-  onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
+  showMetadata?: boolean;
+  showActions?: boolean;
+  onOpenFolder?: () => void;
+  onPublish?: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
   onRerender: (formatId: string, clipIndex: number) => void;
-  onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
+  onMetadataSaved?: (exportId: string, fields: ExportSocialFields) => void;
 }
 
 function formatExportedAt(exportedAt: string): string {
@@ -40,6 +42,8 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
   result,
   isRerendering,
   showRerender = false,
+  showMetadata = false,
+  showActions = false,
   onOpenFolder,
   onPublish,
   onRerender,
@@ -140,79 +144,93 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
             ) : null}
           </VStack>
         </HStack>
-        <ClipperExportMetadataPanel result={result} onMetadataSaved={onMetadataSaved} />
+        {showMetadata && onMetadataSaved ? (
+          <ClipperExportMetadataPanel result={result} onMetadataSaved={onMetadataSaved} />
+        ) : null}
       </VStack>
 
-      <VStack
-        align="stretch"
-        gap={2}
-        flexShrink={0}
-        w={{ base: "full", lg: `${ACTIONS_COLUMN_WIDTH}px` }}
-        minW={{ lg: `${ACTIONS_COLUMN_WIDTH}px` }}
-      >
-        <OutlinedActionButton
-          width="100%"
-          justifyContent="center"
-          whiteSpace="nowrap"
-          startIcon={<FolderOpen size={16} />}
-          onClick={onOpenFolder}
-          disabled={isMissing}
+      {showActions ? (
+        <VStack
+          align="stretch"
+          gap={2}
+          flexShrink={0}
+          w={{ base: "full", lg: `${ACTIONS_COLUMN_WIDTH}px` }}
+          minW={{ lg: `${ACTIONS_COLUMN_WIDTH}px` }}
         >
-          Open folder
-        </OutlinedActionButton>
-        <OutlinedActionButton
-          width="100%"
-          justifyContent="center"
-          whiteSpace="nowrap"
-          startIcon={<ClipperPlatformIcon platform="tiktok" size={16} />}
-          onClick={() => onPublish(result, "tiktok")}
-          disabled={isMissing}
-        >
-          Publish to TikTok
-        </OutlinedActionButton>
-        <OutlinedActionButton
-          width="100%"
-          justifyContent="center"
-          whiteSpace="nowrap"
-          startIcon={<ClipperPlatformIcon platform="youtube" size={16} />}
-          onClick={() => onPublish(result, "youtube")}
-          disabled={isMissing}
-        >
-          Publish to YouTube
-        </OutlinedActionButton>
-        <OutlinedActionButton
-          width="100%"
-          justifyContent="center"
-          whiteSpace="nowrap"
-          startIcon={<ClipperPlatformIcon platform="twitter" size={16} />}
-          onClick={() => onPublish(result, "x")}
-          disabled={isMissing}
-        >
-          Publish to X
-        </OutlinedActionButton>
-        <OutlinedActionButton width="100%" justifyContent="center" whiteSpace="nowrap"
-          startIcon={<ClipperPlatformIcon platform="instagram" size={16} />}
-          onClick={() => onPublish(result, "instagram")} disabled={isMissing}>
-          Publish to Instagram
-        </OutlinedActionButton>
-        <OutlinedActionButton width="100%" justifyContent="center" whiteSpace="nowrap"
-          startIcon={<Facebook size={16} />}
-          onClick={() => onPublish(result, "facebook")} disabled={isMissing}>
-          Publish to Facebook
-        </OutlinedActionButton>
-        {showRerender ? (
           <OutlinedActionButton
             width="100%"
             justifyContent="center"
-            startIcon={<RotateCcw size={16} />}
-            loading={isRerendering}
-            onClick={() => onRerender(result.formatId, result.clipIndex)}
+            whiteSpace="nowrap"
+            startIcon={<FolderOpen size={16} />}
+            onClick={onOpenFolder}
             disabled={isMissing}
           >
-            Re-render
+            Open folder
           </OutlinedActionButton>
-        ) : null}
-      </VStack>
+          <OutlinedActionButton
+            width="100%"
+            justifyContent="center"
+            whiteSpace="nowrap"
+            startIcon={<ClipperPlatformIcon platform="tiktok" size={16} />}
+            onClick={() => onPublish?.(result, "tiktok")}
+            disabled={isMissing}
+          >
+            Publish to TikTok
+          </OutlinedActionButton>
+          <OutlinedActionButton
+            width="100%"
+            justifyContent="center"
+            whiteSpace="nowrap"
+            startIcon={<ClipperPlatformIcon platform="youtube" size={16} />}
+            onClick={() => onPublish?.(result, "youtube")}
+            disabled={isMissing}
+          >
+            Publish to YouTube
+          </OutlinedActionButton>
+          <OutlinedActionButton
+            width="100%"
+            justifyContent="center"
+            whiteSpace="nowrap"
+            startIcon={<ClipperPlatformIcon platform="twitter" size={16} />}
+            onClick={() => onPublish?.(result, "x")}
+            disabled={isMissing}
+          >
+            Publish to X
+          </OutlinedActionButton>
+          <OutlinedActionButton
+            width="100%"
+            justifyContent="center"
+            whiteSpace="nowrap"
+            startIcon={<ClipperPlatformIcon platform="instagram" size={16} />}
+            onClick={() => onPublish?.(result, "instagram")}
+            disabled={isMissing}
+          >
+            Publish to Instagram
+          </OutlinedActionButton>
+          <OutlinedActionButton
+            width="100%"
+            justifyContent="center"
+            whiteSpace="nowrap"
+            startIcon={<Facebook size={16} />}
+            onClick={() => onPublish?.(result, "facebook")}
+            disabled={isMissing}
+          >
+            Publish to Facebook
+          </OutlinedActionButton>
+          {showRerender ? (
+            <OutlinedActionButton
+              width="100%"
+              justifyContent="center"
+              startIcon={<RotateCcw size={16} />}
+              loading={isRerendering}
+              onClick={() => onRerender(result.formatId, result.clipIndex)}
+              disabled={isMissing}
+            >
+              Re-render
+            </OutlinedActionButton>
+          ) : null}
+        </VStack>
+      ) : null}
     </HStack>
   );
 };

@@ -94,6 +94,16 @@ pub async fn clipper_project_set_owner(
 }
 
 #[tauri::command]
+pub async fn clipper_project_get_owner(
+    db: State<'_, LocalDb>,
+    project_id: String,
+) -> Result<Option<String>, String> {
+    OwnerRepository::get_project_owner_id(&db.database, &project_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn clipper_owner_projects_list(
     db: State<'_, LocalDb>,
     owner_id: String,

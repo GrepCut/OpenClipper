@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { Box, Text, VStack } from "@chakra-ui/react";
+import { useNavigate } from "react-router-dom";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import {
   computeOverallProgress,
@@ -10,9 +11,10 @@ import {
 } from "../shared/render-progress.util";
 import { CLIPPER_FORMAT_DEFS, getClipperFormatDef } from "../shared/formats.util";
 import { resultsForClip, sortExportsByDate } from "../shared/export-results.util";
-import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperClipPreview, ClipperFormatResult, ClipperPipelineState } from "../shared/state.util";
-import { ClipperExportFormatRow, type ClipperPublishTarget } from "./clipper-export-format-row.component";
+import { ClipperExportFormatRow } from "./clipper-export-format-row.component";
+import { ClipperExportHistoryList } from "./clipper-export-history-list.component";
+import { ClipperExportsScreenHeader } from "./clipper-exports-screen-header.component";
 import { ClipperProgressBar } from "./clipper-progress-bar.component";
 import { ClipperRenderFormatProgressRow } from "./clipper-render-format-progress-row.component";
 import { formatDurationMmSs } from "../../../shared/utils/time.util";
@@ -23,10 +25,8 @@ interface ClipperRenderQueueProps {
   formatIdsByClip: Record<number, string[]>;
   results: ClipperFormatResult[];
   isRendering: boolean;
+  sourceFileName: string | null;
   onOpenFolder: () => void;
-  onPublish: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
-  onRerenderFormat: (formatId: string, clipIndex: number) => void;
-  onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
 }
 
 function clipTimeLabel(preview: ClipperClipPreview): string {
@@ -44,12 +44,11 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
   formatIdsByClip,
   results,
   isRendering,
+  sourceFileName,
   onOpenFolder,
-  onPublish,
-  onRerenderFormat,
-  onMetadataSaved,
 }) => {
   const { theme } = useClipperUi();
+  const navigate = useNavigate();
 
   const queuedPreviews = useMemo(
     () => clipPreviews.filter((p) => (formatIdsByClip[p.clip.index] ?? []).length > 0),
@@ -80,31 +79,29 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
 
   const showProgressUi = isRendering || hasPendingRenderJobs;
 
-  const renderExportRow = (result: ClipperFormatResult) => {
-    const progressKey = `${result.clipIndex}:${result.formatId}`;
-    const isRerendering =
-      state.renderProgress[progressKey] != null && state.renderProgress[progressKey] !== 1;
+  const handleGoToPublish = useCallback(() => {
+    navigate("/clipper?tab=publish");
+  }, [navigate]);
 
-    return (
-      <ClipperExportFormatRow
-        key={result.id}
-        result={result}
-        isRerendering={isRerendering}
-        showRerender={isRendering}
-        onOpenFolder={onOpenFolder}
-        onPublish={onPublish}
-        onRerender={onRerenderFormat}
-        onMetadataSaved={onMetadataSaved}
-      />
-    );
-  };
+  const completeDescription = sourceFileName
+    ? `${completedExports.length} file${completedExports.length !== 1 ? "s" : ""} from ${sourceFileName} — saved to your project exports folder.`
+    : `${completedExports.length} export${completedExports.length !== 1 ? "s" : ""} from this batch — saved to your project exports folder.`;
+
+  const renderCompletedExportRow = (result: ClipperFormatResult) => (
+    <ClipperExportFormatRow
+      key={result.id}
+      result={result}
+      isRerendering={false}
+      onRerender={() => {}}
+    />
+  );
 
   const renderProgressRows = () =>
     queuedPreviews.flatMap((preview) => {
       const clipResults = resultsForClip(results, preview.clip.index);
 
       if (isRendering && preview.renderStatus === "done" && clipResults.length > 0) {
-        return clipResults.map(renderExportRow);
+        return clipResults.map(renderCompletedExportRow);
       }
 
       const formatIds = orderedFormatIdsForClip(formatIdsByClip[preview.clip.index] ?? []);
@@ -131,6 +128,20 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
       });
     });
 
+  if (!showProgressUi && completedExports.length > 0) {
+    return (
+      <VStack align="stretch" gap={6}>
+        <ClipperExportsScreenHeader
+          title="Render complete"
+          description={completeDescription}
+          onOpenFolder={onOpenFolder}
+          onGoToPublish={handleGoToPublish}
+        />
+        <ClipperExportHistoryList exports={completedExports} />
+      </VStack>
+    );
+  }
+
   return (
     <VStack align="stretch" gap={4}>
       {showProgressUi ? (
@@ -146,20 +157,10 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
           </Box>
           <ClipperProgressBar label="Overall progress" value={overallProgress} />
         </>
-      ) : completedExports.length > 0 ? (
-        <Box>
-          <Text fontSize="lg" fontWeight="semibold" color={theme.text.primary} mb={1}>
-            Render complete
-          </Text>
-          <Text fontSize="sm" color={theme.text.muted}>
-            {completedExports.length} export{completedExports.length !== 1 ? "s" : ""} from this
-            batch.
-          </Text>
-        </Box>
       ) : null}
 
       <VStack align="stretch" gap={2}>
-        {showProgressUi ? renderProgressRows() : completedExports.map(renderExportRow)}
+        {showProgressUi ? renderProgressRows() : null}
       </VStack>
     </VStack>
   );

@@ -24,9 +24,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     settings,
     updateSettings,
     confirmRange,
-    rerenderFormat,
     refreshExportHistory,
-    updateExportMetadata,
     reset,
     sourceUrl,
     rangeLocked,
@@ -130,10 +128,8 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           formatIdsByClip={renderQueue.formatIdsByClip}
           results={sessionResults}
           isRendering={isRendering}
+          sourceFileName={state.sourceFileName}
           onOpenFolder={handleOpenExportsFolder}
-          onPublish={publish.openPublishDialog}
-          onRerenderFormat={(formatId, clipIndex) => void rerenderFormat(formatId, clipIndex)}
-          onMetadataSaved={updateExportMetadata}
         />
         </>
       )}
@@ -144,7 +140,6 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           sourceFileName={state.sourceFileName}
           projectId={project.id}
           onRefreshHistory={refreshExportHistory}
-          onMetadataSaved={updateExportMetadata}
         />
       )}
 

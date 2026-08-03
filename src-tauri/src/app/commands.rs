@@ -51,6 +51,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::owners::clipper_owner_channel_upsert,
             crate::commands::clipper::owners::clipper_owner_channel_delete,
             crate::commands::clipper::owners::clipper_project_set_owner,
+            crate::commands::clipper::owners::clipper_project_get_owner,
             crate::commands::clipper::owners::clipper_owner_projects_list,
             crate::commands::local_db::local_database_info,
             crate::commands::local_db::local_project_put,

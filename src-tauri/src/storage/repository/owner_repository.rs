@@ -151,6 +151,16 @@ impl OwnerRepository {
         Ok(())
     }
 
+    pub async fn get_project_owner_id(
+        database: &DatabaseConnection,
+        project_id: &str,
+    ) -> DbResult<Option<String>> {
+        let row = local_project::Entity::find_by_id(project_id.to_owned())
+            .one(database)
+            .await?;
+        Ok(row.and_then(|project| project.clipper_owner_id))
+    }
+
     pub async fn owner_names_by_id(
         database: &DatabaseConnection,
     ) -> DbResult<std::collections::HashMap<String, String>> {

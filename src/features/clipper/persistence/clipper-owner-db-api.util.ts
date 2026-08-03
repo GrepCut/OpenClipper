@@ -88,3 +88,9 @@ export async function fetchClipperOwnerProjects(
 ): Promise<ClipperProjectSummary[]> {
   return invoke<ClipperProjectSummary[]>("clipper_owner_projects_list", { ownerId });
 }
+
+export async function fetchClipperProjectOwnerId(
+  projectId: string,
+): Promise<string | null> {
+  return invoke<string | null>("clipper_project_get_owner", { projectId });
+}

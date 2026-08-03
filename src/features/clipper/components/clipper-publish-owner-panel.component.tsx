@@ -1,18 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
+import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
+import { useSocialStore } from "../../../stores/use-social-store.store";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
-import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
+import {
+  buildAvailableOwnerChannels,
+  platformLabel,
+  resolveOwnerChannels,
+} from "../shared/clipper-owner-channels.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperOwnerChannelPlatformIcon } from "./clipper-owner-channel-platform-icon.component";
+import { ClipperOwnerChannelStatusBadge } from "./clipper-owner-channel-status-badge.component";
 
 interface ClipperPublishOwnerPanelProps {
   ownerId: string | null;
   connectedSplit?: boolean;
-}
-
-function platformLabel(platform: string): string {
-  if (platform === "x") return "X";
-  return platform.charAt(0).toUpperCase() + platform.slice(1);
 }
 
 export function ClipperPublishOwnerPanel({
@@ -21,16 +23,28 @@ export function ClipperPublishOwnerPanel({
 }: ClipperPublishOwnerPanelProps) {
   const { theme } = useClipperUi();
   const { owners, loadOwnerChannels } = useClipperOwners();
-  const [channels, setChannels] = useState<ClipperOwnerChannelRecord[]>([]);
+  const youtubeConnections = useYoutubeStore((state) => state.connections);
+  const socialPlatforms = useSocialStore((state) => state.platforms);
+  const [linkedChannels, setLinkedChannels] = useState<Awaited<ReturnType<typeof loadOwnerChannels>>>([]);
 
   const owner = owners.find((row) => row.id === ownerId) ?? null;
 
+  const availableChannels = useMemo(
+    () => buildAvailableOwnerChannels({ youtubeConnections, socialPlatforms }),
+    [youtubeConnections, socialPlatforms],
+  );
+
+  const channels = useMemo(
+    () => resolveOwnerChannels(linkedChannels, availableChannels),
+    [linkedChannels, availableChannels],
+  );
+
   useEffect(() => {
     if (!ownerId) {
-      setChannels([]);
+      setLinkedChannels([]);
       return;
     }
-    void loadOwnerChannels(ownerId).then(setChannels);
+    void loadOwnerChannels(ownerId).then(setLinkedChannels);
   }, [ownerId, loadOwnerChannels, owners]);
 
   if (!ownerId) {
@@ -83,7 +97,7 @@ export function ClipperPublishOwnerPanel({
         ) : (
           channels.map((channel) => (
             <HStack
-              key={channel.id}
+              key={channel.linked.id}
               gap={2}
               borderRadius="xl"
               border="1px solid"
@@ -92,15 +106,16 @@ export function ClipperPublishOwnerPanel({
               px={3}
               py={2}
             >
-              <ClipperOwnerChannelPlatformIcon platform={channel.platform} size={20} />
-              <VStack align="start" gap={0}>
+              <ClipperOwnerChannelPlatformIcon platform={channel.linked.platform} size={20} />
+              <VStack align="start" gap={0} flex={1} minW={0}>
                 <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-                  {platformLabel(channel.platform)}
+                  {platformLabel(channel.linked.platform)}
                 </Text>
-                <Text fontSize="xs" color={theme.text.muted}>
+                <Text fontSize="xs" color={theme.text.muted} lineClamp={1}>
                   {channel.displayName}
                 </Text>
               </VStack>
+              <ClipperOwnerChannelStatusBadge status={channel.status} />
             </HStack>
           ))
         )}

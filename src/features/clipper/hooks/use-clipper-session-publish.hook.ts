@@ -13,6 +13,11 @@ import { appToast } from "../../../shared/utils/toast.service";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import type { ClipperPublishTarget } from "../components/clipper-export-format-row.component";
+import type { OwnerPublishConnectionResult } from "../shared/clipper-owner-channels.util";
+import {
+  resolveProjectOwnerPublishConnection,
+  showOwnerPublishBlockedToast,
+} from "../shared/resolve-owner-publish-connection.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { logYoutubeDebug } from "../shared/youtube-debug.util";
 
@@ -32,6 +37,8 @@ export function useClipperSessionPublish({
   const [queuePublishTarget, setQueuePublishTarget] = useState<ClipperFormatResult | null>(null);
   const [queuePublishTargetPlatform, setQueuePublishTargetPlatform] =
     useState<ClipperPublishTarget>("youtube");
+  const [queuePublishConnectionOverride, setQueuePublishConnectionOverride] =
+    useState<OwnerPublishConnectionResult | null>(null);
 
   const youtubeConnections = useYoutubeStore((s) => s.connections);
   const refreshYoutubeStatus = useYoutubeStore((s) => s.refreshStatus);
@@ -77,6 +84,15 @@ export function useClipperSessionPublish({
   }, [queuePublishTarget, queuePublishTargetPlatform]);
 
   const queuePublishConnection = useMemo(() => {
+    if (queuePublishConnectionOverride) {
+      return {
+        connected: queuePublishConnectionOverride.connected,
+        accountLabel: queuePublishConnectionOverride.accountLabel,
+        accountConnections: queuePublishConnectionOverride.accountConnections,
+        ownerChannelLabel: queuePublishConnectionOverride.ownerChannelLabel,
+      };
+    }
+
     const connections: SocialConnectionSummary[] =
       queuePublishPlatform === "youtube"
         ? youtubeConnections
@@ -86,8 +102,14 @@ export function useClipperSessionPublish({
       connected: connections.length > 0,
       accountLabel: connections[0]?.displayName ?? null,
       accountConnections: connections,
+      ownerChannelLabel: null,
     };
-  }, [queuePublishPlatform, youtubeConnections, socialPlatforms]);
+  }, [
+    queuePublishConnectionOverride,
+    queuePublishPlatform,
+    youtubeConnections,
+    socialPlatforms,
+  ]);
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;
@@ -102,14 +124,38 @@ export function useClipperSessionPublish({
         requestAccount();
         return;
       }
-      setQueuePublishTargetPlatform(target);
-      setQueuePublishTarget(result);
+
+      void (async () => {
+        const ownerConnection = await resolveProjectOwnerPublishConnection({
+          projectId,
+          platform: target,
+          youtubeConnections,
+          socialPlatforms,
+        });
+        if (ownerConnection) {
+          if (showOwnerPublishBlockedToast(target, ownerConnection)) {
+            return;
+          }
+          setQueuePublishConnectionOverride(ownerConnection);
+        } else {
+          setQueuePublishConnectionOverride(null);
+        }
+        setQueuePublishTargetPlatform(target);
+        setQueuePublishTarget(result);
+      })();
     },
-    [canUseAccountFeatures, requestAccount],
+    [
+      canUseAccountFeatures,
+      projectId,
+      requestAccount,
+      socialPlatforms,
+      youtubeConnections,
+    ],
   );
 
   const closePublishDialog = useCallback(() => {
     setQueuePublishTarget(null);
+    setQueuePublishConnectionOverride(null);
   }, []);
 
   return {

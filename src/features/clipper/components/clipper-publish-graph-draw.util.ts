@@ -18,6 +18,22 @@ const OWNER_NODE_RADIUS = 24;
 const DEFAULT_THUMB_WIDTH = PROJECT_THUMB_MAX_DIMENSION;
 const DEFAULT_THUMB_HEIGHT = Math.round((PROJECT_THUMB_MAX_DIMENSION * 9) / 16);
 
+function fitImageInBox(
+  imageWidth: number,
+  imageHeight: number,
+  boxWidth: number,
+  boxHeight: number,
+): { width: number; height: number } {
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    return { width: boxWidth, height: boxHeight };
+  }
+  const scale = Math.min(boxWidth / imageWidth, boxHeight / imageHeight);
+  return {
+    width: imageWidth * scale,
+    height: imageHeight * scale,
+  };
+}
+
 interface ClipperGraphTheme {
   surface: { elevated: string };
   background: { card: string };
@@ -219,17 +235,23 @@ export function drawExportNode(
   if (node.platform) {
     const logo = loadPlatformLogo(node.platform);
     if (logo) {
-      const size = radius * 1.5;
+      const innerDiameter = (radius - 2) * 2;
+      const fitted = fitImageInBox(
+        logo.naturalWidth,
+        logo.naturalHeight,
+        innerDiameter,
+        innerDiameter,
+      );
       ctx.save();
       ctx.beginPath();
       ctx.arc(node.x ?? 0, node.y ?? 0, radius - 2, 0, 2 * Math.PI);
       ctx.clip();
       ctx.drawImage(
         logo,
-        (node.x ?? 0) - size / 2,
-        (node.y ?? 0) - size / 2,
-        size,
-        size,
+        (node.x ?? 0) - fitted.width / 2,
+        (node.y ?? 0) - fitted.height / 2,
+        fitted.width,
+        fitted.height,
       );
       ctx.restore();
     }

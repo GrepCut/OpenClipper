@@ -16,6 +16,14 @@ const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
   twitter: asset("/clipper/x-logo.webp"),
 };
 
+const PLATFORM_LOGO_FIT: Record<ClipperPlatform, "cover" | "contain"> = {
+  youtube: "cover",
+  "youtube-shorts": "contain",
+  instagram: "cover",
+  tiktok: "cover",
+  twitter: "cover",
+};
+
 function ClipperPlatformLogoCircle({
   platform,
   size,
@@ -25,6 +33,7 @@ function ClipperPlatformLogoCircle({
   size: number;
 } & BoxProps) {
   const { theme } = useClipperUi();
+  const fit = PLATFORM_LOGO_FIT[platform];
 
   return (
     <Box
@@ -44,7 +53,7 @@ function ClipperPlatformLogoCircle({
         aria-hidden
         width={size}
         height={size}
-        style={{ objectFit: "cover", display: "block" }}
+        style={{ objectFit: fit, display: "block", width: "100%", height: "100%" }}
         draggable={false}
       />
     </Box>

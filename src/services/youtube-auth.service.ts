@@ -1,4 +1,5 @@
 import { apiClient } from "../shared/utils/api-client.util";
+import { uploadVideoToYoutube } from "./provider-youtube-upload.util";
 import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
 import { getAuthClient } from "../shared/utils/auth-client.util";
 import { logIntegration } from "../shared/utils/integration-logger.util";
@@ -45,20 +46,10 @@ export const youtubeAuthService = {
   },
 
   async checkYoutubeConnection(): Promise<YoutubeStatusResponse> {
-    console.log("[YouTube Auth] checkYoutubeConnection: requesting /social/youtube/status");
-    try {
-      const response = await apiClient.get<YoutubeStatusResponse>(
-        "/social/youtube/status",
-      );
-      console.log("[YouTube Auth] checkYoutubeConnection: response", {
-        status: response.status,
-        data: response.data,
-      });
-      return response.data;
-    } catch (error) {
-      console.error("[YouTube Auth] checkYoutubeConnection: request failed", error);
-      throw error;
-    }
+    const response = await apiClient.get<YoutubeStatusResponse>(
+      "/social/youtube/status",
+    );
+    return response.data;
   },
 
   disconnectYoutube(connectionId?: string): Promise<YoutubeDisconnectResponse> {
@@ -78,48 +69,64 @@ export const youtubeAuthService = {
       throw new Error("Video file is empty or too small to upload.");
     }
 
-    const formData = new FormData();
-    // Text fields must precede the file — @fastify/multipart reads parts in order and
-    // blocks on unconsumed file streams before later fields can be parsed.
-    formData.append("clientProjectId", params.projectId);
-    formData.append("exportId", params.exportId);
-    formData.append("clipIndex", String(params.clipIndex));
-    formData.append("formatId", params.formatId);
-    formData.append("title", params.title);
-    formData.append("fileSize", String(uploadSize));
-    if (params.description) {
-      formData.append("description", params.description);
-    }
-    formData.append("privacyStatus", params.privacyStatus);
-    if (params.connectionId) {
-      formData.append("connectionId", params.connectionId);
-    }
-    formData.append("video", params.video);
+    const init = await apiClient.post<{
+      jobId: string;
+      accessToken: string;
+      expiresAt: string;
+    }>("/social/youtube/clipper/publish/init", {
+      projectId: params.projectId,
+      exportId: params.exportId,
+      connectionId: params.connectionId,
+      clipIndex: params.clipIndex,
+      formatId: params.formatId,
+      title: params.title,
+      description: params.description,
+      privacyStatus: params.privacyStatus,
+      fileName: params.video.name || "clip.mp4",
+      mimeType: params.video.type || "video/mp4",
+      fileSize: uploadSize,
+    });
 
-    const response = await apiClient.post<YoutubePublishResponse>(
-      "/auth/google/youtube/clipper/publish",
-      formData,
-      {
-        timeout: 1_800_000,
-        onUploadProgress: (event) => {
-          if (!event.total) return;
-          const ratio = event.loaded / event.total;
+    const { jobId, accessToken } = init.data;
+
+    try {
+      const uploaded = await uploadVideoToYoutube({
+        accessToken,
+        video: params.video,
+        title: params.title,
+        description: params.description,
+        privacyStatus: params.privacyStatus,
+        onUploadProgress: (ratio) => {
           params.onUploadProgress?.(ratio);
           if (ratio >= 1) {
             params.onUploadPhaseChange?.("publishing");
           }
         },
-      },
-    );
+      });
 
-    return response.data;
+      await apiClient.post(`/social/publish/${jobId}/complete`, {
+        externalId: uploaded.videoId,
+        watchUrl: uploaded.watchUrl,
+      });
+
+      return {
+        jobId,
+        status: "published",
+        youtubeVideoId: uploaded.videoId,
+        watchUrl: uploaded.watchUrl,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "YouTube upload failed";
+      await apiClient.post(`/social/publish/${jobId}/complete`, { error: message });
+      throw error;
+    }
   },
 
   async getPublishJobStatus(
     jobId: string,
   ): Promise<YoutubePublishJobStatusResponse> {
     const response = await apiClient.get<YoutubePublishJobStatusResponse>(
-      `/auth/google/youtube/publish/${jobId}`,
+      `/social/publish/${jobId}`,
     );
     return response.data;
   },

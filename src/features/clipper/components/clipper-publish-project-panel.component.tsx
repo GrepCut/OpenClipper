@@ -1,12 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
-import { CheckCircle2, ExternalLink } from "lucide-react";
-import { AppLoader } from "../../../shared/components/app-loader.component";
+import { AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
+import { publishPlatformForFormat } from "../../../services/types/social-auth.types";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { ThemedSelect } from "../../../shared/components/ui/themed-select.component";
+import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
+import { useSocialStore } from "../../../stores/use-social-store.store";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
-import { fetchClipperRangeWords } from "../persistence/clipper-range-words-api.util";
+import { missingMetadataFieldLabels } from "../persistence/clipper-export-social.util";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
+import {
+  buildAvailableOwnerChannels,
+  resolvePublishConnectionsForOwner,
+  type OwnerPublishConnectionResult,
+} from "../shared/clipper-owner-channels.util";
+import { getOwnerPublishBlockedMessage } from "../shared/resolve-owner-publish-connection.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 import { getClipperFormatDef } from "../shared/formats.util";
@@ -27,8 +35,62 @@ interface ClipperPublishProjectPanelProps {
   connectedSplit?: boolean;
 }
 
-function wordsToPlainTranscript(words: Array<{ text: string }>): string {
-  return words.map((word) => word.text).join(" ").trim();
+function exportPublishPlatform(item: ClipperExportMapItem) {
+  const formatPlatform = item.platform === "twitter" ? "twitter" : item.platform;
+  return publishPlatformForFormat(formatPlatform) ?? "youtube";
+}
+
+function MetadataIncompleteBanner({
+  missingFields,
+  warningColor,
+}: {
+  missingFields: string[];
+  warningColor: string;
+}) {
+  const labels = missingMetadataFieldLabels(missingFields);
+  if (labels.length === 0) return null;
+
+  return (
+    <HStack
+      align="start"
+      gap={2.5}
+      px={3}
+      py={2.5}
+      borderRadius="lg"
+      bg="rgba(255, 149, 0, 0.1)"
+      border="1px solid"
+      borderColor="rgba(255, 149, 0, 0.28)"
+    >
+      <Box flexShrink={0} mt="1px" color={warningColor}>
+        <AlertTriangle size={14} />
+      </Box>
+      <VStack align="start" gap={1.5} flex={1} minW={0}>
+        <Text fontSize="xs" fontWeight="semibold" color={warningColor} lineHeight="1.35">
+          Metadata incomplete
+        </Text>
+        <HStack gap={1.5} flexWrap="wrap">
+          {labels.map((label) => (
+            <Box
+              key={label}
+              as="span"
+              px={2}
+              py={0.5}
+              borderRadius="full"
+              bg="rgba(255, 149, 0, 0.14)"
+              border="1px solid"
+              borderColor="rgba(255, 149, 0, 0.22)"
+              fontSize="xs"
+              fontWeight="medium"
+              color={warningColor}
+              lineHeight="1.2"
+            >
+              {label}
+            </Box>
+          ))}
+        </HStack>
+      </VStack>
+    </HStack>
+  );
 }
 
 export function ClipperPublishProjectPanel({
@@ -39,43 +101,25 @@ export function ClipperPublishProjectPanel({
   connectedSplit = false,
 }: ClipperPublishProjectPanelProps) {
   const { theme } = useClipperUi();
-  const { owners, assignProjectOwner } = useClipperOwners();
-  const [transcript, setTranscript] = useState("");
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const { owners, assignProjectOwner, loadOwnerChannels } = useClipperOwners();
+  const youtubeConnections = useYoutubeStore((state) => state.connections);
+  const socialPlatforms = useSocialStore((state) => state.platforms);
+  const [linkedChannels, setLinkedChannels] = useState<
+    Awaited<ReturnType<typeof loadOwnerChannels>>
+  >([]);
 
   useEffect(() => {
-    if (!project) {
-      setTranscript("");
+    if (!project?.clipperOwnerId) {
+      setLinkedChannels([]);
       return;
     }
+    void loadOwnerChannels(project.clipperOwnerId).then(setLinkedChannels);
+  }, [project?.clipperOwnerId, loadOwnerChannels, owners]);
 
-    let cancelled = false;
-    setTranscriptLoading(true);
-    void fetchClipperRangeWords(project.projectId)
-      .then((words) => {
-        if (cancelled) return;
-        const plain = wordsToPlainTranscript(words);
-        if (plain) {
-          setTranscript(plain);
-          return;
-        }
-        const fallback = project.exports.find((item) => item.transcriptPlain.trim())?.transcriptPlain ?? "";
-        setTranscript(fallback);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          const fallback = project.exports.find((item) => item.transcriptPlain.trim())?.transcriptPlain ?? "";
-          setTranscript(fallback);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setTranscriptLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [project]);
+  const availableChannels = useMemo(
+    () => buildAvailableOwnerChannels({ youtubeConnections, socialPlatforms }),
+    [youtubeConnections, socialPlatforms],
+  );
 
   const ownerSelectOptions = useMemo(
     () => [
@@ -92,6 +136,34 @@ export function ClipperPublishProjectPanel({
       (a, b) => a.clipIndex - b.clipIndex || a.formatLabel.localeCompare(b.formatLabel),
     );
   }, [project]);
+
+  const exportConnections = useMemo(() => {
+    const map = new Map<string, OwnerPublishConnectionResult>();
+    if (!project?.clipperOwnerId) return map;
+
+    for (const item of project.exports) {
+      const platform = exportPublishPlatform(item);
+      map.set(
+        item.id,
+        resolvePublishConnectionsForOwner({
+          platform,
+          ownerChannels: linkedChannels,
+          availableChannels,
+          youtubeConnections,
+          socialPlatforms,
+        }),
+      );
+    }
+
+    return map;
+  }, [
+    project?.clipperOwnerId,
+    project?.exports,
+    linkedChannels,
+    availableChannels,
+    youtubeConnections,
+    socialPlatforms,
+  ]);
 
   if (!project) {
     return (
@@ -117,7 +189,7 @@ export function ClipperPublishProjectPanel({
     <VStack
       align="stretch"
       h="full"
-      gap={4}
+      gap={5}
       borderRadius={connectedSplit ? 0 : "2xl"}
       border={connectedSplit ? "none" : "1px solid"}
       borderColor={theme.border.primary}
@@ -130,7 +202,7 @@ export function ClipperPublishProjectPanel({
           {project.projectName}
         </Text>
         <Text fontSize="xs" color={theme.text.muted}>
-          {project.exports.length} exports
+          {project.exports.length} export{project.exports.length !== 1 ? "s" : ""}
         </Text>
       </VStack>
 
@@ -150,88 +222,103 @@ export function ClipperPublishProjectPanel({
         ) : null}
       </VStack>
 
-      <VStack align="stretch" gap={2}>
+      <VStack align="stretch" gap={2.5}>
         <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
           Publish
         </Text>
         {sortedExports.map((item) => {
           const formatDef = getClipperFormatDef(item.formatId);
           const watchUrl = item.publishStatus?.watchUrl;
+          const platform = exportPublishPlatform(item);
+          const connection = exportConnections.get(item.id);
+          const channelConnected = connection?.connected ?? false;
+          const blockedHint =
+            hasOwner && connection
+              ? getOwnerPublishBlockedMessage(platform, connection)
+              : null;
+          const showMetadataWarning = !item.isPublished && item.missingFields.length > 0;
 
           return (
-            <HStack
+            <VStack
               key={item.id}
-              align="center"
-              gap={3}
+              align="stretch"
+              gap={2.5}
               borderRadius="xl"
               border="1px solid"
               borderColor={theme.surface.hover}
               bg={theme.surface.faint}
-              px={3}
-              py={2.5}
+              px={3.5}
+              py={3}
             >
-              {formatDef ? <ClipperPlatformIcon platform={formatDef.platform} size={24} /> : null}
-              <VStack align="start" gap={0} flex={1} minW={0}>
-                <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
-                  {item.formatLabel}
+              <HStack align="center" gap={3}>
+                {formatDef ? (
+                  <Box
+                    flexShrink={0}
+                    w="40px"
+                    h="40px"
+                    borderRadius="lg"
+                    bg={theme.background.surface}
+                    border="1px solid"
+                    borderColor={theme.surface.hover}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <ClipperPlatformIcon platform={formatDef.platform} size={22} />
+                  </Box>
+                ) : null}
+                <VStack align="start" gap={0.5} flex={1} minW={0}>
+                  <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
+                    {item.formatLabel}
+                  </Text>
+                  <Text fontSize="xs" color={theme.text.muted}>
+                    Clip {item.clipIndex + 1}
+                  </Text>
+                </VStack>
+                {item.isPublished ? (
+                  <HStack gap={2} flexShrink={0}>
+                    <CheckCircle2 size={16} color="#22c55e" />
+                    {watchUrl ? (
+                      <Box asChild>
+                        <a href={watchUrl} target="_blank" rel="noopener noreferrer">
+                          <OutlinedActionButton size="sm" startIcon={<ExternalLink size={14} />}>
+                            Open
+                          </OutlinedActionButton>
+                        </a>
+                      </Box>
+                    ) : (
+                      <Text fontSize="xs" color={theme.text.muted}>
+                        Published
+                      </Text>
+                    )}
+                  </HStack>
+                ) : (
+                  <OutlinedActionButton
+                    flexShrink={0}
+                    loading={publishLoadingExportId === item.id}
+                    onClick={() => onPublishExport(item)}
+                    disabled={!hasOwner || !canPublish || !channelConnected}
+                  >
+                    Publish
+                  </OutlinedActionButton>
+                )}
+              </HStack>
+
+              {showMetadataWarning ? (
+                <MetadataIncompleteBanner
+                  missingFields={item.missingFields}
+                  warningColor={theme.status.warning}
+                />
+              ) : null}
+
+              {!item.isPublished && blockedHint ? (
+                <Text fontSize="xs" color={theme.text.muted} lineHeight="1.5" px={0.5}>
+                  {blockedHint}
                 </Text>
-                <Text fontSize="xs" color={theme.text.muted}>
-                  Clip {item.clipIndex + 1}
-                </Text>
-              </VStack>
-              {item.isPublished ? (
-                <HStack gap={2} flexShrink={0}>
-                  <CheckCircle2 size={16} color="#22c55e" />
-                  {watchUrl ? (
-                    <Box asChild>
-                      <a href={watchUrl} target="_blank" rel="noopener noreferrer">
-                        <OutlinedActionButton size="sm" startIcon={<ExternalLink size={14} />}>
-                          Open
-                        </OutlinedActionButton>
-                      </a>
-                    </Box>
-                  ) : (
-                    <Text fontSize="xs" color={theme.text.muted}>
-                      Published
-                    </Text>
-                  )}
-                </HStack>
-              ) : (
-                <OutlinedActionButton
-                  flexShrink={0}
-                  loading={publishLoadingExportId === item.id}
-                  onClick={() => onPublishExport(item)}
-                  disabled={!hasOwner || !canPublish}
-                >
-                  Publish
-                </OutlinedActionButton>
-              )}
-            </HStack>
+              ) : null}
+            </VStack>
           );
         })}
-      </VStack>
-
-      <VStack align="stretch" gap={2}>
-        <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-          Transcript
-        </Text>
-        {transcriptLoading ? (
-          <AppLoader />
-        ) : (
-          <Box
-            borderRadius="lg"
-            border="1px solid"
-            borderColor={theme.surface.hover}
-            bg={theme.surface.faint}
-            p={3}
-            maxH="240px"
-            overflow="auto"
-          >
-            <Text fontSize="sm" color={theme.text.primary} whiteSpace="pre-wrap">
-              {transcript || "No transcript saved for this project yet."}
-            </Text>
-          </Box>
-        )}
       </VStack>
     </VStack>
   );

@@ -46,6 +46,7 @@ export interface ClipperSocialPublishDialogProps {
     externalAccountId: string | null;
     googleEmail?: string | null;
   }>;
+  ownerChannelLabel?: string | null;
   publishPlatform?: SocialPublishablePlatform;
   onRequestConnect: (platform: SocialPublishablePlatform) => void;
   onPublishComplete?: (record: import("../persistence/clipper-export-db-api.util").ClipperExportPublishRecord) => void;

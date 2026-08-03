@@ -32,6 +32,7 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
   defaultConnected,
   accountLabel,
   accountConnections,
+  ownerChannelLabel,
   publishPlatform: requestedPlatform,
   onRequestConnect,
   onPublishComplete,
@@ -107,9 +108,11 @@ export const ClipperSocialPublishDialog: React.FC<ClipperSocialPublishDialogProp
             </Text>
             <Text fontSize="xs" color={theme.text.muted}>
               {defaultConnected
-                ? publish.accountConnections.length > 1
-                  ? "Choose which linked account to publish to."
-                  : "Upload uses your linked account."
+                ? ownerChannelLabel
+                  ? `Publishing as owner channel: ${ownerChannelLabel}`
+                  : publish.accountConnections.length > 1
+                    ? "Choose which linked account to publish to."
+                    : "Upload uses your linked account."
                 : "Connect your account before publishing."}
             </Text>
           </Box>

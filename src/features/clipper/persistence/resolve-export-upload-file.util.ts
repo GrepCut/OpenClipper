@@ -17,6 +17,8 @@ export function resolveClipperExportFileName(result: ClipperFormatResult): strin
   return `${result.formatId}-clip-${result.clipIndex + 1}.mp4`;
 }
 
+const SIZE_MISMATCH_TOLERANCE = 0.05;
+
 export function assertClipperExportUploadSize(
   file: File,
   expectedFileSize: number,
@@ -24,6 +26,17 @@ export function assertClipperExportUploadSize(
   if (expectedFileSize > MIN_UPLOAD_BYTES && file.size < MIN_UPLOAD_BYTES) {
     throw new Error(
       `Export file appears empty (${file.size} bytes) but manifest expects ${expectedFileSize} bytes. Try re-exporting the clip.`,
+    );
+  }
+
+  if (expectedFileSize <= MIN_UPLOAD_BYTES) {
+    return;
+  }
+
+  const ratio = file.size / expectedFileSize;
+  if (ratio < 1 - SIZE_MISMATCH_TOLERANCE || ratio > 1 + SIZE_MISMATCH_TOLERANCE) {
+    throw new Error(
+      `Export file size mismatch (${file.size} bytes vs expected ${expectedFileSize} bytes). Try re-exporting the clip.`,
     );
   }
 }
