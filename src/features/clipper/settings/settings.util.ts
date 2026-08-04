@@ -4,6 +4,7 @@ import {
   type ClipperCaptionPresetId,
 } from "../lib/captions/caption-presets.util";
 import { clamp } from '../lib/math.util';
+import { migrateEnabledFormatIds } from "../shared/formats.util";
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
@@ -98,7 +99,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     wordsPerGroup: 4,
   },
   formats: {
-    enabledFormatIds: ["tiktok", "youtube-shorts"],
+    enabledFormatIds: ["vertical-short", "vertical-reels"],
     quality: "standard",
     resolutionCap: "source",
     filenameTemplate: "{name}-clip-{clip}-{platform}",
@@ -169,7 +170,17 @@ export function mergeClipperSettings(
           ? clamp(Math.round(partialCaptions.wordsPerGroup), 1, 5)
           : base.captions.wordsPerGroup,
     },
-    formats: { ...base.formats, ...partial.formats },
+    formats: (() => {
+      const mergedFormats = { ...base.formats, ...partial.formats };
+      return {
+        ...mergedFormats,
+        enabledFormatIds: migrateEnabledFormatIds(
+          Array.isArray(mergedFormats.enabledFormatIds)
+            ? mergedFormats.enabledFormatIds
+            : base.formats.enabledFormatIds,
+        ),
+      };
+    })(),
     audio: { ...base.audio, ...partial.audio },
     transcription: {
       engine: isClipperTranscriptionEngine(partial.transcription?.engine)

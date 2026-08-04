@@ -13,6 +13,7 @@ export const PLATFORM_LABELS: Record<SocialPublishablePlatform, string> = {
   youtube: "YouTube",
   facebook: "Facebook",
   instagram: "Instagram",
+  threads: "Threads",
   tiktok: "TikTok",
   x: "X",
 };
@@ -25,6 +26,10 @@ export function PlatformIcon({ platform }: { platform: SocialPublishablePlatform
       return <Instagram size={20} />;
     case "facebook":
       return <Facebook size={20} />;
+    case "threads":
+      return <ClipperPlatformIcon platform="threads" size={20} />;
+    case "tiktok":
+      return <ClipperPlatformIcon platform="tiktok" size={20} />;
     case "x":
       return <ClipperPlatformIcon platform="twitter" size={20} />;
     default:

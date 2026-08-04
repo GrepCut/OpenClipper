@@ -12,7 +12,6 @@ import { appToast } from "../../../shared/utils/toast.service";
 import { youtubeAuthService } from "../../../services/youtube-auth.service";
 import {
   oauthFlowForPlatform,
-  publishPlatformForFormat,
   socialAuthService,
   type SocialPublishablePlatform,
 } from "../../../services/social-auth.service";
@@ -75,6 +74,8 @@ export function ClipperPublishView() {
   const [publishResult, setPublishResult] = useState<ClipperFormatResult | null>(null);
   const [publishLoadingExportId, setPublishLoadingExportId] = useState<string | null>(null);
   const [publishConnection, setPublishConnection] = useState<OwnerPublishConnectionResult | null>(null);
+  const [publishTargetPlatform, setPublishTargetPlatform] =
+    useState<SocialPublishablePlatform>("youtube");
   const [mcpHttpUrl, setMcpHttpUrl] = useState("");
   const [mcpStdioPath, setMcpStdioPath] = useState("");
 
@@ -135,11 +136,7 @@ export function ClipperPublishView() {
     }
   }, []);
 
-  const publishPlatform: SocialPublishablePlatform = useMemo(() => {
-    if (!publishItem) return "youtube";
-    const formatPlatform = publishItem.platform === "twitter" ? "twitter" : publishItem.platform;
-    return publishPlatformForFormat(formatPlatform) ?? "youtube";
-  }, [publishItem]);
+  const publishPlatform: SocialPublishablePlatform = publishTargetPlatform;
 
   const { connected, accountLabel, accountConnections } = useMemo(() => {
     if (publishConnection) {
@@ -194,7 +191,7 @@ export function ClipperPublishView() {
   );
 
   const handlePublishExport = useCallback(
-    async (item: ClipperExportMapItem) => {
+    async (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => {
       if (!item.clipperOwnerId) {
         appToast.error("Owner required", "Assign an owner to this project before publishing.");
         return;
@@ -204,10 +201,8 @@ export function ClipperPublishView() {
         return;
       }
 
-      setPublishLoadingExportId(item.id);
+      setPublishLoadingExportId(`${item.id}:${platform}`);
       try {
-        const formatPlatform = item.platform === "twitter" ? "twitter" : item.platform;
-        const platform = publishPlatformForFormat(formatPlatform) ?? "youtube";
         const ownerConnection = await resolveOwnerPublishConnection({
           ownerId: item.clipperOwnerId,
           platform,
@@ -223,6 +218,7 @@ export function ClipperPublishView() {
           appToast.error("Export missing", "The export file was not found on disk.");
           return;
         }
+        setPublishTargetPlatform(platform);
         setPublishConnection(ownerConnection);
         setPublishItem(item);
         setPublishResult(result);
@@ -239,6 +235,7 @@ export function ClipperPublishView() {
     setPublishItem(null);
     setPublishResult(null);
     setPublishConnection(null);
+    setPublishTargetPlatform("youtube");
     void refresh();
   }, [refresh]);
 
@@ -334,7 +331,7 @@ export function ClipperPublishView() {
                 project={selectedProject}
                 canPublish={canUseAccountFeatures}
                 publishLoadingExportId={publishLoadingExportId}
-                onPublishExport={(item) => void handlePublishExport(item)}
+                onPublishExport={(item, platform) => void handlePublishExport(item, platform)}
                 connectedSplit
               />
             )

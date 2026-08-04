@@ -36,6 +36,7 @@ export interface ClipperPreviewProps {
   autoPartsResegmenting?: boolean;
   /** Show the captions settings drawer and T trigger (preview screen only). */
   settingsDrawerVisible?: boolean;
+  onOpenInStudio?: (clipIndex: number) => void;
 }
 
 export interface UseClipperPreviewPlaybackParams {

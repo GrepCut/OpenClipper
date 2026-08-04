@@ -24,6 +24,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   onSelectClip,
   onDeleteAiClip,
   onDeleteAutoPartsClip,
+  onOpenInStudio,
   rangeWords,
   collageRegions,
   disabledCollageRegionIds,
@@ -70,10 +71,10 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
                 activeClipIndex={activeClipIndex}
                 onSelectClip={onSelectClip}
                 onDeleteClip={onDeleteAiClip}
+                onOpenInStudio={onOpenInStudio}
                 hideTitle
                 {...transcriptProps}
-              />
-            </ClipsListScroller>
+              />            </ClipsListScroller>
           ) : (
             <ClipperAiMcpEmptyState />
           )}
@@ -94,6 +95,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
             activeClipIndex={activeClipIndex}
             onSelectClip={onSelectClip}
             onDeleteClip={onDeleteAutoPartsClip}
+            onOpenInStudio={onOpenInStudio}
             hideTitle
             bottomInset={AUTO_PARTS_LENGTH_OVERLAY_PAD}
             {...transcriptProps}

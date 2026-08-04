@@ -25,6 +25,7 @@ import { AppLoader } from "../../../shared/components/app-loader.component";
 import { useLocation, useNavigate } from "react-router-dom";
 import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
 import { logIntegration } from "../../../shared/utils/integration-logger.util";
+import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 
 const INTEGRATIONS_RETURN_PATH = "/clipper?tab=integrations";
 
@@ -305,6 +306,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
 
   const fb = socialPlatforms.facebook;
   const ig = socialPlatforms.instagram;
+  const thr = socialPlatforms.threads;
   const tt = socialPlatforms.tiktok;
   const x = socialPlatforms.x;
 
@@ -358,15 +360,26 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           disconnectingConnectionId={disconnectingConnectionId}
         />
         <PlatformIntegrationSection
+          name="Threads"
+          icon={<ClipperPlatformIcon platform="threads" size={20} />}
+          subtitle="Connect a Threads account to publish vertical clips directly from exports."
+          connections={thr.connections}
+          isChecking={thr.isChecking}
+          onConnect={() => handleConnectSocial("threads")}
+          isConnecting={connectingFlow === "threads"}
+          onDisconnect={(connectionId) => handleDisconnectSocial("threads", connectionId)}
+          disconnectingConnectionId={disconnectingConnectionId}
+        />
+        <PlatformIntegrationSection
           name="TikTok"
           icon={<TikTokIcon />}
+          subtitle="Connect a TikTok account to publish clips directly from exports."
           connections={tt.connections}
           isChecking={tt.isChecking}
           onConnect={() => handleConnectSocial("tiktok")}
           isConnecting={connectingFlow === "tiktok"}
           onDisconnect={(connectionId) => handleDisconnectSocial("tiktok", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
-          comingSoon
         />
         <PlatformIntegrationSection
           name="X"

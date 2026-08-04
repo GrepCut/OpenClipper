@@ -7,7 +7,7 @@ import type {
 } from "./types/social-auth.types";
 
 export interface R2StagingPublishParams {
-  platform: "facebook" | "instagram";
+  platform: "facebook" | "instagram" | "threads";
   projectId: string;
   exportId: string;
   connectionId?: string;
@@ -24,7 +24,7 @@ export interface R2StagingPublishParams {
 async function uploadPartsToR2(
   video: File,
   jobId: string,
-  platform: "facebook" | "instagram",
+  platform: "facebook" | "instagram" | "threads",
   partSize: number,
   totalParts: number,
   onUploadProgress?: (progress: number) => void,

@@ -230,7 +230,7 @@ export function buildAvailableOwnerChannels(input: {
     });
   }
 
-  (["facebook", "instagram", "tiktok", "x"] as const).forEach((platform) => {
+  (["facebook", "instagram", "threads", "tiktok", "x"] as const).forEach((platform) => {
     for (const connection of input.socialPlatforms[platform]?.connections ?? []) {
       channels.push({
         platform,

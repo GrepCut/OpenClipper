@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getClipperFormatDef } from "../shared/formats.util";
+import { getBadgePlatformsForFormat, getClipperFormatDef } from "../shared/formats.util";
 import type { ClipperPlatform } from "../shared/formats.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
@@ -27,6 +27,7 @@ export interface PublishGraphNode {
   clipIndex?: number;
   formatId?: string;
   platform?: ClipperPlatform;
+  badgePlatforms?: ClipperPlatform[];
   isPublished?: boolean;
   exportItem?: ClipperExportMapItem;
   thumbWidth?: number;
@@ -275,6 +276,7 @@ export function buildPublishGraphData(items: ClipperExportMapItem[]): PublishGra
       clipIndex: item.clipIndex,
       formatId: item.formatId,
       platform: formatDef?.platform,
+      badgePlatforms: getBadgePlatformsForFormat(item.formatId),
       isPublished: item.isPublished,
       exportItem: item,
     });

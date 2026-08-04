@@ -29,6 +29,32 @@ pub(crate) fn clipper_project_data_dir(
     Ok(clipper_project_root(app, project_id)?.join("data"))
 }
 
+/// Chrome/Edge block FSA directory access under AppData. Stage Studio import
+/// files under the user Documents tree so `showDirectoryPicker` can grant them.
+pub(crate) fn clipper_studio_import_staging_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let documents = app
+        .path()
+        .document_dir()
+        .map_err(|error| format!("Cannot resolve Documents directory: {error}"))?;
+    Ok(documents.join("OpenClipper").join("studio-import"))
+}
+
+pub(crate) fn stage_file_into_dir(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    if dst.exists() {
+        fs::remove_file(dst).map_err(|error| format!("Failed to replace staged file: {error}"))?;
+    }
+    // Prefer hard link (same volume, no extra disk) then fall back to copy.
+    if fs::hard_link(src, dst).is_ok() {
+        return Ok(());
+    }
+    fs::copy(src, dst)
+        .map_err(|error| format!("Failed to stage file {}: {error}", src.display()))?;
+    Ok(())
+}
+
 pub(crate) fn clipper_project_exports_dir(
     app: &AppHandle,
     project_id: &str,

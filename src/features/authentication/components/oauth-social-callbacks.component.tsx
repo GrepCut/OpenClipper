@@ -28,6 +28,7 @@ const FLOW_VERIFY_PLATFORMS: Record<
   youtube: ["youtube"],
   meta: ["facebook", "instagram"],
   instagram: ["instagram"],
+  threads: ["threads"],
   tiktok: ["tiktok"],
   x: ["x"],
 };
@@ -36,6 +37,7 @@ const FLOW_LABELS: Record<SocialOAuthFlow, string> = {
   youtube: "YouTube",
   meta: "Meta",
   instagram: "Instagram",
+  threads: "Threads",
   tiktok: "TikTok",
   x: "X",
 };
@@ -179,5 +181,6 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
 
 export const OAuthMetaCallback = createSocialOAuthCallback("meta");
 export const OAuthInstagramCallback = createSocialOAuthCallback("instagram");
+export const OAuthThreadsCallback = createSocialOAuthCallback("threads");
 export const OAuthTikTokCallback = createSocialOAuthCallback("tiktok");
 export const OAuthXCallback = createSocialOAuthCallback("x");

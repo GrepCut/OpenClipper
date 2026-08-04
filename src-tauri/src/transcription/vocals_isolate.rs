@@ -2,7 +2,6 @@
 //! Host STFT → ORT spectrogram core → iSTFT (UVR / audio-separator convention).
 
 use crate::infra::model_cache::download_model_file_to_cache;
-use crate::transcription::diag_log;
 use crate::transcription::types::TranscriptionError;
 use ort::session::Session;
 use ort::value::Tensor;
@@ -16,7 +15,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Mutex, OnceLock,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tauri::{AppHandle, Manager};
 
@@ -496,7 +495,6 @@ fn build_session(onnx_path: &Path) -> Result<(Session, String), String> {
 
 fn check_cancelled(cancelled: Option<&AtomicBool>) -> Result<(), String> {
     if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
-        diag_log::append("VOCALS_CANCELLED", serde_json::json!({}));
         return Err(TranscriptionError::Cancelled.to_string());
     }
     Ok(())
@@ -505,7 +503,6 @@ fn check_cancelled(cancelled: Option<&AtomicBool>) -> Result<(), String> {
 fn get_or_create_session(
     onnx_path: &Path,
 ) -> Result<(std::sync::MutexGuard<'static, Option<CachedSession>>, String, bool), String> {
-    let started = Instant::now();
     let mut cache = loop {
         match SESSION_CACHE.try_lock() {
             Ok(guard) => break guard,
@@ -517,14 +514,6 @@ fn get_or_create_session(
             }
         }
     };
-    if started.elapsed() > Duration::from_millis(500) {
-        diag_log::append(
-            "VOCALS_SESSION_WAIT",
-            serde_json::json!({
-                "wait_ms": started.elapsed().as_millis(),
-            }),
-        );
-    }
     let needs_rebuild = match cache.as_ref() {
         Some(cached) => cached.onnx_path != onnx_path,
         None => true,
@@ -536,26 +525,12 @@ fn get_or_create_session(
             session,
             provider: provider.clone(),
         });
-        diag_log::append(
-            "VOCALS_SESSION",
-            serde_json::json!({
-                "provider": &provider,
-                "cache_hit": false,
-            }),
-        );
         return Ok((cache, provider, true));
     }
     let provider = cache
         .as_ref()
         .map(|c| c.provider.clone())
         .unwrap_or_else(|| "cpu".into());
-    diag_log::append(
-        "VOCALS_SESSION",
-        serde_json::json!({
-            "provider": &provider,
-            "cache_hit": true,
-        }),
-    );
     Ok((cache, provider, false))
 }
 
@@ -615,14 +590,6 @@ fn isolate_vocals_at_model(
 ) -> Result<String, String> {
     let onnx_path = model_path.join(ONNX_FILE);
 
-    diag_log::append(
-        "VOCALS_START",
-        serde_json::json!({
-            "input": input_wav.display().to_string(),
-            "output": output_wav.display().to_string(),
-        }),
-    );
-
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
@@ -633,9 +600,7 @@ fn isolate_vocals_at_model(
 
     let (interleaved, sample_rate, channels) = read_wav_f32(input_wav)?;
     if channels == 0 {
-        let err = "WAV nie ma kanałów".to_string();
-        diag_log::append_error("vocals_wav", &err, serde_json::json!({}));
-        return Err(err);
+        return Err("WAV nie ma kanałów".to_string());
     }
     let (left, right) = interleaved_to_planar_stereo(&interleaved, channels);
     let left = resample_linear(&left, sample_rate, SAMPLE_RATE);
@@ -728,24 +693,7 @@ fn isolate_vocals_at_model(
         *sample *= peak;
     }
 
-    diag_log::append(
-        "VOCALS_INFER_DONE",
-        serde_json::json!({
-            "duration_sec": total_len as f64 / SAMPLE_RATE as f64,
-            "output_samples": n_sample,
-            "chunk_count": chunk_count,
-        }),
-    );
-
     check_cancelled(cancelled)?;
-
-    diag_log::append(
-        "VOCALS_POSTPROCESS",
-        serde_json::json!({
-            "duration_sec": total_len as f64 / SAMPLE_RATE as f64,
-            "output_samples": n_sample,
-        }),
-    );
 
     let mono = stereo_to_mono(&out_l, &out_r);
     let mono_16k = resample_linear(&mono, SAMPLE_RATE, ASR_SAMPLE_RATE);
@@ -767,14 +715,6 @@ fn isolate_vocals_at_model(
         callback(1.0)?;
     }
 
-    diag_log::append(
-        "VOCALS_DONE",
-        serde_json::json!({
-            "provider": &active_provider,
-            "duration_sec": total_len as f64 / SAMPLE_RATE as f64,
-            "output_samples": mono_16k.len(),
-        }),
-    );
     Ok(active_provider)
 }
 

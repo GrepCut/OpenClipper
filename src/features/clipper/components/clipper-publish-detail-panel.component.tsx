@@ -12,7 +12,7 @@ import type { ClipperFormatResult } from "../shared/state.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 import { ClipperExportMetadataPanel } from "./clipper-export-metadata-panel.component";
-import { getClipperFormatDef } from "../shared/formats.util";
+import { getBadgePlatformsForFormat, getClipperFormatDef } from "../shared/formats.util";
 
 interface ClipperPublishDetailPanelProps {
   item: ClipperExportMapItem | null;
@@ -80,6 +80,7 @@ export function ClipperPublishDetailPanel({
   }
 
   const formatDef = getClipperFormatDef(item.formatId);
+  const badgePlatforms = getBadgePlatformsForFormat(item.formatId);
   const watchUrl = item.publishStatus?.watchUrl;
 
   return (
@@ -104,7 +105,13 @@ export function ClipperPublishDetailPanel({
             Clip {item.clipIndex + 1} · {item.formatLabel}
           </Text>
         </VStack>
-        {formatDef ? <ClipperPlatformIcon platform={formatDef.platform} size={36} /> : null}
+        {formatDef ? (
+          <HStack gap={1} flexShrink={0}>
+            {(badgePlatforms.length > 0 ? badgePlatforms : [formatDef.platform]).map((platform) => (
+              <ClipperPlatformIcon key={platform} platform={platform} size={28} />
+            ))}
+          </HStack>
+        ) : null}
       </HStack>
 
       {item.isPublished ? (

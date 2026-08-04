@@ -27,6 +27,7 @@ const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
   instagram: asset("/clipper/instagram-logo.webp"),
   tiktok: asset("/clipper/tiktok-logo.webp"),
   twitter: asset("/clipper/x-logo.webp"),
+  threads: asset("/clipper/threads-logo.webp"),
 };
 
 const logoCache = new Map<ClipperPlatform, HTMLImageElement>();

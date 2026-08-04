@@ -1,4 +1,4 @@
-import { CLIPPER_FORMAT_DEFS } from "./formats.util";
+import { CLIPPER_FORMAT_DEFS, migrateEnabledFormatIds, normalizeLegacyFormatId } from "./formats.util";
 
 const VALID_FORMAT_IDS = new Set(CLIPPER_FORMAT_DEFS.map((def) => def.id));
 
@@ -17,7 +17,9 @@ export function sanitizeRenderQueueSelections(
     if (clipSet && !clipSet.has(clipIndex)) continue;
     if (!Array.isArray(formatIds)) continue;
 
-    const filtered = formatIds.filter((id) => VALID_FORMAT_IDS.has(id));
+    const filtered = migrateEnabledFormatIds(
+      formatIds.map((id) => normalizeLegacyFormatId(id)).filter((id) => VALID_FORMAT_IDS.has(id)),
+    );
     if (filtered.length > 0) {
       result[clipIndex] = filtered;
     } else if (formatIds.length === 0) {

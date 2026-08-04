@@ -21,9 +21,6 @@ import {
 } from "../shared/utils/tauri-native-jobs.util";
 import { transcriptionApiKeysService } from "./transcription-api-keys.service";
 import {
-  logTranscriptionDiag,
-} from "../shared/utils/transcription-diag-log.util";
-import {
   GROQ_WHISPER_MODEL,
   OPENROUTER_WHISPER_MODEL,
   transcribeCloudAudioChunks,
@@ -123,7 +120,6 @@ async function prepareAudioForCloud(
     signal?: AbortSignal;
     isolateVocals?: boolean;
     onProgress?: (progress: LocalTranscriptionProgress) => void;
-    diagRunId?: string;
   },
 ): Promise<string> {
   if (options?.signal?.aborted) {
@@ -147,10 +143,6 @@ async function prepareAudioForCloud(
     signal: options?.signal,
     onProgress: (progress) => options?.onProgress?.(progress),
   });
-  logTranscriptionDiag("CLOUD_PREPARE_DONE", {
-    runId: options?.diagRunId,
-    audioPath: prepared.audioPath,
-  });
   return prepared.audioPath;
 }
 
@@ -166,7 +158,6 @@ export const transcriptionService = {
       engine?: LocalTranscriptionEngine;
       language?: string;
       isolateVocals?: boolean;
-      diagRunId?: string;
       onProgress?: (progress: LocalTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
@@ -217,7 +208,6 @@ export const transcriptionService = {
           signal: options?.signal,
           isolateVocals,
           onProgress: options?.onProgress,
-          diagRunId: options?.diagRunId,
         });
         if (options?.signal?.aborted) {
           throw new DOMException("Conversion aborted", "AbortError");
@@ -248,11 +238,6 @@ export const transcriptionService = {
             },
           },
         );
-        logTranscriptionDiag("CLOUD_AUDIO_READY", {
-          runId: options?.diagRunId,
-          chunkCount: cloudChunks.length,
-          totalBytes: cloudChunks.reduce((sum, chunk) => sum + chunk.bytes.byteLength, 0),
-        });
         const transcription = await transcribeCloudAudioChunks(
           engine,
           apiKey,
@@ -260,7 +245,6 @@ export const transcriptionService = {
           mediaFileId,
           {
             signal: options?.signal,
-            diagRunId: options?.diagRunId,
             onProgress: (phase, ratio, chunkIndex, chunkCount) => {
               options?.onProgress?.({
                 phase,
@@ -329,12 +313,6 @@ export const transcriptionService = {
         mediaFileId,
         engine: engineId(engine),
         durationMs: Date.now() - startTime,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      logTranscriptionDiag("TRANSCRIBE_ERROR", {
-        runId: options?.diagRunId,
-        step: "transcribe_service",
-        engine: engineId(engine),
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

@@ -41,6 +41,11 @@ const OAuthInstagramCallback = lazy(() =>
     default: m.OAuthInstagramCallback,
   })),
 );
+const OAuthThreadsCallback = lazy(() =>
+  import("./features/authentication/components/oauth-social-callbacks.component").then((m) => ({
+    default: m.OAuthThreadsCallback,
+  })),
+);
 const OAuthTikTokCallback = lazy(() =>
   import("./features/authentication/components/oauth-social-callbacks.component").then((m) => ({
     default: m.OAuthTikTokCallback,
@@ -136,6 +141,7 @@ function AppRoutes() {
         />
         <Route path="/oauth/meta-connected" element={<InteractiveRoute name="oauth-meta"><OAuthMetaCallback /></InteractiveRoute>} />
         <Route path="/oauth/instagram-connected" element={<InteractiveRoute name="oauth-instagram"><OAuthInstagramCallback /></InteractiveRoute>} />
+        <Route path="/oauth/threads-connected" element={<InteractiveRoute name="oauth-threads"><OAuthThreadsCallback /></InteractiveRoute>} />
         <Route
           path="/oauth/tiktok-connected"
           element={<InteractiveRoute name="oauth-tiktok"><OAuthTikTokCallback /></InteractiveRoute>}

@@ -4,6 +4,7 @@ import { Virtuoso, type ScrollerProps } from "react-virtuoso";
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   Loader2,
   Trash2,
 } from "lucide-react";
@@ -26,6 +27,8 @@ interface ClipperClipSelectorProps {
   onSelectClip: (index: number) => void;
   /** When provided, shows a per-clip delete button (e.g. for AI-generated clips). */
   onDeleteClip?: (index: number) => void;
+  /** Opens the clip in GrepCut Studio via ephemeral import. */
+  onOpenInStudio?: (index: number) => void;
   hideTitle?: boolean;
   rangeWords?: WordCue[];
   collageRegions?: CollageRegion[];
@@ -162,6 +165,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   activeClipIndex,
   onSelectClip,
   onDeleteClip,
+  onOpenInStudio,
   hideTitle = false,
   rangeWords = [],
   collageRegions = [],
@@ -234,6 +238,35 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
             </HStack>
 
             <HStack gap={0} flexShrink={0}>
+              {onOpenInStudio ? (
+                <IconButton
+                  aria-label={`Open clip ${preview.clip.index + 1} in Studio`}
+                  title="Open in Studio"
+                  size="xs"
+                  variant="ghost"
+                  borderRadius="md"
+                  color={theme.text.muted}
+                  bg="transparent"
+                  border="none"
+                  flexShrink={0}
+                  alignSelf="flex-end"
+                  minW="0"
+                  w="auto"
+                  h="auto"
+                  p={1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInStudio(preview.clip.index);
+                  }}
+                  _hover={{
+                    bg: "transparent",
+                    color: clipperTheme.accentLight,
+                    opacity: 0.85,
+                  }}
+                >
+                  <ExternalLink size={14} strokeWidth={1.75} />
+                </IconButton>
+              ) : null}
               {onDeleteClip ? (
                 <ClipperDeleteClipConfirm
                   onConfirm={() => onDeleteClip(preview.clip.index)}

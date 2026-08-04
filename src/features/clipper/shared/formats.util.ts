@@ -1,14 +1,26 @@
 import { aspectRatioFromId, evenInt } from "../lib/media/video-draw.util";
 import { CLIPPER_CARD_BADGE_INSET } from "../components/clipper-platform-icon.component";
+import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
 
-export type ClipperPlatform = "instagram" | "tiktok" | "youtube" | "youtube-shorts" | "twitter";
+export type ClipperPlatform =
+  | "instagram"
+  | "tiktok"
+  | "youtube"
+  | "youtube-shorts"
+  | "twitter"
+  | "threads";
 
 /** Ids from `ASPECT_PRESETS` in `tools/shared/video-draw.ts`. */
 export type ClipperAspectPresetId = "16-9" | "9-16" | "1-1" | "4-5";
 
 export interface ClipperFormatDef {
   id: string;
+  /** Primary platform key used for legacy lookups and single-icon fallback. */
   platform: ClipperPlatform;
+  /** Platforms shown on the format badge (dual-icon when length > 1). */
+  badgePlatforms?: ClipperPlatform[];
+  /** Publish targets for this export; when omitted, derived from `platform`. */
+  publishTargets?: SocialPublishablePlatform[];
   label: string;
   aspectId: ClipperAspectPresetId;
   /** Every format is cover-filled; Smart Follow supplies the source crop. */
@@ -17,10 +29,15 @@ export interface ClipperFormatDef {
   isDefaultEnabled: boolean;
 }
 
+/** Legacy format ids remapped onto the shared vertical-short preset. */
+export const LEGACY_VERTICAL_SHORT_FORMAT_IDS = ["tiktok", "youtube-shorts"] as const;
+
 export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
   {
     id: "youtube",
     platform: "youtube",
+    badgePlatforms: ["youtube"],
+    publishTargets: ["youtube", "facebook"],
     label: "YouTube",
     aspectId: "16-9",
     mode: "crop",
@@ -30,6 +47,8 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
   {
     id: "instagram",
     platform: "instagram",
+    badgePlatforms: ["instagram"],
+    publishTargets: ["instagram"],
     label: "Instagram",
     aspectId: "1-1",
     mode: "crop",
@@ -37,26 +56,32 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     isDefaultEnabled: false,
   },
   {
-    id: "tiktok",
+    id: "vertical-short",
     platform: "tiktok",
-    label: "TikTok",
+    badgePlatforms: ["tiktok", "youtube-shorts"],
+    publishTargets: ["tiktok", "youtube"],
+    label: "TikTok / YouTube Shorts",
     aspectId: "9-16",
     mode: "crop",
-    description: "Vertical 9:16",
+    description: "Vertical 9:16 — one export for TikTok and YouTube Shorts",
     isDefaultEnabled: true,
   },
   {
-    id: "youtube-shorts",
-    platform: "youtube-shorts",
-    label: "YouTube Shorts",
+    id: "vertical-reels",
+    platform: "instagram",
+    badgePlatforms: ["instagram", "threads"],
+    publishTargets: ["instagram", "threads"],
+    label: "Instagram Reels / Threads",
     aspectId: "9-16",
     mode: "crop",
-    description: "Vertical 9:16",
+    description: "Vertical 9:16 — one export for Reels and Threads",
     isDefaultEnabled: true,
   },
   {
     id: "instagram-portrait",
     platform: "instagram",
+    badgePlatforms: ["instagram"],
+    publishTargets: ["instagram"],
     label: "Instagram Portrait",
     aspectId: "4-5",
     mode: "crop",
@@ -66,6 +91,8 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
   {
     id: "twitter",
     platform: "twitter",
+    badgePlatforms: ["twitter"],
+    publishTargets: ["x"],
     label: "X / Twitter",
     aspectId: "16-9",
     mode: "crop",
@@ -74,8 +101,67 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
   },
 ];
 
+const LEGACY_FORMAT_ID_MAP: Record<string, string> = {
+  tiktok: "vertical-short",
+  "youtube-shorts": "vertical-short",
+};
+
+/** Map a stored format id (including legacy aliases) onto a current definition id. */
+export function normalizeLegacyFormatId(id: string): string {
+  return LEGACY_FORMAT_ID_MAP[id] ?? id;
+}
+
+/**
+ * Normalize enabled format ids after settings load: remap aliases and dedupe.
+ * Preserves first-seen order of the canonical ids.
+ */
+export function migrateEnabledFormatIds(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    const next = normalizeLegacyFormatId(id);
+    if (seen.has(next)) continue;
+    if (!CLIPPER_FORMAT_DEFS.some((def) => def.id === next)) continue;
+    seen.add(next);
+    out.push(next);
+  }
+  return out;
+}
+
 export function getClipperFormatDef(id: string): ClipperFormatDef | undefined {
-  return CLIPPER_FORMAT_DEFS.find((f) => f.id === id);
+  const canonical = normalizeLegacyFormatId(id);
+  return CLIPPER_FORMAT_DEFS.find((f) => f.id === canonical);
+}
+
+/** Publish targets for a format (canonical or legacy id). */
+export function getPublishTargetsForFormat(formatId: string): SocialPublishablePlatform[] {
+  const def = getClipperFormatDef(formatId);
+  if (!def) return [];
+  if (def.publishTargets?.length) return def.publishTargets;
+  // Fallback for defs without explicit targets
+  switch (def.platform) {
+    case "twitter":
+      return ["x"];
+    case "youtube-shorts":
+      return ["youtube"];
+    case "threads":
+      return ["threads"];
+    case "instagram":
+      return ["instagram"];
+    case "tiktok":
+      return ["tiktok"];
+    case "youtube":
+      return ["youtube"];
+    default:
+      return [];
+  }
+}
+
+export function getBadgePlatformsForFormat(formatId: string): ClipperPlatform[] {
+  const def = getClipperFormatDef(formatId);
+  if (!def) return [];
+  if (def.badgePlatforms?.length) return def.badgePlatforms;
+  return [def.platform];
 }
 
 /**

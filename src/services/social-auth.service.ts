@@ -4,7 +4,8 @@ import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
 import { getAuthClient } from "../shared/utils/auth-client.util";
 import { logIntegration } from "../shared/utils/integration-logger.util";
 import { publishClipperViaR2Staging } from "./social-r2-staging.util";
-import { uploadVideoToX } from "./provider-x-upload.util";import type {
+import { uploadVideoToX } from "./provider-x-upload.util";
+import type {
   PublishClipperToSocialParams,
   SocialDisconnectResponse,
   SocialOAuthFlow,
@@ -100,7 +101,7 @@ export const socialAuthService = {
   async publishClipperExport(
     params: PublishClipperToSocialParams,
   ): Promise<SocialPublishResponse> {
-    if (params.platform === "facebook" || params.platform === "instagram") {
+    if (params.platform === "facebook" || params.platform === "instagram" || params.platform === "threads") {
       return publishClipperViaR2Staging({
         platform: params.platform,
         projectId: params.projectId,

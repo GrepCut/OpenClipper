@@ -2,15 +2,22 @@ import React from "react";
 import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/react";
 import { AlertTriangle, Facebook, FolderOpen, RotateCcw } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
-import { CLIPPER_FORMAT_DEFS, getClipperCardFrameSize } from "../shared/formats.util";
+import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
+import {
+  CLIPPER_FORMAT_DEFS,
+  getBadgePlatformsForFormat,
+  getClipperCardFrameSize,
+  getPublishTargetsForFormat,
+} from "../shared/formats.util";
 import { formatBytes } from "../shared/logger.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 import { ClipperExportMetadataPanel } from "./clipper-export-metadata-panel.component";
+import { PLATFORM_LABELS } from "./clipper-social-publish-dialog.constants";
 
-export type ClipperPublishTarget = "facebook" | "instagram" | "tiktok" | "youtube" | "x";
+export type ClipperPublishTarget = SocialPublishablePlatform;
 
 const THUMB_HEIGHT = 144;
 const PLATFORM_ICON_SIZE = 28;
@@ -38,6 +45,16 @@ function formatExportedAt(exportedAt: string): string {
   return date.toLocaleString();
 }
 
+function PublishTargetIcon({ target }: { target: SocialPublishablePlatform }) {
+  if (target === "facebook") return <Facebook size={16} />;
+  if (target === "x") return <ClipperPlatformIcon platform="twitter" size={16} />;
+  if (target === "threads") return <ClipperPlatformIcon platform="threads" size={16} />;
+  if (target === "youtube") return <ClipperPlatformIcon platform="youtube" size={16} />;
+  if (target === "instagram") return <ClipperPlatformIcon platform="instagram" size={16} />;
+  if (target === "tiktok") return <ClipperPlatformIcon platform="tiktok" size={16} />;
+  return <ClipperPlatformIcon platform="youtube" size={16} />;
+}
+
 export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
   result,
   isRerendering,
@@ -54,6 +71,8 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
   const isMissing = result.isMissing === true;
   const exportedAtLabel = formatExportedAt(result.exportedAt);
   const clipLabel = `Clip ${result.clipIndex + 1}`;
+  const badgePlatforms = getBadgePlatformsForFormat(result.formatId);
+  const publishTargets = getPublishTargetsForFormat(result.formatId);
 
   return (
     <HStack
@@ -81,6 +100,7 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
           bg={theme.background.surface}
           border="1px solid"
           borderColor={theme.surface.hover}
+          position="relative"
         >
           {isMissing ? (
             <Flex
@@ -118,14 +138,25 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
       <VStack align="stretch" gap={0} flex={1} minW={0}>
         <HStack align="center" gap={2} w="full">
           <Flex
-            w={`${PLATFORM_ICON_SIZE}px`}
             minW={`${PLATFORM_ICON_SIZE}px`}
             h={`${PLATFORM_ICON_SIZE}px`}
             align="center"
             justify="center"
             flexShrink={0}
+            position="relative"
           >
-            <ClipperPlatformIcon platform={result.platform} size={PLATFORM_ICON_SIZE} />
+            {badgePlatforms.length > 1 ? (
+              <HStack gap={1}>
+                {badgePlatforms.map((platform) => (
+                  <ClipperPlatformIcon key={platform} platform={platform} size={PLATFORM_ICON_SIZE} />
+                ))}
+              </HStack>
+            ) : (
+              <ClipperPlatformIcon
+                platform={badgePlatforms[0] ?? result.platform}
+                size={PLATFORM_ICON_SIZE}
+              />
+            )}
           </Flex>
           <VStack align="start" gap={1} flex={1} minW={0}>
             <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
@@ -167,56 +198,19 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
           >
             Open folder
           </OutlinedActionButton>
-          <OutlinedActionButton
-            width="100%"
-            justifyContent="center"
-            whiteSpace="nowrap"
-            startIcon={<ClipperPlatformIcon platform="tiktok" size={16} />}
-            onClick={() => onPublish?.(result, "tiktok")}
-            disabled={isMissing}
-          >
-            Publish to TikTok
-          </OutlinedActionButton>
-          <OutlinedActionButton
-            width="100%"
-            justifyContent="center"
-            whiteSpace="nowrap"
-            startIcon={<ClipperPlatformIcon platform="youtube" size={16} />}
-            onClick={() => onPublish?.(result, "youtube")}
-            disabled={isMissing}
-          >
-            Publish to YouTube
-          </OutlinedActionButton>
-          <OutlinedActionButton
-            width="100%"
-            justifyContent="center"
-            whiteSpace="nowrap"
-            startIcon={<ClipperPlatformIcon platform="twitter" size={16} />}
-            onClick={() => onPublish?.(result, "x")}
-            disabled={isMissing}
-          >
-            Publish to X
-          </OutlinedActionButton>
-          <OutlinedActionButton
-            width="100%"
-            justifyContent="center"
-            whiteSpace="nowrap"
-            startIcon={<ClipperPlatformIcon platform="instagram" size={16} />}
-            onClick={() => onPublish?.(result, "instagram")}
-            disabled={isMissing}
-          >
-            Publish to Instagram
-          </OutlinedActionButton>
-          <OutlinedActionButton
-            width="100%"
-            justifyContent="center"
-            whiteSpace="nowrap"
-            startIcon={<Facebook size={16} />}
-            onClick={() => onPublish?.(result, "facebook")}
-            disabled={isMissing}
-          >
-            Publish to Facebook
-          </OutlinedActionButton>
+          {publishTargets.map((target) => (
+            <OutlinedActionButton
+              key={target}
+              width="100%"
+              justifyContent="center"
+              whiteSpace="nowrap"
+              startIcon={<PublishTargetIcon target={target} />}
+              onClick={() => onPublish?.(result, target)}
+              disabled={isMissing}
+            >
+              Publish to {PLATFORM_LABELS[target]}
+            </OutlinedActionButton>
+          ))}
           {showRerender ? (
             <OutlinedActionButton
               width="100%"

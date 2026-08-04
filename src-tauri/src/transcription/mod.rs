@@ -1,4 +1,3 @@
-pub mod diag_log;
 pub mod directml_adapter;
 pub mod model_manager;
 pub mod parakeet_probe;

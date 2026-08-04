@@ -251,10 +251,15 @@ npm run tauri:dev
 
 Planned work — not yet shipped:
 
-- [ ] **Auto-updater & GitHub Releases** — in-app update checks and installs from [GitHub Releases](https://github.com/GrepCut/OpenClipper/releases)
-- [ ] **Model hosting on Cloudflare R2** — after the models sync workflow, publish ASR and vision bundles to R2 for CDN delivery
-- [ ] **Social provider verification** — account verification for TikTok, YouTube, and X before publishing clips
-- [ ] **Benchmark** — headless test-dataset benchmarks for reframe quality (focus-hit metrics, miss-frame export)
+- [x] **Auto-updater & Cloudflare Releases** — in-app update checks and installs from Cloudflare-hosted releases
+- [x] **Model hosting on Cloudflare R2** — ASR and vision bundles published to R2 for CDN delivery
+- [ ] **Social provider verification** — account verification before publishing clips
+  - [ ] TikTok — submitted for review (pending approval)
+  - [ ] YouTube — submitted for review (pending approval; `youtube.upload` scope)
+  - [ ] Meta (Instagram / Facebook) — business verification submitted (pending approval)
+  - [ ] X — TBD (paid API; evaluate cost vs. need)
+- [ ] **Paddle integration** — billing and subscriptions via Paddle
+- [ ] **Studio integration** — connect Open Clipper with GrepCut Studio
 
 ## Contributing
 

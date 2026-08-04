@@ -1,5 +1,6 @@
 import { DEFAULT_CLIPPER_SETTINGS, mergeClipperSettings, type ClipperSettings } from "./settings.util";
 import { parseStoredClipperSettings } from "../persistence/clipper-persistence-schemas.util";
+import { migrateEnabledFormatIds } from "../shared/formats.util";
 
 export const STORAGE_KEY = "clipper:settings:v2";
 
@@ -9,7 +10,17 @@ export function loadClipperSettings(): ClipperSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_CLIPPER_SETTINGS;
     const parsed = parseStoredClipperSettings(JSON.parse(raw));
-    return mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, parsed as Partial<ClipperSettings> | undefined);
+    const merged = mergeClipperSettings(
+      DEFAULT_CLIPPER_SETTINGS,
+      parsed as Partial<ClipperSettings> | undefined,
+    );
+    return {
+      ...merged,
+      formats: {
+        ...merged.formats,
+        enabledFormatIds: migrateEnabledFormatIds(merged.formats.enabledFormatIds),
+      },
+    };
   } catch {
     return DEFAULT_CLIPPER_SETTINGS;
   }

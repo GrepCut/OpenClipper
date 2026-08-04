@@ -3,8 +3,14 @@ import { Box, VStack } from "@chakra-ui/react";
 import { deriveRegionsFromLayoutTracks } from "../../engine/reframe/collage";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
 import { useClipperPreviewPlayback } from "../../hooks/use-clipper-preview-playback.hook";
+import { CLIPPER_TRIMMED_SEGMENT_FILE } from "../../platform/native-source.util";
+import {
+  buildClipperStudioImportV1,
+  openClipInStudio,
+} from "../../lib/studio-import/build-studio-import.util";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
+import { appToast } from "../../../../shared/utils/toast.service";
 import { ClipperSettingsDrawer, type ClipperSettingsDrawerPanel } from "../clipper-settings-drawer.component";
 import { ClipperPreviewFormatsFooter } from "./formats-footer.component";
 import { ClipperPreviewHeroSection } from "./hero-section.component";
@@ -16,6 +22,7 @@ export type { ClipperPreviewProps } from "./clipper-preview.types";
 
 export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
   const {
+    projectId,
     state,
     rangeTrimmedVideoUrl,
     clipPreviews,
@@ -39,6 +46,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     onResetAutoParts,
     autoPartsResegmenting,
     settingsDrawerVisible = true,
+    onOpenInStudio: onOpenInStudioProp,
   } = props;
 
   const { theme } = useClipperUi();
@@ -89,6 +97,67 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     const vertical = previewFormats.find((f) => f.aspectId === "9-16");
     return vertical ?? previewFormats[0];
   }, [previewFormats]);
+
+  const handleOpenInStudio = useCallback(
+    (clipIndex: number) => {
+      void (async () => {
+        try {
+          if (onOpenInStudioProp) {
+            onOpenInStudioProp(clipIndex);
+            return;
+          }
+
+          console.info("[OpenInStudio] click", {
+            clipIndex,
+            ai: safeAiPreviews.length,
+            auto: safeAutoPartsPreviews.length,
+            hero: clipPreviews.length,
+            modeHint: clipSourceMode,
+          });
+
+          const fromAi = safeAiPreviews.find((p) => p.clip.index === clipIndex);
+          const fromAuto = safeAutoPartsPreviews.find(
+            (p) => p.clip.index === clipIndex,
+          );
+          const fromHero = clipPreviews.find((p) => p.clip.index === clipIndex);
+          const preview = fromAi ?? fromAuto ?? fromHero;
+          if (!preview) {
+            console.warn("[OpenInStudio] no preview for index", clipIndex);
+            appToast.error(
+              "No clip found",
+              `Could not find clip #${clipIndex + 1} to open in Studio.`,
+            );
+            return;
+          }
+
+          const contextForClip = getFrameContext();
+          const videoHint = CLIPPER_TRIMMED_SEGMENT_FILE;
+          const manifest = buildClipperStudioImportV1({
+            clip: preview.clip,
+            settings,
+            frameContext: contextForClip,
+            sourceVideoFileName: videoHint,
+            preferredFormatId: primaryFormat?.id,
+          });
+          await openClipInStudio(manifest, { projectId });
+        } catch (error) {
+          // openClipInStudio already toasts; keep a console breadcrumb.
+          console.error("[OpenInStudio] handler error", error);
+        }
+      })();
+    },
+    [
+      onOpenInStudioProp,
+      projectId,
+      safeAiPreviews,
+      safeAutoPartsPreviews,
+      clipPreviews,
+      clipSourceMode,
+      getFrameContext,
+      settings,
+      primaryFormat?.id,
+    ],
+  );
 
   const secondaryFormats = useMemo(
     () => previewFormats.filter((f) => f.id !== primaryFormat?.id),
@@ -166,6 +235,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
           seekToTranscriptTime={seekToTranscriptTime}
           sidePanelTab={sidePanelTab}
           onSidePanelTabChange={handleSidePanelTabChange}
+          onOpenInStudio={handleOpenInStudio}
         />
       </Box>
 

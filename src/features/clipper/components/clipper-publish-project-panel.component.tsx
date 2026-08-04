@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
-import { publishPlatformForFormat } from "../../../services/types/social-auth.types";
+import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { ThemedSelect } from "../../../shared/components/ui/themed-select.component";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
@@ -17,7 +17,12 @@ import {
 import { getOwnerPublishBlockedMessage } from "../shared/resolve-owner-publish-connection.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
-import { getClipperFormatDef } from "../shared/formats.util";
+import {
+  getBadgePlatformsForFormat,
+  getClipperFormatDef,
+  getPublishTargetsForFormat,
+} from "../shared/formats.util";
+import { PLATFORM_LABELS } from "./clipper-social-publish-dialog.constants";
 
 interface SelectedPublishProject {
   projectId: string;
@@ -31,13 +36,12 @@ interface ClipperPublishProjectPanelProps {
   project: SelectedPublishProject | null;
   canPublish: boolean;
   publishLoadingExportId: string | null;
-  onPublishExport: (item: ClipperExportMapItem) => void;
+  onPublishExport: (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => void;
   connectedSplit?: boolean;
 }
 
-function exportPublishPlatform(item: ClipperExportMapItem) {
-  const formatPlatform = item.platform === "twitter" ? "twitter" : item.platform;
-  return publishPlatformForFormat(formatPlatform) ?? "youtube";
+function exportPublishTargets(item: ClipperExportMapItem): SocialPublishablePlatform[] {
+  return getPublishTargetsForFormat(item.formatId);
 }
 
 function MetadataIncompleteBanner({
@@ -142,17 +146,18 @@ export function ClipperPublishProjectPanel({
     if (!project?.clipperOwnerId) return map;
 
     for (const item of project.exports) {
-      const platform = exportPublishPlatform(item);
-      map.set(
-        item.id,
-        resolvePublishConnectionsForOwner({
-          platform,
-          ownerChannels: linkedChannels,
-          availableChannels,
-          youtubeConnections,
-          socialPlatforms,
-        }),
-      );
+      for (const platform of exportPublishTargets(item)) {
+        map.set(
+          `${item.id}:${platform}`,
+          resolvePublishConnectionsForOwner({
+            platform,
+            ownerChannels: linkedChannels,
+            availableChannels,
+            youtubeConnections,
+            socialPlatforms,
+          }),
+        );
+      }
     }
 
     return map;
@@ -228,15 +233,17 @@ export function ClipperPublishProjectPanel({
         </Text>
         {sortedExports.map((item) => {
           const formatDef = getClipperFormatDef(item.formatId);
+          const badgePlatforms = getBadgePlatformsForFormat(item.formatId);
+          const targets = exportPublishTargets(item);
           const watchUrl = item.publishStatus?.watchUrl;
-          const platform = exportPublishPlatform(item);
-          const connection = exportConnections.get(item.id);
-          const channelConnected = connection?.connected ?? false;
-          const blockedHint =
-            hasOwner && connection
-              ? getOwnerPublishBlockedMessage(platform, connection)
-              : null;
           const showMetadataWarning = !item.isPublished && item.missingFields.length > 0;
+          const blockedHints = targets
+            .map((platform) => {
+              const connection = exportConnections.get(`${item.id}:${platform}`);
+              if (!hasOwner || !connection) return null;
+              return getOwnerPublishBlockedMessage(platform, connection);
+            })
+            .filter((hint): hint is string => Boolean(hint));
 
           return (
             <VStack
@@ -254,7 +261,7 @@ export function ClipperPublishProjectPanel({
                 {formatDef ? (
                   <Box
                     flexShrink={0}
-                    w="40px"
+                    minW="40px"
                     h="40px"
                     borderRadius="lg"
                     bg={theme.background.surface}
@@ -263,8 +270,14 @@ export function ClipperPublishProjectPanel({
                     display="flex"
                     alignItems="center"
                     justifyContent="center"
+                    gap={0.5}
+                    px={1}
                   >
-                    <ClipperPlatformIcon platform={formatDef.platform} size={22} />
+                    {(badgePlatforms.length > 0 ? badgePlatforms : [formatDef.platform]).map(
+                      (platform) => (
+                        <ClipperPlatformIcon key={platform} platform={platform} size={18} />
+                      ),
+                    )}
                   </Box>
                 ) : null}
                 <VStack align="start" gap={0.5} flex={1} minW={0}>
@@ -292,17 +305,29 @@ export function ClipperPublishProjectPanel({
                       </Text>
                     )}
                   </HStack>
-                ) : (
-                  <OutlinedActionButton
-                    flexShrink={0}
-                    loading={publishLoadingExportId === item.id}
-                    onClick={() => onPublishExport(item)}
-                    disabled={!hasOwner || !canPublish || !channelConnected}
-                  >
-                    Publish
-                  </OutlinedActionButton>
-                )}
+                ) : null}
               </HStack>
+
+              {!item.isPublished ? (
+                <VStack align="stretch" gap={2}>
+                  {targets.map((platform) => {
+                    const connection = exportConnections.get(`${item.id}:${platform}`);
+                    const channelConnected = connection?.connected ?? false;
+                    return (
+                      <OutlinedActionButton
+                        key={platform}
+                        width="100%"
+                        justifyContent="center"
+                        loading={publishLoadingExportId === `${item.id}:${platform}`}
+                        onClick={() => onPublishExport(item, platform)}
+                        disabled={!hasOwner || !canPublish || !channelConnected}
+                      >
+                        Publish to {PLATFORM_LABELS[platform]}
+                      </OutlinedActionButton>
+                    );
+                  })}
+                </VStack>
+              ) : null}
 
               {showMetadataWarning ? (
                 <MetadataIncompleteBanner
@@ -311,9 +336,9 @@ export function ClipperPublishProjectPanel({
                 />
               ) : null}
 
-              {!item.isPublished && blockedHint ? (
+              {!item.isPublished && blockedHints.length > 0 ? (
                 <Text fontSize="xs" color={theme.text.muted} lineHeight="1.5" px={0.5}>
-                  {blockedHint}
+                  {blockedHints[0]}
                 </Text>
               ) : null}
             </VStack>
