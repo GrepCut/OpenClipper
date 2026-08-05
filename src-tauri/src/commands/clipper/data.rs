@@ -1,13 +1,15 @@
 use crate::clipper::data::{
     clipper_export_file_path, clipper_project_data_dir, clipper_project_exports_dir,
-    clipper_project_root, clipper_projects_root, clipper_studio_import_staging_dir,
-    extract_segment_to_project_data, stage_file_into_dir, validate_export_file_name,
-    write_export_file_bytes_at, write_project_data_file_bytes_at,
+    clipper_project_root, clipper_projects_root, extract_segment_to_project_data,
+    extract_studio_thumbnails_for_project, validate_export_file_name, write_export_file_bytes_at,
+    write_project_data_file_bytes_at,
 };
+use crate::video::ffmpeg::studio_thumbnails::ExtractClipperStudioThumbnailsResult;
 use serde::Serialize;
 use std::fs;
 use tauri::ipc::{InvokeBody, Request};
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
 #[derive(Debug, Serialize)]
@@ -142,7 +144,6 @@ pub fn get_clipper_project_data_file_path(
     Ok(path.to_string_lossy().to_string())
 }
 
-/// Opens the project `data/` folder in the OS file manager (Explorer / Finder).
 #[tauri::command]
 pub async fn open_clipper_project_data_dir(
     app: AppHandle,
@@ -154,8 +155,6 @@ pub async fn open_clipper_project_data_dir(
         .map_err(|error| error.to_string())
 }
 
-/// Copy trimmed video + write import JSON into Documents/OpenClipper/studio-import
-/// (Chrome-grantable) and open that folder in Explorer.
 #[tauri::command]
 pub async fn stage_clipper_studio_import(
     app: AppHandle,
@@ -167,22 +166,20 @@ pub async fn stage_clipper_studio_import(
     validate_export_file_name(&manifest_file_name)?;
     validate_export_file_name(&video_file_name)?;
 
-    let staging = clipper_studio_import_staging_dir(&app)?;
-    fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
+    let project_data = clipper_project_data_dir(&app, &project_id)?;
+    fs::create_dir_all(&project_data).map_err(|error| error.to_string())?;
 
-    let video_src = clipper_project_data_dir(&app, &project_id)?.join(&video_file_name);
+    let video_src = project_data.join(&video_file_name);
     if !video_src.is_file() {
         return Err(format!(
             "Missing {video_file_name} in project data. Finish clip processing first."
         ));
     }
-    let video_dst = staging.join(&video_file_name);
-    stage_file_into_dir(&video_src, &video_dst)?;
 
-    let manifest_dst = staging.join(&manifest_file_name);
-    let project_data_dir = staging.to_string_lossy().to_string();
+    let manifest_dst = project_data.join(&manifest_file_name);
+    let project_data_dir = project_data.to_string_lossy().to_string();
     let manifest_absolute_path = manifest_dst.to_string_lossy().to_string();
-    let video_absolute_path = video_dst.to_string_lossy().to_string();
+    let video_absolute_path = video_src.to_string_lossy().to_string();
 
     let mut value: serde_json::Value = serde_json::from_str(&manifest_contents)
         .map_err(|error| format!("Invalid studio import JSON: {error}"))?;
@@ -204,9 +201,12 @@ pub async fn stage_clipper_studio_import(
         .map_err(|error| format!("Failed to serialize staged manifest: {error}"))?;
     fs::write(&manifest_dst, enriched).map_err(|error| error.to_string())?;
 
-    app.opener()
-        .open_path(project_data_dir.clone(), None::<&str>)
-        .map_err(|error| error.to_string())?;
+    if let Ok(documents) = app.path().document_dir() {
+        let obsolete = documents.join("OpenClipper").join("studio-import");
+        if obsolete.is_dir() {
+            let _ = fs::remove_dir_all(&obsolete);
+        }
+    }
 
     Ok(StageClipperStudioImportResult {
         project_data_dir,
@@ -224,6 +224,22 @@ pub async fn extract_clipper_segment_to_project_data(
     end_time: f64,
 ) -> Result<String, String> {
     extract_segment_to_project_data(&app, &project_id, file_path, start_time, end_time).await
+}
+
+#[tauri::command]
+pub async fn extract_clipper_studio_thumbnails(
+    app: AppHandle,
+    project_id: String,
+    duration_secs: Option<f64>,
+    force: Option<bool>,
+) -> Result<ExtractClipperStudioThumbnailsResult, String> {
+    extract_studio_thumbnails_for_project(
+        &app,
+        &project_id,
+        duration_secs,
+        force.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]

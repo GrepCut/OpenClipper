@@ -22,10 +22,9 @@ export interface RedrawPreviewCanvasesParams {
   canvasCaches: Map<string, FrameCanvasCache>;
   previewFormats: ClipperFormatDef[];
   primaryFormatId: string | undefined;
-  getFrameContext: () => ClipperFrameContext | null;
+  getFrameContext: (clipIndex?: number) => ClipperFrameContext | null;
   activeClipIndex: number;
   firstFrameLoggedRef: { current: boolean };
-  /** Secondary format ids that may redraw in this pass. The primary always redraws. */
   visibleSecondaryFormatIds?: ReadonlySet<string>;
 }
 

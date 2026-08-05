@@ -24,7 +24,7 @@ export interface ClipperPreviewProps {
   onDeleteAutoPartsClip?: (index: number) => void;
   settings: ClipperSettings;
   onUpdateSettings: (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => void;
-  getFrameContext: () => ClipperFrameContext | null;
+  getFrameContext: (clipIndex?: number) => ClipperFrameContext | null;
   sourceFileName: string | null;
   isRendering?: boolean;
   onOpenRenderQueue: () => void;
@@ -34,13 +34,14 @@ export interface ClipperPreviewProps {
   onAutoPartsSegmentLengthChange: (lengthSec: AutoPartsSegmentLengthSec) => void;
   onResetAutoParts?: () => void;
   autoPartsResegmenting?: boolean;
-  /** Show the captions settings drawer and T trigger (preview screen only). */
   settingsDrawerVisible?: boolean;
   onOpenInStudio?: (clipIndex: number) => void;
+  openingInStudio?: boolean;
 }
 
 export interface UseClipperPreviewPlaybackParams {
   rangeTrimmedVideoUrl: string | null;
+  previewActive?: boolean;
   activeClipIndex: number;
   clipStartSec: number;
   clipEndSec: number;
@@ -50,7 +51,7 @@ export interface UseClipperPreviewPlaybackParams {
   playbackEnd: number;
   previewFormats: ClipperFormatDef[];
   primaryFormat: ClipperFormatDef | undefined;
-  getFrameContext: () => ClipperFrameContext | null;
+  getFrameContext: (clipIndex?: number) => ClipperFrameContext | null;
   settings: ClipperSettings;
   onSelectClip: (index: number) => void;
 }

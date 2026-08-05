@@ -7,6 +7,9 @@ import react from "@vitejs/plugin-react";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(rootDir, "public");
+const packageJson = JSON.parse(
+  readFileSync(join(rootDir, "package.json"), "utf8"),
+) as { version: string };
 
 const isolatedHeaders = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -103,6 +106,7 @@ export default defineConfig(({ mode, command }) => {
     base: isTauriBuild ? "./" : "/",
     define: {
       __OPEN_CLIPPER_MODELS_CDN_BASE__: JSON.stringify(modelsCdnBase),
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(packageJson.version),
     },
     publicDir: omitModelsFromTauriBuild ? false : undefined,
     optimizeDeps: {

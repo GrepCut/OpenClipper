@@ -52,7 +52,6 @@ export interface CaptionGroup {
   end: number;
 }
 
-/** Split segment-level transcription into evenly timed word cues for karaoke-style captions. */
 export function segmentsToWordCues(segments: TranscriptionSegment[]): WordCue[] {
   const words: WordCue[] = [];
 
@@ -77,7 +76,6 @@ function segmentToWordCues(seg: TranscriptionSegment): WordCue[] {
   }));
 }
 
-/** Chunk flat word cues into fixed-size on-screen groups. */
 export function wordCuesToCaptionGroups(
   words: WordCue[],
   wordsPerGroup: number,
@@ -88,16 +86,47 @@ export function wordCuesToCaptionGroups(
   for (let i = 0; i < words.length; i += wordsPerGroup) {
     const chunk = words.slice(i, i + wordsPerGroup);
     if (chunk.length === 0) continue;
+    const start = chunk[0]!.start;
+    const rawEnd = chunk[chunk.length - 1]!.end;
+    const nextWord = words[i + wordsPerGroup];
+    let end =
+      nextWord && nextWord.start < rawEnd ? nextWord.start : rawEnd;
+    if (end <= start) {
+      continue;
+    }
     groups.push({
       words: chunk,
-      start: chunk[0]!.start,
-      end: chunk[chunk.length - 1]!.end,
+      start,
+      end,
     });
   }
   return groups;
 }
 
-/** One caption card per transcription segment — static phrase with word-by-word highlight. */
+export function resolveNonOverlappingCaptionGroups(
+  groups: readonly CaptionGroup[],
+): CaptionGroup[] {
+  if (groups.length === 0) return [];
+
+  const sorted = [...groups].sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start;
+    return a.end - b.end;
+  });
+
+  const resolved: CaptionGroup[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const group = sorted[i]!;
+    const next = sorted[i + 1];
+    let end = group.end;
+    if (next && next.start < end) {
+      end = next.start;
+    }
+    if (end <= group.start) continue;
+    resolved.push({ ...group, end });
+  }
+  return resolved;
+}
+
 export function segmentsToCaptionGroups(segments: TranscriptionSegment[]): CaptionGroup[] {
   return segments
     .map((seg) => {

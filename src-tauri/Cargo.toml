@@ -38,10 +38,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 image = "0.25.6"
+base64 = "0.22.1"
 fast_image_resize = "4.2.3"
 lapjv = "0.3.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-tokio-util = { version = "0.7", features = ["rt"] }
+tokio-util = { version = "0.7", features = ["rt", "io"] }
 url = "2"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2", "json"] }
 sha2 = "0.10"

@@ -5,12 +5,14 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
+import { Box, ChakraProvider, createSystem, defaultConfig, Text } from "@chakra-ui/react";
+import * as Sentry from "@sentry/react";
 import { AuthInitializer } from "./features/authentication/components/auth-initalizer.component";
 import { PublicRoute } from "./features/authentication/components/public-route.component";
 import { ThemeProvider, useTheme } from "./theme";
 import { ProjectLoadingScreen } from "./shared/components/project-loading-screen.component";
 import { Toaster } from "./shared/components/ui/toaster.component";
+import { OutlinedActionButton } from "./shared/components/buttons/outlined-action-button.component";
 import { DesktopAuthBridge } from "./features/authentication/components/desktop-auth-bridge.component";
 import { isTauri } from "./shared/utils/platform.util";
 import { ensureTauriFrontendSession } from "./shared/utils/tauri-native-jobs.util";
@@ -203,17 +205,79 @@ function AppContent() {
   );
 }
 
+function SentryErrorFallback({
+  error,
+  resetError,
+}: {
+  error: unknown;
+  resetError: () => void;
+}) {
+  const { theme } = useTheme();
+  const message = error instanceof Error ? error.toString() : String(error ?? "Unknown error");
+
+  return (
+    <Box
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      height="100vh"
+      px={4}
+      bg={theme.background.primary}
+    >
+      <Box
+        maxW="2xl"
+        w="100%"
+        p={6}
+        bg={theme.background.secondary}
+        borderWidth="1px"
+        borderStyle="solid"
+        borderColor={theme.border.secondary}
+      >
+        <Text fontSize="xl" fontWeight="bold" color={theme.text.primary} mb={3}>
+          Application Error
+        </Text>
+        <Text color={theme.text.muted} mb={4}>
+          Something went wrong. The error has been reported. You can try again or restart the app.
+        </Text>
+        <Box
+          mb={4}
+          p={4}
+          maxH="40vh"
+          overflow="auto"
+          bg={theme.background.tertiary}
+          borderWidth="1px"
+          borderStyle="solid"
+          borderColor={theme.border.secondary}
+        >
+          <Text
+            as="pre"
+            fontSize="xs"
+            fontFamily="mono"
+            color={theme.text.distinct}
+            whiteSpace="pre-wrap"
+          >
+            {message}
+          </Text>
+        </Box>
+        <OutlinedActionButton onClick={resetError}>Try again</OutlinedActionButton>
+      </Box>
+    </Box>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider defaultMode="dark">
       <ChakraProvider value={system}>
-        <FrontendReadySignal />
-        <AppUpdateInitializer>
-          <Toaster />
-          <Router basename={isTauri() ? "/" : import.meta.env.BASE_URL.replace(/\/+$/, "") || "/"}>
-            <AppContent />
-          </Router>
-        </AppUpdateInitializer>
+        <Sentry.ErrorBoundary fallback={SentryErrorFallback} showDialog={false}>
+          <FrontendReadySignal />
+          <AppUpdateInitializer>
+            <Toaster />
+            <Router basename={isTauri() ? "/" : import.meta.env.BASE_URL.replace(/\/+$/, "") || "/"}>
+              <AppContent />
+            </Router>
+          </AppUpdateInitializer>
+        </Sentry.ErrorBoundary>
       </ChakraProvider>
     </ThemeProvider>
   );

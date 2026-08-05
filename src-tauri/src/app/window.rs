@@ -1,7 +1,5 @@
 use tauri::Manager;
 
-/// Pokazuje główne okno. Idempotentne — wywoływane zarówno przez frontend
-/// po pierwszym renderze, jak i przez fallback timer w setup.
 pub fn show_main_window(app: &tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
         let already_visible = match main.is_visible() {
@@ -46,7 +44,6 @@ pub fn apply_webview_background(window: &tauri::WebviewWindow) {
     });
 }
 
-/// Reloads the WebView after renderer crashes instead of leaving STATUS_BREAKPOINT stuck.
 #[cfg(windows)]
 pub fn attach_webview_crash_recovery(window: &tauri::WebviewWindow) {
     let window_for_reload = window.clone();
@@ -76,7 +73,9 @@ pub fn attach_webview_crash_recovery(window: &tauri::WebviewWindow) {
                         log::warn!(
                             "WebView2 render process exited; reloading frontend (kind={kind:?})"
                         );
-                        if let Err(error) = window_for_reload.eval("window.location.reload()") {
+                        if let Err(error) = window_for_reload.eval(
+                            r#"(function(){try{sessionStorage.setItem('oc_webview_crash',JSON.stringify({at:Date.now(),kind:'render-process-exited'}));}catch(e){}})();window.location.reload();"#,
+                        ) {
                             log::error!("WebView2 reload after crash failed: {error}");
                         }
                     }

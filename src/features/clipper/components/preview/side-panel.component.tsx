@@ -34,6 +34,7 @@ export function ClipperPreviewSidePanel({
   sidePanelTab,
   onSidePanelTabChange,
   onOpenInStudio,
+  openingInStudio = false,
 }: ClipperPreviewSidePanelProps) {
   const listPreviews =
     clipSourceMode === "ai"
@@ -41,10 +42,11 @@ export function ClipperPreviewSidePanel({
       : clipPreviews.length > 0
         ? clipPreviews
         : safeAutoPartsPreviews;
-  const canOpenInStudio = Boolean(onOpenInStudio) && listPreviews.length > 0;
+  const canOpenInStudio =
+    Boolean(onOpenInStudio) && listPreviews.length > 0 && !openingInStudio;
 
   const handleOpenInStudio = () => {
-    if (!onOpenInStudio || listPreviews.length === 0) return;
+    if (!onOpenInStudio || listPreviews.length === 0 || openingInStudio) return;
     const active = listPreviews.find((p) => p.clip.index === activeClipIndex);
     const clipIndex = active?.clip.index ?? listPreviews[0]!.clip.index;
     onOpenInStudio(clipIndex);
@@ -98,10 +100,14 @@ export function ClipperPreviewSidePanel({
               startIcon={<ExternalLink size={16} />}
               onClick={handleOpenInStudio}
               disabled={!canOpenInStudio}
+              loading={openingInStudio}
+              loadingText="Opening…"
               title={
-                canOpenInStudio
-                  ? "Open active clip in GrepCut Studio"
-                  : "Select a clip first"
+                openingInStudio
+                  ? "Opening Studio…"
+                  : canOpenInStudio
+                    ? "Open active clip in GrepCut Studio"
+                    : "Select a clip first"
               }
               flexShrink={0}
               {...TOOLBAR_ACTION_BUTTON_PROPS}
@@ -150,6 +156,7 @@ export function ClipperPreviewSidePanel({
           onDeleteAiClip={onDeleteAiClip}
           onDeleteAutoPartsClip={onDeleteAutoPartsClip}
           onOpenInStudio={onOpenInStudio}
+          openingInStudio={openingInStudio}
           rangeWords={state.rangeWords}
           collageRegions={collageRegions}
           disabledCollageRegionIds={disabledCollageRegionIds}

@@ -13,6 +13,7 @@ export type { UseClipperPreviewPlaybackParams } from "../components/preview/clip
 
 export function useClipperPreviewPlayback({
   rangeTrimmedVideoUrl,
+  previewActive = true,
   activeClipIndex,
   clipStartSec,
   clipEndSec,
@@ -43,8 +44,20 @@ export function useClipperPreviewPlayback({
   const lastSecondaryDrawAtRef = useRef(Number.NEGATIVE_INFINITY);
   const pendingDrawRef = useRef({ includeSecondary: false });
 
+  const stopPlaybackCallbacks = useCallback(() => {
+    const video = videoRef.current;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (vfcIdRef.current != null && video) {
+      (video as VideoFrameCallbackCompat).cancelVideoFrameCallback?.(vfcIdRef.current);
+      vfcIdRef.current = null;
+    }
+  }, []);
+
   const redrawCanvases = useCallback((visibleSecondaryFormatIds?: ReadonlySet<string>) => {
-    if (!previewVisibleRef.current) return;
+    if (!previewVisibleRef.current || !previewActive) return;
     const video = videoRef.current;
     if (!video || video.videoWidth <= 0) return;
     redrawPreviewCanvases({
@@ -58,12 +71,12 @@ export function useClipperPreviewPlayback({
       firstFrameLoggedRef,
       visibleSecondaryFormatIds,
     });
-  }, [activeClipIndex, previewFormats, primaryFormat?.id]);
+  }, [activeClipIndex, previewActive, previewFormats, primaryFormat?.id]);
 
   const scheduleRedrawRef = useRef<(options?: { forceSecondary?: boolean }) => void>(() => {});
 
   const scheduleRedraw = useCallback((options: { forceSecondary?: boolean } = {}) => {
-    if (!previewVisibleRef.current) return;
+    if (!previewVisibleRef.current || !previewActive) return;
     const now = performance.now();
     const visibleSecondaryFormatIds = visibleSecondaryFormatIdsRef.current;
     const canDrawSecondary =
@@ -83,7 +96,7 @@ export function useClipperPreviewPlayback({
       redrawCanvases(secondaryFormatIds);
       if (pending.includeSecondary) lastSecondaryDrawAtRef.current = performance.now();
     });
-  }, [redrawCanvases]);
+  }, [previewActive, redrawCanvases]);
 
   scheduleRedrawRef.current = scheduleRedraw;
 
@@ -142,14 +155,7 @@ export function useClipperPreviewPlayback({
         if (!visible) {
           const video = videoRef.current;
           if (video && !video.paused) video.pause();
-          if (rafRef.current != null) {
-            cancelAnimationFrame(rafRef.current);
-            rafRef.current = null;
-          }
-          if (vfcIdRef.current != null && video) {
-            (video as VideoFrameCallbackCompat).cancelVideoFrameCallback?.(vfcIdRef.current);
-            vfcIdRef.current = null;
-          }
+          stopPlaybackCallbacks();
         } else {
           scheduleRedrawRef.current({ forceSecondary: true });
         }
@@ -159,7 +165,29 @@ export function useClipperPreviewPlayback({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [stopPlaybackCallbacks]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!previewActive) {
+      video.pause();
+      stopPlaybackCallbacks();
+      if (video.getAttribute("src")) {
+        video.removeAttribute("src");
+        video.load();
+      }
+      return;
+    }
+
+    if (!rangeTrimmedVideoUrl) return;
+    if (video.getAttribute("src") !== rangeTrimmedVideoUrl) {
+      video.src = rangeTrimmedVideoUrl;
+    }
+    previewVisibleRef.current = true;
+    scheduleRedrawRef.current({ forceSecondary: true });
+  }, [previewActive, rangeTrimmedVideoUrl, stopPlaybackCallbacks]);
 
   useEffect(() => {
     firstFrameLoggedRef.current = false;
@@ -168,9 +196,10 @@ export function useClipperPreviewPlayback({
       previewFormats: previewFormats.map((f) => f.id),
       clipIndex: activeClipIndex,
       clipDuration,
+      previewActive,
     });
 
-    if (!rangeTrimmedVideoUrl) return;
+    if (!rangeTrimmedVideoUrl || !previewActive) return;
 
     const watchdog = window.setTimeout(() => {
       const video = videoRef.current;
@@ -186,11 +215,11 @@ export function useClipperPreviewPlayback({
     }, 5000);
 
     return () => window.clearTimeout(watchdog);
-  }, [activeClipIndex, clipDuration, previewFormats, rangeTrimmedVideoUrl]);
+  }, [activeClipIndex, clipDuration, previewActive, previewFormats, rangeTrimmedVideoUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !rangeTrimmedVideoUrl) return;
+    if (!video || !rangeTrimmedVideoUrl || !previewActive) return;
 
     const onVideoError = () => {
       clipperError("preview: video failed", video.error ?? new Error("video load failed"), {
@@ -215,11 +244,19 @@ export function useClipperPreviewPlayback({
       video.removeEventListener("error", onVideoError);
       unbindPlayback();
     };
-  }, [clipDuration, clipSegments, playbackEnd, playbackStart, rangeTrimmedVideoUrl, scheduleRedraw]);
+  }, [
+    clipDuration,
+    clipSegments,
+    playbackEnd,
+    playbackStart,
+    previewActive,
+    rangeTrimmedVideoUrl,
+    scheduleRedraw,
+  ]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !rangeTrimmedVideoUrl) return;
+    if (!video || !rangeTrimmedVideoUrl || !previewActive) return;
     const pendingSeek = pendingSeekSourceTimeRef.current;
     pendingSeekSourceTimeRef.current = null;
     const initial =
@@ -233,15 +270,16 @@ export function useClipperPreviewPlayback({
       video.pause();
     }
     scheduleRedraw({ forceSecondary: true });
-  }, [activeClipIndex, clipDuration, clipSegments, rangeTrimmedVideoUrl, scheduleRedraw]);
+  }, [activeClipIndex, clipDuration, clipSegments, previewActive, rangeTrimmedVideoUrl, scheduleRedraw]);
 
   useEffect(() => {
+    if (!previewActive) return;
     scheduleRedraw({ forceSecondary: true });
-  }, [settings, scheduleRedraw]);
+  }, [previewActive, settings, scheduleRedraw]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !previewActive) return;
     if (video.paused) {
       if (video.currentTime >= clipEndSec - 0.05 || video.currentTime < clipStartSec) {
         video.currentTime = clipStartSec;
@@ -250,7 +288,7 @@ export function useClipperPreviewPlayback({
     } else {
       video.pause();
     }
-  }, [clipEndSec, clipStartSec]);
+  }, [clipEndSec, clipStartSec, previewActive]);
 
   const seekToTranscriptTime = useCallback(
     (clipIndex: number, sourceTimeSec: number) => {
@@ -262,26 +300,27 @@ export function useClipperPreviewPlayback({
       }
 
       const video = videoRef.current;
-      if (!video) return;
+      if (!video || !previewActive) return;
       video.currentTime = sourceTimeSec;
       video.pause();
       scheduleRedraw({ forceSecondary: true });
     },
-    [activeClipIndex, onSelectClip, scheduleRedraw],
+    [activeClipIndex, onSelectClip, previewActive, scheduleRedraw],
   );
 
   const nudge = useCallback(
     (deltaSec: number) => {
       const video = videoRef.current;
-      if (!video) return;
+      if (!video || !previewActive) return;
       const local = sourceTimeToLocalTime(clipSegments, video.currentTime);
       const nextLocal = Math.min(clipDuration, Math.max(0, local + deltaSec));
       video.currentTime = localTimeToSourceTime(clipSegments, nextLocal);
     },
-    [clipDuration, clipSegments],
+    [clipDuration, clipSegments, previewActive],
   );
 
   useEffect(() => {
+    if (!previewActive) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === "ArrowLeft") {
@@ -292,7 +331,7 @@ export function useClipperPreviewPlayback({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [nudge]);
+  }, [nudge, previewActive]);
 
   return {
     videoRef,

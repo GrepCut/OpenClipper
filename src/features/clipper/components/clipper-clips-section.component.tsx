@@ -25,6 +25,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   onDeleteAiClip,
   onDeleteAutoPartsClip,
   onOpenInStudio,
+  openingInStudio = false,
   rangeWords,
   collageRegions,
   disabledCollageRegionIds,
@@ -49,7 +50,6 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
     onSeekToTranscriptTime,
   );
 
-  // Auto-parts needs clips to render; AI mode always shows the MCP panel (even empty).
   if (!isAiMode && safeAutoPartsPreviews.length === 0) {
     return null;
   }
@@ -72,6 +72,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
                 onSelectClip={onSelectClip}
                 onDeleteClip={onDeleteAiClip}
                 onOpenInStudio={onOpenInStudio}
+                openingInStudio={openingInStudio}
                 hideTitle
                 {...transcriptProps}
               />            </ClipsListScroller>
@@ -96,6 +97,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
             onSelectClip={onSelectClip}
             onDeleteClip={onDeleteAutoPartsClip}
             onOpenInStudio={onOpenInStudio}
+            openingInStudio={openingInStudio}
             hideTitle
             bottomInset={AUTO_PARTS_LENGTH_OVERLAY_PAD}
             {...transcriptProps}

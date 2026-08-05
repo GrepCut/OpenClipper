@@ -13,6 +13,7 @@ export interface ClipperClipsSectionProps {
   onDeleteAiClip?: (index: number) => void;
   onDeleteAutoPartsClip?: (index: number) => void;
   onOpenInStudio?: (index: number) => void;
+  openingInStudio?: boolean;
   rangeWords: WordCue[];
   collageRegions: CollageRegion[];
   disabledCollageRegionIds: string[];

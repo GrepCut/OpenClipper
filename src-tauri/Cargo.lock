@@ -3893,6 +3893,7 @@ version = "26.8.2"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "bzip2 0.5.2",
  "chrono",
  "crossbeam-channel",

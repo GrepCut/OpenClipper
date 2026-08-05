@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import * as Sentry from "@sentry/react";
 import App from "./app.component";
 import { getStoredThemeMode, syncThemeToDocument } from "./theme";
 import "@fontsource/inter/400.css";
@@ -28,6 +29,53 @@ import "@fontsource/rajdhani/latin-ext-700.css";
 import "./shared/styles/app-drag-region.css";
 import { ensureCaptionFontsReady } from "./features/clipper/lib/captions/caption-presets.util";
 
+const WEBVIEW_CRASH_STORAGE_KEY = "oc_webview_crash";
+
+function flushWebViewCrashReport(): void {
+  try {
+    const raw = sessionStorage.getItem(WEBVIEW_CRASH_STORAGE_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(WEBVIEW_CRASH_STORAGE_KEY);
+    let payload: { at?: number; kind?: string } = {};
+    try {
+      payload = JSON.parse(raw) as { at?: number; kind?: string };
+    } catch {
+      payload = {};
+    }
+    Sentry.captureMessage("WebView2 render process exited", {
+      level: "error",
+      tags: { webview_crash: "true", kind: payload.kind ?? "render-process-exited" },
+      extra: { at: payload.at, raw },
+    });
+  } catch {
+  }
+}
+
+if (import.meta.env.PROD) {
+  const initTelemetry = () => {
+    if (!import.meta.env.VITE_SENTRY_DSN) return;
+    Sentry.init({
+      dsn: import.meta.env.VITE_SENTRY_DSN,
+      integrations: [Sentry.browserTracingIntegration()],
+      tracesSampleRate: 1.0,
+      replaysSessionSampleRate: 0.1,
+      replaysOnErrorSampleRate: 1.0,
+      environment: import.meta.env.MODE,
+      release: `open-clipper@${import.meta.env.VITE_APP_VERSION || "dev"}`,
+      initialScope: {
+        tags: { platform: "tauri" },
+      },
+    });
+    flushWebViewCrashReport();
+    import("./sentry-replay-init").catch(() => {});
+  };
+  if (typeof requestIdleCallback !== "undefined") {
+    requestIdleCallback(initTelemetry, { timeout: 5000 });
+  } else {
+    setTimeout(initTelemetry, 3000);
+  }
+}
+
 syncThemeToDocument(getStoredThemeMode("dark"));
 
 const rootElement = document.getElementById("root");
@@ -36,7 +84,11 @@ if (!rootElement) {
   throw error;
 }
 
-const reactRoot = ReactDOM.createRoot(rootElement);
+const reactRoot = ReactDOM.createRoot(rootElement, {
+  onUncaughtError: Sentry.reactErrorHandler(),
+  onCaughtError: Sentry.reactErrorHandler(),
+  onRecoverableError: Sentry.reactErrorHandler(),
+});
 
 void ensureCaptionFontsReady().finally(() => {
   reactRoot.render(

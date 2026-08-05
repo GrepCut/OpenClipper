@@ -10,7 +10,7 @@ import {
 import { compactSmartCropForRuntime } from "../engine/render/compact-smart-crop.util";
 export type { ClipperFaceSamplesBlob };
 import { parseClipperTrimMetadata, parseRestoredSmartCropBlob } from "./clipper-persistence-schemas.util";
-import { clipperLog, clipperMeasureSync, formatBytes } from "../shared/logger.util";
+import { clipperLog, clipperMeasureSync, clipperWarn, formatBytes } from "../shared/logger.util";
 import { CLIPPER_FACE_ACTION_BENCHMARK_FILE } from "../shared/face-action-benchmark.util";
 import { yieldToMain } from "../shared/yield-to-main.util";
 import { CLIPPER_TRIMMED_SEGMENT_FILE, pathBackedClipperFile } from "../platform/native-source.util";
@@ -73,8 +73,6 @@ export async function readClipperSmartCropAnalysis(projectId: string): Promise<C
     await yieldToMain();
     const restored = parseRestoredSmartCropBlob(JSON.parse(contents));
     if (!restored) return null;
-    // Keep old project files untouched, but release their large diagnostic
-    // object before entering preview playback.
     return isClipperRuntimeSmartCropBlob(restored)
       ? restored
       : compactSmartCropForRuntime(restored as ClipperSmartCropBlob);
@@ -181,6 +179,58 @@ export async function extractClipperSegmentToProjectData(
   const file = pathBackedClipperFile(filePath);
   const videoUrl = await resolveFilePlayableUrl(file);
   return { file, videoUrl };
+}
+
+export interface ClipperStudioThumbnailsResult {
+  indexFileName: string;
+  packFileName: string;
+  intervalSec: number;
+  height: number;
+  count: number;
+}
+
+export const CLIPPER_THUMBNAILS_INDEX_FILE = "clip-thumbnails.json";
+export const CLIPPER_THUMBNAILS_PACK_FILE = "clip-thumbnails.ndjson";
+export const STUDIO_THUMBNAILS_PROGRESS_EVENT = "studio-thumbnails-progress";
+
+export interface StudioThumbnailsProgressEvent {
+  projectId: string;
+  done: number;
+  total: number;
+  ratio: number;
+}
+
+export async function extractClipperStudioThumbnails(
+  projectId: string,
+  durationSecs: number,
+  force = false,
+  onProgress?: (ratio: number) => void,
+): Promise<ClipperStudioThumbnailsResult | null> {
+  if (!isTauri()) return null;
+
+  let unlisten: (() => void) | undefined;
+  if (onProgress) {
+    const { listen } = await import("@tauri-apps/api/event");
+    unlisten = await listen<StudioThumbnailsProgressEvent>(
+      STUDIO_THUMBNAILS_PROGRESS_EVENT,
+      (event) => {
+        if (event.payload?.projectId !== projectId) return;
+        const ratio = Number(event.payload.ratio);
+        if (!Number.isFinite(ratio)) return;
+        onProgress(Math.max(0, Math.min(1, ratio)));
+      },
+    );
+  }
+
+  try {
+    return await invoke<ClipperStudioThumbnailsResult>("extract_clipper_studio_thumbnails", {
+      projectId,
+      durationSecs,
+      force,
+    });
+  } finally {
+    unlisten?.();
+  }
 }
 
 export async function writeClipperTrimmedSegment(

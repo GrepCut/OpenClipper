@@ -25,10 +25,9 @@ interface ClipperClipSelectorProps {
   clipPreviews: ClipperClipPreview[];
   activeClipIndex: number;
   onSelectClip: (index: number) => void;
-  /** When provided, shows a per-clip delete button (e.g. for AI-generated clips). */
   onDeleteClip?: (index: number) => void;
-  /** Opens the clip in GrepCut Studio via ephemeral import. */
   onOpenInStudio?: (index: number) => void;
+  openingInStudio?: boolean;
   hideTitle?: boolean;
   rangeWords?: WordCue[];
   collageRegions?: CollageRegion[];
@@ -43,7 +42,6 @@ function clipTimeLabel(preview: ClipperClipPreview): string {
   return `${formatDurationMmSs(clip.startSec)}–${formatDurationMmSs(clip.endSec)}`;
 }
 
-/** Keep the native scrollbar on the left without letting RTL reposition Virtuoso's viewport. */
 const ClipperVirtuosoScroller = React.forwardRef<HTMLDivElement, ScrollerProps>(
   ({ style, ...props }, ref) => {
     const { theme } = useClipperUi();
@@ -74,8 +72,6 @@ const ClipperVirtuosoScroller = React.forwardRef<HTMLDivElement, ScrollerProps>(
           "&::-webkit-scrollbar-thumb:hover": {
             background: theme.brand.purpleLight,
           },
-          // Virtuoso positions this node absolutely. In an RTL containing block
-          // its implicit horizontal position can change after item re-measurement.
           '& > [data-viewport-type="element"]': {
             direction: "ltr",
             left: "0 !important",
@@ -166,6 +162,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   onSelectClip,
   onDeleteClip,
   onOpenInStudio,
+  openingInStudio = false,
   hideTitle = false,
   rangeWords = [],
   collageRegions = [],
@@ -241,7 +238,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
               {onOpenInStudio ? (
                 <IconButton
                   aria-label={`Open clip ${preview.clip.index + 1} in Studio`}
-                  title="Open in Studio"
+                  title={openingInStudio ? "Opening Studio…" : "Open in Studio"}
                   size="xs"
                   variant="ghost"
                   borderRadius="md"
@@ -254,8 +251,10 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
                   w="auto"
                   h="auto"
                   p={1}
+                  disabled={openingInStudio}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (openingInStudio) return;
                     onOpenInStudio(preview.clip.index);
                   }}
                   _hover={{

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, Button, Checkbox, Flex, HStack, Text, VStack } from "@chakra-ui/react";
 import { Clapperboard, Minus } from "lucide-react";
 import { MainButton } from "../../../shared/components/buttons/main-button.component";
@@ -6,17 +6,17 @@ import { CLIPPER_FORMAT_DEFS, getClipperCardFrameSize } from "../shared/formats.
 import { clipperError } from "../shared/logger.util";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import { yieldToMain } from "../shared/yield-to-main.util";
 import type { ClipperClipPreview } from "../shared/state.util";
 import type { ClipperFormatSettings } from "../settings/settings.util";
 import { formatDurationMmSs } from "../../../shared/utils/time.util";
 import { ExportFormatControls } from "./settings/platforms-section.component";
 
 const THUMB_WIDTH = 101;
-const THUMB_HEIGHT = 180; // 9:16
+const THUMB_HEIGHT = 180;
 const THUMB_SCALE = 2;
 const SMALL_THUMB_HEIGHT = 56;
 
-/** The 9:16 hero thumb already covers TikTok — the side grid shows the remaining formats. */
 const SIDE_FORMAT_DEFS = CLIPPER_FORMAT_DEFS.filter((def) => def.aspectId !== "9-16");
 
 function thumbKey(clipIndex: number, formatId: string): string {
@@ -29,7 +29,21 @@ interface ClipThumbSpec {
   durationSec: number;
 }
 
-/** Center cover-crop ("crop") or letterboxed contain ("pad") paint of the current video frame. */
+function yieldIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    const ric = (
+      globalThis as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+    if (typeof ric === "function") {
+      ric(() => resolve(), { timeout: 200 });
+      return;
+    }
+    void yieldToMain().then(resolve);
+  });
+}
+
 function paintThumb(canvas: HTMLCanvasElement, video: HTMLVideoElement, mode: "crop" | "pad"): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -62,18 +76,39 @@ function paintThumb(canvas: HTMLCanvasElement, video: HTMLVideoElement, mode: "c
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 }
 
-/**
- * Best-effort per-format thumbnails for the queue rows: one hidden video
- * element seeks clip by clip and paints straight into each row's canvases
- * (hero 9:16 under key `${clip}:main`, plus one per side format). No pixel
- * readback (toDataURL) — the trimmed-range URL can come from the Tauri media
- * protocol, which would taint the canvas and make readback throw.
- */
 function useClipThumbnails(
   videoUrl: string,
   clips: ClipThumbSpec[],
   canvasRefs: React.RefObject<Record<string, HTMLCanvasElement | null>>,
-): void {
+): (clipIndex: number, el: HTMLElement | null) => void {
+  const rowElementsRef = useRef(new Map<number, HTMLElement>());
+  const visibleRef = useRef(new Set<number>());
+  const heroDoneRef = useRef(new Set<number>());
+  const sidesDoneRef = useRef(new Set<number>());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const wakeRef = useRef<(() => void) | null>(null);
+
+  const registerRow = useCallback((clipIndex: number, el: HTMLElement | null) => {
+    const map = rowElementsRef.current;
+    const prev = map.get(clipIndex);
+    if (prev && prev !== el) {
+      observerRef.current?.unobserve(prev);
+      map.delete(clipIndex);
+    }
+    if (!el) {
+      visibleRef.current.delete(clipIndex);
+      return;
+    }
+    el.dataset.clipIndex = String(clipIndex);
+    map.set(clipIndex, el);
+    observerRef.current?.observe(el);
+  }, []);
+
+  useEffect(() => {
+    heroDoneRef.current.clear();
+    sidesDoneRef.current.clear();
+  }, [videoUrl, clips]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -124,34 +159,106 @@ function useClipThumbnails(
         video.currentTime = time;
       });
 
+    const wake = () => {
+      const resolve = wakeRef.current;
+      wakeRef.current = null;
+      resolve?.();
+    };
+
+    const waitForWake = () =>
+      new Promise<void>((resolve) => {
+        wakeRef.current = resolve;
+      });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let becameVisible = false;
+        for (const entry of entries) {
+          const raw = (entry.target as HTMLElement).dataset.clipIndex;
+          const idx = raw == null ? NaN : Number(raw);
+          if (!Number.isFinite(idx)) continue;
+          if (entry.isIntersecting) {
+            if (!visibleRef.current.has(idx)) {
+              visibleRef.current.add(idx);
+              becameVisible = true;
+            }
+          } else {
+            visibleRef.current.delete(idx);
+          }
+        }
+        if (becameVisible) wake();
+      },
+      { rootMargin: "120px 0px", threshold: 0.01 },
+    );
+    observerRef.current = observer;
+    for (const el of rowElementsRef.current.values()) {
+      observer.observe(el);
+    }
+
     void (async () => {
       try {
         await waitReady();
-        for (const clip of clips) {
-          if (cancelled) return;
-          await seekTo(clip.startSec + Math.min(1, clip.durationSec * 0.15));
-          if (cancelled || video.videoWidth <= 0) continue;
+        while (!cancelled) {
+          const next = clips.find(
+            (clip) =>
+              visibleRef.current.has(clip.index) &&
+              (!heroDoneRef.current.has(clip.index) || !sidesDoneRef.current.has(clip.index)),
+          );
+          if (!next) {
+            await waitForWake();
+            if (cancelled) return;
+            continue;
+          }
 
-          const mainCanvas = canvasRefs.current[thumbKey(clip.index, "main")];
-          if (mainCanvas) paintThumb(mainCanvas, video, "crop");
+          const needHero = !heroDoneRef.current.has(next.index);
+          const needSides = !sidesDoneRef.current.has(next.index);
+          if (!needHero && !needSides) continue;
 
-          for (const def of SIDE_FORMAT_DEFS) {
-            const canvas = canvasRefs.current[thumbKey(clip.index, def.id)];
-            if (canvas) paintThumb(canvas, video, def.mode);
+          await seekTo(next.startSec + Math.min(1, next.durationSec * 0.15));
+          await yieldToMain();
+          if (cancelled || video.videoWidth <= 0) {
+            if (video.videoWidth <= 0) {
+              heroDoneRef.current.add(next.index);
+              sidesDoneRef.current.add(next.index);
+            }
+            continue;
+          }
+
+          if (needHero) {
+            const mainCanvas = canvasRefs.current[thumbKey(next.index, "main")];
+            if (mainCanvas) paintThumb(mainCanvas, video, "crop");
+            heroDoneRef.current.add(next.index);
+            await yieldToMain();
+            if (cancelled) return;
+          }
+
+          if (needSides && visibleRef.current.has(next.index)) {
+            await yieldIdle();
+            if (cancelled) return;
+            for (const def of SIDE_FORMAT_DEFS) {
+              const canvas = canvasRefs.current[thumbKey(next.index, def.id)];
+              if (canvas) paintThumb(canvas, video, def.mode);
+            }
+            sidesDoneRef.current.add(next.index);
+            await yieldToMain();
           }
         }
       } catch (error) {
-        // Thumbnails are decorative — rows render fine without them.
         clipperError("render-queue: thumbnail capture failed", error);
       }
     })();
 
     return () => {
       cancelled = true;
+      wake();
+      observer.disconnect();
+      observerRef.current = null;
       video.removeAttribute("src");
       video.load();
     };
   }, [videoUrl, clips, canvasRefs]);
+
+  return registerRow;
 }
 
 function formatTime(seconds: number): string {
@@ -205,7 +312,11 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
       })),
     [clipPreviews],
   );
-  useClipThumbnails(rangeTrimmedVideoUrl, thumbSpecs, thumbCanvasRefs);
+  const registerThumbRow = useClipThumbnails(
+    rangeTrimmedVideoUrl,
+    thumbSpecs,
+    thumbCanvasRefs,
+  );
 
   const globalStateFor = (formatId: string): TriState => {
     const selectedCount = clipPreviews.filter((p) =>
@@ -337,6 +448,7 @@ export const ClipperRenderQueueSetup: React.FC<ClipperRenderQueueSetupProps> = (
           return (
             <HStack
               key={preview.clip.index}
+              ref={(el) => registerThumbRow(preview.clip.index, el)}
               gap={4}
               p={3}
               align="center"

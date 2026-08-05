@@ -5,6 +5,10 @@ import type { ClipperGeneratedClip } from "../../engine/segmentation";
 import type { ClipperFrameContext } from "../../engine/types/render.types";
 import { resolveCaptionPreset } from "../captions/caption-presets.util";
 import {
+  resolveNonOverlappingCaptionGroups,
+  wordCuesToCaptionGroups,
+} from "../media/transcription-export.util";
+import {
   canonicalFormatDims,
   getClipperFormatDef,
   type ClipperFormatDef,
@@ -23,6 +27,9 @@ import {
   CLIPPER_TRIMMED_SEGMENT_FILE,
 } from "../../platform/native-source.util";
 import {
+  extractClipperStudioThumbnails,
+} from "../../persistence/project-data-files.util";
+import {
   CLIPPER_STUDIO_IMPORT_VERSION,
   type ClipperStudioCropSample,
   type ClipperStudioImportV1,
@@ -40,6 +47,98 @@ function toBox(box: NormalizedBox): ClipperStudioNormalizedBox {
   };
 }
 
+type LayoutTrackLike = {
+  samples?: Array<{
+    t: number;
+    viewports?: NormalizedBox[];
+    crop?: NormalizedBox;
+    cut?: boolean;
+  }>;
+};
+
+function firstNonEmptyTrack(
+  tracks: Record<string, LayoutTrackLike> | undefined,
+  preferredKeys: string[],
+): LayoutTrackLike | undefined {
+  if (!tracks) return undefined;
+  for (const key of preferredKeys) {
+    const track = tracks[key];
+    if (track?.samples?.length) return track;
+  }
+  return Object.values(tracks).find((track) => Boolean(track?.samples?.length));
+}
+
+function samplesFromLayoutTrack(
+  track: LayoutTrackLike,
+): ClipperStudioCropSample[] {
+  if (!track.samples?.length) return [];
+  return track.samples
+    .map((sample) => {
+      const viewport = sample.viewports?.[0] ?? sample.crop;
+      if (!viewport) return null;
+      const out: ClipperStudioCropSample = {
+        t: sample.t,
+        crop: toBox(viewport),
+      };
+      if (sample.cut) out.cut = true;
+      return out;
+    })
+    .filter((s): s is ClipperStudioCropSample => s !== null);
+}
+
+function extractCropTrack(
+  analysis: ClipperFrameAnalysis | null | undefined,
+  formatId: string,
+  aspectId: string,
+): ClipperStudioCropSample[] {
+  if (!analysis) return [];
+
+  if (isClipperRuntimeSmartCropBlob(analysis)) {
+    const track = firstNonEmptyTrack(analysis.layoutTracks, [
+      aspectId,
+      formatId,
+      "default",
+    ]);
+    return track ? samplesFromLayoutTrack(track) : [];
+  }
+
+  const aspectTrack =
+    resolveAutoFlipCropTrack(analysis, formatId) ??
+    resolveAutoFlipCropTrack(analysis, aspectId) ??
+    firstNonEmptyTrack(
+      analysis.aspectTracks as Record<string, LayoutTrackLike> | undefined,
+      [formatId, aspectId, "default"],
+    );
+  if (aspectTrack && "samples" in aspectTrack && aspectTrack.samples?.length) {
+    const legacySamples = aspectTrack.samples as Array<{
+      t: number;
+      crop?: NormalizedBox;
+      viewports?: NormalizedBox[];
+      cut?: boolean;
+    }>;
+    const mapped = legacySamples
+      .map((sample) => {
+        const box = sample.crop ?? sample.viewports?.[0];
+        if (!box) return null;
+        const out: ClipperStudioCropSample = {
+          t: sample.t,
+          crop: toBox(box),
+        };
+        if (sample.cut) out.cut = true;
+        return out;
+      })
+      .filter((s): s is ClipperStudioCropSample => s !== null);
+    if (mapped.length) return mapped;
+  }
+
+  const layoutTrack = firstNonEmptyTrack(analysis.layoutTracks, [
+    aspectId,
+    formatId,
+    "default",
+  ]);
+  return layoutTrack ? samplesFromLayoutTrack(layoutTrack) : [];
+}
+
 function resolvePrimaryFormat(
   settings: ClipperSettings,
   preferredFormatId?: string,
@@ -53,51 +152,6 @@ function resolvePrimaryFormat(
     .filter((f): f is ClipperFormatDef => Boolean(f));
   const vertical = enabled.find((f) => f.aspectId === "9-16");
   return vertical ?? enabled[0] ?? getClipperFormatDef("tiktok")!;
-}
-
-function extractCropTrack(
-  analysis: ClipperFrameAnalysis | null | undefined,
-  formatId: string,
-  aspectId: string,
-): ClipperStudioCropSample[] {
-  if (!analysis) return [];
-
-  if (isClipperRuntimeSmartCropBlob(analysis)) {
-    const track =
-      analysis.layoutTracks[aspectId] ??
-      analysis.layoutTracks[formatId] ??
-      analysis.layoutTracks.default ??
-      Object.values(analysis.layoutTracks)[0];
-    if (!track?.samples?.length) return [];
-    return track.samples
-      .map((sample) => {
-        const viewport = sample.viewports?.[0];
-        if (!viewport) return null;
-        return { t: sample.t, crop: toBox(viewport) };
-      })
-      .filter((s): s is ClipperStudioCropSample => s !== null);
-  }
-
-  const aspectTrack = resolveAutoFlipCropTrack(analysis, formatId);
-  if (aspectTrack?.samples?.length) {
-    return aspectTrack.samples.map((sample) => ({
-      t: sample.t,
-      crop: toBox(sample.crop),
-    }));
-  }
-
-  const layoutTrack =
-    analysis.layoutTracks?.[aspectId] ??
-    analysis.layoutTracks?.[formatId] ??
-    analysis.layoutTracks?.default;
-  if (!layoutTrack?.samples?.length) return [];
-  return layoutTrack.samples
-    .map((sample) => {
-      const viewport = sample.viewports?.[0];
-      if (!viewport) return null;
-      return { t: sample.t, crop: toBox(viewport) };
-    })
-    .filter((s): s is ClipperStudioCropSample => s !== null);
 }
 
 export interface BuildClipperStudioImportInput {
@@ -115,15 +169,22 @@ export function buildClipperStudioImportV1(
   const format = resolvePrimaryFormat(input.settings, input.preferredFormatId);
   const dims = canonicalFormatDims(format);
   const analysis = input.frameContext?.smartCropAnalysis ?? null;
+  const cropTrack = extractCropTrack(analysis, format.id, format.aspectId);
   const preset = resolveCaptionPreset(input.settings.captions.presetId);
   const segments = input.clip.segments?.length
     ? input.clip.segments
     : [{ startSec: input.clip.startSec, endSec: input.clip.endSec }];
   const words = input.clip.words ?? [];
-  const captionGroups =
+  const wordsPerGroup =
+    input.settings.captions.wordsPerGroup || preset.wordsPerGroup;
+  const rawCaptionGroups =
     input.clip.captionGroups?.length > 0
       ? input.clip.captionGroups
-      : input.frameContext?.captionGroups ?? [];
+      : (input.frameContext?.captionGroups ?? []);
+  const captionGroups =
+    words.length > 0
+      ? wordCuesToCaptionGroups(words, wordsPerGroup)
+      : resolveNonOverlappingCaptionGroups(rawCaptionGroups);
 
   return {
     version: CLIPPER_STUDIO_IMPORT_VERSION,
@@ -157,11 +218,11 @@ export function buildClipperStudioImportV1(
     caption: {
       enabled: input.settings.captions.enabled,
       presetId: preset.id,
-      wordsPerGroup: input.settings.captions.wordsPerGroup || preset.wordsPerGroup,
+      wordsPerGroup: wordsPerGroup,
       position: input.settings.captions.position,
       size: input.settings.captions.size,
     },
-    cropTrack: extractCropTrack(analysis, format.id, format.aspectId),
+    cropTrack,
     contentRect: analysis?.contentRect ? toBox(analysis.contentRect) : undefined,
     solidBackgroundColor: analysis?.solidBackgroundColor,
   };
@@ -191,7 +252,22 @@ export function getStudioBaseUrl(): string {
   return (fromEnv && fromEnv.trim()) || "https://localhost:5173";
 }
 
-export function buildStudioImportUrl(manifest: ClipperStudioImportV1): string {
+const DEFAULT_CLIPPER_LOCAL_HTTP_PORT = 12742;
+
+async function resolveClipperLocalHttpPort(): Promise<number> {
+  if (!isTauri()) return DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
+  try {
+    const port = await invoke<number>("get_open_clipper_local_http_port");
+    return Number.isFinite(port) && port > 0 ? port : DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
+  } catch {
+    return DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
+  }
+}
+
+export function buildStudioImportUrl(
+  manifest: ClipperStudioImportV1,
+  options?: { projectId?: string; clipperPort?: number },
+): string {
   const base = getStudioBaseUrl().replace(/\/+$/, "");
   const params = new URLSearchParams({
     clipperImport: "1",
@@ -200,9 +276,12 @@ export function buildStudioImportUrl(manifest: ClipperStudioImportV1): string {
     formatId: manifest.formatId,
     aspect: `${manifest.width}x${manifest.height}`,
   });
-  if (manifest.projectDataDir) {
-    params.set("dataDir", manifest.projectDataDir);
+  const id = options?.projectId?.trim();
+  if (id) {
+    params.set("projectId", id);
   }
+  const port = options?.clipperPort ?? DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
+  params.set("clipperPort", String(port));
   return `${base}/from-clipper?${params.toString()}`;
 }
 
@@ -213,7 +292,10 @@ async function stageManifestForStudioImport(
   const fileName = manifest.manifestFileName || DEFAULT_STUDIO_IMPORT_MANIFEST_NAME;
   const videoFileName = manifest.sourceVideoFileName || CLIPPER_TRIMMED_SEGMENT_FILE;
 
-  // Chrome blocks FSA under AppData — stage into Documents/OpenClipper/studio-import.
+  const projectDataDir = await invoke<string>("ensure_clipper_project_data_dir", {
+    projectId,
+  });
+
   const staged = await invoke<{
     projectDataDir: string;
     manifestAbsolutePath: string;
@@ -225,11 +307,20 @@ async function stageManifestForStudioImport(
     manifestContents: JSON.stringify(manifest, null, 2),
   });
 
+  const resolvedDataDir = staged.projectDataDir || projectDataDir;
+  if (/[/\\]studio-import[/\\]?$/i.test(resolvedDataDir.replace(/[/\\]+$/, ""))) {
+    throw new Error(
+      "Studio import resolved to obsolete studio-import staging. Restart Open Clipper so it uses Documents\\OpenClipper\\projects\\{id}\\data.",
+    );
+  }
+
   return {
     ...manifest,
-    projectDataDir: staged.projectDataDir,
-    manifestAbsolutePath: staged.manifestAbsolutePath,
-    videoAbsolutePath: staged.videoAbsolutePath,
+    projectDataDir: resolvedDataDir,
+    manifestAbsolutePath:
+      staged.manifestAbsolutePath || `${resolvedDataDir}\\${fileName}`,
+    videoAbsolutePath:
+      staged.videoAbsolutePath || `${resolvedDataDir}\\${videoFileName}`,
   };
 }
 
@@ -238,8 +329,7 @@ async function openStudioUrl(url: string): Promise<void> {
     try {
       await openUrl(url);
       return;
-    } catch (err) {
-      console.warn("[OpenInStudio] plugin openUrl failed, trying fallback", err);
+    } catch {
       await openExternalAuthUrl(url);
       return;
     }
@@ -254,13 +344,41 @@ async function openStudioUrl(url: string): Promise<void> {
   }
 }
 
-export interface OpenClipInStudioOptions {
-  projectId?: string;
+export type OpenInStudioPhase =
+  | "preparing"
+  | "thumbnails"
+  | "staging"
+  | "opening";
+
+export interface OpenInStudioProgress {
+  phase: OpenInStudioPhase;
+  ratio: number;
 }
 
-/**
- * Persist the import manifest (Chrome-grantable Documents staging when possible) and open Studio.
- */
+export interface OpenClipInStudioOptions {
+  projectId?: string;
+  onProgress?: (progress: OpenInStudioProgress) => void;
+}
+
+const PHASE_RANGES: Record<OpenInStudioPhase, { start: number; end: number }> = {
+  preparing: { start: 0, end: 0.15 },
+  thumbnails: { start: 0.15, end: 0.85 },
+  staging: { start: 0.85, end: 0.95 },
+  opening: { start: 0.95, end: 1 },
+};
+
+function mapPhaseProgress(
+  phase: OpenInStudioPhase,
+  localRatio: number,
+): OpenInStudioProgress {
+  const range = PHASE_RANGES[phase];
+  const t = Math.max(0, Math.min(1, localRatio));
+  return {
+    phase,
+    ratio: range.start + (range.end - range.start) * t,
+  };
+}
+
 export async function openClipInStudio(
   manifest: ClipperStudioImportV1,
   options?: OpenClipInStudioOptions,
@@ -268,44 +386,59 @@ export async function openClipInStudio(
   const fileName = manifest.manifestFileName || DEFAULT_STUDIO_IMPORT_MANIFEST_NAME;
   let resolved = manifest;
   const projectId = options?.projectId?.trim();
-
-  console.info("[OpenInStudio] start", {
-    fileName,
-    projectId: projectId || null,
-    segments: manifest.segments.length,
-    cropSamples: manifest.cropTrack.length,
-    isTauri: isTauri(),
-  });
+  const report = (phase: OpenInStudioPhase, localRatio: number) => {
+    options?.onProgress?.(mapPhaseProgress(phase, localRatio));
+  };
 
   try {
+    report("preparing", 1);
+
     if (isTauri() && projectId) {
-      resolved = await stageManifestForStudioImport(projectId, manifest);
+      let withThumbs = manifest;
+      try {
+        report("thumbnails", 0);
+        const thumbs = await extractClipperStudioThumbnails(
+          projectId,
+          Math.max(0.1, manifest.totalDurationSec),
+          false,
+          (thumbRatio) => report("thumbnails", thumbRatio),
+        );
+        report("thumbnails", 1);
+        if (thumbs && thumbs.count > 0) {
+          withThumbs = {
+            ...manifest,
+            thumbnails: {
+              indexFileName: thumbs.indexFileName,
+              packFileName: thumbs.packFileName,
+              intervalSec: thumbs.intervalSec,
+              height: thumbs.height,
+              count: thumbs.count,
+            },
+          };
+        }
+      } catch {
+        report("thumbnails", 1);
+      }
+      report("staging", 0);
+      resolved = await stageManifestForStudioImport(projectId, withThumbs);
+      report("staging", 1);
     } else {
       downloadClipperStudioImportJson(resolved, fileName);
+      report("staging", 1);
     }
 
-    const url = buildStudioImportUrl(resolved);
-    console.info("[OpenInStudio] opening", {
-      url,
-      projectDataDir: resolved.projectDataDir ?? null,
-    });
+    report("opening", 0);
+    const clipperPort = await resolveClipperLocalHttpPort();
+    const url = buildStudioImportUrl(resolved, { projectId, clipperPort });
     await openStudioUrl(url);
+    report("opening", 1);
 
-    if (resolved.projectDataDir) {
-      appToast.success(
-        "Opening Studio",
-        "Grant the Documents\\OpenClipper\\studio-import folder — Chrome cannot open AppData.",
-      );
-    } else {
-      appToast.success(
-        "Opening Studio",
-        `Select ${fileName} and clip-trimmed.mp4 when Studio asks for files.`,
-      );
-    }
-    console.info("[OpenInStudio] opened", url);
+    appToast.success(
+      "Opening Studio",
+      "Import starts automatically while Open Clipper is running.",
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[OpenInStudio] failed", error);
     appToast.error("Could not open Studio", message);
     throw error;
   }
