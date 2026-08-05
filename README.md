@@ -47,6 +47,12 @@ Queue clips across formats, track render progress, and publish directly to **Tik
 
 [render-queue.webm](https://github.com/user-attachments/assets/068b656b-4654-463c-b67d-78f7fc628900)
 
+### Open the full video editor from Clipper
+
+Get complete control, frame-level precision, and the freedom to make any fix or polish you want. Jump from Open Clipper into GrepCut Studio, the full online video editor.
+
+[open-studio-from-clipper.webm](https://github.com/user-attachments/assets/7098a65d-8cdd-42f2-9da0-0570117b2e55)
+
 ## Prerequisites
 
 Windows is the primary development target today.
