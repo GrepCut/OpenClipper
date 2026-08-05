@@ -18,6 +18,22 @@ const OWNER_NODE_RADIUS = 24;
 const DEFAULT_THUMB_WIDTH = PROJECT_THUMB_MAX_DIMENSION;
 const DEFAULT_THUMB_HEIGHT = Math.round((PROJECT_THUMB_MAX_DIMENSION * 9) / 16);
 
+function fitImageInBox(
+  imageWidth: number,
+  imageHeight: number,
+  boxWidth: number,
+  boxHeight: number,
+): { width: number; height: number } {
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    return { width: boxWidth, height: boxHeight };
+  }
+  const scale = Math.min(boxWidth / imageWidth, boxHeight / imageHeight);
+  return {
+    width: imageWidth * scale,
+    height: imageHeight * scale,
+  };
+}
+
 interface ClipperGraphTheme {
   surface: { elevated: string };
   background: { card: string };
@@ -216,21 +232,59 @@ export function drawExportNode(
   ctx.lineWidth = isSelected ? 2.5 / globalScale : 1.2 / globalScale;
   ctx.stroke();
 
-  if (node.platform) {
-    const logo = loadPlatformLogo(node.platform);
+  const platforms =
+    node.badgePlatforms && node.badgePlatforms.length > 0
+      ? node.badgePlatforms
+      : node.platform
+        ? [node.platform]
+        : [];
+
+  if (platforms.length === 1) {
+    const logo = loadPlatformLogo(platforms[0]);
     if (logo) {
-      const size = radius * 1.5;
+      const innerDiameter = (radius - 2) * 2;
+      const fitted = fitImageInBox(
+        logo.naturalWidth,
+        logo.naturalHeight,
+        innerDiameter,
+        innerDiameter,
+      );
       ctx.save();
       ctx.beginPath();
       ctx.arc(node.x ?? 0, node.y ?? 0, radius - 2, 0, 2 * Math.PI);
       ctx.clip();
       ctx.drawImage(
         logo,
-        (node.x ?? 0) - size / 2,
-        (node.y ?? 0) - size / 2,
-        size,
-        size,
+        (node.x ?? 0) - fitted.width / 2,
+        (node.y ?? 0) - fitted.height / 2,
+        fitted.width,
+        fitted.height,
       );
+      ctx.restore();
+    }
+  } else if (platforms.length > 1) {
+    const logos = platforms
+      .map((platform) => loadPlatformLogo(platform))
+      .filter((logo): logo is HTMLImageElement => Boolean(logo));
+    if (logos.length > 0) {
+      const slot = Math.min(radius * 1.05, (radius * 1.6) / logos.length);
+      const totalWidth = logos.length * slot - (logos.length - 1) * slot * 0.25;
+      let cursorX = (node.x ?? 0) - totalWidth / 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(node.x ?? 0, node.y ?? 0, radius - 1, 0, 2 * Math.PI);
+      ctx.clip();
+      for (const logo of logos) {
+        const fitted = fitImageInBox(logo.naturalWidth, logo.naturalHeight, slot, slot);
+        ctx.drawImage(
+          logo,
+          cursorX + (slot - fitted.width) / 2,
+          (node.y ?? 0) - fitted.height / 2,
+          fitted.width,
+          fitted.height,
+        );
+        cursorX += slot * 0.75;
+      }
       ctx.restore();
     }
   }

@@ -197,6 +197,11 @@ pub fn get_open_clipper_mcp_http_url(mcp: State<'_, crate::mcp::McpHttpServer>) 
 }
 
 #[tauri::command]
+pub fn get_open_clipper_local_http_port(mcp: State<'_, crate::mcp::McpHttpServer>) -> u16 {
+    mcp.port
+}
+
+#[tauri::command]
 pub fn get_open_clipper_mcp_path() -> Result<String, String> {
     resolve_open_clipper_mcp_binary()
         .map(|path| path.to_string_lossy().into_owned())

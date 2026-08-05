@@ -1,12 +1,24 @@
 use crate::clipper::data::{
     clipper_export_file_path, clipper_project_data_dir, clipper_project_exports_dir,
     clipper_project_root, clipper_projects_root, extract_segment_to_project_data,
-    validate_export_file_name, write_export_file_bytes_at, write_project_data_file_bytes_at,
+    extract_studio_thumbnails_for_project, validate_export_file_name, write_export_file_bytes_at,
+    write_project_data_file_bytes_at,
 };
+use crate::video::ffmpeg::studio_thumbnails::ExtractClipperStudioThumbnailsResult;
+use serde::Serialize;
 use std::fs;
 use tauri::ipc::{InvokeBody, Request};
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageClipperStudioImportResult {
+    pub project_data_dir: String,
+    pub manifest_absolute_path: String,
+    pub video_absolute_path: String,
+}
 
 #[tauri::command]
 pub fn open_clipper_projects_dir(app: AppHandle) -> Result<String, String> {
@@ -133,6 +145,77 @@ pub fn get_clipper_project_data_file_path(
 }
 
 #[tauri::command]
+pub async fn open_clipper_project_data_dir(
+    app: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    let path = ensure_clipper_project_data_dir(app.clone(), project_id)?;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn stage_clipper_studio_import(
+    app: AppHandle,
+    project_id: String,
+    manifest_file_name: String,
+    video_file_name: String,
+    manifest_contents: String,
+) -> Result<StageClipperStudioImportResult, String> {
+    validate_export_file_name(&manifest_file_name)?;
+    validate_export_file_name(&video_file_name)?;
+
+    let project_data = clipper_project_data_dir(&app, &project_id)?;
+    fs::create_dir_all(&project_data).map_err(|error| error.to_string())?;
+
+    let video_src = project_data.join(&video_file_name);
+    if !video_src.is_file() {
+        return Err(format!(
+            "Missing {video_file_name} in project data. Finish clip processing first."
+        ));
+    }
+
+    let manifest_dst = project_data.join(&manifest_file_name);
+    let project_data_dir = project_data.to_string_lossy().to_string();
+    let manifest_absolute_path = manifest_dst.to_string_lossy().to_string();
+    let video_absolute_path = video_src.to_string_lossy().to_string();
+
+    let mut value: serde_json::Value = serde_json::from_str(&manifest_contents)
+        .map_err(|error| format!("Invalid studio import JSON: {error}"))?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "projectDataDir".to_string(),
+            serde_json::Value::String(project_data_dir.clone()),
+        );
+        obj.insert(
+            "manifestAbsolutePath".to_string(),
+            serde_json::Value::String(manifest_absolute_path.clone()),
+        );
+        obj.insert(
+            "videoAbsolutePath".to_string(),
+            serde_json::Value::String(video_absolute_path.clone()),
+        );
+    }
+    let enriched = serde_json::to_string_pretty(&value)
+        .map_err(|error| format!("Failed to serialize staged manifest: {error}"))?;
+    fs::write(&manifest_dst, enriched).map_err(|error| error.to_string())?;
+
+    if let Ok(documents) = app.path().document_dir() {
+        let obsolete = documents.join("OpenClipper").join("studio-import");
+        if obsolete.is_dir() {
+            let _ = fs::remove_dir_all(&obsolete);
+        }
+    }
+
+    Ok(StageClipperStudioImportResult {
+        project_data_dir,
+        manifest_absolute_path,
+        video_absolute_path,
+    })
+}
+
+#[tauri::command]
 pub async fn extract_clipper_segment_to_project_data(
     app: AppHandle,
     project_id: String,
@@ -141,6 +224,22 @@ pub async fn extract_clipper_segment_to_project_data(
     end_time: f64,
 ) -> Result<String, String> {
     extract_segment_to_project_data(&app, &project_id, file_path, start_time, end_time).await
+}
+
+#[tauri::command]
+pub async fn extract_clipper_studio_thumbnails(
+    app: AppHandle,
+    project_id: String,
+    duration_secs: Option<f64>,
+    force: Option<bool>,
+) -> Result<ExtractClipperStudioThumbnailsResult, String> {
+    extract_studio_thumbnails_for_project(
+        &app,
+        &project_id,
+        duration_secs,
+        force.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]

@@ -23,7 +23,10 @@ macro_rules! invoke_handler {
             crate::commands::clipper::data::write_clipper_project_data_bytes_at,
             crate::commands::clipper::data::write_clipper_project_data_raw,
             crate::commands::clipper::data::get_clipper_project_data_file_path,
+            crate::commands::clipper::data::open_clipper_project_data_dir,
+            crate::commands::clipper::data::stage_clipper_studio_import,
             crate::commands::clipper::data::extract_clipper_segment_to_project_data,
+            crate::commands::clipper::data::extract_clipper_studio_thumbnails,
             crate::commands::clipper::data::ensure_clipper_project_exports_dir,
             crate::commands::clipper::data::write_clipper_export_file_bytes_at,
             crate::commands::clipper::data::remove_clipper_export_file,
@@ -41,6 +44,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::exports::clipper_export_delete,
             crate::commands::clipper::exports::clipper_exports_purge_missing,
             crate::commands::clipper::exports::get_open_clipper_mcp_http_url,
+            crate::commands::clipper::exports::get_open_clipper_local_http_port,
             crate::commands::clipper::exports::get_open_clipper_mcp_path,
             crate::commands::clipper::exports::get_open_clipper_mcp_tools_catalog,
             crate::commands::clipper::owners::clipper_owners_list,
@@ -51,6 +55,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::owners::clipper_owner_channel_upsert,
             crate::commands::clipper::owners::clipper_owner_channel_delete,
             crate::commands::clipper::owners::clipper_project_set_owner,
+            crate::commands::clipper::owners::clipper_project_get_owner,
             crate::commands::clipper::owners::clipper_owner_projects_list,
             crate::commands::local_db::local_database_info,
             crate::commands::local_db::local_project_put,
@@ -76,7 +81,6 @@ macro_rules! invoke_handler {
             crate::commands::transcription::delete_vocals_isolate_model,
             crate::commands::transcription::start_prepare_transcription_audio,
             crate::commands::transcription::read_transcription_audio_bytes,
-            crate::transcription::diag_log::append_transcription_diag_log,
         ]
     };
 }

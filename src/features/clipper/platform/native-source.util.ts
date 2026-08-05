@@ -4,6 +4,8 @@ import { isTauri } from "../../../shared/utils/platform.util";
 import { clipperLog } from "../shared/logger.util";
 
 export const CLIPPER_TRIMMED_SEGMENT_FILE = "clip-trimmed.mp4";
+/** Manifest written next to `clip-trimmed.mp4` for GrepCut Studio folder import. */
+export const CLIPPER_STUDIO_IMPORT_MANIFEST_FILE = "clipper-studio-import.json";
 
 /** Zero-byte File whose `.path` points at an on-disk file (no fetch/blob). */
 export function pathBackedFile(

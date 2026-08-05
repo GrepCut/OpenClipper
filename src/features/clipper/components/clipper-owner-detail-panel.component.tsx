@@ -8,13 +8,14 @@ import type {
   ClipperOwnerChannelRecord,
   ClipperOwnerRecord,
 } from "../persistence/clipper-owner-db-api.util";
-import { platformLabel } from "../shared/clipper-owner-channels.util";
+import { platformLabel, type ResolvedOwnerChannel } from "../shared/clipper-owner-channels.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperOwnerChannelPlatformIcon } from "./clipper-owner-channel-platform-icon.component";
+import { ClipperOwnerChannelStatusBadge } from "./clipper-owner-channel-status-badge.component";
 
 interface ClipperOwnerDetailPanelProps {
   owner: ClipperOwnerRecord;
-  channels: ClipperOwnerChannelRecord[];
+  channels: ResolvedOwnerChannel[];
   onManageChannels: () => void;
   onSave: (name: string, notes: string) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -102,17 +103,18 @@ export function ClipperOwnerDetailPanel({
         ) : (
           <VStack align="stretch" gap={2}>
             {channels.map((channel) => (
-              <Box key={channel.id} bg={rowBg} borderRadius="2xl" px={4} py={3}>
-                <HStack gap={3} minW={0}>
-                  <ClipperOwnerChannelPlatformIcon platform={channel.platform} size={24} />
+              <Box key={channel.linked.id} bg={rowBg} borderRadius="2xl" px={4} py={3}>
+                <HStack gap={3} minW={0} align="center">
+                  <ClipperOwnerChannelPlatformIcon platform={channel.linked.platform} size={24} />
                   <VStack align="start" gap={0.5} minW={0} flex={1}>
                     <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-                      {platformLabel(channel.platform)}
+                      {platformLabel(channel.linked.platform)}
                     </Text>
                     <Text fontSize="xs" color={theme.text.muted} lineClamp={1}>
                       {channel.displayName}
                     </Text>
                   </VStack>
+                  <ClipperOwnerChannelStatusBadge status={channel.status} />
                 </HStack>
               </Box>
             ))}

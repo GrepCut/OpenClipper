@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, HStack } from "@chakra-ui/react";
-import { ListOrdered } from "lucide-react";
+import { ExternalLink, ListOrdered } from "lucide-react";
 import {
   OutlinedActionButton,
   getOutlinedActionSurfaceProps,
@@ -33,7 +33,25 @@ export function ClipperPreviewSidePanel({
   onOpenRenderQueue,
   sidePanelTab,
   onSidePanelTabChange,
+  onOpenInStudio,
+  openingInStudio = false,
 }: ClipperPreviewSidePanelProps) {
+  const listPreviews =
+    clipSourceMode === "ai"
+      ? safeAiPreviews
+      : clipPreviews.length > 0
+        ? clipPreviews
+        : safeAutoPartsPreviews;
+  const canOpenInStudio =
+    Boolean(onOpenInStudio) && listPreviews.length > 0 && !openingInStudio;
+
+  const handleOpenInStudio = () => {
+    if (!onOpenInStudio || listPreviews.length === 0 || openingInStudio) return;
+    const active = listPreviews.find((p) => p.clip.index === activeClipIndex);
+    const clipIndex = active?.clip.index ?? listPreviews[0]!.clip.index;
+    onOpenInStudio(clipIndex);
+  };
+
   return (
     <Box
       minW={0}
@@ -65,16 +83,39 @@ export function ClipperPreviewSidePanel({
         flexWrap="wrap"
         align="center"
       >
-        <OutlinedActionButton
-          startIcon={<ListOrdered size={16} />}
-          onClick={onOpenRenderQueue}
-          loading={isRendering}
-          loadingText="Rendering…"
-          flexShrink={0}
-          {...TOOLBAR_ACTION_BUTTON_PROPS}
-        >
-          Go to render queue
-        </OutlinedActionButton>
+        <HStack gap={2} flexShrink={0} flexWrap="wrap" align="center">
+          <OutlinedActionButton
+            startIcon={<ListOrdered size={16} />}
+            onClick={onOpenRenderQueue}
+            loading={isRendering}
+            loadingText="Rendering…"
+            flexShrink={0}
+            {...TOOLBAR_ACTION_BUTTON_PROPS}
+          >
+            Go to render queue
+          </OutlinedActionButton>
+
+          {onOpenInStudio ? (
+            <OutlinedActionButton
+              startIcon={<ExternalLink size={16} />}
+              onClick={handleOpenInStudio}
+              disabled={!canOpenInStudio}
+              loading={openingInStudio}
+              loadingText="Opening…"
+              title={
+                openingInStudio
+                  ? "Opening Studio…"
+                  : canOpenInStudio
+                    ? "Open active clip in GrepCut Studio"
+                    : "Select a clip first"
+              }
+              flexShrink={0}
+              {...TOOLBAR_ACTION_BUTTON_PROPS}
+            >
+              Open in Studio
+            </OutlinedActionButton>
+          ) : null}
+        </HStack>
 
         <HStack gap={1} flexShrink={0} align="center">
           {SIDE_PANEL_TAB_OPTIONS.map((option) => {
@@ -114,6 +155,8 @@ export function ClipperPreviewSidePanel({
           onSelectClip={onSelectClip}
           onDeleteAiClip={onDeleteAiClip}
           onDeleteAutoPartsClip={onDeleteAutoPartsClip}
+          onOpenInStudio={onOpenInStudio}
+          openingInStudio={openingInStudio}
           rangeWords={state.rangeWords}
           collageRegions={collageRegions}
           disabledCollageRegionIds={disabledCollageRegionIds}

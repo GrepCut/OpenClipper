@@ -1,12 +1,12 @@
 import type { NavigateFunction } from "react-router-dom";
-import { authService } from "../../services/auth.service";
-import { extractApiErrorMessage } from "../../shared/utils/api-client.util";
-import { appToast } from "../../shared/utils/toast.service";
+import { authService } from "../../../services/auth.service";
+import { extractApiErrorMessage } from "../../../shared/utils/api-client.util";
+import { appToast } from "../../../shared/utils/toast.service";
 import {
   hasDesktopTicketBeenExchanged,
   markDesktopTicketAsExchanged,
-} from "../../shared/utils/desktop-auth.util";
-import type { User } from "../../shared/types/auth.types";
+} from "../../../shared/utils/desktop-auth.util";
+import type { User } from "../../../shared/types/auth.types";
 
 export type OAuthConnectionStatus = "connecting" | "verifying" | "success" | "error";
 

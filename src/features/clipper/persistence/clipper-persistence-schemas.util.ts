@@ -44,6 +44,12 @@ const clipperSettingsSchema = z
       })
       .partial()
       .optional(),
+    publish: z
+      .object({
+        fillMetadataAgentPrompt: z.string(),
+      })
+      .partial()
+      .optional(),
     lastDurationPresetSec: z.number().optional(),
   })
   .passthrough();

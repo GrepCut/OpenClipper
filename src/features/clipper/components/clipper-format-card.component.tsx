@@ -1,11 +1,16 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import {
+  getBadgePlatformsForFormat,
   getClipperCardFrameSize,
   type ClipperPlatform,
 } from "../shared/formats.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import { ClipperPlatformBadge, CLIPPER_CARD_BADGE_INSET } from "./clipper-platform-icon.component";
+import {
+  ClipperMultiPlatformBadge,
+  ClipperPlatformBadge,
+  CLIPPER_CARD_BADGE_INSET,
+} from "./clipper-platform-icon.component";
 
 interface ClipperFormatCardProps {
   formatId: string;
@@ -27,6 +32,8 @@ export const ClipperFormatCard: React.FC<ClipperFormatCardProps> = ({
 }) => {
   const { theme } = useClipperUi();
   const frame = getClipperCardFrameSize(formatId, frameHeight);
+  const badgePlatforms = getBadgePlatformsForFormat(formatId);
+  const platforms = badgePlatforms.length > 0 ? badgePlatforms : [platform];
 
   return (
     <Box
@@ -53,7 +60,11 @@ export const ClipperFormatCard: React.FC<ClipperFormatCardProps> = ({
         </Box>
       </Box>
 
-      <ClipperPlatformBadge platform={platform} top={`${CLIPPER_CARD_BADGE_INSET}px`} />
+      {platforms.length > 1 ? (
+        <ClipperMultiPlatformBadge platforms={platforms} top={`${CLIPPER_CARD_BADGE_INSET}px`} />
+      ) : (
+        <ClipperPlatformBadge platform={platforms[0]!} top={`${CLIPPER_CARD_BADGE_INSET}px`} />
+      )}
 
       {footer ? <Box mt={3} w={`${frame.width}px`}>{footer}</Box> : null}
     </Box>

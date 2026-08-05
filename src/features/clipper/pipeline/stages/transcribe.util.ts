@@ -11,10 +11,6 @@ import {
 } from "../../engine/audio";
 import { buildWordCuesForTranscription } from "../../engine/transcript";
 import { clipperLog } from "../../shared/logger.util";
-import {
-  createTranscriptionDiagRunId,
-  logTranscriptionDiag,
-} from "../../../../shared/utils/transcription-diag-log.util";
 import { loadClipperSettings } from "../../settings/settings-storage.util";
 import type { WordCue } from "../../lib/media/transcription-export.util";
 import type { PipelineReporter } from "../reporter.util";
@@ -62,15 +58,6 @@ export async function runTranscribeStage(
     return existingWords;
   }
 
-  const diagRunId = createTranscriptionDiagRunId();
-  logTranscriptionDiag("RUN_START", {
-    runId: diagRunId,
-    projectId: input.projectId,
-    mediaFileId: session.mediaFileId,
-    clipDuration,
-    engine: transcriptionEngine,
-  });
-
   try {
     const existing = await transcriptionService.getTranscription(
       session.mediaFileId,
@@ -83,11 +70,6 @@ export async function runTranscribeStage(
     );
     const words = buildWordCuesForTranscription(existing, clipDuration);
     clipperLog("transcribe: reused transcription", {
-      wordCount: words.length,
-      engine: transcriptionEngine,
-    });
-    logTranscriptionDiag("TRANSCRIBE_CACHE_HIT", {
-      runId: diagRunId,
       wordCount: words.length,
       engine: transcriptionEngine,
     });
@@ -109,10 +91,6 @@ export async function runTranscribeStage(
     clipperLog("transcribe: no audio track, skipping ASR", {
       fileName: transcriptionSource.name,
     });
-    logTranscriptionDiag("TRANSCRIBE_SKIP", {
-      runId: diagRunId,
-      reason: "no_audio_track",
-    });
     reporter.stageProgress(1);
     reporter.stageDetail(null, null);
     return [];
@@ -131,7 +109,6 @@ export async function runTranscribeStage(
           reporter.stageProgress(ratio * PREPARE_WEIGHT);
           reporter.stageDetail("Preparing audio", ratio);
         },
-        diagRunId,
       },
     );
   } catch (error) {
@@ -140,10 +117,6 @@ export async function runTranscribeStage(
       session.audioEnvelope = null;
       clipperLog("transcribe: no audio track, skipping ASR", {
         fileName: transcriptionSource.name,
-      });
-      logTranscriptionDiag("TRANSCRIBE_SKIP", {
-        runId: diagRunId,
-        reason: "no_audio_track",
       });
       reporter.stageProgress(1);
       reporter.stageDetail(null, null);
@@ -154,11 +127,6 @@ export async function runTranscribeStage(
       "transcribe: audio extract failed",
       { error: String(error) },
     );
-    logTranscriptionDiag("TRANSCRIBE_ERROR", {
-      runId: diagRunId,
-      step: "audio_extract",
-      error: String(error),
-    });
     throw error;
   }
   if (options.signal.aborted)
@@ -190,7 +158,6 @@ export async function runTranscribeStage(
       clipEndSec: end,
       engine: transcriptionEngine,
       isolateVocals,
-      diagRunId,
       onProgress: (progress) => {
         if (progress.phase === "isolating_vocals") {
           const detailLabel =
@@ -298,11 +265,5 @@ export async function runTranscribeStage(
 
   reporter.stageProgress(1);
   reporter.stageDetail(null, null);
-  const words = buildWordCuesForTranscription(transcription, clipDuration);
-  logTranscriptionDiag("RUN_DONE", {
-    runId: diagRunId,
-    wordCount: words.length,
-    engine: transcriptionEngine,
-  });
-  return words;
+  return buildWordCuesForTranscription(transcription, clipDuration);
 }

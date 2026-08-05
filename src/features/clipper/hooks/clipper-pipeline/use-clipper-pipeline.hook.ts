@@ -67,10 +67,14 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     autoPartsResegmenting: clips.autoPartsResegmenting,
     deleteAiClip: ai.deleteAiClip,
     deleteAutoPartsClip: clips.deleteAutoPartsClip,
-    getFrameContext: () => {
+    getFrameContext: (clipIndex?: number) => {
       const session = sessionRef.current;
       if (!session) return null;
-      return buildFrameContext(session, settings, activeClipIndexRef.current);
+      return buildFrameContext(
+        session,
+        settings,
+        clipIndex ?? activeClipIndexRef.current,
+      );
     },
     sourceUrl: sessionRef.current?.sourceUrl ?? null,
     rangeLocked,

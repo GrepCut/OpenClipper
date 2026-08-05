@@ -48,6 +48,24 @@ export function getExportNodeStatusLabel(status: ExportNodeStatus): string {
   }
 }
 
+/** Human-readable labels for empty title / description / hashtags on a publish-map export. */
+export function missingMetadataFieldLabels(missingFields: string[]): string[] {
+  return missingFields
+    .map((field) => {
+      switch (field) {
+        case "title":
+          return "Title";
+        case "description":
+          return "Description";
+        case "hashtags":
+          return "Hashtags";
+        default:
+          return field;
+      }
+    })
+    .filter(Boolean);
+}
+
 /** Prefer stdio for Cursor (avoids OAuth/mcp_auth gating on HTTP URL servers). */
 export function buildMcpConfigSnippet(options: { httpUrl?: string; stdioPath?: string }): string {
   if (options.stdioPath) {

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getClipperFormatDef } from "../shared/formats.util";
+import { getBadgePlatformsForFormat, getClipperFormatDef } from "../shared/formats.util";
 import type { ClipperPlatform } from "../shared/formats.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
@@ -27,6 +27,7 @@ export interface PublishGraphNode {
   clipIndex?: number;
   formatId?: string;
   platform?: ClipperPlatform;
+  badgePlatforms?: ClipperPlatform[];
   isPublished?: boolean;
   exportItem?: ClipperExportMapItem;
   thumbWidth?: number;
@@ -46,11 +47,33 @@ const OWNER_CLUSTER_SPACING = 520;
 const OWNER_PROJECT_DISTANCE = 130;
 const UNASSIGNED_PROJECT_SPACING = 360;
 
+function hashLayoutSeed(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return hash || 1;
+}
+
+function createLayoutRandom(nodes: PublishGraphNode[]): () => number {
+  const seed = hashLayoutSeed(nodes.map((node) => node.id).sort().join("|"));
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) | 0;
+    return (state >>> 0) / 0xffffffff;
+  };
+}
+
+function randomInRange(random: () => number, min: number, max: number): number {
+  return min + random() * (max - min);
+}
+
 function layoutProjectExports(
   nodes: PublishGraphNode[],
   project: PublishGraphNode,
   centerX: number,
   centerY: number,
+  random: () => number,
 ): void {
   project.x = centerX;
   project.y = centerY;
@@ -59,30 +82,33 @@ function layoutProjectExports(
     (node) => node.type === "export" && node.projectId === project.projectId,
   );
   exports.forEach((exportNode, index) => {
+    const angleJitter = exports.length > 1 ? randomInRange(random, -0.35, 0.35) : random() * 2 * Math.PI;
     const angle = exports.length > 0
-      ? (2 * Math.PI * index) / exports.length - Math.PI / 2
-      : 0;
-    exportNode.x = centerX + Math.cos(angle) * EXPORT_ORBIT_RADIUS;
-    exportNode.y = centerY + Math.sin(angle) * EXPORT_ORBIT_RADIUS;
+      ? (2 * Math.PI * index) / exports.length - Math.PI / 2 + angleJitter
+      : angleJitter;
+    const orbitRadius = EXPORT_ORBIT_RADIUS * randomInRange(random, 0.82, 1.18);
+    exportNode.x = centerX + Math.cos(angle) * orbitRadius;
+    exportNode.y = centerY + Math.sin(angle) * orbitRadius;
   });
 }
 
 function applyStarLayout(nodes: PublishGraphNode[]): void {
+  const random = createLayoutRandom(nodes);
   const owners = nodes.filter((node) => node.type === "owner");
   const projects = nodes.filter((node) => node.type === "project");
   const assignedProjects = projects.filter((project) => project.clipperOwnerId);
   const unassignedProjects = projects.filter((project) => !project.clipperOwnerId);
+  const globalRotation = random() * 2 * Math.PI;
 
   owners.forEach((owner, ownerIndex) => {
     const clusterAngle = owners.length > 1
-      ? (2 * Math.PI * ownerIndex) / owners.length
-      : 0;
-    const ownerX = owners.length > 1
-      ? Math.cos(clusterAngle) * OWNER_CLUSTER_SPACING
-      : 0;
-    const ownerY = owners.length > 1
-      ? Math.sin(clusterAngle) * OWNER_CLUSTER_SPACING
-      : -OWNER_PROJECT_DISTANCE * 1.4;
+      ? (2 * Math.PI * ownerIndex) / owners.length + globalRotation
+      : random() * 2 * Math.PI;
+    const ownerDistance = owners.length > 1
+      ? OWNER_CLUSTER_SPACING * randomInRange(random, 0.82, 1.12)
+      : OWNER_CLUSTER_SPACING * randomInRange(random, 0.28, 0.55);
+    const ownerX = Math.cos(clusterAngle) * ownerDistance;
+    const ownerY = Math.sin(clusterAngle) * ownerDistance;
 
     owner.x = ownerX;
     owner.y = ownerY;
@@ -92,25 +118,23 @@ function applyStarLayout(nodes: PublishGraphNode[]): void {
     );
     ownerProjects.forEach((project, projectIndex) => {
       const spreadAngle = ownerProjects.length > 1
-        ? (2 * Math.PI * projectIndex) / ownerProjects.length
-        : Math.PI / 2;
-      const projectX = ownerX + Math.cos(spreadAngle) * OWNER_PROJECT_DISTANCE;
-      const projectY = ownerY + Math.sin(spreadAngle) * OWNER_PROJECT_DISTANCE;
-      layoutProjectExports(nodes, project, projectX, projectY);
+        ? (2 * Math.PI * projectIndex) / ownerProjects.length + randomInRange(random, -0.45, 0.45)
+        : random() * 2 * Math.PI;
+      const projectDistance = OWNER_PROJECT_DISTANCE * randomInRange(random, 0.78, 1.28);
+      const projectX = ownerX + Math.cos(spreadAngle) * projectDistance;
+      const projectY = ownerY + Math.sin(spreadAngle) * projectDistance;
+      layoutProjectExports(nodes, project, projectX, projectY, random);
     });
   });
 
   unassignedProjects.forEach((project, projectIndex) => {
     const clusterAngle = unassignedProjects.length > 1
-      ? (2 * Math.PI * projectIndex) / unassignedProjects.length
-      : 0;
-    const clusterCx = unassignedProjects.length > 1
-      ? Math.cos(clusterAngle) * UNASSIGNED_PROJECT_SPACING
-      : 0;
-    const clusterCy = unassignedProjects.length > 1
-      ? Math.sin(clusterAngle) * UNASSIGNED_PROJECT_SPACING
-      : 0;
-    layoutProjectExports(nodes, project, clusterCx, clusterCy);
+      ? (2 * Math.PI * projectIndex) / unassignedProjects.length + globalRotation
+      : random() * 2 * Math.PI;
+    const clusterDistance = UNASSIGNED_PROJECT_SPACING * randomInRange(random, 0.75, 1.15);
+    const clusterCx = Math.cos(clusterAngle) * clusterDistance;
+    const clusterCy = Math.sin(clusterAngle) * clusterDistance;
+    layoutProjectExports(nodes, project, clusterCx, clusterCy, random);
   });
 }
 
@@ -252,6 +276,7 @@ export function buildPublishGraphData(items: ClipperExportMapItem[]): PublishGra
       clipIndex: item.clipIndex,
       formatId: item.formatId,
       platform: formatDef?.platform,
+      badgePlatforms: getBadgePlatformsForFormat(item.formatId),
       isPublished: item.isPublished,
       exportItem: item,
     });

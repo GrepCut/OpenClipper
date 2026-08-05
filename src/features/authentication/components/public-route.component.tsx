@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../../shared/hooks/use-auth.hook";
+import { useAuth } from "../../../shared/hooks/use-auth.hook";
 
-import { ProjectLoadingScreen } from "../../shared/components/project-loading-screen.component";
+import { ProjectLoadingScreen } from "../../../shared/components/project-loading-screen.component";
 
 export function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, hasTriedInit } = useAuth();

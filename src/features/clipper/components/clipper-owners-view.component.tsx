@@ -14,6 +14,8 @@ import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-
 import {
   buildAvailableOwnerChannels,
   diffOwnerChannelSelection,
+  ownerChannelsNeedingDisplayNameSync,
+  resolveOwnerChannels,
   type AvailableOwnerChannel,
 } from "../shared/clipper-owner-channels.util";
 import { appToast } from "../../../shared/utils/toast.service";
@@ -66,9 +68,44 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
     [youtubeConnections, socialPlatforms],
   );
 
+  const resolvedChannels = useMemo(
+    () => resolveOwnerChannels(channels, availableChannels),
+    [channels, availableChannels],
+  );
+
   const refreshOwnerData = useCallback(async (ownerId: string) => {
+    const linked = await loadOwnerChannels(ownerId);
+    setChannels(linked);
+
+    if (!canUseAccountFeatures) return;
+
+    const available = buildAvailableOwnerChannels({
+      youtubeConnections,
+      socialPlatforms,
+    });
+    const resolved = resolveOwnerChannels(linked, available);
+    const stale = ownerChannelsNeedingDisplayNameSync(resolved);
+    if (stale.length === 0) return;
+
+    await Promise.all(
+      stale.map((item) =>
+        saveOwnerChannel({
+          id: item.linked.id,
+          ownerId: item.linked.ownerId,
+          platform: item.linked.platform,
+          externalId: item.linked.externalId,
+          displayName: item.displayName,
+        }),
+      ),
+    );
     setChannels(await loadOwnerChannels(ownerId));
-  }, [loadOwnerChannels]);
+  }, [
+    canUseAccountFeatures,
+    loadOwnerChannels,
+    saveOwnerChannel,
+    socialPlatforms,
+    youtubeConnections,
+  ]);
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;
@@ -180,7 +217,7 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
     return (
       <ClipperOwnerDetailPanel
         owner={selectedOwner}
-        channels={channels}
+        channels={resolvedChannels}
         onManageChannels={() => setScreen("channels")}
         onSave={async (name, notes) => {
           await saveOwner({ id: selectedOwner.id, name, notes });

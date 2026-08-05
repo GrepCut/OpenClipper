@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { Check, Plug } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
@@ -8,10 +8,12 @@ import { appToast } from "../../../shared/utils/toast.service";
 import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
 import {
   type AvailableOwnerChannel,
+  buildManageChannelRows,
   ownerChannelKey,
   platformLabel,
 } from "../shared/clipper-owner-channels.util";
 import { ClipperOwnerChannelPlatformIcon } from "./clipper-owner-channel-platform-icon.component";
+import { ClipperOwnerChannelStatusBadge } from "./clipper-owner-channel-status-badge.component";
 
 interface ClipperOwnerChannelPickerProps {
   availableChannels: AvailableOwnerChannel[];
@@ -30,6 +32,11 @@ export function ClipperOwnerChannelPicker({
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
+
+  const manageRows = useMemo(
+    () => buildManageChannelRows(linkedChannels, availableChannels),
+    [linkedChannels, availableChannels],
+  );
 
   useEffect(() => {
     setSelectedKeys(new Set(linkedChannels.map((channel) => ownerChannelKey(channel))));
@@ -67,6 +74,22 @@ export function ClipperOwnerChannelPicker({
     }
   }, [availableChannels, onSelectionChange, saving, selectedKeys]);
 
+  const toggleOrphanOff = useCallback(async (linked: ClipperOwnerChannelRecord) => {
+    if (saving) return;
+    const nextSelected = linkedChannelsToAvailableSelection(
+      linkedChannels.filter((channel) => channel.id !== linked.id),
+      availableChannels,
+    );
+    setSaving(true);
+    try {
+      await onSelectionChange(nextSelected);
+    } catch {
+      appToast.error("Failed to save", "Could not update channels.");
+    } finally {
+      setSaving(false);
+    }
+  }, [availableChannels, linkedChannels, onSelectionChange, saving]);
+
   return (
     <VStack align="stretch" gap={6} flex="1" minH={0}>
       <VStack align="start" gap={2} maxW="640px">
@@ -82,7 +105,7 @@ export function ClipperOwnerChannelPicker({
         </Text>
       </VStack>
 
-      {availableChannels.length === 0 ? (
+      {manageRows.length === 0 ? (
         <Box bg={rowBg} borderRadius="2xl" p={{ base: 6, md: 8 }}>
           <VStack align="start" gap={3}>
             <Text fontWeight="semibold" color={theme.text.primary}>
@@ -102,15 +125,24 @@ export function ClipperOwnerChannelPicker({
         </Box>
       ) : (
         <VStack align="stretch" gap={3} opacity={saving ? 0.7 : 1} pointerEvents={saving ? "none" : "auto"}>
-          {availableChannels.map((channel) => {
-            const key = ownerChannelKey(channel);
-            const isSelected = selectedKeys.has(key);
+          {manageRows.map((row) => {
+            const isSelected = row.isOrphan
+              ? true
+              : row.available != null && selectedKeys.has(ownerChannelKey(row.available));
             return (
               <Box
-                key={key}
+                key={row.key}
                 as="button"
                 type="button"
-                onClick={() => void toggleChannel(channel)}
+                onClick={() => {
+                  if (row.isOrphan && row.linked) {
+                    void toggleOrphanOff(row.linked);
+                    return;
+                  }
+                  if (row.available) {
+                    void toggleChannel(row.available);
+                  }
+                }}
                 bg={isSelected ? theme.surface.faint : rowBg}
                 borderRadius="2xl"
                 p={{ base: 4, md: 5 }}
@@ -120,21 +152,24 @@ export function ClipperOwnerChannelPicker({
               >
                 <HStack justify="space-between" align="center" gap={4}>
                   <HStack gap={3} minW={0} flex={1}>
-                    <ClipperOwnerChannelPlatformIcon platform={channel.platform} size={24} />
+                    <ClipperOwnerChannelPlatformIcon platform={row.platform} size={24} />
                     <VStack align="start" gap={0.5} minW={0}>
                       <Text fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
-                        {platformLabel(channel.platform)}
+                        {platformLabel(row.platform)}
                       </Text>
                       <Text fontSize="sm" color={theme.text.muted} lineClamp={1}>
-                        {channel.displayName}
+                        {row.displayName}
                       </Text>
                     </VStack>
                   </HStack>
-                  {isSelected ? (
-                    <Box color={theme.text.primary} flexShrink={0}>
-                      <Check size={20} />
-                    </Box>
-                  ) : null}
+                  <HStack gap={2} flexShrink={0}>
+                    <ClipperOwnerChannelStatusBadge status={row.status} />
+                    {isSelected ? (
+                      <Box color={theme.text.primary} flexShrink={0}>
+                        <Check size={20} />
+                      </Box>
+                    ) : null}
+                  </HStack>
                 </HStack>
               </Box>
             );
@@ -143,4 +178,19 @@ export function ClipperOwnerChannelPicker({
       )}
     </VStack>
   );
+}
+
+function linkedChannelsToAvailableSelection(
+  linked: ClipperOwnerChannelRecord[],
+  available: AvailableOwnerChannel[],
+): AvailableOwnerChannel[] {
+  return linked
+    .map((channel) =>
+      available.find(
+        (item) =>
+          item.platform === channel.platform &&
+          (item.externalId === channel.externalId || item.connectionId === channel.externalId),
+      ),
+    )
+    .filter((item): item is AvailableOwnerChannel => item != null);
 }

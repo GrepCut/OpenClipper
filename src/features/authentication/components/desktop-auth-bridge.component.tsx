@@ -4,9 +4,9 @@ import {
   getCurrentDesktopDeepLinks,
   listenToDesktopDeepLinks,
   parseDesktopDeepLink,
-} from "../../shared/utils/desktop-auth.util";
-import { isTauri } from "../../shared/utils/platform.util";
-import { logIntegration } from "../../shared/utils/integration-logger.util";
+} from "../../../shared/utils/desktop-auth.util";
+import { isTauri } from "../../../shared/utils/platform.util";
+import { logIntegration } from "../../../shared/utils/integration-logger.util";
 
 const handledDeepLinks = new Set<string>();
 

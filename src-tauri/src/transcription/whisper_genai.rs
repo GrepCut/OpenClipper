@@ -1,6 +1,5 @@
 //! Native Whisper runner backed by sherpa-onnx engine and DirectML/GPU.
 
-use super::diag_log;
 use super::parakeet_tokens::{
     ensure_monotonic_word_ends, extract_timestamped_tokens_for_whisper,
     group_words_into_segments, merge_sentencepiece_tokens,
@@ -10,7 +9,6 @@ use super::types::{
     TranscriptionWord, WhisperModelStatus,
 };
 use crate::infra::model_cache::download_model_file_to_cache;
-use serde_json::json;
 use sherpa_onnx::{
     OfflineRecognizer, OfflineRecognizerConfig, OfflineRecognizerResult, OfflineWhisperModelConfig,
     Wave,
@@ -124,7 +122,6 @@ pub fn transcribe(
     let model_dir = match model_dir(app) {
         Ok(d) => d,
         Err(e) => {
-            diag_log::append_error("whisper_model_dir", &e, serde_json::json!({}));
             return Err(e);
         }
     };
@@ -185,22 +182,16 @@ where
     let audio_exists = audio_path_buf.is_file();
 
     if !installed(&model_dir) {
-        let err = format!("Whisper model is incomplete or missing at {}", model_dir.display());
-        diag_log::append_error("whisper_model", &err, json!({}));
         return Err(TranscriptionError::ModelNotInstalled.to_string());
     }
 
     if !audio_exists {
-        let err = format!("Input WAV file does not exist at {}", audio_path);
-        diag_log::append_error("whisper_audio", &err, json!({ "audio_path": audio_path }));
         return Err(TranscriptionError::InvalidAudio("Plik WAV nie istnieje".into()).to_string());
     }
 
     let wave = match Wave::read(audio_path) {
         Some(w) => w,
         None => {
-            let err = format!("Failed to parse WAV file at {audio_path}");
-            diag_log::append_error("whisper_wav", &err, json!({ "audio_path": audio_path }));
             return Err(TranscriptionError::InvalidAudio("Nie udało się odczytać pliku audio WAV".into()).to_string());
         }
     };
@@ -208,8 +199,6 @@ where
     let sample_rate = wave.sample_rate();
     let sample_count = wave.samples().len();
     if sample_rate <= 0 {
-        let err = format!("Invalid WAV sample rate: {sample_rate}");
-        diag_log::append_error("whisper_wav", &err, json!({}));
         return Err(TranscriptionError::InvalidAudio("Nieprawidłowy sample rate".into()).to_string());
     }
     if sample_count == 0 {
@@ -223,25 +212,18 @@ where
             "Audio clip is too long for local Whisper ({duration_sec:.1}s). Maximum is {:.0}s.",
             MAX_ASR_AUDIO_SECONDS
         );
-        diag_log::append_error(
-            "whisper_duration",
-            &err,
-            json!({ "duration_sec": duration_sec }),
-        );
         return Err(TranscriptionError::InvalidAudio(err).to_string());
     }
 
     let encoder_path = match required_model_path(&model_dir, "encoder.int8.onnx") {
         Ok(p) => p,
         Err(e) => {
-            diag_log::append_error("whisper_model", &e.to_string(), json!({}));
             return Err(e.to_string());
         }
     };
     let decoder_path = match required_model_path(&model_dir, "decoder.int8.onnx") {
         Ok(p) => p,
         Err(e) => {
-            diag_log::append_error("whisper_model", &e.to_string(), json!({}));
             return Err(e.to_string());
         }
     };
@@ -249,7 +231,6 @@ where
     let tokens_path = match required_model_path(&model_dir, "tokens.txt") {
         Ok(p) => p,
         Err(e) => {
-            diag_log::append_error("whisper_model", &e.to_string(), json!({}));
             return Err(e.to_string());
         }
     };
@@ -300,9 +281,7 @@ where
         match cpu_res {
             Ok(Some(rec)) => Ok((rec, "cpu")),
             _ => {
-                let err = "Nie udało się utworzyć silnika sherpa-onnx Whisper (zarówno DirectML jak i CPU fallback).".to_string();
-                diag_log::append_error("whisper_recognizer", &err, serde_json::json!({}));
-                Err(err)
+                Err("Nie udało się utworzyć silnika sherpa-onnx Whisper (zarówno DirectML jak i CPU fallback).".to_string())
             }
         }
     };
@@ -334,12 +313,10 @@ where
             Ok(Some(result)) => result,
             Ok(None) => {
                 let err = format!("Model Whisper nie zwrócił wyniku dla fragmentu {}/{}", chunk_index + 1, chunk_count);
-                diag_log::append_error("whisper_decode", &err, serde_json::json!({ "chunk_index": chunk_index }));
                 return Err(err);
             }
             Err(panic_err) => {
                 let panic_msg = format!("Panic during Whisper decode for chunk {}/{}: {:?}", chunk_index + 1, chunk_count, panic_err);
-                diag_log::append_error("whisper_decode", &panic_msg, serde_json::json!({ "chunk_index": chunk_index }));
                 return Err(panic_msg);
             }
         };
@@ -415,19 +392,6 @@ where
     let text = words.iter().map(|word| word.text.as_str()).collect::<Vec<_>>().join(" ");
 
     let processing_time_ms = started.elapsed().as_millis() as u64;
-
-    diag_log::append(
-        "WHISPER_DONE",
-        serde_json::json!({
-            "engine": "whisper",
-            "provider": active_provider,
-            "duration_ms": duration_ms,
-            "processing_time_ms": processing_time_ms,
-            "word_count": words.len(),
-            "chunk_count": chunk_count,
-            "language": locked_language,
-        }),
-    );
 
     Ok(ParakeetTranscriptionResult {
         text,

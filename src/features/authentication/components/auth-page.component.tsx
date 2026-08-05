@@ -9,12 +9,12 @@ import { motion } from "framer-motion";
 import { Chrome } from "lucide-react";
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { MainButton } from "../../shared/components/buttons/main-button.component";
-import { authService } from "../../services/auth.service";
-import { peekAuthReturnPath } from "../../shared/auth/auth-return-path.util";
-import { asset } from "../../shared/utils/asset.util";
-import { isTauri } from "../../shared/utils/platform.util";
-import { ClipperLayout } from "../clipper/components/clipper-layout.component";
+import { MainButton } from "../../../shared/components/buttons/main-button.component";
+import { authService } from "../../../services/auth.service";
+import { peekAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
+import { asset } from "../../../shared/utils/asset.util";
+import { isTauri } from "../../../shared/utils/platform.util";
+import { ClipperLayout } from "../../clipper/components/clipper-layout.component";
 
 const MotionBox = motion.create(Box);
 

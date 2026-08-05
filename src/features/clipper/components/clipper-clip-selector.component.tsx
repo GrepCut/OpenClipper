@@ -4,6 +4,7 @@ import { Virtuoso, type ScrollerProps } from "react-virtuoso";
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   Loader2,
   Trash2,
 } from "lucide-react";
@@ -24,8 +25,9 @@ interface ClipperClipSelectorProps {
   clipPreviews: ClipperClipPreview[];
   activeClipIndex: number;
   onSelectClip: (index: number) => void;
-  /** When provided, shows a per-clip delete button (e.g. for AI-generated clips). */
   onDeleteClip?: (index: number) => void;
+  onOpenInStudio?: (index: number) => void;
+  openingInStudio?: boolean;
   hideTitle?: boolean;
   rangeWords?: WordCue[];
   collageRegions?: CollageRegion[];
@@ -40,7 +42,6 @@ function clipTimeLabel(preview: ClipperClipPreview): string {
   return `${formatDurationMmSs(clip.startSec)}–${formatDurationMmSs(clip.endSec)}`;
 }
 
-/** Keep the native scrollbar on the left without letting RTL reposition Virtuoso's viewport. */
 const ClipperVirtuosoScroller = React.forwardRef<HTMLDivElement, ScrollerProps>(
   ({ style, ...props }, ref) => {
     const { theme } = useClipperUi();
@@ -71,8 +72,6 @@ const ClipperVirtuosoScroller = React.forwardRef<HTMLDivElement, ScrollerProps>(
           "&::-webkit-scrollbar-thumb:hover": {
             background: theme.brand.purpleLight,
           },
-          // Virtuoso positions this node absolutely. In an RTL containing block
-          // its implicit horizontal position can change after item re-measurement.
           '& > [data-viewport-type="element"]': {
             direction: "ltr",
             left: "0 !important",
@@ -162,6 +161,8 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   activeClipIndex,
   onSelectClip,
   onDeleteClip,
+  onOpenInStudio,
+  openingInStudio = false,
   hideTitle = false,
   rangeWords = [],
   collageRegions = [],
@@ -234,6 +235,37 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
             </HStack>
 
             <HStack gap={0} flexShrink={0}>
+              {onOpenInStudio ? (
+                <IconButton
+                  aria-label={`Open clip ${preview.clip.index + 1} in Studio`}
+                  title={openingInStudio ? "Opening Studio…" : "Open in Studio"}
+                  size="xs"
+                  variant="ghost"
+                  borderRadius="md"
+                  color={theme.text.muted}
+                  bg="transparent"
+                  border="none"
+                  flexShrink={0}
+                  alignSelf="flex-end"
+                  minW="0"
+                  w="auto"
+                  h="auto"
+                  p={1}
+                  disabled={openingInStudio}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (openingInStudio) return;
+                    onOpenInStudio(preview.clip.index);
+                  }}
+                  _hover={{
+                    bg: "transparent",
+                    color: clipperTheme.accentLight,
+                    opacity: 0.85,
+                  }}
+                >
+                  <ExternalLink size={14} strokeWidth={1.75} />
+                </IconButton>
+              ) : null}
               {onDeleteClip ? (
                 <ClipperDeleteClipConfirm
                   onConfirm={() => onDeleteClip(preview.clip.index)}

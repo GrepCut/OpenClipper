@@ -4,6 +4,7 @@ import {
   type ClipperCaptionPresetId,
 } from "../lib/captions/caption-presets.util";
 import { clamp } from '../lib/math.util';
+import { migrateEnabledFormatIds } from "../shared/formats.util";
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
@@ -63,11 +64,17 @@ export interface ClipperTranscriptionSettings {
   isolateVocals: ClipperIsolateVocalsMode;
 }
 
+export interface ClipperPublishSettings {
+  /** Custom agent prompt for MCP fill-metadata workflow. Empty = built-in default. */
+  fillMetadataAgentPrompt: string;
+}
+
 export interface ClipperSettings {
   captions: ClipperCaptionSettings;
   formats: ClipperFormatSettings;
   audio: ClipperAudioSettings;
   transcription: ClipperTranscriptionSettings;
+  publish: ClipperPublishSettings;
   /** Last duration preset picked on the trim-select stage, remembered across uploads. */
   lastDurationPresetSec: number;
 }
@@ -92,7 +99,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     wordsPerGroup: 4,
   },
   formats: {
-    enabledFormatIds: ["tiktok", "youtube-shorts"],
+    enabledFormatIds: ["vertical-short", "vertical-reels"],
     quality: "standard",
     resolutionCap: "source",
     filenameTemplate: "{name}-clip-{clip}-{platform}",
@@ -108,6 +115,9 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   transcription: {
     engine: "parakeet",
     isolateVocals: "on",
+  },
+  publish: {
+    fillMetadataAgentPrompt: "",
   },
   lastDurationPresetSec: 60,
 };
@@ -160,7 +170,17 @@ export function mergeClipperSettings(
           ? clamp(Math.round(partialCaptions.wordsPerGroup), 1, 5)
           : base.captions.wordsPerGroup,
     },
-    formats: { ...base.formats, ...partial.formats },
+    formats: (() => {
+      const mergedFormats = { ...base.formats, ...partial.formats };
+      return {
+        ...mergedFormats,
+        enabledFormatIds: migrateEnabledFormatIds(
+          Array.isArray(mergedFormats.enabledFormatIds)
+            ? mergedFormats.enabledFormatIds
+            : base.formats.enabledFormatIds,
+        ),
+      };
+    })(),
     audio: { ...base.audio, ...partial.audio },
     transcription: {
       engine: isClipperTranscriptionEngine(partial.transcription?.engine)
@@ -171,6 +191,12 @@ export function mergeClipperSettings(
         partial.transcription?.isolateVocals === "off"
           ? partial.transcription.isolateVocals
           : base.transcription.isolateVocals,
+    },
+    publish: {
+      fillMetadataAgentPrompt:
+        typeof partial.publish?.fillMetadataAgentPrompt === "string"
+          ? partial.publish.fillMetadataAgentPrompt
+          : base.publish.fillMetadataAgentPrompt,
     },
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };

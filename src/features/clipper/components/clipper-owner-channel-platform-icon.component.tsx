@@ -7,7 +7,14 @@ import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 
 function toClipperPlatform(platform: string): ClipperPlatform | null {
   if (platform === "x") return "twitter";
-  if (platform === "youtube" || platform === "instagram" || platform === "tiktok" || platform === "twitter") {
+  if (
+    platform === "youtube" ||
+    platform === "instagram" ||
+    platform === "tiktok" ||
+    platform === "twitter" ||
+    platform === "threads" ||
+    platform === "youtube-shorts"
+  ) {
     return platform;
   }
   return null;

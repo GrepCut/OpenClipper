@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getClipperFormatDef } from "../shared/formats.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import {
@@ -21,6 +21,17 @@ import {
   upsertClipperExportPublish,
   type ClipperExportPublishRecord,
 } from "../persistence/clipper-export-db-api.util";
+
+const UPLOAD_STALL_WARNING_MS = 30_000;
+
+function isYoutubeReauthRequired(error: unknown, message: string): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  if (status === 401) {
+    return true;
+  }
+
+  return /authorization expired|connect youtube again/i.test(message);
+}
 
 function normalizePublishStatus(
   status: string,
@@ -99,6 +110,9 @@ export function useClipperSocialPublish({
   const [isAigc, setIsAigc] = useState(false);
   const [musicUsageConfirmed, setMusicUsageConfirmed] = useState(false);
   const [tiktokError, setTikTokError] = useState<string | null>(null);
+  const lastUploadProgressRef = useRef(0);
+  const lastUploadProgressAtRef = useRef(0);
+  const uploadStallWarnedRef = useRef(false);
 
   const platform: SocialPublishablePlatform = useMemo(() => {
     if (requestedPlatform) return requestedPlatform;
@@ -157,6 +171,46 @@ export function useClipperSocialPublish({
       });
     return () => { cancelled = true; };
   }, [isOpen, isTikTok, defaultConnected, activeConnectionId]);
+
+  useEffect(() => {
+    if (!isPublishing) {
+      uploadStallWarnedRef.current = false;
+      return;
+    }
+
+    lastUploadProgressRef.current = uploadProgress;
+    lastUploadProgressAtRef.current = Date.now();
+    uploadStallWarnedRef.current = false;
+  }, [isPublishing]);
+
+  useEffect(() => {
+    if (!isPublishing || uploadPhase !== "uploading") {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (uploadProgress !== lastUploadProgressRef.current) {
+        lastUploadProgressRef.current = uploadProgress;
+        lastUploadProgressAtRef.current = Date.now();
+        uploadStallWarnedRef.current = false;
+        return;
+      }
+
+      if (
+        uploadProgress < 1
+        && !uploadStallWarnedRef.current
+        && Date.now() - lastUploadProgressAtRef.current >= UPLOAD_STALL_WARNING_MS
+      ) {
+        uploadStallWarnedRef.current = true;
+        appToast.info(
+          "Upload still in progress",
+          "Your video is still uploading. Large clips can take a few minutes.",
+        );
+      }
+    }, 5_000);
+
+    return () => window.clearInterval(interval);
+  }, [isPublishing, uploadPhase, uploadProgress]);
 
   const handlePublish = async () => {
     if (!result || !title.trim()) return;
@@ -290,7 +344,7 @@ export function useClipperSocialPublish({
       );
 
       if (response.status === "processing") {
-        appToast.success("TikTok is processing", "Your post will be updated when TikTok finishes processing it.");
+        appToast.success("Processing", `${platformLabel} is finishing your post. We'll update when it's ready.`);
       } else {
         appToast.success("Published", `Your clip is now on ${platformLabel}.`);
       }
@@ -310,6 +364,16 @@ export function useClipperSocialPublish({
           onPublishComplete,
         );
       }
+
+      if (platform === "youtube" && isYoutubeReauthRequired(error, message)) {
+        appToast.error(
+          "YouTube session expired",
+          "Reconnect YouTube to continue publishing.",
+        );
+        onRequestConnect("youtube");
+        return;
+      }
+
       appToast.error("Publish failed", message);
     } finally {
       setIsPublishing(false);

@@ -3,19 +3,23 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 
 use crate::video::ffmpeg::frames::extract_clipper_segment_to_path_blocking;
-use tauri::AppHandle;
-use tauri::Manager;
+use crate::video::ffmpeg::studio_thumbnails::{
+    extract_studio_thumbnails_blocking, studio_thumbnails_look_fresh,
+    ExtractClipperStudioThumbnailsResult, StudioThumbnailsProgressEvent,
+    STUDIO_THUMBNAILS_PROGRESS_EVENT,
+};
+use tauri::{AppHandle, Emitter, Manager};
 
 const CLIPPER_TRIMMED_SEGMENT_FILE: &str = "clip-trimmed.mp4";
 const CLIPPER_TRIM_METADATA_FILE: &str = "trim_metadata.json";
 const CLIPPER_EXPORTS_SUBDIR: &str = "exports";
 
 pub(crate) fn clipper_projects_root(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
+    let documents = app
         .path()
-        .app_data_dir()
-        .map_err(|error| format!("Cannot resolve app data directory: {error}"))?;
-    Ok(data_dir.join("projects"))
+        .document_dir()
+        .map_err(|error| format!("Cannot resolve Documents directory: {error}"))?;
+    Ok(documents.join("OpenClipper").join("projects"))
 }
 
 pub(crate) fn clipper_project_root(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> {
@@ -111,6 +115,63 @@ pub(crate) async fn extract_segment_to_project_data(
         fs::write(dir.join(CLIPPER_TRIM_METADATA_FILE), metadata.to_string())
             .map_err(|e| e.to_string())?;
         Ok(output_path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+}
+
+pub(crate) async fn extract_studio_thumbnails_for_project(
+    app: &AppHandle,
+    project_id: &str,
+    duration_secs: Option<f64>,
+    force: bool,
+) -> Result<ExtractClipperStudioThumbnailsResult, String> {
+    let dir = clipper_project_data_dir(app, project_id)?;
+    let duration = duration_secs.unwrap_or(0.0);
+    if !force && duration > 0.0 && studio_thumbnails_look_fresh(&dir, duration) {
+        let raw = fs::read_to_string(dir.join(
+            crate::video::ffmpeg::studio_thumbnails::CLIPPER_THUMBNAILS_INDEX_FILE,
+        ))
+        .map_err(|e| e.to_string())?;
+        let value: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| format!("Invalid thumbnails index: {e}"))?;
+        let count = value
+            .get("frames")
+            .and_then(|f| f.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let height = value
+            .get("height")
+            .and_then(|h| h.as_u64())
+            .unwrap_or(120) as u32;
+        let interval_sec = value
+            .get("intervalSec")
+            .or_else(|| value.get("interval_sec"))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let _ = app.emit(
+            STUDIO_THUMBNAILS_PROGRESS_EVENT,
+            StudioThumbnailsProgressEvent {
+                project_id: project_id.to_string(),
+                done: count.max(1),
+                total: count.max(1),
+                ratio: 1.0,
+            },
+        );
+        return Ok(ExtractClipperStudioThumbnailsResult {
+            index_file_name: crate::video::ffmpeg::studio_thumbnails::CLIPPER_THUMBNAILS_INDEX_FILE
+                .to_string(),
+            pack_file_name: crate::video::ffmpeg::studio_thumbnails::CLIPPER_THUMBNAILS_PACK_FILE
+                .to_string(),
+            interval_sec,
+            height,
+            count,
+        });
+    }
+    let app_for_blocking = app.clone();
+    let project_id_for_blocking = project_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        extract_studio_thumbnails_blocking(dir, Some(app_for_blocking), project_id_for_blocking)
     })
     .await
     .map_err(|e| format!("Task join error: {e}"))?

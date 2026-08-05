@@ -4,7 +4,6 @@ import type {
   TranscriptionWord,
 } from "./types/transcription.types";
 import type { CloudTranscriptionProvider } from "./transcription-api-keys.service";
-import { logTranscriptionDiag } from "../shared/utils/transcription-diag-log.util";
 import type { PreparedCloudAudioChunk } from "./cloud-transcribe-audio.util";
 
 export const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
@@ -144,7 +143,6 @@ export async function transcribeWithCloudProvider(
   mediaFileId: string,
   options?: {
     signal?: AbortSignal;
-    diagRunId?: string;
     mimeType?: string;
     filename?: string;
     timeOffsetSec?: number;
@@ -184,13 +182,6 @@ export async function transcribeWithCloudProvider(
   options?.onProgress?.("waiting", 0.7);
   const body = await response.text();
   if (!response.ok) {
-    logTranscriptionDiag("TRANSCRIBE_ERROR", {
-      runId: options?.diagRunId,
-      step: "cloud_transcribe",
-      provider,
-      status: response.status,
-      error: body.slice(0, 200),
-    });
     throw new Error(formatCloudError(provider, response.status, body));
   }
 
@@ -211,7 +202,6 @@ export async function transcribeCloudAudioChunks(
   mediaFileId: string,
   options?: {
     signal?: AbortSignal;
-    diagRunId?: string;
     onProgress?: (
       phase: "uploading" | "waiting",
       ratio: number,
@@ -236,7 +226,6 @@ export async function transcribeCloudAudioChunks(
       mediaFileId,
       {
         signal: options?.signal,
-        diagRunId: options?.diagRunId,
         mimeType: "audio/mpeg",
         filename: `transcribe-audio-${chunk.index + 1}.mp3`,
         timeOffsetSec: chunk.startSec,
@@ -249,12 +238,5 @@ export async function transcribeCloudAudioChunks(
     );
     transcriptions.push(transcription);
   }
-  const merged = mergeCloudChunkTranscriptions(transcriptions);
-  logTranscriptionDiag("CLOUD_DONE", {
-    runId: options?.diagRunId,
-    provider,
-    wordCount: merged.words?.length ?? 0,
-    chunkCount,
-  });
-  return merged;
+  return mergeCloudChunkTranscriptions(transcriptions);
 }

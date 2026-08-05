@@ -4,9 +4,6 @@ import { createMediabunnyInput } from "../../lib/media/mediabunny-file-source.ut
 import { createThrottledProgressReporter } from "../../lib/convert/throttled-progress.util";
 import { createClipperTranscriptionAudioSink } from "../../persistence/transcription-audio-sink.util";
 import { clipperLog } from "../../shared/logger.util";
-import {
-  logTranscriptionDiag,
-} from "../../../../shared/utils/transcription-diag-log.util";
 import type { PreparedTranscriptionAudio } from "../types/audio.types";
 import {
   appendRmsSamples,
@@ -63,7 +60,6 @@ export async function extractClipAudioForTranscription(
     projectId: string;
     signal?: AbortSignal;
     onProgress?: (ratio: number) => void;
-    diagRunId?: string;
   },
 ): Promise<PreparedTranscriptionAudio> {
   clipperLog("audio: extracting PCM WAV via mediabunny", {
@@ -167,12 +163,6 @@ export async function extractClipAudioForTranscription(
 
   clipperLog("audio: PCM WAV ready on disk", {
     audioPath,
-    rmsHops: audioEnvelope.values.length,
-  });
-  logTranscriptionDiag("AUDIO_READY", {
-    runId: options.diagRunId,
-    audioPath,
-    durationSec: endSec - startSec,
     rmsHops: audioEnvelope.values.length,
   });
   return { audioPath, audioEnvelope };

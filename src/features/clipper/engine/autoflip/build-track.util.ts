@@ -344,7 +344,12 @@ export function primaryAspectTrackSampleCount(blob: ClipperFrameAnalysis): numbe
 export { AUTOFLIP_ANALYZER_VERSION, AUTOFLIP_MODEL_ID } from "./config/config.constants";
 
 export function primaryCropAspectRatio(enabledFormatIds: string[]): number {
-  const preferred = enabledFormatIds.find((id) => id === "tiktok") ?? enabledFormatIds[0] ?? "tiktok";
+  const preferred =
+    enabledFormatIds.find(
+      (id) => id === "vertical-short" || id === "vertical-reels" || id === "tiktok",
+    ) ??
+    enabledFormatIds[0] ??
+    "vertical-short";
   switch (preferred) {
     case "instagram":
       return 1;
@@ -353,6 +358,8 @@ export function primaryCropAspectRatio(enabledFormatIds: string[]): number {
     case "youtube":
     case "twitter":
       return 16 / 9;
+    case "vertical-short":
+    case "vertical-reels":
     case "tiktok":
     case "youtube-shorts":
     default:

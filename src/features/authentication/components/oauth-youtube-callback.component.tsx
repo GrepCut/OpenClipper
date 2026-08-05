@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AppLoader } from "../../shared/components/app-loader.component";
-import { youtubeAuthService } from "../../services/youtube-auth.service";
-import { useAuth } from "../../shared/hooks/use-auth.hook";
-import { isTauri } from "../../shared/utils/platform.util";
-import { useYoutubeStore } from "../../stores/use-youtube-store.store";
-import { useTheme } from "../../theme";
-import { OAuthProcessingLayout } from "./components/oauth-processing-layout.component";
+import { AppLoader } from "../../../shared/components/app-loader.component";
+import { youtubeAuthService } from "../../../services/youtube-auth.service";
+import { useAuth } from "../../../shared/hooks/use-auth.hook";
+import { isTauri } from "../../../shared/utils/platform.util";
+import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
+import { useTheme } from "../../../theme";
+import { OAuthProcessingLayout } from "./oauth-processing-layout.component";
 import {
   exchangeDesktopTicketIfNeeded,
   handleOAuthConnectionFailure,

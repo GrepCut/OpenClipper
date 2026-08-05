@@ -33,6 +33,7 @@ const INITIAL: Record<SocialPublishablePlatform, PlatformState> = {
   youtube: empty(),
   facebook: empty(),
   instagram: empty(),
+  threads: empty(),
   tiktok: empty(),
   x: empty(),
 };
@@ -83,6 +84,7 @@ export const useSocialStore = create<SocialStore>((set, get) => ({
     const platforms: SocialPublishablePlatform[] = [
       "facebook",
       "instagram",
+      "threads",
       "tiktok",
       "x",
     ];

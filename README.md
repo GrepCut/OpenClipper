@@ -47,6 +47,12 @@ Queue clips across formats, track render progress, and publish directly to **Tik
 
 [render-queue.webm](https://github.com/user-attachments/assets/068b656b-4654-463c-b67d-78f7fc628900)
 
+### Open the full video editor from Clipper
+
+Get complete control, frame-level precision, and the freedom to make any fix or polish you want. Jump from Open Clipper into GrepCut Studio, the full online video editor.
+
+[open-studio-from-clipper.webm](https://github.com/user-attachments/assets/7098a65d-8cdd-42f2-9da0-0570117b2e55)
+
 ## Prerequisites
 
 Windows is the primary development target today.
@@ -251,10 +257,15 @@ npm run tauri:dev
 
 Planned work — not yet shipped:
 
-- [ ] **Auto-updater & GitHub Releases** — in-app update checks and installs from [GitHub Releases](https://github.com/GrepCut/OpenClipper/releases)
-- [ ] **Model hosting on Cloudflare R2** — after the models sync workflow, publish ASR and vision bundles to R2 for CDN delivery
-- [ ] **Social provider verification** — account verification for TikTok, YouTube, and X before publishing clips
-- [ ] **Benchmark** — headless test-dataset benchmarks for reframe quality (focus-hit metrics, miss-frame export)
+- [x] **Auto-updater & Cloudflare Releases** — in-app update checks and installs from Cloudflare-hosted releases
+- [x] **Model hosting on Cloudflare R2** — ASR and vision bundles published to R2 for CDN delivery
+- [ ] **Social provider verification** — account verification before publishing clips
+  - [ ] TikTok — submitted for review (pending approval)
+  - [ ] YouTube — submitted for review (pending approval; `youtube.upload` scope)
+  - [ ] Meta (Instagram / Facebook) — business verification submitted (pending approval)
+  - [ ] X — TBD (paid API; evaluate cost vs. need)
+- [ ] **Paddle integration** — billing and subscriptions via Paddle
+- [ ] **Studio integration** — connect Open Clipper with GrepCut Studio
 
 ## Contributing
 
