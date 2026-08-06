@@ -264,7 +264,7 @@ Planned work — not yet shipped:
   - [x] YouTube — approved (`youtube.upload` scope)
   - [ ] Meta (Instagram / Facebook / Threads)
     - [x] Business verification — accepted
-    - [ ] App verification — not yet approved
+    - [ ] App verification — submitted for review (pending approval)
   - [ ] X — TBD (paid API; evaluate cost vs. need)
 - [ ] **Paddle integration** — billing and subscriptions via Paddle
 - [x] **Studio integration** — connect Open Clipper with GrepCut Studio
