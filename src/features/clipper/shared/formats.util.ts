@@ -8,7 +8,8 @@ export type ClipperPlatform =
   | "youtube"
   | "youtube-shorts"
   | "twitter"
-  | "threads";
+  | "threads"
+  | "facebook";
 
 /** Ids from `ASPECT_PRESETS` in `tools/shared/video-draw.ts`. */
 export type ClipperAspectPresetId = "16-9" | "9-16" | "1-1" | "4-5";
@@ -69,24 +70,24 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
   {
     id: "vertical-reels",
     platform: "instagram",
-    badgePlatforms: ["instagram", "threads"],
-    publishTargets: ["instagram", "threads"],
-    label: "Instagram Reels / Threads",
+    badgePlatforms: ["instagram", "threads", "facebook"],
+    publishTargets: ["instagram", "threads", "facebook"],
+    label: "Instagram Reels / Threads / Facebook",
     aspectId: "9-16",
     mode: "crop",
-    description: "Vertical 9:16 — one export for Reels and Threads",
+    description: "Vertical 9:16 — one export for Reels, Threads, and Facebook",
     isDefaultEnabled: true,
   },
   {
     id: "instagram-portrait",
     platform: "instagram",
-    badgePlatforms: ["instagram"],
-    publishTargets: ["instagram"],
-    label: "Instagram Portrait",
+    badgePlatforms: ["instagram", "facebook"],
+    publishTargets: ["instagram", "facebook"],
+    label: "Instagram / Facebook Portrait",
     aspectId: "4-5",
     mode: "crop",
-    description: "Portrait 4:5",
-    isDefaultEnabled: false,
+    description: "Portrait 4:5 — one export for Instagram and Facebook",
+    isDefaultEnabled: true,
   },
   {
     id: "twitter",
@@ -128,6 +129,11 @@ export function migrateEnabledFormatIds(ids: string[]): string[] {
   return out;
 }
 
+/** Default export formats for new projects / render queue (from format defs). */
+export function getDefaultEnabledFormatIds(): string[] {
+  return CLIPPER_FORMAT_DEFS.filter((def) => def.isDefaultEnabled).map((def) => def.id);
+}
+
 export function getClipperFormatDef(id: string): ClipperFormatDef | undefined {
   const canonical = normalizeLegacyFormatId(id);
   return CLIPPER_FORMAT_DEFS.find((f) => f.id === canonical);
@@ -146,6 +152,8 @@ export function getPublishTargetsForFormat(formatId: string): SocialPublishableP
       return ["youtube"];
     case "threads":
       return ["threads"];
+    case "facebook":
+      return ["facebook"];
     case "instagram":
       return ["instagram"];
     case "tiktok":

@@ -1,7 +1,7 @@
 {
   "name": "open-clipper",
   "private": true,
-  "version": "26.8.2",
+  "version": "26.8.3",
   "license": "MIT",
   "type": "module",
   "scripts": {

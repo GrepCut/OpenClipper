@@ -99,7 +99,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     wordsPerGroup: 4,
   },
   formats: {
-    enabledFormatIds: ["vertical-short", "vertical-reels"],
+    enabledFormatIds: ["vertical-short", "vertical-reels", "instagram-portrait"],
     quality: "standard",
     resolutionCap: "source",
     filenameTemplate: "{name}-clip-{clip}-{platform}",
@@ -175,7 +175,8 @@ export function mergeClipperSettings(
       return {
         ...mergedFormats,
         enabledFormatIds: migrateEnabledFormatIds(
-          Array.isArray(mergedFormats.enabledFormatIds)
+          Array.isArray(mergedFormats.enabledFormatIds) &&
+            mergedFormats.enabledFormatIds.length > 0
             ? mergedFormats.enabledFormatIds
             : base.formats.enabledFormatIds,
         ),

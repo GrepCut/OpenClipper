@@ -80,7 +80,6 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     loaded,
     clipIndices,
     clipPreviews: state.clipPreviews,
-    enabledFormatIds: settings.formats.enabledFormatIds,
     isRendering,
     view,
     setView,

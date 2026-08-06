@@ -261,11 +261,15 @@ Planned work — not yet shipped:
 - [x] **Model hosting on Cloudflare R2** — ASR and vision bundles published to R2 for CDN delivery
 - [ ] **Social provider verification** — account verification before publishing clips
   - [ ] TikTok — submitted for review (pending approval)
-  - [ ] YouTube — submitted for review (pending approval; `youtube.upload` scope)
-  - [ ] Meta (Instagram / Facebook) — business verification submitted (pending approval)
+  - [x] YouTube — approved (`youtube.upload` scope)
+  - [ ] Meta (Instagram / Facebook / Threads)
+    - [x] Business verification — accepted
+    - [ ] App verification — not yet approved
   - [ ] X — TBD (paid API; evaluate cost vs. need)
 - [ ] **Paddle integration** — billing and subscriptions via Paddle
-- [ ] **Studio integration** — connect Open Clipper with GrepCut Studio
+- [x] **Studio integration** — connect Open Clipper with GrepCut Studio
+- [ ] **MCP video presentation** — present videos via MCP
+- [ ] **MCP clip generation / scoring** — generate and score clips via MCP
 
 ## Contributing
 
