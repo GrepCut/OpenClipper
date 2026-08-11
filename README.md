@@ -12,7 +12,7 @@
 
 [![Website](https://img.shields.io/badge/website-open_clipper-111?logo=google-chrome&logoColor=fff&style=flat)](https://grepcut.com/en/open-clipper)
 [![GrepCut](https://img.shields.io/badge/GrepCut-grepcut.com-111?style=flat)](https://grepcut.com/)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=fff&style=flat)](https://discord.gg/2uXgrUpe)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=fff&style=flat)](https://discord.gg/jWmWGmJT)
 [![X](https://img.shields.io/badge/follow-%40GrepCut-000?logo=x&logoColor=fff&style=flat)](https://x.com/GrepCut)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&logoColor=fff&style=flat)](https://www.linkedin.com/in/adam-zi%C3%B3%C5%82ko-9b6603351/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
