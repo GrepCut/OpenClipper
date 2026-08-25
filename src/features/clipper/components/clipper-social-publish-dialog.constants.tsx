@@ -1,5 +1,4 @@
 import React from "react";
-import { Youtube, Instagram, Facebook } from "lucide-react";
 import type { SocialPrivacyStatus, SocialPublishablePlatform } from "../../../services/social-auth.service";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 
@@ -21,11 +20,11 @@ export const PLATFORM_LABELS: Record<SocialPublishablePlatform, string> = {
 export function PlatformIcon({ platform }: { platform: SocialPublishablePlatform }) {
   switch (platform) {
     case "youtube":
-      return <Youtube size={20} color="#FF0000" />;
+      return <ClipperPlatformIcon platform="youtube" size={20} />;
     case "instagram":
-      return <Instagram size={20} />;
+      return <ClipperPlatformIcon platform="instagram" size={20} />;
     case "facebook":
-      return <Facebook size={20} />;
+      return <ClipperPlatformIcon platform="facebook" size={20} />;
     case "threads":
       return <ClipperPlatformIcon platform="threads" size={20} />;
     case "tiktok":
@@ -33,7 +32,7 @@ export function PlatformIcon({ platform }: { platform: SocialPublishablePlatform
     case "x":
       return <ClipperPlatformIcon platform="twitter" size={20} />;
     default:
-      return <Youtube size={20} />;
+      return <ClipperPlatformIcon platform="youtube" size={20} />;
   }
 }
 

@@ -17,6 +17,7 @@ import {
 } from "../../../services/social-auth.service";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
+import { refreshAllIntegrations } from "../../../stores/refresh-all-integrations.util";
 import {
   buildMcpConfigSnippet,
   type ExportSocialFields,
@@ -82,16 +83,13 @@ export function ClipperPublishView() {
   const {
     connections: youtubeConnections,
     isConnected: isYoutubeConnected,
-    refreshStatus: refreshYoutubeStatus,
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((s) => s.platforms);
-  const refreshSocial = useSocialStore((s) => s.refreshAll);
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;
-    void refreshYoutubeStatus();
-    void refreshSocial();
-  }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
+    void refreshAllIntegrations();
+  }, [canUseAccountFeatures]);
 
   useEffect(() => {
     let cancelled = false;

@@ -14,7 +14,7 @@ import {
   writeClipperFaceActionBenchmark,
   writeClipperSmartCropAnalysis,
 } from "../../persistence/project-data-files.util";
-import { clipperPipelineService, markClipperStepCompleted } from "../../persistence/pipeline-api.util";
+import { markClipperStepActive, markClipperStepCompleted } from "../../persistence/pipeline-api.util";
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
 import { isRestoredSmartCropAnalysisValid } from "../is-restored-analysis-valid.util";
@@ -171,9 +171,7 @@ export async function runAnalyzeSubjectsStage(
     }
   }
 
-  await clipperPipelineService.upsertSteps(input.projectId, [
-    { stepKey: "analyze_subjects", status: "active", progress: 0 },
-  ]);
+  await markClipperStepActive(input.projectId, "analyze_subjects", { progress: 0 });
   reporter.stage("analyzing-subjects", "Building AutoFlip reframe track…");
   reporter.stageDetail("Building AutoFlip reframe track", null);
 

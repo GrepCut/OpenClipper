@@ -32,7 +32,7 @@ function describeInvalidConversion(conversion: Conversion): string {
 
   if (onlyVideoDiscardedByUser) {
     return (
-      "This file has no audio track — it looks like a video-only file. " +
+      "This file has no audio track, it looks like a video-only file. " +
       "Choose a video that includes sound to extract MP3 or WAV."
     );
   }

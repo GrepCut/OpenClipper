@@ -9,7 +9,6 @@ import { ClipperTranscriptEmpty } from "./clipper-transcript-empty.component";
 
 export interface ClipperInlineTranscriptProps {
   words: WordCue[];
-  /** Absolutny offset czasu słów względem range (np. clip.startSec lub 0 dla rangeWords). */
   wordTimeOffsetSec: number;
   regions: CollageRegion[];
   disabledRegionIds: string[];
@@ -80,13 +79,13 @@ function SplitRegionMarker({
       key={region.id}
       aria-label={
         enabled
-          ? "Two speakers detected — split-screen on here. Click to turn off for this part."
+          ? "Two speakers detected. Split-screen on here, click to turn off for this part."
           : "Split-screen turned off for this part. Click to turn back on."
       }
       title={
         enabled
-          ? "Split-screen on here — click to turn off"
-          : "Split-screen off here — click to turn on"
+          ? "Split-screen on here. Click to turn off"
+          : "Split-screen off here. Click to turn on"
       }
       size="2xs"
       variant={enabled ? "solid" : "outline"}

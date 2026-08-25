@@ -3,7 +3,16 @@ import { socialAuthService } from "../services/social-auth.service";
 import type {
   SocialConnectionSummary,
   SocialPublishablePlatform,
+  SocialStatusResponse,
 } from "../services/types/social-auth.types";
+
+const SOCIAL_STATUS_PLATFORMS: SocialPublishablePlatform[] = [
+  "facebook",
+  "instagram",
+  "threads",
+  "tiktok",
+  "x",
+];
 
 type PlatformState = {
   connections: SocialConnectionSummary[];
@@ -14,8 +23,14 @@ type PlatformState = {
 
 type SocialStore = {
   platforms: Record<SocialPublishablePlatform, PlatformState>;
+  /** Single-platform refresh, for reconnect flows. Whole-app hydration goes through
+   *  `refreshAllIntegrations()`, which also hydrates the YouTube store. */
   refreshStatus: (platform: SocialPublishablePlatform) => Promise<void>;
-  refreshAll: () => Promise<void>;
+  beginCheckAll: () => void;
+  endCheckAll: () => void;
+  applyAll: (
+    platforms: Record<SocialPublishablePlatform, SocialStatusResponse>,
+  ) => void;
   setConnections: (
     platform: SocialPublishablePlatform,
     connections: SocialConnectionSummary[],
@@ -38,6 +53,16 @@ const INITIAL: Record<SocialPublishablePlatform, PlatformState> = {
   x: empty(),
 };
 
+function statusToPlatformState(status: SocialStatusResponse): PlatformState {
+  const connections = status.connections ?? [];
+  return {
+    connections,
+    connected: connections.length > 0,
+    displayName: connections[0]?.displayName ?? null,
+    isChecking: false,
+  };
+}
+
 export const useSocialStore = create<SocialStore>((set, get) => ({
   platforms: INITIAL,
 
@@ -54,6 +79,38 @@ export const useSocialStore = create<SocialStore>((set, get) => ({
         },
       },
     }));
+  },
+
+  beginCheckAll: () => {
+    set((state) => {
+      const platforms = { ...state.platforms };
+      for (const platform of SOCIAL_STATUS_PLATFORMS) {
+        platforms[platform] = { ...platforms[platform], isChecking: true };
+      }
+      return { platforms };
+    });
+  },
+
+  endCheckAll: () => {
+    set((state) => {
+      const platforms = { ...state.platforms };
+      for (const platform of SOCIAL_STATUS_PLATFORMS) {
+        platforms[platform] = { ...platforms[platform], isChecking: false };
+      }
+      return { platforms };
+    });
+  },
+
+  applyAll: (payload) => {
+    set((state) => {
+      const platforms = { ...state.platforms };
+      for (const platform of SOCIAL_STATUS_PLATFORMS) {
+        const status = payload[platform];
+        if (!status) continue;
+        platforms[platform] = statusToPlatformState(status);
+      }
+      return { platforms };
+    });
   },
 
   refreshStatus: async (platform) => {
@@ -78,16 +135,5 @@ export const useSocialStore = create<SocialStore>((set, get) => ({
         },
       }));
     }
-  },
-
-  refreshAll: async () => {
-    const platforms: SocialPublishablePlatform[] = [
-      "facebook",
-      "instagram",
-      "threads",
-      "tiktok",
-      "x",
-    ];
-    await Promise.all(platforms.map((p) => get().refreshStatus(p)));
   },
 }));

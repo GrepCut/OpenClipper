@@ -113,7 +113,7 @@ export function StyledModal({
             borderColor={theme.dashboard.border}
             borderRadius="2xl"
             boxShadow="0 8px 32px rgba(0,0,0,0.4)"
-            p={4}
+            p={0}
             w={contentWidth}
             maxW={contentWidth}
             maxH={scrollBehavior === "inside" ? "85vh" : undefined}
@@ -132,7 +132,7 @@ export function StyledModal({
               flex="1"
               position="relative"
             >
-              <Dialog.Header>
+              <Dialog.Header px={3} pt={3} pb={2}>
                 <Dialog.Title color={theme.text.primary}>
                   <SecondaryMainTitle fontSize="2xl">
                     {title}
@@ -143,6 +143,9 @@ export function StyledModal({
               {onFormSubmit ? (
                 <Dialog.Body
                   color={theme.text.primary}
+                  px={3}
+                  pt={1}
+                  pb={3}
                   overflowY={scrollBehavior === "inside" ? "auto" : undefined}
                   flex="1"
                   css={{
@@ -167,6 +170,9 @@ export function StyledModal({
               ) : (
                 <Dialog.Body
                   color={theme.text.primary}
+                  px={3}
+                  pt={1}
+                  pb={3}
                   overflowY={scrollBehavior === "inside" ? "auto" : undefined}
                   flex="1"
                   css={{
@@ -190,7 +196,7 @@ export function StyledModal({
             </Box>
 
             {footerContent && (
-              <Dialog.Footer padding="0" paddingTop={4}>
+              <Dialog.Footer px={3} pt={2} pb={3}>
                 {footerContent}
               </Dialog.Footer>
             )}

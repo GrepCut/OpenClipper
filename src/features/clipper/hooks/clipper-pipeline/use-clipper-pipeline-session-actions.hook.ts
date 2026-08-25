@@ -62,7 +62,7 @@ export function useClipperPipelineSessionActions(
         if (controller.signal.aborted) return;
 
         sessionRef.current = session;
-        persistMetadata(
+        await persistMetadata(
           {
             sourceMediaFileId: mediaFileId,
             clipStart: 0,

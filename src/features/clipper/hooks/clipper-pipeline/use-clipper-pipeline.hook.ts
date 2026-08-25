@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { useClipperPipelineAi } from "./use-clipper-pipeline-ai.hook";
 import { useClipperPipelineClips } from "./use-clipper-pipeline-clips.hook";
 import { useClipperPipelineCore } from "./use-clipper-pipeline-core.hook";
@@ -27,6 +28,16 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
   const ai = useClipperPipelineAi(core);
   const render = useClipperPipelineRender(core);
 
+  const [resumeRetryToken, setResumeRetryToken] = useState(0);
+
+  /** Re-arms the resume effect after a phase failed, so it restarts that phase. */
+  const retryResume = useCallback(() => {
+    refs.resumeStartedRef.current = false;
+    core.setState((prev) => ({ ...prev, error: null }));
+    void core.persistMetadata({}, "uploading");
+    setResumeRetryToken((value) => value + 1);
+  }, [core, refs.resumeStartedRef]);
+
   useClipperResume({
     loaded,
     projectId: project.id,
@@ -41,8 +52,10 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     reporter: refs.reporterRef.current,
     initialState: INITIAL_PIPELINE_STATE,
     preparePreviewFromRange: workflow.preparePreviewFromRange,
-    confirmRange: workflow.confirmRange,
+    resumeFromTranscribe: workflow.resumeFromTranscribe,
+    failPhase: workflow.failPhase,
     activeClipIndexRef,
+    retryToken: resumeRetryToken,
   });
 
   return {
@@ -53,6 +66,7 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     resetSettings,
     selectFile: workflow.selectFile,
     confirmRange: workflow.confirmRange,
+    retryResume,
     clipAgain: workflow.clipAgain,
     renderExports: render.renderExports,
     rerenderFormat: render.rerenderFormat,

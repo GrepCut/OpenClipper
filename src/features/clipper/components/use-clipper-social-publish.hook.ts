@@ -130,7 +130,7 @@ export function useClipperSocialPublish({
     const socialTitle = result.socialTitle?.trim();
     if (socialTitle) return socialTitle;
     const base = sourceFileName?.replace(/\.[^.]+$/, "") || "Clip";
-    return `${base} — Clip ${result.clipIndex + 1} (${result.label})`;
+    return `${base}: Clip ${result.clipIndex + 1} (${result.label})`;
   }, [result, sourceFileName]);
 
   const defaultDescription = useMemo(() => {

@@ -158,7 +158,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
           if (manifest.cropTrack.length === 0) {
             appToast.warning(
               "No AutoFlip crop track",
-              "Subject analysis has no reframing samples — Studio will import without zoom keyframes.",
+              "Subject analysis has no reframing samples. Studio will import without zoom keyframes.",
             );
           }
           await openClipInStudio(manifest, {

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { youtubeAuthService } from "../services/youtube-auth.service";
 import type { SocialConnectionSummary } from "../services/types/youtube-auth.types";
+import type { SocialStatusResponse } from "../services/types/social-auth.types";
 
 interface YoutubeStoreState {
   connections: SocialConnectionSummary[];
@@ -9,6 +10,7 @@ interface YoutubeStoreState {
   isChecking: boolean;
   error: string | null;
   refreshStatus: () => Promise<void>;
+  applyStatus: (status: SocialStatusResponse) => void;
   setConnections: (connections: SocialConnectionSummary[]) => void;
 }
 
@@ -23,6 +25,17 @@ export const useYoutubeStore = create<YoutubeStoreState>((set, get) => ({
     set({
       connections,
       isConnected: connections.length > 0,
+      channelTitle: connections[0]?.displayName ?? null,
+      isChecking: false,
+      error: null,
+    });
+  },
+
+  applyStatus: (status) => {
+    const connections = status.connections ?? [];
+    set({
+      connections,
+      isConnected: status.connected || connections.length > 0,
       channelTitle: connections[0]?.displayName ?? null,
       isChecking: false,
       error: null,

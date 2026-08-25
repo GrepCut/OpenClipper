@@ -9,6 +9,7 @@ import { useTheme } from "../../../theme";
 import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
+import { refreshAllIntegrations } from "../../../stores/refresh-all-integrations.util";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
 import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
 import {
@@ -46,12 +47,8 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
     removeOwnerChannel,
     loadOwnerChannels,
   } = useClipperOwners();
-  const {
-    connections: youtubeConnections,
-    refreshStatus: refreshYoutubeStatus,
-  } = useYoutubeStore();
+  const youtubeConnections = useYoutubeStore((state) => state.connections);
   const socialPlatforms = useSocialStore((state) => state.platforms);
-  const refreshSocial = useSocialStore((state) => state.refreshAll);
   const [screen, setScreen] = useState<OwnersScreen>("list");
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [channels, setChannels] = useState<ClipperOwnerChannelRecord[]>([]);
@@ -109,9 +106,8 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;
-    void refreshYoutubeStatus();
-    void refreshSocial();
-  }, [canUseAccountFeatures, refreshSocial, refreshYoutubeStatus]);
+    void refreshAllIntegrations();
+  }, [canUseAccountFeatures]);
 
   useEffect(() => {
     if (!selectedOwnerId || screen === "list") {

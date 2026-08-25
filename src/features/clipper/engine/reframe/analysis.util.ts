@@ -75,7 +75,7 @@ async function detectWinMlMedia(
       onPhase?.("Decoding video and analyzing action…");
     else if (progress.phase === "draining")
       onPhase?.(
-        `FFmpeg complete — finishing ${progress.queuedDetections} queued detections…`,
+        `FFmpeg complete, finishing ${progress.queuedDetections} queued detections…`,
       );
     else if (progress.phase === "inferencing")
       onPhase?.(`Analyzing faces and action… ${progress.percent}%`);

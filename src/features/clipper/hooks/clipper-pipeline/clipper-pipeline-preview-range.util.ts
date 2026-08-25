@@ -42,7 +42,7 @@ export interface PreparePreviewFromRangeDeps {
   persistMetadata: (
     patch: Partial<ClipperProjectMetadata>,
     stage?: ClipperProjectMetadata["stage"],
-  ) => void;
+  ) => Promise<void>;
   setDisabledCollageRegionIds: (ids: string[]) => void;
   setAutoPartsSegmentLengthSec: (length: number) => void;
   setState: React.Dispatch<React.SetStateAction<ClipperPipelineState>>;
@@ -183,7 +183,7 @@ export async function preparePreviewFromRange(
 
   const restoredActiveClipIndex =
     metadataRef.current.activeClipIndex ?? activeClipIndexRef.current ?? 0;
-  persistMetadata(
+  await persistMetadata(
     {
       clipStart: snappedStart,
       clipEnd: end,

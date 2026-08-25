@@ -61,4 +61,20 @@ describe("resolveClipperSessionVisibility", () => {
     assert.equal(visibility.previewKeepAlive, true);
     assert.equal(visibility.showQueueSetup, true);
   });
+
+  it("hands the screen to the live stage UI while a resumed phase re-runs", () => {
+    for (const stage of ["transcribing", "analyzing-faces", "analyzing-subjects"] as const) {
+      const visibility = resolveClipperSessionVisibility(baseInput({ stage }));
+      assert.equal(visibility.showRestoreLoader, false, stage);
+      assert.equal(visibility.showFreshProcessing, true, stage);
+      assert.equal(visibility.showLoadingUi, true, stage);
+    }
+  });
+
+  it("drops the loader and offers no back link on a halted error", () => {
+    const visibility = resolveClipperSessionVisibility(baseInput({ stage: "error" }));
+    assert.equal(visibility.showRestoreLoader, false);
+    assert.equal(visibility.showLoadingUi, false);
+    assert.equal(visibility.showUpload, false);
+  });
 });

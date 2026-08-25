@@ -153,7 +153,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
         persistMetadata({}, "preview");
         patchPipelineState(setState, (draft) => {
           draft.stage = "preview";
-          draft.stageMessage = "Render failed — adjust preview and try again";
+          draft.stageMessage = "Render failed, adjust preview and try again";
           draft.stageProgress = null;
           draft.error = error instanceof Error ? error.message : "Render failed.";
           for (const preview of draft.clipPreviews) {

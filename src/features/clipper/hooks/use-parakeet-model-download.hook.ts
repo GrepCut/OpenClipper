@@ -36,7 +36,7 @@ export function accordionStatusText(
   activeProvider: string | null,
 ): string {
   if (modelStatus?.installed) {
-    return `Model installed — loads for each transcription and is released when it finishes${activeProvider ? ` — ${activeProvider}` : ""}`;
+    return `Model installed, loads for each transcription and is released when it finishes${activeProvider ? `: ${activeProvider}` : ""}`;
   }
   return "Model not installed (~671 MB)";
 }

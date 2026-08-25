@@ -15,6 +15,7 @@ import type {
   SocialPublishablePlatform,
   SocialStatusResponse,
   MetaTargetsResponse,
+  SocialAllStatusResponse,
   TikTokCreatorInfo,
   PublishClipperToTikTokParams,
 } from "./types/social-auth.types";
@@ -71,6 +72,11 @@ export const socialAuthService = {
     const response = await apiClient.get<SocialStatusResponse>(
       `/social/${platform}/status`,
     );
+    return response.data;
+  },
+
+  async checkAllConnections(): Promise<SocialAllStatusResponse> {
+    const response = await apiClient.get<SocialAllStatusResponse>("/social/status");
     return response.data;
   },
 

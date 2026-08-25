@@ -19,7 +19,8 @@
 
 Free, open-source Windows desktop app for turning long videos into short, platform-ready clips. Local or cloud transcription (Whisper, Parakeet), scene-aware autoreframe, styled captions, and batch export to TikTok, YouTube, Instagram, and more.
 
-**Download:** [grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper)
+> [!WARNING]
+> **Just want to use the app? Do not build from source.** Open Clipper ships as a Windows installer. Download the `.exe` from **[grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper)**, run it, and it works — no Node, Rust, or Visual Studio required. The **Developing from source** section below is only for people who want to run or change the code.
 
 ## Features
 
@@ -53,9 +54,13 @@ Get complete control, frame-level precision, and the freedom to make any fix or 
 
 [open-studio-from-clipper.webm](https://github.com/user-attachments/assets/7098a65d-8cdd-42f2-9da0-0570117b2e55)
 
-## Prerequisites
+## Developing from source
 
-Windows is the primary development target today.
+Skip this entire section unless you want to contribute or run the app from this repo. Everyday use is the Windows installer at [grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper).
+
+### Prerequisites
+
+Windows is the primary development target today. These tools are required only to build and run from source.
 
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install) **≥ 1.91**
@@ -63,7 +68,7 @@ Windows is the primary development target today.
 - [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (required by Tauri 2 on Windows)
 - Static **FFmpeg** via [vcpkg](https://vcpkg.io/) (`x64-windows-static`). The repo expects paths in [`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml) — adjust `VCPKG_ROOT`, `FFMPEG_DIR`, and the MSVC `linker` path for your machine.
 
-## Development
+### Development
 
 ```bash
 npm install
@@ -72,7 +77,7 @@ npm run tauri:dev
 
 `tauri:dev` starts Vite on `http://localhost:1420` via `beforeDevCommand`. Close any running `open-clipper.exe` before rebuilding to avoid file locks.
 
-## Build
+### Build
 
 | Goal | Command | Output |
 |------|---------|--------|
@@ -84,7 +89,7 @@ npm run tauri:dev
 
 `tauri:build:fast` uses lighter Cargo flags (`LTO=off`, `opt-level=2`) and a separate `target-fast/` cache. Production builds run `beforeBuildCommand` (`build:tauri` + MCP staging); models from `public/models` are not copied into `dist` — the app downloads them on demand into AppData.
 
-## Faster builds on Windows
+### Faster builds on Windows
 
 You can optionally exclude the Open Clipper Cargo caches from Windows Defender. Run **PowerShell as administrator** from the project root:
 

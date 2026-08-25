@@ -15,6 +15,7 @@ import {
 } from "../../persistence/project-data-files.util";
 import {
   clipperPipelineService,
+  markClipperStepActive,
   markClipperStepCompleted,
 } from "../../persistence/pipeline-api.util";
 import type { PipelineReporter } from "../reporter.util";
@@ -102,6 +103,7 @@ export async function runAnalyzeFacesStage(
       faceDetectSkipped ? "Analyzing motion and important subjects…" : "Detecting faces…",
     );
     if (!faceDetectSkipped) {
+      await markClipperStepActive(projectId, "analyze_faces", { progress: 0 });
       reporter.faceProgress(0);
       reporter.stageProgress(null);
     }

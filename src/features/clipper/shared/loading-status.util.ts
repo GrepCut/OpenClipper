@@ -152,10 +152,10 @@ export function resumeStepsForStage(
 function resumeDetailForStage(stage: string, stageMessage?: string): string | undefined {
   const lower = stageMessage?.toLowerCase() ?? "";
   if (lower.includes("saved boundaries") || lower.includes("rebuilding clips from saved")) {
-    return "Using cached clip boundaries — skipping mediabunny keyframe scan";
+    return "Using cached clip boundaries; skipping mediabunny keyframe scan";
   }
   if (lower.includes("keyframe")) {
-    return "Scanning video keyframes — this can take a few seconds on long clips";
+    return "Scanning video keyframes; this can take a few seconds on long clips";
   }
   if ((stage === "analyzing-faces" || stage === "analyzing-subjects") && lower.includes("restor")) {
     return "Reading face and smart crop analysis from local project data";

@@ -64,7 +64,7 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     label: "TikTok / YouTube Shorts",
     aspectId: "9-16",
     mode: "crop",
-    description: "Vertical 9:16 — one export for TikTok and YouTube Shorts",
+    description: "Vertical 9:16, one export for TikTok and YouTube Shorts",
     isDefaultEnabled: true,
   },
   {
@@ -75,7 +75,7 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     label: "Instagram Reels / Threads / Facebook",
     aspectId: "9-16",
     mode: "crop",
-    description: "Vertical 9:16 — one export for Reels, Threads, and Facebook",
+    description: "Vertical 9:16, one export for Reels, Threads, and Facebook",
     isDefaultEnabled: true,
   },
   {
@@ -86,7 +86,7 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     label: "Instagram / Facebook Portrait",
     aspectId: "4-5",
     mode: "crop",
-    description: "Portrait 4:5 — one export for Instagram and Facebook",
+    description: "Portrait 4:5, one export for Instagram and Facebook",
     isDefaultEnabled: true,
   },
   {

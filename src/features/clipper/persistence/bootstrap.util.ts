@@ -248,10 +248,9 @@ export async function loadClipperSourceMediaFile(
   options: LoadClipperSourceMediaFileOptions = {},
 ): Promise<{ mediaFile: ClipperMediaFile; file: File; sourceUrl: string } | null> {
   const metadata = project.metadata as Record<string, unknown> | undefined;
-  const mediaFileId =
+  let mediaFileId =
     sourceMediaFileId ??
     (typeof metadata?.sourceMediaFileId === "string" ? metadata.sourceMediaFileId : null);
-  if (!mediaFileId) return null;
 
   await options.onPhase?.("Locating source video", "Loading project sync state from server");
   let mediaFile: ClipperMediaFile | null = null;
@@ -259,9 +258,14 @@ export async function loadClipperSourceMediaFile(
   try {
     const state = await projectStateService.loadState(project.id);
     const dbMediaFile =
-      state.mediaFiles.find((mf) => mf.id === mediaFileId) ?? state.mediaFiles[0] ?? null;
+      (mediaFileId
+        ? state.mediaFiles.find((mf) => mf.id === mediaFileId)
+        : null) ??
+      state.mediaFiles[0] ??
+      null;
     if (dbMediaFile) {
       mediaFile = timelineMediaFileToClipperMediaFile(dbMediaFile);
+      mediaFileId = mediaFile.id;
     }
   } catch (error) {
     clipperLog("sync source: backend state load failed, using project metadata fallback", {
@@ -271,6 +275,7 @@ export async function loadClipperSourceMediaFile(
   }
 
   if (!mediaFile) {
+    if (!mediaFileId) return null;
     await options.onPhase?.("Locating source video", "Reading project metadata");
     mediaFile = clipperMediaFileFromProjectMetadata(mediaFileId, metadata);
   }
