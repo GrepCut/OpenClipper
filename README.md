@@ -265,7 +265,9 @@ Planned work — not yet shipped:
 - [x] **Auto-updater & Cloudflare Releases** — in-app update checks and installs from Cloudflare-hosted releases
 - [x] **Model hosting on Cloudflare R2** — ASR and vision bundles published to R2 for CDN delivery
 - [ ] **Social provider verification** — account verification before publishing clips
-  - [x] TikTok — verified (app review approved)
+  - [ ] TikTok
+    - [x] App review — approved (Production Live)
+    - [ ] Direct Post audit — not submitted (Content Posting API; required to lift unaudited-client restrictions and allow public posts)
   - [x] YouTube — approved (`youtube.upload` scope)
   - [ ] Meta (Instagram / Facebook / Threads)
     - [x] Business verification — accepted

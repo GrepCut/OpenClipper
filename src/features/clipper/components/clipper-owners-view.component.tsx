@@ -299,6 +299,7 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
         title="Add owner"
+        onFormSubmit={() => void handleCreateOwner()}
         footer={
           <OutlinedActionButton onClick={() => void handleCreateOwner()}>
             Create

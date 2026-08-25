@@ -66,6 +66,7 @@ export function ClipperPublishView() {
     selectedProject,
     selectedResult,
     selectNode,
+    selectExport,
     refresh,
     updateItemPublishStatus,
   } = useClipperPublishMap();
@@ -276,7 +277,7 @@ export function ClipperPublishView() {
         </HStack>
       </HStack>
 
-      {loading ? (
+      {loading && items.length === 0 ? (
         <Center py={16} flex="1">
           <AppLoader />
         </Center>
@@ -330,6 +331,7 @@ export function ClipperPublishView() {
                 canPublish={canUseAccountFeatures}
                 publishLoadingExportId={publishLoadingExportId}
                 onPublishExport={(item, platform) => void handlePublishExport(item, platform)}
+                onSelectExport={selectExport}
                 connectedSplit
               />
             )
@@ -350,8 +352,7 @@ export function ClipperPublishView() {
         publishPlatform={publishPlatform}
         onRequestConnect={handleRequestConnect}
         onPublishComplete={(record) => {
-          if (!publishItem) return;
-          updateItemPublishStatus(publishItem.id, record);
+          updateItemPublishStatus(record.exportId, record);
         }}
       />
     </VStack>

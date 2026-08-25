@@ -83,7 +83,10 @@ export function useClipperPublishMap() {
     }
   }, []);
 
-  const refresh = useCallback(() => loadExports(true), [loadExports]);
+  const refresh = useCallback(
+    () => loadExports(false, { purge: false }),
+    [loadExports],
+  );
 
   useEffect(() => {
     void loadExports(true);

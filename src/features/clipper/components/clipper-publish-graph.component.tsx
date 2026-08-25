@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { Box } from "@chakra-ui/react";
-import { asset } from "../../../shared/utils/asset.util";
 import { useClipperPublishGraphThumbnails } from "../hooks/use-clipper-publish-graph-thumbnails.hook";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
 import {
@@ -9,75 +8,23 @@ import {
   getExportNodeStatusLabel,
 } from "../persistence/clipper-export-social.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import type { ClipperPlatform } from "../shared/formats.util";
 import type { PublishGraphData, PublishGraphNode } from "../shared/clipper-publish-graph.util";
+import {
+  buildPublishGraphPayload,
+  publishGraphTopologyKey,
+  type PublishGraphSimNode,
+} from "../shared/clipper-publish-graph-payload.util";
 import {
   drawExportNode,
   drawOwnerNode,
   drawProjectNode,
   paintNodeHitArea,
 } from "./clipper-publish-graph-draw.util";
+import { loadPlatformLogo } from "./clipper-publish-graph-logos.util";
 
 const PROJECT_LINK_DISTANCE = 200;
 const CHARGE_STRENGTH = -560;
-
-const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
-  youtube: asset("/clipper/youtube-logo.webp"),
-  "youtube-shorts": asset("/clipper/youtube-shorts-logo.webp"),
-  instagram: asset("/clipper/instagram-logo.webp"),
-  tiktok: asset("/clipper/tiktok-logo.webp"),
-  twitter: asset("/clipper/x-logo.webp"),
-  threads: asset("/clipper/threads-logo.webp"),
-  facebook: asset("/clipper/facebook-logo.webp"),
-};
-
-const logoCache = new Map<ClipperPlatform, HTMLImageElement>();
-const logoFailed = new Set<ClipperPlatform>();
-
-function isUsableLogo(img: HTMLImageElement): boolean {
-  return img.complete && img.naturalWidth > 0;
-}
-
-function loadPlatformLogo(
-  platform: ClipperPlatform,
-  onReady?: () => void,
-): HTMLImageElement | null {
-  if (logoFailed.has(platform)) return null;
-
-  const cached = logoCache.get(platform);
-  if (cached) {
-    if (isUsableLogo(cached)) return cached;
-    if (cached.complete) {
-      logoFailed.add(platform);
-      logoCache.delete(platform);
-      return null;
-    }
-    return null;
-  }
-
-  const src = PLATFORM_LOGO[platform];
-  if (!src) {
-    logoFailed.add(platform);
-    return null;
-  }
-
-  const img = new Image();
-  logoCache.set(platform, img);
-  img.onload = () => {
-    if (!isUsableLogo(img)) {
-      logoFailed.add(platform);
-      logoCache.delete(platform);
-      return;
-    }
-    onReady?.();
-  };
-  img.onerror = () => {
-    logoFailed.add(platform);
-    logoCache.delete(platform);
-  };
-  img.src = src;
-  return isUsableLogo(img) ? img : null;
-}
+const RESIZE_EPSILON_PX = 2;
 
 interface ClipperPublishGraphProps {
   graphData: PublishGraphData;
@@ -102,6 +49,8 @@ export function ClipperPublishGraph({
   const { thumbnails } = useClipperPublishGraphThumbnails(items);
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
+  const liveNodesRef = useRef<PublishGraphSimNode[]>([]);
+  const dimensionsRef = useRef({ width: 640, height: 480 });
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
   const [logoVersion, setLogoVersion] = useState(0);
 
@@ -116,25 +65,32 @@ export function ClipperPublishGraph({
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      setDimensions({
-        width: Math.max(320, entry.contentRect.width),
-        height: Math.max(320, entry.contentRect.height),
-      });
+      const width = Math.max(320, entry.contentRect.width);
+      const height = Math.max(320, entry.contentRect.height);
+      const previous = dimensionsRef.current;
+      if (
+        Math.abs(width - previous.width) < RESIZE_EPSILON_PX
+        && Math.abs(height - previous.height) < RESIZE_EPSILON_PX
+      ) {
+        return;
+      }
+      dimensionsRef.current = { width, height };
+      setDimensions({ width, height });
     });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
 
+  const topologyKey = useMemo(() => publishGraphTopologyKey(graphData), [graphData]);
+
   const graphPayload = useMemo(
-    () => ({
-      nodes: graphData.nodes.map((node) => ({
-        ...node,
-        val: node.type === "owner" ? 18 : node.type === "project" ? 14 : 4,
-      })),
-      links: graphData.links.map((link) => ({ ...link })),
-    }),
+    () => buildPublishGraphPayload(graphData, liveNodesRef.current),
     [graphData],
   );
+
+  useEffect(() => {
+    liveNodesRef.current = graphPayload.nodes;
+  }, [graphPayload]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -154,14 +110,14 @@ export function ClipperPublishGraph({
       fg.d3ReheatSimulation();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [graphPayload]);
+  }, [topologyKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       graphRef.current?.zoomToFit(400, 72);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [graphData.nodes.length]);
+  }, [topologyKey]);
 
   const drawNode = useCallback(
     (node: PublishGraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {

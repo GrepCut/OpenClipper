@@ -13,6 +13,7 @@ interface StyledModalFooterProps {
   submitText?: string;
   isLoading?: boolean;
   submitDisabled?: boolean;
+  submitTitle?: string;
   submitColorScheme?: string;
   submitFormId?: string;
 }
@@ -38,6 +39,15 @@ type TauriNoDragStyle = CSSProperties & {
   WebkitAppRegion?: "no-drag";
 };
 
+function getFooterSubmitProps(footer: ReactNode): StyledModalFooterProps | null {
+  if (!isValidElement(footer)) return null;
+  const props = footer.props as Partial<StyledModalFooterProps>;
+  if (typeof props.onSubmit !== "function" || typeof props.onCancel !== "function") {
+    return null;
+  }
+  return props as StyledModalFooterProps;
+}
+
 export function StyledModal({
   isOpen,
   onClose,
@@ -55,6 +65,10 @@ export function StyledModal({
 }: StyledModalProps) {
   const { theme, mode } = useTheme();
   const formId = useId();
+  const footerSubmit = getFooterSubmitProps(footer);
+  const isDestructiveFooter = footerSubmit?.submitColorScheme === "red";
+  const effectiveFormSubmit =
+    onFormSubmit ?? (isDestructiveFooter ? undefined : footerSubmit?.onSubmit);
 
   const nonDraggableArea: TauriNoDragStyle = {
     WebkitAppRegion: "no-drag",
@@ -72,12 +86,12 @@ export function StyledModal({
 
   const handleFormSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isLoading) return;
-    onFormSubmit?.();
+    if (isLoading || footerSubmit?.submitDisabled) return;
+    effectiveFormSubmit?.();
   };
 
   const footerContent =
-    footer && onFormSubmit && isValidElement(footer)
+    footer && effectiveFormSubmit && footerSubmit && isValidElement(footer)
       ? cloneElement(footer as ReactElement<StyledModalFooterProps>, { submitFormId: formId })
       : footer;
 
@@ -140,7 +154,7 @@ export function StyledModal({
                 </Dialog.Title>
               </Dialog.Header>
 
-              {onFormSubmit ? (
+              {effectiveFormSubmit ? (
                 <Dialog.Body
                   color={theme.text.primary}
                   px={3}
@@ -214,6 +228,7 @@ export function StyledModalFooter({
   submitText = "Save",
   isLoading = false,
   submitDisabled = false,
+  submitTitle,
   submitColorScheme = "blue",
   submitFormId,
 }: StyledModalFooterProps) {
@@ -271,6 +286,7 @@ export function StyledModalFooter({
         form={submitFormId}
         onClick={submitFormId ? undefined : onSubmit}
         disabled={submitDisabled || isLoading}
+        title={submitTitle}
         h="33px"
         fontSize="md"
         px={5}

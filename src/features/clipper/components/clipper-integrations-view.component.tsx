@@ -287,7 +287,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   );
 
   const handleSelectMetaTarget = useCallback(() => {
-    if (!selectedMetaPageId) return;
+    if (!selectedMetaPageId || isSavingMetaTarget) return;
     setIsSavingMetaTarget(true);
     void socialAuthService
       .selectMetaTarget(selectedMetaPageId, metaTargets?.metaConnectionId ?? undefined)
@@ -303,7 +303,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
         );
       })
       .finally(() => setIsSavingMetaTarget(false));
-  }, [applyMetaTargets, metaTargets?.metaConnectionId, selectedMetaPageId]);
+  }, [applyMetaTargets, isSavingMetaTarget, metaTargets?.metaConnectionId, selectedMetaPageId]);
 
   const isMetaComingSoon = isComingSoonFlow("meta");
 
@@ -407,6 +407,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
         size="md"
         isLoading={isSavingMetaTarget}
         closeOnOverlayClick={!isSavingMetaTarget}
+        onFormSubmit={handleSelectMetaTarget}
       >
         <VStack align="stretch" gap={3}>
           <Text fontSize="sm" color={theme.text.muted}>
@@ -419,38 +420,44 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
             return (
               <Box
                 key={target.id}
-                as="button"
+                asChild
+                w="full"
+                cursor="pointer"
                 textAlign="left"
                 p={4}
                 borderRadius="xl"
                 border="1px solid"
                 borderColor={selected ? colors.purple.medium : theme.dashboard.border}
                 bg={selected ? theme.brand.purpleSoftAlpha12 : theme.background.card}
-                onClick={() => {
-                  if (isSavingMetaTarget) return;
-                  setSelectedMetaPageId(target.id);
-                }}
-                aria-disabled={isSavingMetaTarget || undefined}
                 pointerEvents={isSavingMetaTarget ? "none" : undefined}
                 opacity={isSavingMetaTarget ? 0.65 : 1}
               >
-                <Text fontWeight="semibold" color={theme.text.primary}>
-                  {target.name}
-                </Text>
-                <Text mt={1} fontSize="sm" color={theme.text.muted}>
-                  {target.instagramUserId
-                    ? "Instagram Business/Creator account linked"
-                    : "Facebook only, no linked Instagram Business account"}
-                </Text>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSavingMetaTarget) return;
+                    setSelectedMetaPageId(target.id);
+                  }}
+                  aria-disabled={isSavingMetaTarget || undefined}
+                >
+                  <Text fontWeight="semibold" color={theme.text.primary}>
+                    {target.name}
+                  </Text>
+                  <Text mt={1} fontSize="sm" color={theme.text.muted}>
+                    {target.instagramUserId
+                      ? "Instagram Business/Creator account linked"
+                      : "Facebook only, no linked Instagram Business account"}
+                  </Text>
+                </button>
               </Box>
             );
           })}
           <OutlinedActionButton
+            type="submit"
             width="100%"
             justifyContent="center"
             loading={isSavingMetaTarget}
             disabled={!selectedMetaPageId}
-            onClick={handleSelectMetaTarget}
           >
             Add selected Page
           </OutlinedActionButton>
