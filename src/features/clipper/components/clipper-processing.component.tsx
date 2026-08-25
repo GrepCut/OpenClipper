@@ -65,14 +65,14 @@ export const ClipperProcessing: React.FC<ClipperProcessingProps> = ({ state }) =
     state.stageDetailLabel != null;
   const showUploadBar = state.stage === "uploading" && state.stageProgress != null;
 
-  // The two bars are mutually exclusive by stage, so at most one label competes with the
-  // stage message. `resolveProcessingLabels` collapses them whenever they say the same thing.
   const barLabel = showDetailBar
     ? state.stageDetailLabel
     : showUploadBar
-      ? state.stageMessage.toLowerCase().includes("trim")
-        ? "Trimming clip"
-        : "Saving to project"
+      ? 
+        state.stageMessage.trim() ||
+        (state.stageMessage.toLowerCase().includes("trim")
+          ? "Trimming clip"
+          : "Saving to project")
       : null;
   const labels = resolveProcessingLabels(state.stageMessage, barLabel);
 

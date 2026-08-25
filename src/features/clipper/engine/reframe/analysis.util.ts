@@ -78,7 +78,7 @@ async function detectWinMlMedia(
         `FFmpeg complete, finishing ${progress.queuedDetections} queued detections…`,
       );
     else if (progress.phase === "inferencing")
-      onPhase?.(`Analyzing faces and action… ${progress.percent}%`);
+      onPhase?.("Detecting faces & tracking action…");
   };
   onPhase?.("Initializing native vision (WinML)…");
   const started = performance.now();

@@ -14,9 +14,14 @@ function normalize(value: string): string {
 }
 
 /**
- * Stage messages and progress-bar labels come from different layers and routinely restate
- * each other ("Decoding video and analyzing action…" vs "Decoding video"). When they overlap
- * the more descriptive one wins and moves onto the bar, so only one line is ever painted.
+ * One phase, one line. Stage messages and progress-bar labels are produced by different
+ * layers and describe the same instant, so painting both always reads as a duplicate
+ * ("Transcribing speech (Groq Whisper)…" above "Preparing audio 89%"). Whenever a bar is
+ * present it owns the line, because its label is what the percentage actually measures.
+ *
+ * The one exception is a bar label that is a shortened form of the message
+ * ("Decoding video" vs "Decoding video and analyzing action…"): there the fuller wording
+ * describes the same work, so it moves onto the bar instead.
  */
 export function resolveProcessingLabels(
   stageMessage: string,
@@ -33,11 +38,7 @@ export function resolveProcessingLabels(
   const redundant =
     normalizedMessage.startsWith(normalizedDetail) ||
     normalizedDetail.startsWith(normalizedMessage);
+  const preferMessage = redundant && normalizedMessage.length >= normalizedDetail.length;
 
-  if (!redundant) return { message, detailLabel };
-
-  return {
-    message: null,
-    detailLabel: normalizedMessage.length >= normalizedDetail.length ? message : detailLabel,
-  };
+  return { message: null, detailLabel: preferMessage ? message : detailLabel };
 }
