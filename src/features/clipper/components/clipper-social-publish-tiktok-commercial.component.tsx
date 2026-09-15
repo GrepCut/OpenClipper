@@ -1,14 +1,17 @@
-import { Box, Checkbox, Text, VStack } from "@chakra-ui/react";
+import { Box, Text, VStack } from "@chakra-ui/react";
+import type { TikTokPrivacyLevel } from "../../../services/social-auth.service";
+import { ThemedCheckbox } from "../../../shared/components/ui/themed-checkbox.component";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import {
+  isTikTokBrandedContentLocked,
   TIKTOK_BRANDED_PRIVATE_HINT,
   TIKTOK_COMMERCIAL_REQUIRE_HINT,
   tiktokCommercialLabelCopy,
 } from "../shared/clipper-tiktok-publish.util";
-import { ToggleOptionButton } from "./clipper-social-publish-toggle.component";
 
 export function ClipperSocialPublishTikTokCommercial({
   isPublishing,
+  privacyLevel,
   commercialDisclosure,
   onCommercialDisclosureChange,
   brandOrganic,
@@ -17,6 +20,7 @@ export function ClipperSocialPublishTikTokCommercial({
   onBrandContentChange,
 }: {
   isPublishing: boolean;
+  privacyLevel: TikTokPrivacyLevel | "";
   commercialDisclosure: boolean;
   onCommercialDisclosureChange: (value: boolean) => void;
   brandOrganic: boolean;
@@ -27,75 +31,61 @@ export function ClipperSocialPublishTikTokCommercial({
   const { theme } = useClipperUi();
   const labelCopy = tiktokCommercialLabelCopy({ brandOrganic, brandContent });
   const needsSelection = commercialDisclosure && !brandOrganic && !brandContent;
+  const brandedContentLocked = isTikTokBrandedContentLocked({ privacyLevel });
 
   return (
     <Box>
       <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
         Content disclosure
       </Text>
-      <ToggleOptionButton
-        isSelected={commercialDisclosure}
-        onClick={() => onCommercialDisclosureChange(!commercialDisclosure)}
+      <ThemedCheckbox
+        checked={commercialDisclosure}
+        onCheckedChange={onCommercialDisclosureChange}
         disabled={isPublishing}
-        w="full"
-        justifyContent="flex-start"
-        whiteSpace="normal"
-        h="auto"
-        minH="36px"
-        py={2}
       >
         This content promotes yourself, a brand, product or service
-      </ToggleOptionButton>
+      </ThemedCheckbox>
 
       {commercialDisclosure ? (
         <VStack
           align="stretch"
-          gap={2}
+          gap={3}
           mt={2}
+          px={3}
+          py={3}
+          ml={6}
+          borderRadius="xl"
+          bg={theme.surface.subtle}
+          borderWidth="1px"
+          borderColor={theme.surface.borderStrong}
           title={needsSelection ? TIKTOK_COMMERCIAL_REQUIRE_HINT : undefined}
         >
-          <Checkbox.Root
-            size="sm"
-            colorPalette="blue"
-            checked={brandOrganic}
-            disabled={isPublishing}
-            onCheckedChange={(details) => onBrandOrganicChange(details.checked === true)}
-          >
-            <Checkbox.HiddenInput />
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-            <Checkbox.Label>
-              <Text fontSize="sm" color={theme.text.primary}>
-                Your brand
-              </Text>
-            </Checkbox.Label>
-          </Checkbox.Root>
-          <Text fontSize="xs" color={theme.text.muted} pl={6}>
-            You are promoting yourself or your own business.
-          </Text>
+          <VStack align="stretch" gap={0.5}>
+            <ThemedCheckbox
+              checked={brandOrganic}
+              onCheckedChange={onBrandOrganicChange}
+              disabled={isPublishing}
+            >
+              Your brand
+            </ThemedCheckbox>
+            <Text fontSize="xs" color={theme.text.muted} ps={6}>
+              You are promoting yourself or your own business.
+            </Text>
+          </VStack>
 
-          <Checkbox.Root
-            size="sm"
-            colorPalette="blue"
-            checked={brandContent}
-            disabled={isPublishing}
-            onCheckedChange={(details) => onBrandContentChange(details.checked === true)}
-          >
-            <Checkbox.HiddenInput />
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-            <Checkbox.Label>
-              <Text fontSize="sm" color={theme.text.primary}>
-                Branded content
-              </Text>
-            </Checkbox.Label>
-          </Checkbox.Root>
-          <Text fontSize="xs" color={theme.text.muted} pl={6}>
-            You are promoting another brand or a third party.
-            {brandContent ? ` ${TIKTOK_BRANDED_PRIVATE_HINT}` : ""}
-          </Text>
+          <VStack align="stretch" gap={0.5}>
+            <ThemedCheckbox
+              checked={brandContent}
+              onCheckedChange={onBrandContentChange}
+              disabled={isPublishing || brandedContentLocked}
+            >
+              Branded content
+            </ThemedCheckbox>
+            <Text fontSize="xs" color={theme.text.muted} ps={6}>
+              You are promoting another brand or a third party.
+              {brandedContentLocked ? ` ${TIKTOK_BRANDED_PRIVATE_HINT}` : ""}
+            </Text>
+          </VStack>
 
           {labelCopy ? (
             <Text fontSize="xs" color={theme.text.distinct}>

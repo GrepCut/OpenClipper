@@ -75,7 +75,6 @@ export function useClipperTikTokPublishForm({
 
   const handleBrandContentChange = (value: boolean) => {
     setBrandContent(value);
-    if (value && tiktokPrivacy === "SELF_ONLY") setTikTokPrivacy("");
   };
 
   return {

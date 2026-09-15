@@ -1,4 +1,4 @@
-import { Dialog, Box, Portal } from "@chakra-ui/react";
+import { Dialog, Box, Portal, Tooltip } from "@chakra-ui/react";
 import { cloneElement, isValidElement, useId } from "react";
 import type { CSSProperties, ReactElement, ReactNode, SyntheticEvent } from "react";
 import { useTheme } from '../../theme';
@@ -257,6 +257,30 @@ export function StyledModalFooter({
   };
 
   const submitColors = getColorScheme(submitColorScheme);
+  const submitButtonDisabled = submitDisabled || isLoading;
+
+  const submitButton = (
+    <MainButton
+      type={submitFormId ? "submit" : "button"}
+      form={submitFormId}
+      onClick={submitFormId ? undefined : onSubmit}
+      disabled={submitButtonDisabled}
+      h="33px"
+      fontSize="md"
+      px={5}
+      bg={submitColors.gradient}
+      boxShadow={submitColors.boxShadow}
+      pointerEvents={submitTitle ? "none" : undefined}
+      _hover={{
+        filter: `brightness(${submitColors.hoverBrightness})`,
+        transform: "translateY(-1px)",
+        boxShadow: submitColors.boxShadow !== "none" ? "0 6px 16px rgba(229, 62, 62, 0.3)" : "none",
+        _disabled: { transform: "none" },
+      }}
+    >
+      {submitText}
+    </MainButton>
+  );
 
   return (
     <>
@@ -281,26 +305,35 @@ export function StyledModalFooter({
       >
         {cancelText}
       </MainButton>
-      <MainButton
-        type={submitFormId ? "submit" : "button"}
-        form={submitFormId}
-        onClick={submitFormId ? undefined : onSubmit}
-        disabled={submitDisabled || isLoading}
-        title={submitTitle}
-        h="33px"
-        fontSize="md"
-        px={5}
-        bg={submitColors.gradient}
-        boxShadow={submitColors.boxShadow}
-        _hover={{
-          filter: `brightness(${submitColors.hoverBrightness})`,
-          transform: "translateY(-1px)",
-          boxShadow: submitColors.boxShadow !== "none" ? "0 6px 16px rgba(229, 62, 62, 0.3)" : "none",
-          _disabled: { transform: "none" },
-        }}
-      >
-        {submitText}
-      </MainButton>
+      {submitTitle ? (
+        <Tooltip.Root openDelay={200} closeDelay={100}>
+          <Tooltip.Trigger asChild>
+            <Box as="span" display="inline-block">
+              {submitButton}
+            </Box>
+          </Tooltip.Trigger>
+          <Portal>
+            <Tooltip.Positioner>
+              <Tooltip.Content
+                px={3}
+                py={2}
+                borderRadius="lg"
+                bg={theme.background.secondary}
+                color={theme.text.primary}
+                borderWidth="1px"
+                borderColor={theme.border.primary}
+                boxShadow={theme.shadow.dropdown}
+                maxW="280px"
+                fontSize="sm"
+              >
+                {submitTitle}
+              </Tooltip.Content>
+            </Tooltip.Positioner>
+          </Portal>
+        </Tooltip.Root>
+      ) : (
+        submitButton
+      )}
     </>
   );
 }

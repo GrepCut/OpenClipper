@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "active": {
-    "windows-x86_64": "26.8.3"
+    "windows-x86_64": "26.9.1"
   },
   "releases": [
     {
@@ -70,6 +70,52 @@
           "name": "Open Clipper_26.8.3_x64-setup.exe.sig",
           "size": 424,
           "sha256": "c694705c68b1fd6f22656337176762e842881bf5b808f5849f7800b30610a21b"
+        }
+      ]
+    },
+    {
+      "version": "26.8.4",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-08-25T14:09:19Z",
+      "pubDate": "2026-08-25T14:09:19Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": "26.8.3",
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.8.4",
+      "files": [
+        {
+          "name": "Open Clipper_26.8.4_x64-setup.exe",
+          "size": 164500385,
+          "sha256": "28c41df929a52dd2cbe9678f506699579743b10097803526b9768a3c4a7c8f2a"
+        },
+        {
+          "name": "Open Clipper_26.8.4_x64-setup.exe.sig",
+          "size": 424,
+          "sha256": "79a34bf897f4c49fea05ad16a2dc6beac88225d114bde3ab21b47f78eca5f3fd"
+        }
+      ]
+    },
+    {
+      "version": "26.9.1",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-09-08T16:20:48Z",
+      "pubDate": "2026-09-08T16:20:48Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": "26.8.4",
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.9.1",
+      "files": [
+        {
+          "name": "Open Clipper_26.9.1_x64-setup.exe",
+          "size": 164509222,
+          "sha256": "552f50b4ad36c40b37f7b562ec4e3399fd36caac3633b5ab7a214f76ad952ead"
+        },
+        {
+          "name": "Open Clipper_26.9.1_x64-setup.exe.sig",
+          "size": 424,
+          "sha256": "ce262fc38730f3218f4fd8bdd4fc6a32b086ff221f85239af409baa4f85a58dc"
         }
       ]
     }

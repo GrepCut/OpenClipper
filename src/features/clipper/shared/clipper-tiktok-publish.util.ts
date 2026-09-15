@@ -62,6 +62,18 @@ export function isTikTokBrandedPrivateConflict(params: {
   return params.brandContent && params.privacyLevel === "SELF_ONLY";
 }
 
+export function isTikTokBrandedContentLocked(params: {
+  privacyLevel: TikTokPrivacyLevel | "";
+}): boolean {
+  return params.privacyLevel === "SELF_ONLY";
+}
+
+export function isTikTokSelfOnlyOptionDisabled(params: {
+  brandContent: boolean;
+}): boolean {
+  return params.brandContent;
+}
+
 export function isTikTokPublishReady(params: {
   privacyLevel: TikTokPrivacyLevel | "";
   musicUsageConfirmed: boolean;
