@@ -1,18 +1,9 @@
 import { Text } from "@chakra-ui/react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   StyledModal,
   StyledModalFooter,
 } from "../../../shared/components/styled-modal.component";
-import { isTauri } from "../../../shared/utils/platform.util";
-
-async function openWatchUrl(url: string): Promise<void> {
-  if (isTauri()) {
-    await openUrl(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
-}
+import { openExternalUrl } from "../../../shared/utils/open-external-url.util";
 
 export function ClipperSocialPublishSuccessDialog({
   isOpen,
@@ -27,7 +18,7 @@ export function ClipperSocialPublishSuccessDialog({
 }) {
   const handleOpen = () => {
     if (watchUrl) {
-      void openWatchUrl(watchUrl).catch(() => {
+      void openExternalUrl(watchUrl).catch(() => {
         window.open(watchUrl, "_blank", "noopener,noreferrer");
       });
     }

@@ -36,6 +36,16 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** "received / total" caption for model download progress bars. */
+export function formatDownloadCaption(
+  received: number | null,
+  total: number | null,
+): string | undefined {
+  if (received == null) return undefined;
+  if (total != null && total > 0) return `${formatBytes(received)} / ${formatBytes(total)}`;
+  return formatBytes(received);
+}
+
 /** Runs a synchronous block and logs wall time plus optional detail fields. */
 export function clipperMeasureSync<T>(
   step: string,

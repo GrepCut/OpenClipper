@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -25,8 +25,10 @@ import { ClipperPublishView } from "../components/clipper-publish-view.component
 import { ClipperOwnersView } from "../components/clipper-owners-view.component";
 import { CreateClipperProjectModal } from "./create-clipper-project-modal.component";
 import { ClipperTauriGate } from "./clipper-tauri-gate.component";
+import { ClipperFirstRunSetup } from "../components/clipper-first-run-setup.component";
 import { openClipperProjectsDir } from "../persistence/project-data-files.util";
 import { ProjectsPagination } from "../components/projects-pagination.component";
+import { useClipperSetupReadiness } from "../hooks/use-clipper-setup-readiness.hook";
 import { useTheme } from "../../../theme";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
@@ -43,12 +45,22 @@ export function ClipperHomePage() {
   const [total, setTotal] = useState(0);
   const { open: isCreateOpen, onOpen: onCreateOpen, onClose: onCreateClose } = useDisclosure();
   const [ownersBackLink, setOwnersBackLink] = useState<ClipperLayoutBackLink | null>(null);
+  const setup = useClipperSetupReadiness();
+  const canCreateProject = projects.length > 0 || setup.setupReady;
+  const refreshSetup = setup.refresh;
+  const previousTabRef = useRef(activeTab);
 
   useEffect(() => {
     if (activeTab !== "owners") {
       setOwnersBackLink(null);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const previousTab = previousTabRef.current;
+    previousTabRef.current = activeTab;
+    if (activeTab === "projects" && previousTab !== "projects") void refreshSetup();
+  }, [activeTab, refreshSetup]);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
@@ -150,6 +162,7 @@ export function ClipperHomePage() {
                   justifyContent="flex-start"
                   startIcon={<Plus size={16} />}
                   onClick={onCreateOpen}
+                  disabled={!canCreateProject}
                 >
                   New clip project
                 </OutlinedActionButton>
@@ -164,10 +177,12 @@ export function ClipperHomePage() {
               </VStack>
             </HStack>
 
-            {loading ? (
+            {loading || (projects.length === 0 && !setup.loaded) ? (
               <Center py={16} flex="1">
                 <AppLoader />
               </Center>
+            ) : projects.length === 0 && !setup.setupReady ? (
+              <ClipperFirstRunSetup readiness={setup} />
             ) : projects.length === 0 ? (
               <Box
                 p={10}

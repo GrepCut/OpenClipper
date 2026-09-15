@@ -2,7 +2,7 @@ import React from "react";
 import { HStack, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { Download, Trash2 } from "lucide-react";
 import { OutlinedActionButton } from "../../../../shared/components/buttons/outlined-action-button.component";
-import { formatBytes } from "../../shared/logger.util";
+import { formatDownloadCaption } from "../../shared/logger.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import {
   accordionStatusText,
@@ -15,14 +15,8 @@ import { TranscriptionModelRow } from "./transcription-model-row.component";
 import { CloudTranscriptionProviderRow } from "./cloud-transcription-provider-row.component";
 import { useWhisperModelStatus } from "../../hooks/use-whisper-model-status.hook";
 import { useVocalsIsolateModelStatus } from "../../hooks/use-vocals-isolate-model-status.hook";
-import { loadClipperSettings, saveClipperSettings } from "../../settings/settings-storage.util";
+import { loadClipperSettings, saveTranscriptionEngine } from "../../settings/settings-storage.util";
 import type { ClipperTranscriptionEngine } from "../../settings/settings.util";
-
-function downloadCaption(received: number | null, total: number | null): string | undefined {
-  if (received == null) return undefined;
-  if (total != null && total > 0) return `${formatBytes(received)} / ${formatBytes(total)}`;
-  return formatBytes(received);
-}
 
 interface TranscriptionSectionProps {
   defaultOpen?: boolean;
@@ -42,11 +36,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
   );
 
   const selectEngine = (engine: ClipperTranscriptionEngine) => {
-    const next = {
-      ...loadClipperSettings(),
-      transcription: { ...loadClipperSettings().transcription, engine },
-    };
-    saveClipperSettings(next);
+    saveTranscriptionEngine(engine);
     setActiveEngine(engine);
   };
 
@@ -55,12 +45,27 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     onOpen: onDeleteOpen,
     onClose: onDeleteClose,
   } = useDisclosure();
+  const {
+    open: isDeleteVocalsOpen,
+    onOpen: onDeleteVocalsOpen,
+    onClose: onDeleteVocalsClose,
+  } = useDisclosure();
 
   const deleteModal = (
     <DeleteParakeetModelModal
       isOpen={isDeleteOpen}
       onClose={onDeleteClose}
       onConfirm={model.handleDelete}
+    />
+  );
+
+  const deleteVocalsModal = (
+    <DeleteParakeetModelModal
+      isOpen={isDeleteVocalsOpen}
+      onClose={onDeleteVocalsClose}
+      onConfirm={demucs.handleDelete}
+      title="Delete vocals isolate model"
+      message="Remove UVR-MDX-NET-Voc_FT from this device? Vocals isolation will need the ~67 MB download again."
     />
   );
 
@@ -84,7 +89,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
           : null)
       }
       onDownload={() => void demucs.handleDownload()}
-      onDeleteOpen={() => void demucs.handleDelete()}
+      onDeleteOpen={onDeleteVocalsOpen}
     />
   );
 
@@ -146,6 +151,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
           selected={activeEngine === "openrouter"}
           onSelect={() => selectEngine("openrouter")}
         />
+        {deleteVocalsModal}
         {deleteModal}
       </>
     );
@@ -169,7 +175,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
             <ClipperProgressBar
               label="Downloading model"
               value={model.downloadProgress}
-              caption={downloadCaption(model.downloadReceived, model.downloadTotal)}
+              caption={formatDownloadCaption(model.downloadReceived, model.downloadTotal)}
             />
           )}
           {(model.showDownload || model.showDelete) && (
@@ -203,6 +209,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
           )}
         </VStack>
       </SettingSection>
+      {deleteVocalsModal}
       {deleteModal}
     </>
   );

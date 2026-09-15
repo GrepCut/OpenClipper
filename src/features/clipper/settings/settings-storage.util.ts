@@ -1,4 +1,9 @@
-import { DEFAULT_CLIPPER_SETTINGS, mergeClipperSettings, type ClipperSettings } from "./settings.util";
+import {
+  DEFAULT_CLIPPER_SETTINGS,
+  mergeClipperSettings,
+  type ClipperSettings,
+  type ClipperTranscriptionEngine,
+} from "./settings.util";
 import { parseStoredClipperSettings } from "../persistence/clipper-persistence-schemas.util";
 import { migrateEnabledFormatIds } from "../shared/formats.util";
 
@@ -34,6 +39,15 @@ export function saveClipperSettings(settings: ClipperSettings): void {
   } catch {
     // Storage unavailable (private mode, quota) — settings just won't persist.
   }
+}
+
+/** Persists only the active transcription engine, keeping the rest of the settings. */
+export function saveTranscriptionEngine(engine: ClipperTranscriptionEngine): void {
+  const current = loadClipperSettings();
+  saveClipperSettings({
+    ...current,
+    transcription: { ...current.transcription, engine },
+  });
 }
 
 /** Last render-queue format checklist — reused when opening a project with no saved queue. */
