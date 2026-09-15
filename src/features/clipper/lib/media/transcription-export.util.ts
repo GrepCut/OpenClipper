@@ -76,30 +76,70 @@ function segmentToWordCues(seg: TranscriptionSegment): WordCue[] {
   }));
 }
 
+/** Silence, in seconds, that always ends a caption block. */
+export const CAPTION_PAUSE_BREAK_SEC = 1;
+
+/** Upper bound on characters (spaces included) in one caption block. */
+export const CAPTION_MAX_CHARS = 24;
+
+const SENTENCE_END_PATTERN = /[.?!…。？！]["'”’»)\]]*$/;
+
+/**
+ * Groups word cues into caption blocks, like Studio's subtitle grouping.
+ * A block ends when:
+ * - the silence before the next word is at least `CAPTION_PAUSE_BREAK_SEC`,
+ * - it already holds `wordsPerGroup` words,
+ * - adding the next word would exceed `CAPTION_MAX_CHARS` (a single longer word gets its own block),
+ * - its last word closes a sentence.
+ * A block's end is its last word's end, trimmed to the next block's start.
+ */
 export function wordCuesToCaptionGroups(
   words: WordCue[],
   wordsPerGroup: number,
 ): CaptionGroup[] {
   if (wordsPerGroup <= 0 || words.length === 0) return [];
 
+  const blocks: WordCue[][] = [];
+  let block: WordCue[] = [];
+  let blockLength = 0;
+
+  const flush = () => {
+    if (block.length === 0) return;
+    blocks.push(block);
+    block = [];
+    blockLength = 0;
+  };
+
+  for (const word of words) {
+    const wordLength = word.text.trim().length;
+    const previous = block[block.length - 1];
+    if (
+      previous &&
+      (word.start - previous.end >= CAPTION_PAUSE_BREAK_SEC ||
+        block.length >= wordsPerGroup ||
+        blockLength + 1 + wordLength > CAPTION_MAX_CHARS)
+    ) {
+      flush();
+    }
+
+    blockLength += (block.length > 0 ? 1 : 0) + wordLength;
+    block.push(word);
+
+    if (SENTENCE_END_PATTERN.test(word.text.trim())) {
+      flush();
+    }
+  }
+  flush();
+
   const groups: CaptionGroup[] = [];
-  for (let i = 0; i < words.length; i += wordsPerGroup) {
-    const chunk = words.slice(i, i + wordsPerGroup);
-    if (chunk.length === 0) continue;
+  blocks.forEach((chunk, index) => {
     const start = chunk[0]!.start;
     const rawEnd = chunk[chunk.length - 1]!.end;
-    const nextWord = words[i + wordsPerGroup];
-    let end =
-      nextWord && nextWord.start < rawEnd ? nextWord.start : rawEnd;
-    if (end <= start) {
-      continue;
-    }
-    groups.push({
-      words: chunk,
-      start,
-      end,
-    });
-  }
+    const nextStart = blocks[index + 1]?.[0]?.start;
+    const end = nextStart !== undefined && nextStart < rawEnd ? nextStart : rawEnd;
+    if (end <= start) return;
+    groups.push({ words: chunk, start, end });
+  });
   return groups;
 }
 

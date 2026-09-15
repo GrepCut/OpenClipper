@@ -9,6 +9,10 @@ import {
   type CaptionGroup,
   type WordCue,
 } from "../../lib/media/transcription-export.util";
+import {
+  clampStretchedSegmentStarts,
+  sanitizeWordCueTimings,
+} from "./word-timing-sanitize.util";
 
 export function sliceSegmentsForWindow(
   segments: TranscriptionSegment[],
@@ -38,10 +42,18 @@ export function buildWordCuesForClip(
   segments: TranscriptionSegment[],
   clipDurationSec: number,
 ): WordCue[] {
-  return segmentsToWordCues(sliceSegmentsForWindow(segments, clipDurationSec));
+  return sanitizeWordCueTimings(
+    segmentsToWordCues(
+      sliceSegmentsForWindow(clampStretchedSegmentStarts(segments), clipDurationSec),
+    ),
+    clipDurationSec,
+  );
 }
 
-/** Uses Parakeet word timestamps, falling back to segment interpolation if unavailable. */
+/**
+ * Uses ASR word timestamps, falling back to segment interpolation if
+ * unavailable. Timings are sanitized against model errors either way.
+ */
 export function buildWordCuesForTranscription(
   transcription: Transcription,
   clipDurationSec: number,
@@ -50,7 +62,10 @@ export function buildWordCuesForTranscription(
     transcription.words?.length &&
     transcription.words.some((w) => w.endTime > w.startTime)
   ) {
-    return sliceWordsForWindow(transcription.words, clipDurationSec);
+    return sanitizeWordCueTimings(
+      sliceWordsForWindow(transcription.words, clipDurationSec),
+      clipDurationSec,
+    );
   }
   return buildWordCuesForClip(transcription.segments, clipDurationSec);
 }
