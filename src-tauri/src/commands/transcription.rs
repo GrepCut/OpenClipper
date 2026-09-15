@@ -223,16 +223,16 @@ pub async fn probe_parakeet_transcription(
             reason: if available {
                 None
             } else if !model_installed {
-                Some("Model nie jest zainstalowany.".into())
+                Some("Model is not installed.".into())
             } else {
-                Some("Nie udało się uruchomić inferencji Parakeet.".into())
+                Some("Failed to start Parakeet inference.".into())
             },
         }),
         Err(TranscriptionError::ModelNotInstalled) => Ok(ParakeetCapability {
             available: false,
             provider: None,
             model_installed: false,
-            reason: Some("Model nie jest zainstalowany.".into()),
+            reason: Some("Model is not installed.".into()),
         }),
         Err(error) => Err(error.to_string()),
     })

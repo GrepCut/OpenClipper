@@ -99,18 +99,18 @@ pub struct PrepareTranscriptionAudioResult {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TranscriptionError {
-    #[error("Model lokalny nie jest zainstalowany")]
+    #[error("Local model is not installed")]
     ModelNotInstalled,
 
-    #[error("Nie udało się załadować modelu: {0}")]
+    #[error("Failed to load model: {0}")]
     ModelLoad(String),
 
-    #[error("Nieprawidłowe audio: {0}")]
+    #[error("Invalid audio: {0}")]
     InvalidAudio(String),
 
-    #[error("Błąd inferencji: {0}")]
+    #[error("Inference error: {0}")]
     Inference(String),
 
-    #[error("Transkrypcja została anulowana")]
+    #[error("Transcription was cancelled")]
     Cancelled,
 }

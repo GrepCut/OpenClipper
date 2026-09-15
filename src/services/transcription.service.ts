@@ -185,7 +185,7 @@ export const transcriptionService = {
     });
     try {
       if (!isTauri()) {
-        throw new Error("Lokalna transkrypcja wymaga aplikacji desktopowej.");
+        throw new Error("Local transcription requires the desktop app.");
       }
       if (!audioPath) {
         throw new Error(
@@ -361,14 +361,14 @@ export const transcriptionService = {
 
   downloadParakeetModel: async (): Promise<void> => {
     if (!isTauri()) {
-      throw new Error("Pobieranie modelu wymaga aplikacji desktopowej.");
+      throw new Error("Downloading the model requires the desktop app.");
     }
     await invoke("download_parakeet_model");
   },
 
   deleteParakeetModel: async (): Promise<void> => {
     if (!isTauri()) {
-      throw new Error("Usuwanie modelu wymaga aplikacji desktopowej.");
+      throw new Error("Deleting the model requires the desktop app.");
     }
     await invoke("delete_parakeet_model");
   },
@@ -382,14 +382,14 @@ export const transcriptionService = {
 
   downloadWhisperModel: async (): Promise<void> => {
     if (!isTauri()) {
-      throw new Error("Pobieranie modelu wymaga aplikacji desktopowej.");
+      throw new Error("Downloading the model requires the desktop app.");
     }
     await invoke("download_whisper_model");
   },
 
   deleteWhisperModel: async (): Promise<void> => {
     if (!isTauri()) {
-      throw new Error("Usuwanie modelu wymaga aplikacji desktopowej.");
+      throw new Error("Deleting the model requires the desktop app.");
     }
     await invoke("delete_whisper_model");
   },
@@ -403,14 +403,14 @@ export const transcriptionService = {
 
   downloadVocalsIsolateModel: async (): Promise<void> => {
     if (!isTauri()) {
-      throw new Error("Pobieranie modelu wymaga aplikacji desktopowej.");
+      throw new Error("Downloading the model requires the desktop app.");
     }
     await invoke("download_vocals_isolate_model");
   },
 
   deleteVocalsIsolateModel: async (): Promise<void> => {
     if (!isTauri()) {
-      throw new Error("Usuwanie modelu wymaga aplikacji desktopowej.");
+      throw new Error("Deleting the model requires the desktop app.");
     }
     await invoke("delete_vocals_isolate_model");
   },
@@ -420,7 +420,7 @@ export const transcriptionService = {
       return {
         available: false,
         modelInstalled: false,
-        reason: "Lokalna transkrypcja wymaga aplikacji desktopowej.",
+        reason: "Local transcription requires the desktop app.",
       };
     }
     return invoke<ParakeetCapability>("probe_parakeet_transcription");

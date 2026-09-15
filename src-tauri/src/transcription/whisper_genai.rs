@@ -80,17 +80,17 @@ pub fn download_and_install_model(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|_| "Whisper download lock poisoned".to_string())?;
     let path = model_dir(app)?;
     fs::create_dir_all(&path)
-        .map_err(|error| format!("Nie udało się utworzyć katalogu Whisper: {error}"))?;
+        .map_err(|error| format!("Failed to create Whisper directory: {error}"))?;
 
     for file in REQUIRED_FILES {
         let local = path.join(file);
         let remote = format!("{MODEL_CDN_PREFIX}/{file}");
         download_model_file_to_cache(app, &local, &remote)
-            .map_err(|error| format!("Nie udało się pobrać Whisper {file}: {error}"))?;
+            .map_err(|error| format!("Failed to download Whisper {file}: {error}"))?;
     }
 
     if !installed(&path) {
-        return Err("Po pobraniu brakuje wymaganych plików Whisper".to_string());
+        return Err("Whisper model is missing required files after download".to_string());
     }
     Ok(path)
 }
@@ -99,7 +99,7 @@ pub fn delete_model(app: &AppHandle) -> Result<(), String> {
     let path = model_dir(app)?;
     if path.exists() {
         fs::remove_dir_all(&path)
-            .map_err(|error| format!("Nie udało się usunąć Whisper: {error}"))?;
+            .map_err(|error| format!("Failed to delete Whisper: {error}"))?;
     }
     Ok(())
 }
@@ -111,7 +111,7 @@ fn required_model_path(directory: &Path, filename: &str) -> Result<String, Trans
     }
     path.to_str()
         .map(str::to_owned)
-        .ok_or_else(|| TranscriptionError::ModelLoad(format!("Nieprawidłowa ścieżka: {}", path.display())))
+        .ok_or_else(|| TranscriptionError::ModelLoad(format!("Invalid path: {}", path.display())))
 }
 
 pub fn transcribe(
@@ -186,23 +186,23 @@ where
     }
 
     if !audio_exists {
-        return Err(TranscriptionError::InvalidAudio("Plik WAV nie istnieje".into()).to_string());
+        return Err(TranscriptionError::InvalidAudio("WAV file does not exist".into()).to_string());
     }
 
     let wave = match Wave::read(audio_path) {
         Some(w) => w,
         None => {
-            return Err(TranscriptionError::InvalidAudio("Nie udało się odczytać pliku audio WAV".into()).to_string());
+            return Err(TranscriptionError::InvalidAudio("Failed to read WAV audio file".into()).to_string());
         }
     };
 
     let sample_rate = wave.sample_rate();
     let sample_count = wave.samples().len();
     if sample_rate <= 0 {
-        return Err(TranscriptionError::InvalidAudio("Nieprawidłowy sample rate".into()).to_string());
+        return Err(TranscriptionError::InvalidAudio("Invalid sample rate".into()).to_string());
     }
     if sample_count == 0 {
-        return Err(TranscriptionError::InvalidAudio("Plik WAV nie zawiera próbek audio".into()).to_string());
+        return Err(TranscriptionError::InvalidAudio("WAV file contains no audio samples".into()).to_string());
     }
 
     let duration_ms = (sample_count as u64 * 1000) / sample_rate as u64;
@@ -281,7 +281,7 @@ where
         match cpu_res {
             Ok(Some(rec)) => Ok((rec, "cpu")),
             _ => {
-                Err("Nie udało się utworzyć silnika sherpa-onnx Whisper (zarówno DirectML jak i CPU fallback).".to_string())
+                Err("Failed to create sherpa-onnx Whisper engine (both DirectML and CPU fallback).".to_string())
             }
         }
     };
@@ -312,7 +312,7 @@ where
         let result = match decode_result {
             Ok(Some(result)) => result,
             Ok(None) => {
-                let err = format!("Model Whisper nie zwrócił wyniku dla fragmentu {}/{}", chunk_index + 1, chunk_count);
+                let err = format!("Whisper model returned no result for chunk {}/{}", chunk_index + 1, chunk_count);
                 return Err(err);
             }
             Err(panic_err) => {

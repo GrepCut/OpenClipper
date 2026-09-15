@@ -46,7 +46,7 @@ impl ParakeetProvider {
 
         let recognizer = OfflineRecognizer::create(&config).ok_or_else(|| {
             TranscriptionError::ModelLoad(format!(
-                "Nie udało się utworzyć OfflineRecognizer (provider={provider})"
+                "Failed to create OfflineRecognizer (provider={provider})"
             ))
         })?;
 
@@ -86,11 +86,11 @@ impl ParakeetProvider {
         let started = Instant::now();
         let audio_path = audio_path.as_ref();
         let audio_path_str = audio_path.to_str().ok_or_else(|| {
-            TranscriptionError::InvalidAudio("Nieprawidłowa ścieżka audio".into())
+            TranscriptionError::InvalidAudio("Invalid audio path".into())
         })?;
 
         let wave = Wave::read(audio_path_str).ok_or_else(|| {
-            TranscriptionError::InvalidAudio("Nie udało się odczytać audio".into())
+            TranscriptionError::InvalidAudio("Failed to read audio".into())
         })?;
 
         let duration_ms = if wave.sample_rate() > 0 {
@@ -109,14 +109,14 @@ impl ParakeetProvider {
         let sample_rate = wave.sample_rate();
         if sample_rate <= 0 {
             return Err(TranscriptionError::InvalidAudio(
-                "Audio ma nieprawidłową częstotliwość próbkowania".into(),
+                "Audio has an invalid sample rate".into(),
             ));
         }
 
         let chunk_samples = (sample_rate as usize).saturating_mul(MAX_DECODE_CHUNK_SECONDS);
         if chunk_samples == 0 {
             return Err(TranscriptionError::InvalidAudio(
-                "Nie można podzielić audio na fragmenty".into(),
+                "Cannot split audio into chunks".into(),
             ));
         }
 
@@ -136,7 +136,7 @@ impl ParakeetProvider {
 
             let result = stream
                 .get_result()
-                .ok_or_else(|| TranscriptionError::Inference("Model nie zwrócił wyniku".into()))?;
+                .ok_or_else(|| TranscriptionError::Inference("Model returned no result".into()))?;
 
             if !result.text.trim().is_empty() {
                 text_parts.push(result.text.clone());
@@ -204,6 +204,6 @@ fn required_model_path(directory: &Path, filename: &str) -> Result<String, Trans
         return Err(TranscriptionError::ModelNotInstalled);
     }
     path.to_str().map(str::to_owned).ok_or_else(|| {
-        TranscriptionError::ModelLoad(format!("Nieprawidłowa ścieżka: {}", path.display()))
+        TranscriptionError::ModelLoad(format!("Invalid path: {}", path.display()))
     })
 }
