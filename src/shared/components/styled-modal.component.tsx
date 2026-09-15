@@ -1,4 +1,4 @@
-import { Dialog, Box, Portal, Tooltip } from "@chakra-ui/react";
+import { Dialog, Box, Flex, Portal, Tooltip } from "@chakra-ui/react";
 import { cloneElement, isValidElement, useId } from "react";
 import type { CSSProperties, ReactElement, ReactNode, SyntheticEvent } from "react";
 import { useTheme } from '../../theme';
@@ -22,6 +22,7 @@ interface StyledModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  description?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   size?: "xs" | "sm" | "md" | "lg" | "xl" | "cover" | "full";
@@ -52,6 +53,7 @@ export function StyledModal({
   isOpen,
   onClose,
   title,
+  description,
   children,
   footer,
   size = "md",
@@ -147,11 +149,26 @@ export function StyledModal({
               position="relative"
             >
               <Dialog.Header px={3} pt={3} pb={2}>
-                <Dialog.Title color={theme.text.primary}>
-                  <SecondaryMainTitle fontSize="2xl">
-                    {title}
-                  </SecondaryMainTitle>
-                </Dialog.Title>
+                <Flex w="full" align="center" columnGap={4} rowGap={1} wrap="wrap">
+                  <Dialog.Title color={theme.text.primary}>
+                    <SecondaryMainTitle fontSize="2xl">
+                      {title}
+                    </SecondaryMainTitle>
+                  </Dialog.Title>
+                  {description ? (
+                    <Dialog.Description
+                      fontSize="xs"
+                      color={theme.text.muted}
+                      lineHeight="1.5"
+                      textAlign="right"
+                      ml="auto"
+                      flex="1 1 16rem"
+                      minW={0}
+                    >
+                      {description}
+                    </Dialog.Description>
+                  ) : null}
+                </Flex>
               </Dialog.Header>
 
               {effectiveFormSubmit ? (

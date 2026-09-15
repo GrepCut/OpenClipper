@@ -33,6 +33,7 @@ export interface ClipperPipelineRefs {
   resumeStartedRef: React.MutableRefObject<boolean>;
   loadedResumeKeyRef: React.MutableRefObject<string | null>;
   aiClipsMetaRef: React.MutableRefObject<ClipperClipPayload[]>;
+  manualClipsMetaRef: React.MutableRefObject<ClipperClipPayload[]>;
   reporterRef: React.MutableRefObject<PipelineReporter>;
 }
 

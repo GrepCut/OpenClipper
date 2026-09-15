@@ -8,6 +8,7 @@ import {
 import { ClipperClipsSection } from "../clipper-clips-section.component";
 import { SIDE_PANEL_TAB_OPTIONS, TOOLBAR_ACTION_BUTTON_PROPS } from "./clipper-preview.constants";
 import type { ClipperPreviewSidePanelProps } from "./clipper-preview.types";
+import { activeClipPreviewsForMode } from "../../hooks/clipper-pipeline/clip-preview.util";
 
 export function ClipperPreviewSidePanel({
   theme,
@@ -15,33 +16,37 @@ export function ClipperPreviewSidePanel({
   clipPreviews,
   safeAutoPartsPreviews,
   safeAiPreviews,
+  safeManualPreviews,
   clipSourceMode,
   activeClipIndex,
   onSelectClip,
   onDeleteAiClip,
   onDeleteAutoPartsClip,
+  onDeleteManualClip,
+  onUpsertManualClip,
   state,
   collageRegions,
   disabledCollageRegionIds,
   onToggleCollageRegion,
   seekToTranscriptTime,
+  pausePreview,
+  getRangeFrameContext,
   autoPartsSegmentLengthSec,
   onAutoPartsSegmentLengthChange,
   onResetAutoParts,
   autoPartsResegmenting,
   isRendering = false,
   onOpenRenderQueue,
-  sidePanelTab,
-  onSidePanelTabChange,
+  onClipSourceModeChange,
   onOpenInStudio,
   openingInStudio = false,
 }: ClipperPreviewSidePanelProps) {
-  const listPreviews =
-    clipSourceMode === "ai"
-      ? safeAiPreviews
-      : clipPreviews.length > 0
-        ? clipPreviews
-        : safeAutoPartsPreviews;
+  const listPreviews = activeClipPreviewsForMode(
+    clipSourceMode,
+    safeAutoPartsPreviews,
+    safeAiPreviews,
+    safeManualPreviews,
+  );
   const canOpenInStudio =
     Boolean(onOpenInStudio) && listPreviews.length > 0 && !openingInStudio;
 
@@ -119,12 +124,12 @@ export function ClipperPreviewSidePanel({
 
         <HStack gap={1} flexShrink={0} align="center">
           {SIDE_PANEL_TAB_OPTIONS.map((option) => {
-            const isActive = sidePanelTab === option.value;
+            const isActive = clipSourceMode === option.value;
             return (
               <Box
                 key={option.value}
                 as="button"
-                onClick={() => onSidePanelTabChange(option.value)}
+                onClick={() => onClipSourceModeChange(option.value)}
                 aria-pressed={isActive}
                 {...TOOLBAR_ACTION_BUTTON_PROPS}
                 {...getOutlinedActionSurfaceProps(theme, isActive)}
@@ -150,11 +155,14 @@ export function ClipperPreviewSidePanel({
           clipPreviews={clipPreviews}
           autoPartsClipPreviews={safeAutoPartsPreviews}
           aiClipPreviews={safeAiPreviews}
+          manualClipPreviews={safeManualPreviews}
           clipSourceMode={clipSourceMode}
           activeClipIndex={activeClipIndex}
           onSelectClip={onSelectClip}
           onDeleteAiClip={onDeleteAiClip}
           onDeleteAutoPartsClip={onDeleteAutoPartsClip}
+          onDeleteManualClip={onDeleteManualClip}
+          onUpsertManualClip={onUpsertManualClip}
           onOpenInStudio={onOpenInStudio}
           openingInStudio={openingInStudio}
           rangeWords={state.rangeWords}
@@ -166,6 +174,10 @@ export function ClipperPreviewSidePanel({
           onAutoPartsSegmentLengthChange={onAutoPartsSegmentLengthChange}
           onResetAutoParts={onResetAutoParts}
           autoPartsResegmenting={autoPartsResegmenting}
+          rangeTrimmedVideoUrl={state.rangeTrimmedVideoUrl}
+          rangeDurationSec={state.clipDuration ?? 0}
+          getRangeFrameContext={getRangeFrameContext}
+          onManualEditorOpen={pausePreview}
         />
       </Box>
     </Box>

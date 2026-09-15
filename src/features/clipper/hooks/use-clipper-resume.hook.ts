@@ -91,14 +91,9 @@ export function useClipperResume({
       resumeStartedRef.current = false;
       setSettingsState(loaded.settings);
       setRangeLocked(deriveRangeLocked(loaded));
-      // Only on a genuinely new load — re-running for a retry must keep the stage that
-      // `retryResume` just wrote into this ref.
       metadataRef.current = loaded.metadata;
     }
 
-    // Plan against the live metadata, not the frozen `loaded` snapshot: `retryResume` clears
-    // the persisted "error" stage in this ref, so the error branch re-arms itself without a
-    // sticky ignore flag.
     const plan = planResumeExecution(loaded, metadataRef.current, loaded.resumePlan, projectId);
 
     if (plan.kind === "idle") {
@@ -112,7 +107,6 @@ export function useClipperResume({
     }
 
     if (plan.kind === "error") {
-      // Nothing starts on its own: the user resumes this phase from the error panel.
       clipperLog("pipeline[resume]: halted on persisted error", {
         resumeStage: plan.resumeStage,
       });
@@ -133,8 +127,6 @@ export function useClipperResume({
         mediaFileId: loaded.mediaFileId!,
         rangeTrimmedFile: null,
         rangeTrimmedVideoUrl: null,
-        trimmedFile: null,
-        trimmedVideoUrl: null,
         rangeWords: loaded.words,
         words: loaded.words,
         rangeStart: plan.clipStart,
@@ -143,6 +135,7 @@ export function useClipperResume({
         clipEnd: plan.clipEnd,
         autoPartsClips: [],
         aiClips: [],
+        manualClips: [],
         clipSourceMode: loaded.metadata.clipSourceMode ?? "auto-parts",
         clips: [],
         activeClipIndex: loaded.metadata.activeClipIndex ?? 0,
@@ -173,12 +166,11 @@ export function useClipperResume({
     setState({
       ...initialState,
       ...resumePlanStateFields(plan),
+      clipSourceMode: loaded.metadata.clipSourceMode ?? "auto-parts",
       activeClipIndex: loaded.metadata.activeClipIndex ?? 0,
       stageProgress: 0,
     });
 
-    // Which phase restarts is decided by the persisted steps alone — never by whether
-    // this project happens to have transcript words (a silent clip has none).
     const resumePromise = plan.needsTranscribe
       ? resumeFromTranscribe(
           session,
@@ -214,9 +206,6 @@ export function useClipperResume({
 
     return () => {
       if (!finished) abortRef.current?.abort();
-      // Re-arm on every abort, not only on an unfinished run: the pipeline swallows aborts
-      // internally and resolves normally, which used to leave the effect disarmed forever
-      // with the stage stuck at analyzing-faces.
       if (!finished || controller.signal.aborted) {
         resumeStartedRef.current = false;
       }

@@ -137,6 +137,7 @@ export function useClipperPipelineSessionActions(
       clipPreviews: [],
       autoPartsClipPreviews: [],
       aiClipPreviews: [],
+      manualClipPreviews: [],
       rangeWords: [],
       activeClipIndex: 0,
       error: null,
@@ -162,17 +163,17 @@ export function useClipperPipelineSessionActions(
     }
     session.rangeTrimmedFile = null;
     session.rangeTrimmedVideoUrl = null;
-    session.trimmedFile = null;
-    session.trimmedVideoUrl = null;
     session.autoPartsClips = [];
     session.aiClips = [];
+    session.manualClips = [];
+    refs.manualClipsMetaRef.current = [];
     session.rangeWords = [];
     session.words = [];
     syncSessionActiveClips(session);
     void saveClipperRangeWords(projectId, []).catch((error) =>
       clipperError("pipeline: clear range words on new range failed", error),
     );
-  }, [projectId, revokePreviewUrls, sessionRef]);
+  }, [projectId, refs.manualClipsMetaRef, revokePreviewUrls, sessionRef]);
 
   return { selectFile, clipAgain, resetSessionForNewRange };
 }

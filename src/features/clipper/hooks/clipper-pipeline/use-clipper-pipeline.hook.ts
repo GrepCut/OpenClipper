@@ -2,10 +2,12 @@ import { useCallback, useState } from "react";
 import { useClipperPipelineAi } from "./use-clipper-pipeline-ai.hook";
 import { useClipperPipelineClips } from "./use-clipper-pipeline-clips.hook";
 import { useClipperPipelineCore } from "./use-clipper-pipeline-core.hook";
+import { useClipperPipelineManual } from "./use-clipper-pipeline-manual.hook";
 import { useClipperPipelineRender } from "./use-clipper-pipeline-render.hook";
 import { useClipperPipelineWorkflow } from "./use-clipper-pipeline-workflow.hook";
 import { useClipperResume } from "../use-clipper-resume.hook";
-import { buildFrameContext } from "../../pipeline/session.util";
+import { buildFrameContext, buildRangeFrameContext } from "../../pipeline/frame-context.util";
+import type { RangeFrameContextGetter } from "../../engine/types/render.types";
 import { INITIAL_PIPELINE_STATE } from "./clipper-pipeline.types";
 import type { UseClipperPipelineOptions } from "./clipper-pipeline.types";
 
@@ -26,9 +28,18 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
   const workflow = useClipperPipelineWorkflow(core, project, token);
   const clips = useClipperPipelineClips(core);
   const ai = useClipperPipelineAi(core);
+  const manual = useClipperPipelineManual(core);
   const render = useClipperPipelineRender(core);
 
   const [resumeRetryToken, setResumeRetryToken] = useState(0);
+
+  const getRangeFrameContext = useCallback<RangeFrameContextGetter>(
+    (range) => {
+      const session = sessionRef.current;
+      return session ? buildRangeFrameContext(session, settings, range) : null;
+    },
+    [sessionRef, settings],
+  );
 
   /** Re-arms the resume effect after a phase failed, so it restarts that phase. */
   const retryResume = useCallback(() => {
@@ -81,6 +92,8 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     autoPartsResegmenting: clips.autoPartsResegmenting,
     deleteAiClip: ai.deleteAiClip,
     deleteAutoPartsClip: clips.deleteAutoPartsClip,
+    upsertManualClip: manual.upsertManualClip,
+    deleteManualClip: manual.deleteManualClip,
     getFrameContext: (clipIndex?: number) => {
       const session = sessionRef.current;
       if (!session) return null;
@@ -90,6 +103,7 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
         clipIndex ?? activeClipIndexRef.current,
       );
     },
+    getRangeFrameContext,
     sourceUrl: sessionRef.current?.sourceUrl ?? null,
     rangeLocked,
     disabledCollageRegionIds: clips.disabledCollageRegionIds,

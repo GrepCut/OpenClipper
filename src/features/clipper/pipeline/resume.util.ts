@@ -21,6 +21,7 @@ export const EMPTY_CLIPPER_PIPELINE_STATE: ClipperPipelineState = {
   clipPreviews: [],
   autoPartsClipPreviews: [],
   aiClipPreviews: [],
+  manualClipPreviews: [],
   clipSourceMode: "auto-parts",
   activeClipIndex: 0,
   error: null,

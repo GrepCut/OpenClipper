@@ -10,6 +10,24 @@ export type ClipperStage =
   | "done"
   | "error";
 
+export function parseClipperStage(value: unknown): ClipperStage | undefined {
+  switch (value) {
+    case "idle":
+    case "trimming":
+    case "uploading":
+    case "transcribing":
+    case "analyzing-faces":
+    case "analyzing-subjects":
+    case "preview":
+    case "rendering":
+    case "done":
+    case "error":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
 export function isClipperPreviewReadyStage(stage: ClipperStage): boolean {
   return stage === "preview" || stage === "done" || stage === "rendering";
 }

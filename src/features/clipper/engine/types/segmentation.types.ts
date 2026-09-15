@@ -16,11 +16,15 @@ export interface ClipperClipSegmentTranscript {
   text: string;
 }
 
-export interface ClipperGeneratedClip {
+/** Persisted clip time envelope — JSON/DB bounds without transcript payload. */
+export interface ClipperClipBounds {
   index: number;
-  /** Overall envelope (min start, max end) across all segments. */
   startSec: number;
   endSec: number;
+}
+
+export interface ClipperGeneratedClip extends ClipperClipBounds {
+  /** Overall envelope duration (endSec - startSec). */
   durationSec: number;
   words: WordCue[];
   captionGroups: CaptionGroup[];

@@ -1,7 +1,6 @@
 import { useCallback, useRef } from "react";
 
 import type { Project } from "../../../../services/projects.service";
-import { captionWordsPerGroup } from "../../lib/captions/caption-presets.util";
 import {
   runConfirmRangeStep,
   runTranscribeRangePipeline,
@@ -40,9 +39,9 @@ export function useClipperPipelineWorkflow(
     activeClipIndexRef,
     metadataRef,
     aiClipsMetaRef,
+    manualClipsMetaRef,
     reporterRef,
   } = refs;
-  const wordsPerGroup = captionWordsPerGroup(settings.captions);
 
   const { selectFile, clipAgain, resetSessionForNewRange } = useClipperPipelineSessionActions(
     core,
@@ -55,6 +54,7 @@ export function useClipperPipelineWorkflow(
     settings,
     metadataRef,
     aiClipsMetaRef,
+    manualClipsMetaRef,
     activeClipIndexRef,
     reporterRef,
     persistMetadata,
@@ -64,9 +64,6 @@ export function useClipperPipelineWorkflow(
     hydrateExportsFromDisk,
   };
 
-  // Read through a ref so the callback identity never changes. The resume effect keeps this
-  // callback in its dependency array — a new identity there aborts the in-flight resume and
-  // restarts it, which is how a long face analysis used to loop forever.
   const previewDepsRef = useRef(previewDeps);
   previewDepsRef.current = previewDeps;
 
@@ -110,6 +107,7 @@ export function useClipperPipelineWorkflow(
         clipPreviews: [],
         autoPartsClipPreviews: [],
         aiClipPreviews: [],
+        manualClipPreviews: [],
       }));
     },
     [persistMetadata, projectId, setState],
@@ -161,8 +159,6 @@ export function useClipperPipelineWorkflow(
           previewOptions,
         );
       } catch (error) {
-        // Aborts leave steps to the owner of the abort: unmount cleanup demotes them, and a
-        // restarted run re-marks them active. Demoting here would race that restart.
         if (controller.signal.aborted) return;
         await failPhase(phase, error, runId);
       }
@@ -199,6 +195,7 @@ export function useClipperPipelineWorkflow(
         clipPreviews: [],
         autoPartsClipPreviews: [],
         aiClipPreviews: [],
+        manualClipPreviews: [],
         rangeWords: [],
         activeClipIndex: 0,
         error: null,
@@ -232,14 +229,11 @@ export function useClipperPipelineWorkflow(
           reporterRef.current,
         );
       } catch (error) {
-        // Aborts leave steps to the owner of the abort: unmount cleanup demotes them, and a
-        // restarted run re-marks them active. Demoting here would race that restart.
         if (controller.signal.aborted) return;
         await failPhase("confirm_range", error, runId);
         return;
       }
 
-      // Everything after the range is confirmed is the same work a resume performs.
       await resumeFromTranscribe(session, snappedStart, end, controller, runId, {
         projectId,
         mediaFileId: session.mediaFileId,

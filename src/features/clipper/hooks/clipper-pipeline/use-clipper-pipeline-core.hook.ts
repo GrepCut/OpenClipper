@@ -138,8 +138,6 @@ export function useClipperPipelineCore(
       releasePlayableMediaUrl(session.sourceUrl);
       if (session.rangeTrimmedVideoUrl?.startsWith("blob:")) {
         URL.revokeObjectURL(session.rangeTrimmedVideoUrl);
-      } else if (session.trimmedVideoUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(session.trimmedVideoUrl);
       }
       sessionRef.current = null;
     }

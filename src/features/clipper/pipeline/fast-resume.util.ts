@@ -1,4 +1,7 @@
-import { rebuildClipsFromGeneratedMetadata } from "../engine/segmentation";
+import {
+  rebuildClipsFromGeneratedMetadata,
+  type ClipperClipBounds,
+} from "../engine/segmentation";
 import type { ClipperClipPayload } from "../persistence/clipper-clips-api.util";
 import { clipperLog, clipperMeasureSync, clipperTimer } from "../shared/logger.util";
 import type { PipelineReporter } from "./reporter.util";
@@ -8,10 +11,6 @@ import { syncSessionActiveClips } from "./session.util";
 import { runAnalyzeFacesStage } from "./stages/analyze-faces.util";
 import { runAnalyzeSubjectsStage } from "./stages/analyze-subjects.util";
 import { runTrimStage } from "./stages/trim.util";
-function syncRangeTrimAliases(session: ClipperSession): void {
-  session.trimmedFile = session.rangeTrimmedFile;
-  session.trimmedVideoUrl = session.rangeTrimmedVideoUrl;
-}
 
 /** True when persisted clip boundaries can replace a mediabunny keyframe scan on reopen. */
 export function canUseFastPreviewResume(
@@ -41,7 +40,7 @@ export function canUseFastPreviewResume(
 }
 
 export interface FastPreviewResumeInput extends PreparePreviewInput {
-  generatedClips: Array<{ index: number; startSec: number; endSec: number }>;
+  generatedClips: ClipperClipBounds[];
 }
 
 /** Restores preview from disk trim + persisted clip boundaries — skips keyframe scan. */
@@ -81,7 +80,6 @@ export async function runFastPreviewResume(
 
   session.rangeTrimmedFile = trimmedFile;
   session.rangeTrimmedVideoUrl = trimmedVideoUrl;
-  syncRangeTrimAliases(session);
   session.rangeWords = input.words;
   session.words = input.words;
   session.rangeStart = input.snappedStart;
@@ -90,6 +88,7 @@ export async function runFastPreviewResume(
   session.clipEnd = input.end;
   session.autoPartsClips = clips;
   session.aiClips = session.aiClips ?? [];
+  session.manualClips = session.manualClips ?? [];
   session.clipSourceMode = session.clipSourceMode ?? "auto-parts";
   syncSessionActiveClips(session);
   session.activeClipIndex = 0;

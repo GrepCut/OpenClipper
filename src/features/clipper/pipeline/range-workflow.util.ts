@@ -34,11 +34,6 @@ export interface PreparePreviewResult {
   rangeDuration: number;
 }
 
-function syncRangeTrimAliases(session: ClipperSession): void {
-  session.trimmedFile = session.rangeTrimmedFile;
-  session.trimmedVideoUrl = session.rangeTrimmedVideoUrl;
-}
-
 /** Trims the full range, segments into clips, analyzes faces, and returns preview payload. */
 export async function runPreparePreviewPipeline(
   session: ClipperSession,
@@ -80,7 +75,6 @@ export async function runPreparePreviewPipeline(
 
   session.rangeTrimmedFile = trimmedFile;
   session.rangeTrimmedVideoUrl = trimmedVideoUrl;
-  syncRangeTrimAliases(session);
   session.rangeWords = input.words;
   session.words = input.words;
   session.rangeStart = input.snappedStart;
@@ -89,6 +83,7 @@ export async function runPreparePreviewPipeline(
   session.clipEnd = input.end;
   session.autoPartsClips = clips;
   session.aiClips = session.aiClips ?? [];
+  session.manualClips = session.manualClips ?? [];
   session.clipSourceMode = session.clipSourceMode ?? "auto-parts";
   syncSessionActiveClips(session);
   session.activeClipIndex = 0;
@@ -200,7 +195,6 @@ export async function runConfirmRangeStep(
   if (session.rangeStart !== snappedStart || session.rangeEnd !== end) {
     session.audioEnvelope = null;
     session.rangeTrimmedFile = null;
-    session.trimmedFile = null;
   }
 
   await input.persistRange(snappedStart, end);

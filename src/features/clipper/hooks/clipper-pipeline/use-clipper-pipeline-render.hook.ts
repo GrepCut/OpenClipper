@@ -5,7 +5,8 @@ import { appendUniqueExportResults } from "../../shared/export-results.util";
 import { applyFilenameTemplate, baseName } from "../../shared/filename-template.util";
 import { clipperError } from "../../shared/logger.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
-import { buildFrameContext, getActiveClips, syncSessionActiveClips } from "../../pipeline/session.util";
+import { buildFrameContext } from "../../pipeline/frame-context.util";
+import { getActiveClips, syncSessionActiveClips } from "../../pipeline/session.util";
 import { runRenderClipJob, runRerenderFormat, getClipperFormatDef } from "../../pipeline/stages/render.util";
 import { patchPipelineState } from "./clipper-pipeline-state.util";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
@@ -26,7 +27,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
   const renderExports = useCallback(
     async (perClipFormatIds?: Record<number, string[]>): Promise<boolean> => {
       const session = sessionRef.current;
-      if (!session?.rangeTrimmedFile && !session?.trimmedFile) {
+      if (!session?.rangeTrimmedFile) {
         patchPipelineState(setState, (draft) => {
           draft.error = "Source video is not ready. Return to preview and try again.";
         });
@@ -189,7 +190,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
     async (formatId: string, clipIndex: number) => {
       const session = sessionRef.current;
       const formatDef = getClipperFormatDef(formatId);
-      if (!session?.rangeTrimmedFile && !session?.trimmedFile) return;
+      if (!session?.rangeTrimmedFile) return;
       if (!formatDef) return;
 
       const frameContext = buildFrameContext(session, settings, clipIndex);

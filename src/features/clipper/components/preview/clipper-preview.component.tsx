@@ -3,6 +3,7 @@ import { Box, VStack } from "@chakra-ui/react";
 import { deriveRegionsFromLayoutTracks } from "../../engine/reframe/collage";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
 import { useClipperPreviewPlayback } from "../../hooks/use-clipper-preview-playback.hook";
+import { activeClipPreviewsForMode } from "../../hooks/clipper-pipeline/clip-preview.util";
 import { CLIPPER_TRIMMED_SEGMENT_FILE } from "../../platform/native-source.util";
 import {
   buildClipperStudioImportV1,
@@ -19,7 +20,6 @@ import { ClipperPreviewFormatsFooter } from "./formats-footer.component";
 import { ClipperPreviewHeroSection } from "./hero-section.component";
 import { OpenInStudioProgressModal } from "./open-in-studio-progress-modal.component";
 import { ClipperPreviewSidePanel } from "./side-panel.component";
-import type { SidePanelTab } from "./clipper-preview.constants";
 import type { ClipperPreviewProps } from "./clipper-preview.types";
 
 export type { ClipperPreviewProps } from "./clipper-preview.types";
@@ -27,28 +27,17 @@ export type { ClipperPreviewProps } from "./clipper-preview.types";
 export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
   const {
     projectId,
-    state,
     rangeTrimmedVideoUrl,
-    clipPreviews,
     autoPartsClipPreviews,
     aiClipPreviews,
+    manualClipPreviews,
     clipSourceMode,
     activeClipIndex,
     onSelectClip,
-    onClipSourceModeChange,
-    onDeleteAiClip,
-    onDeleteAutoPartsClip,
     settings,
     onUpdateSettings,
     getFrameContext,
     sourceFileName,
-    onOpenRenderQueue,
-    disabledCollageRegionIds,
-    onToggleCollageRegion,
-    autoPartsSegmentLengthSec,
-    onAutoPartsSegmentLengthChange,
-    onResetAutoParts,
-    autoPartsResegmenting,
     settingsDrawerVisible = true,
     onOpenInStudio: onOpenInStudioProp,
   } = props;
@@ -64,23 +53,15 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       setActiveSettingsPanel(null);
     }
   }, [settingsDrawerVisible]);
-  const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>(
-    clipSourceMode === "ai" ? "ai" : "auto-parts",
-  );
-
-  const handleSidePanelTabChange = useCallback((tab: SidePanelTab) => {
-    if (tab === "ai") {
-      onClipSourceModeChange("ai");
-      setSidePanelTab("ai");
-      return;
-    }
-    onClipSourceModeChange("auto-parts");
-    setSidePanelTab("auto-parts");
-  }, [onClipSourceModeChange]);
-
   const safeAutoPartsPreviews = autoPartsClipPreviews ?? [];
   const safeAiPreviews = aiClipPreviews ?? [];
-  const heroPreviews = clipPreviews.length > 0 ? clipPreviews : safeAutoPartsPreviews;
+  const safeManualPreviews = manualClipPreviews ?? [];
+  const heroPreviews = activeClipPreviewsForMode(
+    clipSourceMode,
+    safeAutoPartsPreviews,
+    safeAiPreviews,
+    safeManualPreviews,
+  );
   const activePreview =
     heroPreviews.find((p) => p.clip.index === activeClipIndex) ?? heroPreviews[0];
   const activeClip = activePreview?.clip;
@@ -111,12 +92,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
             return;
           }
 
-          const fromAi = safeAiPreviews.find((p) => p.clip.index === clipIndex);
-          const fromAuto = safeAutoPartsPreviews.find(
-            (p) => p.clip.index === clipIndex,
-          );
-          const fromHero = clipPreviews.find((p) => p.clip.index === clipIndex);
-          const preview = fromAi ?? fromAuto ?? fromHero;
+          const preview = heroPreviews.find((p) => p.clip.index === clipIndex);
           if (!preview) {
             appToast.error(
               "No clip found",
@@ -178,9 +154,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     [
       onOpenInStudioProp,
       projectId,
-      safeAiPreviews,
-      safeAutoPartsPreviews,
-      clipPreviews,
+      heroPreviews,
       getFrameContext,
       settings,
       primaryFormat?.id,
@@ -215,6 +189,10 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       settings,
       onSelectClip,
     });
+
+  const pausePreview = useCallback(() => {
+    videoRef.current?.pause();
+  }, [videoRef]);
 
   return (
     <VStack align="stretch" gap={4}>
@@ -259,10 +237,10 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
           theme={theme}
           safeAutoPartsPreviews={safeAutoPartsPreviews}
           safeAiPreviews={safeAiPreviews}
+          safeManualPreviews={safeManualPreviews}
           collageRegions={collageRegions}
           seekToTranscriptTime={seekToTranscriptTime}
-          sidePanelTab={sidePanelTab}
-          onSidePanelTabChange={handleSidePanelTabChange}
+          pausePreview={pausePreview}
           onOpenInStudio={handleOpenInStudio}
           openingInStudio={openingInStudio}
         />

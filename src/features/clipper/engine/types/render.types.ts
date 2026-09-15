@@ -9,6 +9,7 @@ import type {
   CollageTracks,
 } from "./collage.types";
 import type { ClipperCropRect } from "./reframe.types";
+import type { AiClipSegmentRange } from "./transcript.types";
 import type { ClipperFrameAnalysis } from "../../shared/smart-crop.util";
 
 export interface ClipperClipWindow {
@@ -50,6 +51,11 @@ export interface ClipperFrameContext {
   disabledCollageRegionIds: string[];
   segments?: ClipperClipSegmentWindow[];
 }
+
+/** Frame context for an arbitrary word range (`null` = whole range, no clip window). */
+export type RangeFrameContextGetter = (
+  range: AiClipSegmentRange | null,
+) => ClipperFrameContext | null;
 
 export interface RebasingVideoSample {
   timestamp: number;

@@ -38,11 +38,6 @@ function crossOriginPolicyPlugin() {
   };
 }
 
-/**
- * Wydanie desktopowe pobiera modele przez grepcut-models do cache aplikacji.
- * Pomijamy więc public/models podczas produkcyjnego builda Tauri, ale nadal
- * emitujemy pozostałe statyczne assety (logo, ikony platform itp.).
- */
 function tauriPublicAssetsPlugin(): Plugin {
   const emitDirectory = (
     pluginContext: Parameters<NonNullable<Plugin["buildStart"]>>[0],

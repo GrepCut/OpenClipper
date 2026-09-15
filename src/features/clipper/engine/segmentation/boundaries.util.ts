@@ -3,6 +3,7 @@ import { groupCaptionWords } from "../transcript/cues.util";
 import {
   CLIPPER_SEGMENT_LENGTH_SEC,
   CLIPPER_SEGMENT_MIN_SEC,
+  type ClipperClipBounds,
   type ClipperGeneratedClip,
   maxClipLenForTarget,
   minTailForTarget,
@@ -100,10 +101,8 @@ function boundariesFromClipWindows(
   return boundaries;
 }
 
-function clipWindowsFromBoundaries(
-  boundaries: number[],
-): Array<{ index: number; startSec: number; endSec: number }> {
-  const clips: Array<{ index: number; startSec: number; endSec: number }> = [];
+function clipWindowsFromBoundaries(boundaries: number[]): ClipperClipBounds[] {
+  const clips: ClipperClipBounds[] = [];
   for (let i = 0; i < boundaries.length - 1; i++) {
     const startSec = boundaries[i];
     const endSec = boundaries[i + 1];
@@ -132,7 +131,7 @@ export function repairAutoPartsBoundaries(
   rangeDurationSec: number,
   clips: Array<{ startSec: number; endSec: number }>,
   targetLengthSec = CLIPPER_SEGMENT_LENGTH_SEC,
-): Array<{ index: number; startSec: number; endSec: number }> {
+): ClipperClipBounds[] {
   if (rangeDurationSec <= 0 || clips.length === 0) return [];
 
   const maxLen = maxClipLenForTarget(targetLengthSec);
@@ -250,7 +249,7 @@ export function segmentRangeIntoClipsAtKeyframes(
 
 /** Rebuilds clip objects from persisted metadata boundaries (no keyframe scan). */
 export function rebuildClipsFromGeneratedMetadata(
-  generatedClips: Array<{ index: number; startSec: number; endSec: number }>,
+  generatedClips: ClipperClipBounds[],
   words: WordCue[],
   wordsPerGroup: number,
 ): ClipperGeneratedClip[] {

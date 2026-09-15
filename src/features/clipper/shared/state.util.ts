@@ -54,6 +54,7 @@ export interface ClipperPipelineState {
   clipPreviews: ClipperClipPreview[];
   autoPartsClipPreviews: ClipperClipPreview[];
   aiClipPreviews: ClipperClipPreview[];
+  manualClipPreviews: ClipperClipPreview[];
   clipSourceMode: ClipSourceMode;
   activeClipIndex: number;
   error: string | null;

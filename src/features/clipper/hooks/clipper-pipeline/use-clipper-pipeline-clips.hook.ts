@@ -47,17 +47,17 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         session.clipSourceMode = mode;
         syncSessionActiveClips(session);
       }
-      persistMetadata({ clipSourceMode: mode });
+      let nextIndex = activeClipIndexRef.current;
       setState((prev) => {
         const previews = activeClipPreviewsForMode(
           mode,
           prev.autoPartsClipPreviews ?? [],
           prev.aiClipPreviews ?? [],
+          prev.manualClipPreviews ?? [],
         );
-        const nextIndex = Math.min(
-          prev.activeClipIndex,
-          Math.max(0, previews.length - 1),
-        );
+        nextIndex = previews.some((p) => p.clip.index === prev.activeClipIndex)
+          ? prev.activeClipIndex
+          : previews[0]?.clip.index ?? 0;
         activeClipIndexRef.current = nextIndex;
         if (session) session.activeClipIndex = nextIndex;
         return {
@@ -66,6 +66,10 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
           clipPreviews: previews,
           activeClipIndex: nextIndex,
         };
+      });
+      void persistMetadata({
+        clipSourceMode: mode,
+        activeClipIndex: nextIndex,
       });
     },
     [activeClipIndexRef, persistMetadata, sessionRef, setState],
@@ -86,7 +90,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
 
       const session = sessionRef.current;
       if (!session) return;
-      const trimmedFile = session.rangeTrimmedFile ?? session.trimmedFile;
+      const trimmedFile = session.rangeTrimmedFile;
       if (!trimmedFile) return;
 
       const rangeDuration = session.rangeEnd - session.rangeStart;
@@ -137,7 +141,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
             ...prev,
             autoPartsClipPreviews,
             clipPreviews:
-              prev.clipSourceMode === "ai" ? prev.clipPreviews : autoPartsClipPreviews,
+              prev.clipSourceMode === "auto-parts" ? autoPartsClipPreviews : prev.clipPreviews,
             activeClipIndex: nextIndex,
             stageMessage: `Review ${clips.length} clip${clips.length > 1 ? "s" : ""}, then render`,
           };
@@ -185,7 +189,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         );
 
         session.autoPartsClips = remaining;
-        if (session.clipSourceMode !== "ai") {
+        if (session.clipSourceMode === "auto-parts") {
           syncSessionActiveClips(session);
         }
         session.captionGroupsCache = null;
@@ -207,7 +211,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
         return produce(prev, (draft) => {
           draft.autoPartsClipPreviews = autoPartsClipPreviews;
           draft.clipPreviews =
-            draft.clipSourceMode === "ai" ? draft.clipPreviews : autoPartsClipPreviews;
+            draft.clipSourceMode === "auto-parts" ? autoPartsClipPreviews : draft.clipPreviews;
           draft.activeClipIndex = nextActive;
         });
       });

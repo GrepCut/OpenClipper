@@ -1,11 +1,12 @@
 import React from "react";
-import { Box, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
+import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { Virtuoso, type ScrollerProps } from "react-virtuoso";
 import {
   AlertCircle,
   CheckCircle2,
   ExternalLink,
   Loader2,
+  Pencil,
   Trash2,
 } from "lucide-react";
 import type { CollageRegion } from "../engine/types/collage.types";
@@ -19,6 +20,7 @@ import {
   sliceWordsForTimeWindow,
 } from "./clipper-inline-transcript.component";
 import { ClipperDeleteClipConfirm } from "./clipper-delete-clip-confirm.component";
+import { ClipActionIconButton } from "./clipper-clip-action-icon-button.component";
 import { formatDurationMmSs } from "../../../shared/utils/time.util";
 
 interface ClipperClipSelectorProps {
@@ -26,6 +28,7 @@ interface ClipperClipSelectorProps {
   activeClipIndex: number;
   onSelectClip: (index: number) => void;
   onDeleteClip?: (index: number) => void;
+  onEditClip?: (index: number) => void;
   onOpenInStudio?: (index: number) => void;
   openingInStudio?: boolean;
   hideTitle?: boolean;
@@ -161,6 +164,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   activeClipIndex,
   onSelectClip,
   onDeleteClip,
+  onEditClip,
   onOpenInStudio,
   openingInStudio = false,
   hideTitle = false,
@@ -236,62 +240,41 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
 
             <HStack gap={0} flexShrink={0}>
               {onOpenInStudio ? (
-                <IconButton
+                <ClipActionIconButton
                   aria-label={`Open clip ${preview.clip.index + 1} in Studio`}
                   title={openingInStudio ? "Opening Studio…" : "Open in Studio"}
-                  size="xs"
-                  variant="ghost"
-                  borderRadius="md"
-                  color={theme.text.muted}
-                  bg="transparent"
-                  border="none"
-                  flexShrink={0}
-                  alignSelf="flex-end"
-                  minW="0"
-                  w="auto"
-                  h="auto"
-                  p={1}
                   disabled={openingInStudio}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (openingInStudio) return;
                     onOpenInStudio(preview.clip.index);
                   }}
-                  _hover={{
-                    bg: "transparent",
-                    color: clipperTheme.accentLight,
-                    opacity: 0.85,
-                  }}
                 >
                   <ExternalLink size={14} strokeWidth={1.75} />
-                </IconButton>
+                </ClipActionIconButton>
+              ) : null}
+              {onEditClip ? (
+                <ClipActionIconButton
+                  aria-label={`Edit clip ${preview.clip.index + 1}`}
+                  title="Edit clip range"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditClip(preview.clip.index);
+                  }}
+                >
+                  <Pencil size={14} strokeWidth={1.75} />
+                </ClipActionIconButton>
               ) : null}
               {onDeleteClip ? (
                 <ClipperDeleteClipConfirm
                   onConfirm={() => onDeleteClip(preview.clip.index)}
                 >
-                  <IconButton
+                  <ClipActionIconButton
                     aria-label={`Delete clip ${preview.clip.index + 1}`}
-                    size="xs"
-                    variant="ghost"
-                    borderRadius="md"
-                    color={theme.status.danger}
-                    bg="transparent"
-                    border="none"
-                    flexShrink={0}
-                    alignSelf="flex-end"
-                    minW="0"
-                    w="auto"
-                    h="auto"
-                    p={1}
-                    _hover={{
-                      bg: "transparent",
-                      color: theme.status.danger,
-                      opacity: 0.85,
-                    }}
+                    tone="danger"
                   >
                     <Trash2 size={14} strokeWidth={1.75} />
-                  </IconButton>
+                  </ClipActionIconButton>
                 </ClipperDeleteClipConfirm>
               ) : null}
             </HStack>

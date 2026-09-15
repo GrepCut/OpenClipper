@@ -29,6 +29,7 @@ export function usePipelineRefs(
   const resumeStartedRef = useRef(false);
   const loadedResumeKeyRef = useRef<string | null>(null);
   const aiClipsMetaRef = useRef<ClipperPipelineRefs["aiClipsMetaRef"]["current"]>([]);
+  const manualClipsMetaRef = useRef<ClipperPipelineRefs["manualClipsMetaRef"]["current"]>([]);
   const reporterRef = useRef(createThrottledReporter(createReporter(setState)));
 
   return {
@@ -40,6 +41,7 @@ export function usePipelineRefs(
     resumeStartedRef,
     loadedResumeKeyRef,
     aiClipsMetaRef,
+    manualClipsMetaRef,
     reporterRef,
   };
 }

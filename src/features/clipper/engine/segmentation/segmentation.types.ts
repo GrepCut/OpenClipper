@@ -6,6 +6,7 @@ import type {
 export type {
   AutoPartsPresetSegmentLengthSec,
   AutoPartsSegmentLengthSec,
+  ClipperClipBounds,
   ClipperClipSegmentTranscript,
   ClipperClipSegmentWindow,
   ClipperGeneratedClip,
