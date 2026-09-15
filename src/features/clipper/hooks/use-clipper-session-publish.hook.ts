@@ -12,6 +12,7 @@ import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { appToast } from "../../../shared/utils/toast.service";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
+import { refreshAllIntegrations } from "../../../stores/refresh-all-integrations.util";
 import type { ClipperPublishTarget } from "../components/clipper-export-format-row.component";
 import type { OwnerPublishConnectionResult } from "../shared/clipper-owner-channels.util";
 import {
@@ -41,9 +42,7 @@ export function useClipperSessionPublish({
     useState<OwnerPublishConnectionResult | null>(null);
 
   const youtubeConnections = useYoutubeStore((s) => s.connections);
-  const refreshYoutubeStatus = useYoutubeStore((s) => s.refreshStatus);
   const socialPlatforms = useSocialStore((s) => s.platforms);
-  const refreshSocial = useSocialStore((s) => s.refreshAll);
 
   const requestAccount = useCallback(() => {
     if (auth.user && auth.isAuthenticated) {
@@ -113,9 +112,8 @@ export function useClipperSessionPublish({
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;
-    void refreshYoutubeStatus();
-    void refreshSocial();
-  }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
+    void refreshAllIntegrations();
+  }, [canUseAccountFeatures]);
 
   const openPublishDialog = useCallback(
     (result: ClipperFormatResult, target: ClipperPublishTarget) => {

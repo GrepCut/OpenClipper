@@ -1,12 +1,21 @@
-import { Box, HStack, Input, Text, VStack, useBreakpointValue } from "@chakra-ui/react";
-import {
-  getOutlinedActionSurfaceProps,
-  OutlinedActionButton,
-  OUTLINED_ACTION_BUTTON_SIZE_PROPS,
-} from "../../../shared/components/buttons/outlined-action-button.component";
-import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import type { ClipperFormatResult } from "../shared/state.util";
+import { useMemo } from "react";
+import { Box, Input, Text, VStack } from "@chakra-ui/react";
 import type { TikTokCreatorInfo, TikTokPrivacyLevel } from "../../../services/social-auth.service";
+import { ThemedCheckbox } from "../../../shared/components/ui/themed-checkbox.component";
+import { ThemedSelect } from "../../../shared/components/ui/themed-select.component";
+import type { ClipperFormatResult } from "../shared/state.util";
+import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import {
+  formatTikTokBlockerMessage,
+  isTikTokSelfOnlyOptionDisabled,
+  TIKTOK_BRANDED_PRIVATE_HINT,
+  TIKTOK_PRIVACY_LABELS,
+  TIKTOK_PROCESSING_NOTICE,
+  TIKTOK_TITLE_MAX_LENGTH,
+  tiktokConsentCopy,
+} from "../shared/clipper-tiktok-publish.util";
+import { ClipperSocialPublishTwoColumn } from "./clipper-social-publish-preview.component";
+import { ClipperSocialPublishTikTokCommercial } from "./clipper-social-publish-tiktok-commercial.component";
 
 interface ClipperSocialPublishTikTokFormProps {
   result: ClipperFormatResult | null;
@@ -16,7 +25,7 @@ interface ClipperSocialPublishTikTokFormProps {
   tiktokCreator: TikTokCreatorInfo | null;
   tiktokError: string | null;
   tiktokPrivacy: TikTokPrivacyLevel | "";
-  setTikTokPrivacy: (value: TikTokPrivacyLevel) => void;
+  setTikTokPrivacy: (value: TikTokPrivacyLevel | "") => void;
   allowComment: boolean;
   setAllowComment: React.Dispatch<React.SetStateAction<boolean>>;
   allowDuet: boolean;
@@ -25,57 +34,15 @@ interface ClipperSocialPublishTikTokFormProps {
   setAllowStitch: React.Dispatch<React.SetStateAction<boolean>>;
   isAigc: boolean;
   setIsAigc: React.Dispatch<React.SetStateAction<boolean>>;
+  commercialDisclosure: boolean;
+  setCommercialDisclosure: (value: boolean) => void;
   brandContent: boolean;
-  setBrandContent: React.Dispatch<React.SetStateAction<boolean>>;
+  setBrandContent: (value: boolean) => void;
   brandOrganic: boolean;
   setBrandOrganic: React.Dispatch<React.SetStateAction<boolean>>;
   musicUsageConfirmed: boolean;
   setMusicUsageConfirmed: React.Dispatch<React.SetStateAction<boolean>>;
 }
-
-const TOGGLE_BUTTON_PROPS = {
-  ...OUTLINED_ACTION_BUTTON_SIZE_PROPS,
-  h: "36px",
-  minH: "36px",
-  whiteSpace: "nowrap" as const,
-};
-
-function ToggleOptionButton({
-  isSelected,
-  disabled,
-  onClick,
-  children,
-  ...buttonProps
-}: {
-  isSelected: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-} & React.ComponentProps<typeof OutlinedActionButton>) {
-  const { theme } = useClipperUi();
-
-  return (
-    <OutlinedActionButton
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={isSelected}
-      borderRadius="xl"
-      color={isSelected ? theme.text.primary : theme.text.muted}
-      {...getOutlinedActionSurfaceProps(theme, isSelected)}
-      {...TOGGLE_BUTTON_PROPS}
-      {...buttonProps}
-    >
-      {children}
-    </OutlinedActionButton>
-  );
-}
-
-function formatPrivacyLabel(option: TikTokPrivacyLevel) {
-  return option.replaceAll("_", " ");
-}
-
-const TIKTOK_PREVIEW_HEIGHT = "min(calc(85vh - 9rem), 640px)";
 
 export function ClipperSocialPublishTikTokForm({
   result,
@@ -94,6 +61,8 @@ export function ClipperSocialPublishTikTokForm({
   setAllowStitch,
   isAigc,
   setIsAigc,
+  commercialDisclosure,
+  setCommercialDisclosure,
   brandContent,
   setBrandContent,
   brandOrganic,
@@ -102,54 +71,23 @@ export function ClipperSocialPublishTikTokForm({
   setMusicUsageConfirmed,
 }: ClipperSocialPublishTikTokFormProps) {
   const { theme } = useClipperUi();
-  const isLargeLayout = useBreakpointValue({ base: false, lg: true }) ?? false;
+  const selfOnlyOptionDisabled = isTikTokSelfOnlyOptionDisabled({ brandContent });
+  const blocker = tiktokError
+    || (!tiktokCreator?.canPost && tiktokCreator?.blockerMessage
+      ? formatTikTokBlockerMessage(tiktokCreator.blockerMessage)
+      : null);
+  const privacyOptions = useMemo(
+    () =>
+      (tiktokCreator?.privacyLevelOptions ?? []).map((option) => ({
+        value: option,
+        label: TIKTOK_PRIVACY_LABELS[option],
+        disabled: option === "SELF_ONLY" && selfOnlyOptionDisabled,
+      })),
+    [selfOnlyOptionDisabled, tiktokCreator?.privacyLevelOptions],
+  );
 
   return (
-    <HStack
-      w="full"
-      align="stretch"
-      gap={5}
-      h={{ base: "auto", lg: TIKTOK_PREVIEW_HEIGHT }}
-      minH={0}
-      flexDirection={{ base: "column", lg: "row" }}
-    >
-      {result?.previewUrl ? (
-        <video
-          controls
-          src={result.previewUrl}
-          style={{
-            ...(isLargeLayout
-              ? { height: "100%", width: "auto" }
-              : { width: "min(100%, 280px)", height: "auto" }),
-            maxWidth: "100%",
-            aspectRatio: "9 / 16",
-            objectFit: "cover",
-            borderRadius: "12px",
-            display: "block",
-            flexShrink: 0,
-            alignSelf: "center",
-          }}
-        />
-      ) : (
-        <Box
-          flexShrink={0}
-          h={{ base: "320px", lg: "100%" }}
-          w={{ base: "full", lg: "auto" }}
-          maxW={{ base: "280px", lg: "none" }}
-          aspectRatio="9 / 16"
-          mx={{ base: "auto", lg: 0 }}
-          borderRadius="xl"
-          bg={theme.surface.subtle}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Text fontSize="sm" color={theme.text.muted}>
-            No preview available
-          </Text>
-        </Box>
-      )}
-
+    <ClipperSocialPublishTwoColumn result={result}>
       <VStack
         flex={1}
         minW={0}
@@ -158,7 +96,7 @@ export function ClipperSocialPublishTikTokForm({
         gap={2}
         justify="space-between"
       >
-        <VStack align="stretch" gap={2} flex={1} minH={0}>
+        <VStack align="stretch" gap={2} flex={1} minH={0} overflowY="auto">
           <Box>
             <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
               {tiktokCreator?.nickname || "TikTok account"}
@@ -168,20 +106,21 @@ export function ClipperSocialPublishTikTokForm({
                 ? `@${tiktokCreator.username}`
                 : "Loading current TikTok posting settings…"}
             </Text>
-            {tiktokError || (!tiktokCreator?.canPost && tiktokCreator?.blockerMessage) ? (
+            {blocker ? (
               <Text mt={1} fontSize="xs" color={theme.status.error}>
-                {tiktokError || tiktokCreator?.blockerMessage}
+                {blocker}
               </Text>
             ) : null}
           </Box>
 
           <Box>
             <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
-              Caption
+              Title
             </Text>
             <Input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value.slice(0, TIKTOK_TITLE_MAX_LENGTH))}
+              maxLength={TIKTOK_TITLE_MAX_LENGTH}
               borderRadius="xl"
               bg={theme.surface.subtle}
               borderColor={theme.surface.borderStrong}
@@ -194,93 +133,87 @@ export function ClipperSocialPublishTikTokForm({
             <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
               Privacy (required)
             </Text>
-            <HStack gap={2} flexWrap="wrap">
-              {(tiktokCreator?.privacyLevelOptions ?? []).map((option) => (
-                <ToggleOptionButton
-                  key={option}
-                  isSelected={tiktokPrivacy === option}
-                  onClick={() => setTikTokPrivacy(option)}
-                  disabled={isPublishing}
-                >
-                  {formatPrivacyLabel(option)}
-                </ToggleOptionButton>
-              ))}
-            </HStack>
+            <ThemedSelect
+              value={tiktokPrivacy}
+              onChange={(value) => setTikTokPrivacy((value || "") as TikTokPrivacyLevel | "")}
+              options={privacyOptions}
+              placeholder="Select privacy"
+              disabled={isPublishing || !tiktokCreator}
+            />
+            {selfOnlyOptionDisabled ? (
+              <Text mt={1} fontSize="xs" color={theme.text.muted}>
+                {TIKTOK_BRANDED_PRIVATE_HINT}
+              </Text>
+            ) : null}
           </Box>
 
           <Box>
             <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
               Allow interactions
             </Text>
-            <HStack gap={2} flexWrap="wrap">
-              <ToggleOptionButton
-                isSelected={allowComment}
-                onClick={() => setAllowComment((v) => !v)}
+            <VStack align="stretch" gap={2}>
+              <ThemedCheckbox
+                checked={allowComment}
+                onCheckedChange={setAllowComment}
                 disabled={isPublishing || Boolean(tiktokCreator?.commentDisabled)}
               >
-                Comments
-              </ToggleOptionButton>
-              <ToggleOptionButton
-                isSelected={allowDuet}
-                onClick={() => setAllowDuet((v) => !v)}
+                Allow Comment
+              </ThemedCheckbox>
+              <ThemedCheckbox
+                checked={allowDuet}
+                onCheckedChange={setAllowDuet}
                 disabled={isPublishing || Boolean(tiktokCreator?.duetDisabled)}
               >
-                Duet
-              </ToggleOptionButton>
-              <ToggleOptionButton
-                isSelected={allowStitch}
-                onClick={() => setAllowStitch((v) => !v)}
+                Allow Duet
+              </ThemedCheckbox>
+              <ThemedCheckbox
+                checked={allowStitch}
+                onCheckedChange={setAllowStitch}
                 disabled={isPublishing || Boolean(tiktokCreator?.stitchDisabled)}
               >
-                Stitch
-              </ToggleOptionButton>
-            </HStack>
+                Allow Stitch
+              </ThemedCheckbox>
+            </VStack>
           </Box>
 
           <Box>
             <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
-              Content declarations
+              AI-generated content
             </Text>
-            <HStack gap={2} flexWrap="wrap">
-              <ToggleOptionButton
-                isSelected={isAigc}
-                onClick={() => setIsAigc((v) => !v)}
-                disabled={isPublishing}
-              >
-                AI-generated content
-              </ToggleOptionButton>
-              <ToggleOptionButton
-                isSelected={brandContent}
-                onClick={() => setBrandContent((v) => !v)}
-                disabled={isPublishing}
-              >
-                Branded content
-              </ToggleOptionButton>
-              <ToggleOptionButton
-                isSelected={brandOrganic}
-                onClick={() => setBrandOrganic((v) => !v)}
-                disabled={isPublishing}
-              >
-                Your brand
-              </ToggleOptionButton>
-            </HStack>
+            <ThemedCheckbox
+              checked={isAigc}
+              onCheckedChange={setIsAigc}
+              disabled={isPublishing}
+            >
+              This content is AI-generated
+            </ThemedCheckbox>
           </Box>
+
+          <ClipperSocialPublishTikTokCommercial
+            isPublishing={isPublishing}
+            privacyLevel={tiktokPrivacy}
+            commercialDisclosure={commercialDisclosure}
+            onCommercialDisclosureChange={setCommercialDisclosure}
+            brandOrganic={brandOrganic}
+            onBrandOrganicChange={(value) => setBrandOrganic(value)}
+            brandContent={brandContent}
+            onBrandContentChange={setBrandContent}
+          />
         </VStack>
 
-        <ToggleOptionButton
-          isSelected={musicUsageConfirmed}
-          onClick={() => setMusicUsageConfirmed((v) => !v)}
-          disabled={isPublishing}
-          w="full"
-          justifyContent="flex-start"
-          whiteSpace="normal"
-          h="auto"
-          minH="36px"
-          py={2}
-        >
-          By posting, I agree to TikTok&apos;s Music Usage Confirmation
-        </ToggleOptionButton>
+        <VStack align="stretch" gap={2}>
+          <Text fontSize="xs" color={theme.text.muted}>
+            {TIKTOK_PROCESSING_NOTICE}
+          </Text>
+          <ThemedCheckbox
+            checked={musicUsageConfirmed}
+            onCheckedChange={setMusicUsageConfirmed}
+            disabled={isPublishing}
+          >
+            {tiktokConsentCopy(brandContent)}
+          </ThemedCheckbox>
+        </VStack>
       </VStack>
-    </HStack>
+    </ClipperSocialPublishTwoColumn>
   );
 }

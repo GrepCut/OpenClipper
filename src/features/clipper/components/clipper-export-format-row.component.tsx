@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/react";
-import { AlertTriangle, Facebook, FolderOpen, RotateCcw } from "lucide-react";
+import { AlertTriangle, FolderOpen, RotateCcw } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
 import {
@@ -46,7 +46,7 @@ function formatExportedAt(exportedAt: string): string {
 }
 
 function PublishTargetIcon({ target }: { target: SocialPublishablePlatform }) {
-  if (target === "facebook") return <Facebook size={16} />;
+  if (target === "facebook") return <ClipperPlatformIcon platform="facebook" size={16} />;
   if (target === "x") return <ClipperPlatformIcon platform="twitter" size={16} />;
   if (target === "threads") return <ClipperPlatformIcon platform="threads" size={16} />;
   if (target === "youtube") return <ClipperPlatformIcon platform="youtube" size={16} />;

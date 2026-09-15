@@ -9,7 +9,12 @@ import type { ClipperStage } from "../../shared/stages.util";
 import type { ClipperLoadedProject } from "../use-clipper-project-loader.hook";
 import { EMPTY_CLIPPER_PIPELINE_STATE } from "../../pipeline/resume.util";
 
-export const METADATA_IMMEDIATE_FLUSH_STAGES: ClipperStage[] = ["preview", "done", "error"];
+/**
+ * Stages whose metadata writes are frequent enough to be worth debouncing. Every other
+ * stage flushes immediately, so closing the window or crashing mid-pipeline cannot lose
+ * the phase a project had reached.
+ */
+export const METADATA_DEBOUNCED_STAGES: ClipperStage[] = ["idle", "rendering"];
 
 export const INITIAL_PIPELINE_STATE = EMPTY_CLIPPER_PIPELINE_STATE;
 
@@ -28,6 +33,7 @@ export interface ClipperPipelineRefs {
   resumeStartedRef: React.MutableRefObject<boolean>;
   loadedResumeKeyRef: React.MutableRefObject<string | null>;
   aiClipsMetaRef: React.MutableRefObject<ClipperClipPayload[]>;
+  manualClipsMetaRef: React.MutableRefObject<ClipperClipPayload[]>;
   reporterRef: React.MutableRefObject<PipelineReporter>;
 }
 

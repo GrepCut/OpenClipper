@@ -142,7 +142,7 @@ async function renderFormatToResult(
 
     if (isTauri()) {
       throw new Error(
-        "Disk export sink was unavailable. Export was not saved — check storage permissions and retry.",
+        "Disk export sink was unavailable. Export was not saved, check storage permissions and retry.",
       );
     }
 
@@ -183,8 +183,8 @@ export async function runRenderClipJob(
   const clip = findClipByIndex(session.clips, input.clipIndex);
   if (!clip) throw new Error(`Clip ${input.clipIndex} not found.`);
 
-  const rangeFile = session.rangeTrimmedFile ?? session.trimmedFile;
-  if (!rangeFile) throw new Error("Range video is not ready — cannot render.");
+  const rangeFile = session.rangeTrimmedFile;
+  if (!rangeFile) throw new Error("Range video is not ready, cannot render.");
 
   const formats = CLIPPER_FORMAT_DEFS.filter((f) => input.enabledFormatIds.includes(f.id));
   if (formats.length === 0) {
@@ -244,8 +244,8 @@ export async function runRerenderFormat(
     const clip = findClipByIndex(session.clips, clipIndex);
     if (!clip) throw new Error(`Clip ${clipIndex} not found.`);
 
-    const rangeFile = session.rangeTrimmedFile ?? session.trimmedFile;
-    if (!rangeFile) throw new Error("Range video is not ready — cannot render.");
+    const rangeFile = session.rangeTrimmedFile;
+    if (!rangeFile) throw new Error("Range video is not ready, cannot render.");
 
     const progressKey = `${clipIndex}:${formatDef.id}`;
     const clipWindow: ClipperClipWindow = { segments: clip.segments };

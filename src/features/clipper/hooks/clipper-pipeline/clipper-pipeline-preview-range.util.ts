@@ -37,12 +37,13 @@ export interface PreparePreviewFromRangeDeps {
   settings: ClipperSettings;
   metadataRef: React.MutableRefObject<ClipperProjectMetadata>;
   aiClipsMetaRef: React.MutableRefObject<Awaited<ReturnType<typeof fetchClipperClips>>>;
+  manualClipsMetaRef: React.MutableRefObject<Awaited<ReturnType<typeof fetchClipperClips>>>;
   activeClipIndexRef: React.MutableRefObject<number>;
   reporterRef: React.MutableRefObject<PipelineReporter>;
   persistMetadata: (
     patch: Partial<ClipperProjectMetadata>,
     stage?: ClipperProjectMetadata["stage"],
-  ) => void;
+  ) => Promise<void>;
   setDisabledCollageRegionIds: (ids: string[]) => void;
   setAutoPartsSegmentLengthSec: (length: number) => void;
   setState: React.Dispatch<React.SetStateAction<ClipperPipelineState>>;
@@ -69,6 +70,7 @@ export async function preparePreviewFromRange(
     settings,
     metadataRef,
     aiClipsMetaRef,
+    manualClipsMetaRef,
     activeClipIndexRef,
     reporterRef,
     persistMetadata,
@@ -83,12 +85,14 @@ export async function preparePreviewFromRange(
   const rangeDuration = end - snappedStart;
   const segmentLength = normalizeAutoPartsSegmentLengthSec(metadata.autoPartsSegmentLengthSec);
 
-  const [autoPartsDbClips, aiDbClips, fetchedDisabledRegionIds] = await Promise.all([
+  const [autoPartsDbClips, aiDbClips, manualDbClips, fetchedDisabledRegionIds] = await Promise.all([
     fetchClipperClips(options.projectId, "auto-parts").catch(() => []),
     fetchClipperClips(options.projectId, "ai").catch(() => []),
+    fetchClipperClips(options.projectId, "manual").catch(() => []),
     fetchDisabledCollageRegions(options.projectId).catch(() => []),
   ]);
   aiClipsMetaRef.current = aiDbClips;
+  manualClipsMetaRef.current = manualDbClips;
   session.disabledCollageRegionIds = fetchedDisabledRegionIds;
   setDisabledCollageRegionIds(fetchedDisabledRegionIds);
 
@@ -114,17 +118,19 @@ export async function preparePreviewFromRange(
     );
   }
 
+  const resolveClipSourceMode = () => {
+    const mode = session.clipSourceMode ?? metadataRef.current.clipSourceMode ?? "auto-parts";
+    return mode === "manual" && manualDbClips.length === 0 ? "auto-parts" : mode;
+  };
+
   const earlyPatch = buildEarlyPreviewStatePatch({
-    clipsForResume: clipsForResume.map((c) => ({
-      index: c.index,
-      startSec: c.startSec,
-      endSec: c.endSec,
-    })),
+    clipsForResume,
     aiDbClips,
+    manualDbClips,
     words,
     wordsPerGroup,
     rangeDuration,
-    clipSourceMode: metadataRef.current.clipSourceMode ?? "auto-parts",
+    clipSourceMode: resolveClipSourceMode(),
     activeClipIndex: metadataRef.current.activeClipIndex ?? activeClipIndexRef.current ?? 0,
     snappedStart,
     end,
@@ -159,11 +165,7 @@ export async function preparePreviewFromRange(
         session,
         {
           ...pipelineInput,
-          generatedClips: clipsForResume.map((clip) => ({
-            index: clip.index,
-            startSec: clip.startSec,
-            endSec: clip.endSec,
-          })),
+          generatedClips: clipsForResume,
         },
         reporterRef.current,
         { signal: controller.signal },
@@ -183,7 +185,7 @@ export async function preparePreviewFromRange(
 
   const restoredActiveClipIndex =
     metadataRef.current.activeClipIndex ?? activeClipIndexRef.current ?? 0;
-  persistMetadata(
+  await persistMetadata(
     {
       clipStart: snappedStart,
       clipEnd: end,
@@ -196,7 +198,7 @@ export async function preparePreviewFromRange(
   );
   setAutoPartsSegmentLengthSec(segmentLength);
 
-  const clipSourceMode = metadataRef.current.clipSourceMode ?? "auto-parts";
+  const clipSourceMode = resolveClipSourceMode();
   const autoPartsClipPreviews = buildClipPreviews(result.clips);
   session.autoPartsClips = result.clips;
   session.aiClips = rebuildClipsFromDbPayload(
@@ -206,17 +208,27 @@ export async function preparePreviewFromRange(
     session.rangeEnd - session.rangeStart,
     session.audioEnvelope ?? undefined,
   );
+  session.manualClips = rebuildClipsFromDbPayload(
+    manualDbClips,
+    words,
+    wordsPerGroup,
+    session.rangeEnd - session.rangeStart,
+    session.audioEnvelope ?? undefined,
+  );
   session.clipSourceMode = clipSourceMode;
   syncSessionActiveClips(session);
 
   const aiClipPreviews = buildClipPreviews(session.aiClips);
+  const manualClipPreviews = buildClipPreviews(session.manualClips);
   const clipPreviews = activeClipPreviewsForMode(
     clipSourceMode,
     autoPartsClipPreviews,
     aiClipPreviews,
+    manualClipPreviews,
   );
-  const validActiveClipIndex =
-    restoredActiveClipIndex < clipPreviews.length ? restoredActiveClipIndex : 0;
+  const validActiveClipIndex = clipPreviews.some((p) => p.clip.index === restoredActiveClipIndex)
+    ? restoredActiveClipIndex
+    : clipPreviews[0]?.clip.index ?? 0;
   activeClipIndexRef.current = validActiveClipIndex;
   session.activeClipIndex = validActiveClipIndex;
 
@@ -236,6 +248,7 @@ export async function preparePreviewFromRange(
     clipPreviews,
     autoPartsClipPreviews,
     aiClipPreviews,
+    manualClipPreviews,
     clipSourceMode,
     activeClipIndex: validActiveClipIndex,
     clipDuration: result.rangeDuration,

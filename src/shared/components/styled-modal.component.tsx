@@ -1,4 +1,4 @@
-import { Dialog, Box, Portal } from "@chakra-ui/react";
+import { Dialog, Box, Flex, Portal, Tooltip } from "@chakra-ui/react";
 import { cloneElement, isValidElement, useId } from "react";
 import type { CSSProperties, ReactElement, ReactNode, SyntheticEvent } from "react";
 import { useTheme } from '../../theme';
@@ -13,6 +13,7 @@ interface StyledModalFooterProps {
   submitText?: string;
   isLoading?: boolean;
   submitDisabled?: boolean;
+  submitTitle?: string;
   submitColorScheme?: string;
   submitFormId?: string;
 }
@@ -21,6 +22,7 @@ interface StyledModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  description?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   size?: "xs" | "sm" | "md" | "lg" | "xl" | "cover" | "full";
@@ -38,10 +40,20 @@ type TauriNoDragStyle = CSSProperties & {
   WebkitAppRegion?: "no-drag";
 };
 
+function getFooterSubmitProps(footer: ReactNode): StyledModalFooterProps | null {
+  if (!isValidElement(footer)) return null;
+  const props = footer.props as Partial<StyledModalFooterProps>;
+  if (typeof props.onSubmit !== "function" || typeof props.onCancel !== "function") {
+    return null;
+  }
+  return props as StyledModalFooterProps;
+}
+
 export function StyledModal({
   isOpen,
   onClose,
   title,
+  description,
   children,
   footer,
   size = "md",
@@ -55,6 +67,10 @@ export function StyledModal({
 }: StyledModalProps) {
   const { theme, mode } = useTheme();
   const formId = useId();
+  const footerSubmit = getFooterSubmitProps(footer);
+  const isDestructiveFooter = footerSubmit?.submitColorScheme === "red";
+  const effectiveFormSubmit =
+    onFormSubmit ?? (isDestructiveFooter ? undefined : footerSubmit?.onSubmit);
 
   const nonDraggableArea: TauriNoDragStyle = {
     WebkitAppRegion: "no-drag",
@@ -72,12 +88,12 @@ export function StyledModal({
 
   const handleFormSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isLoading) return;
-    onFormSubmit?.();
+    if (isLoading || footerSubmit?.submitDisabled) return;
+    effectiveFormSubmit?.();
   };
 
   const footerContent =
-    footer && onFormSubmit && isValidElement(footer)
+    footer && effectiveFormSubmit && footerSubmit && isValidElement(footer)
       ? cloneElement(footer as ReactElement<StyledModalFooterProps>, { submitFormId: formId })
       : footer;
 
@@ -113,7 +129,7 @@ export function StyledModal({
             borderColor={theme.dashboard.border}
             borderRadius="2xl"
             boxShadow="0 8px 32px rgba(0,0,0,0.4)"
-            p={4}
+            p={0}
             w={contentWidth}
             maxW={contentWidth}
             maxH={scrollBehavior === "inside" ? "85vh" : undefined}
@@ -132,17 +148,35 @@ export function StyledModal({
               flex="1"
               position="relative"
             >
-              <Dialog.Header>
-                <Dialog.Title color={theme.text.primary}>
-                  <SecondaryMainTitle fontSize="2xl">
-                    {title}
-                  </SecondaryMainTitle>
-                </Dialog.Title>
+              <Dialog.Header px={3} pt={3} pb={2}>
+                <Flex w="full" align="center" columnGap={4} rowGap={1} wrap="wrap">
+                  <Dialog.Title color={theme.text.primary}>
+                    <SecondaryMainTitle fontSize="2xl">
+                      {title}
+                    </SecondaryMainTitle>
+                  </Dialog.Title>
+                  {description ? (
+                    <Dialog.Description
+                      fontSize="xs"
+                      color={theme.text.muted}
+                      lineHeight="1.5"
+                      textAlign="right"
+                      ml="auto"
+                      flex="1 1 16rem"
+                      minW={0}
+                    >
+                      {description}
+                    </Dialog.Description>
+                  ) : null}
+                </Flex>
               </Dialog.Header>
 
-              {onFormSubmit ? (
+              {effectiveFormSubmit ? (
                 <Dialog.Body
                   color={theme.text.primary}
+                  px={3}
+                  pt={1}
+                  pb={3}
                   overflowY={scrollBehavior === "inside" ? "auto" : undefined}
                   flex="1"
                   css={{
@@ -167,6 +201,9 @@ export function StyledModal({
               ) : (
                 <Dialog.Body
                   color={theme.text.primary}
+                  px={3}
+                  pt={1}
+                  pb={3}
                   overflowY={scrollBehavior === "inside" ? "auto" : undefined}
                   flex="1"
                   css={{
@@ -190,7 +227,7 @@ export function StyledModal({
             </Box>
 
             {footerContent && (
-              <Dialog.Footer padding="0" paddingTop={4}>
+              <Dialog.Footer px={3} pt={2} pb={3}>
                 {footerContent}
               </Dialog.Footer>
             )}
@@ -208,6 +245,7 @@ export function StyledModalFooter({
   submitText = "Save",
   isLoading = false,
   submitDisabled = false,
+  submitTitle,
   submitColorScheme = "blue",
   submitFormId,
 }: StyledModalFooterProps) {
@@ -236,6 +274,30 @@ export function StyledModalFooter({
   };
 
   const submitColors = getColorScheme(submitColorScheme);
+  const submitButtonDisabled = submitDisabled || isLoading;
+
+  const submitButton = (
+    <MainButton
+      type={submitFormId ? "submit" : "button"}
+      form={submitFormId}
+      onClick={submitFormId ? undefined : onSubmit}
+      disabled={submitButtonDisabled}
+      h="33px"
+      fontSize="md"
+      px={5}
+      bg={submitColors.gradient}
+      boxShadow={submitColors.boxShadow}
+      pointerEvents={submitTitle ? "none" : undefined}
+      _hover={{
+        filter: `brightness(${submitColors.hoverBrightness})`,
+        transform: "translateY(-1px)",
+        boxShadow: submitColors.boxShadow !== "none" ? "0 6px 16px rgba(229, 62, 62, 0.3)" : "none",
+        _disabled: { transform: "none" },
+      }}
+    >
+      {submitText}
+    </MainButton>
+  );
 
   return (
     <>
@@ -260,25 +322,35 @@ export function StyledModalFooter({
       >
         {cancelText}
       </MainButton>
-      <MainButton
-        type={submitFormId ? "submit" : "button"}
-        form={submitFormId}
-        onClick={submitFormId ? undefined : onSubmit}
-        disabled={submitDisabled || isLoading}
-        h="33px"
-        fontSize="md"
-        px={5}
-        bg={submitColors.gradient}
-        boxShadow={submitColors.boxShadow}
-        _hover={{
-          filter: `brightness(${submitColors.hoverBrightness})`,
-          transform: "translateY(-1px)",
-          boxShadow: submitColors.boxShadow !== "none" ? "0 6px 16px rgba(229, 62, 62, 0.3)" : "none",
-          _disabled: { transform: "none" },
-        }}
-      >
-        {submitText}
-      </MainButton>
+      {submitTitle ? (
+        <Tooltip.Root openDelay={200} closeDelay={100}>
+          <Tooltip.Trigger asChild>
+            <Box as="span" display="inline-block">
+              {submitButton}
+            </Box>
+          </Tooltip.Trigger>
+          <Portal>
+            <Tooltip.Positioner>
+              <Tooltip.Content
+                px={3}
+                py={2}
+                borderRadius="lg"
+                bg={theme.background.secondary}
+                color={theme.text.primary}
+                borderWidth="1px"
+                borderColor={theme.border.primary}
+                boxShadow={theme.shadow.dropdown}
+                maxW="280px"
+                fontSize="sm"
+              >
+                {submitTitle}
+              </Tooltip.Content>
+            </Tooltip.Positioner>
+          </Portal>
+        </Tooltip.Root>
+      ) : (
+        submitButton
+      )}
     </>
   );
 }

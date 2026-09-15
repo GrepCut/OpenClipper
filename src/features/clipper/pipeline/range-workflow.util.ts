@@ -1,7 +1,7 @@
 import { segmentRangeFromTrimmedFile } from "../engine/segmentation";
 import { clipperLog, clipperTimer } from "../shared/logger.util";
 import { snapToKeyframe } from "../platform/native-source.util";
-import { markClipperStepCompleted } from "../persistence/pipeline-api.util";
+import { markClipperStepActive, markClipperStepCompleted } from "../persistence/pipeline-api.util";
 import { saveClipperRangeWords } from "../persistence/clipper-range-words-api.util";
 import type { ClipperProjectMetadata } from "../persistence/project-metadata.util";
 import type { WordCue } from "../lib/media/transcription-export.util";
@@ -32,11 +32,6 @@ export interface PreparePreviewResult {
   rangeTrimmedVideoUrl: string;
   clips: ClipperGeneratedClip[];
   rangeDuration: number;
-}
-
-function syncRangeTrimAliases(session: ClipperSession): void {
-  session.trimmedFile = session.rangeTrimmedFile;
-  session.trimmedVideoUrl = session.rangeTrimmedVideoUrl;
 }
 
 /** Trims the full range, segments into clips, analyzes faces, and returns preview payload. */
@@ -80,7 +75,6 @@ export async function runPreparePreviewPipeline(
 
   session.rangeTrimmedFile = trimmedFile;
   session.rangeTrimmedVideoUrl = trimmedVideoUrl;
-  syncRangeTrimAliases(session);
   session.rangeWords = input.words;
   session.words = input.words;
   session.rangeStart = input.snappedStart;
@@ -89,6 +83,7 @@ export async function runPreparePreviewPipeline(
   session.clipEnd = input.end;
   session.autoPartsClips = clips;
   session.aiClips = session.aiClips ?? [];
+  session.manualClips = session.manualClips ?? [];
   session.clipSourceMode = session.clipSourceMode ?? "auto-parts";
   syncSessionActiveClips(session);
   session.activeClipIndex = 0;
@@ -126,38 +121,31 @@ export interface ConfirmRangeInput {
   projectId: string;
   start: number;
   end: number;
-  wordsPerGroup: number;
+  persistRange: (snappedStart: number, end: number) => Promise<void>;
+}
+
+export interface TranscribeRangeInput {
+  projectId: string;
+  snappedStart: number;
+  end: number;
   metadata: ClipperProjectMetadata;
   transcriptionEngine?: LocalTranscriptionEngine;
 }
 
-export interface ConfirmRangeResult {
-  snappedStart: number;
-  end: number;
-  words: WordCue[];
-}
-
-/** Snaps, optionally pre-trims native source, transcribes, and prepares session for preview stage. */
-export async function runConfirmRangePipeline(
+/**
+ * Transcribes an already-confirmed range. Shared by the initial confirm-range run and
+ * by resume, which must not re-snap or re-write the range it is recovering.
+ */
+export async function runTranscribeRangePipeline(
   session: ClipperSession,
-  input: ConfirmRangeInput,
+  input: TranscribeRangeInput,
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
-): Promise<ConfirmRangeResult> {
-  session.faceCache = createFaceCache(session, reporter);
+): Promise<WordCue[]> {
+  const { projectId, snappedStart, end } = input;
 
-  const snappedStart = await snapToKeyframe(session.sourceFile, input.start);
-  reporter.stageProgress(0.1);
-  const end = input.end;
-  const clipDuration = end - snappedStart;
-  if (session.rangeStart !== snappedStart || session.rangeEnd !== end) {
-    session.audioEnvelope = null;
-    session.rangeTrimmedFile = null;
-    session.trimmedFile = null;
-  }
-
-  await markClipperStepCompleted(input.projectId, "confirm_range");
-  await trimNativeSourceEarly(session, input.projectId, snappedStart, end, reporter, options);
+  await markClipperStepActive(projectId, "transcribe");
+  await trimNativeSourceEarly(session, projectId, snappedStart, end, reporter, options);
 
   const trimUnchanged =
     input.metadata.transcribedClipStart === snappedStart &&
@@ -166,10 +154,10 @@ export async function runConfirmRangePipeline(
   const words = await runTranscribeStage(
     session,
     {
-      projectId: input.projectId,
+      projectId,
       snappedStart,
       end,
-      clipDuration,
+      clipDuration: end - snappedStart,
       trimUnchanged,
       existingWords: session.rangeWords.length > 0 ? session.rangeWords : session.words,
       transcriptionEngine: input.transcriptionEngine,
@@ -182,11 +170,38 @@ export async function runConfirmRangePipeline(
   session.rangeWords = words;
   session.words = words;
 
-  await saveClipperRangeWords(input.projectId, words);
+  await saveClipperRangeWords(projectId, words);
+  await markClipperStepCompleted(projectId, "transcribe", { wordCount: words.length });
 
-  if (words.length > 0) {
-    await markClipperStepCompleted(input.projectId, "transcribe", { wordCount: words.length });
+  return words;
+}
+
+/**
+ * Snaps the requested range to a keyframe, drops caches invalidated by the new range and
+ * persists it as the confirmed range. Everything from transcription onwards runs through
+ * `runTranscribeRangePipeline`, so confirm and resume share exactly one code path.
+ * Returns the snapped start.
+ */
+export async function runConfirmRangeStep(
+  session: ClipperSession,
+  input: ConfirmRangeInput,
+  reporter: PipelineReporter,
+): Promise<number> {
+  session.faceCache = createFaceCache(session, reporter);
+
+  const snappedStart = await snapToKeyframe(session.sourceFile, input.start);
+  reporter.stageProgress(0.1);
+  const end = input.end;
+  if (session.rangeStart !== snappedStart || session.rangeEnd !== end) {
+    session.audioEnvelope = null;
+    session.rangeTrimmedFile = null;
   }
 
-  return { snappedStart, end, words };
+  await input.persistRange(snappedStart, end);
+  await markClipperStepCompleted(input.projectId, "confirm_range", {
+    clipStart: snappedStart,
+    clipEnd: end,
+  });
+
+  return snappedStart;
 }

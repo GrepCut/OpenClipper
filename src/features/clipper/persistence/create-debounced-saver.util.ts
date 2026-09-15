@@ -1,6 +1,6 @@
 export interface DebouncedSaver<T> {
   schedule: (payload: T) => void;
-  scheduleImmediate: (payload: T) => void;
+  scheduleImmediate: (payload: T) => Promise<void>;
   flush: () => Promise<void>;
   cancel: () => void;
 }
@@ -38,7 +38,7 @@ export function createDebouncedSaver<T>(options: {
   const scheduleImmediate = (payload: T) => {
     pending = payload;
     cancel();
-    void flush();
+    return flush();
   };
 
   return { schedule, scheduleImmediate, flush, cancel };

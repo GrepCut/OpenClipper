@@ -6,10 +6,10 @@ import type { WordCue } from "../lib/media/transcription-export.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { clipperTheme } from "../shared/theme.util";
 import { ClipperTranscriptEmpty } from "./clipper-transcript-empty.component";
+import { nearestWordIndexFromPointer } from "./clipper-transcript-word-pointer.util";
 
 export interface ClipperInlineTranscriptProps {
   words: WordCue[];
-  /** Absolutny offset czasu słów względem range (np. clip.startSec lub 0 dla rangeWords). */
   wordTimeOffsetSec: number;
   regions: CollageRegion[];
   disabledRegionIds: string[];
@@ -80,13 +80,13 @@ function SplitRegionMarker({
       key={region.id}
       aria-label={
         enabled
-          ? "Two speakers detected — split-screen on here. Click to turn off for this part."
+          ? "Two speakers detected. Split-screen on here, click to turn off for this part."
           : "Split-screen turned off for this part. Click to turn back on."
       }
       title={
         enabled
-          ? "Split-screen on here — click to turn off"
-          : "Split-screen off here — click to turn on"
+          ? "Split-screen on here. Click to turn off"
+          : "Split-screen off here. Click to turn on"
       }
       size="2xs"
       variant={enabled ? "solid" : "outline"}
@@ -152,41 +152,16 @@ export const ClipperInlineTranscript: React.FC<
   const handleTranscriptClick = (event: React.MouseEvent<HTMLElement>) => {
     if (!onWordClick) return;
 
-    // Split-screen markers own their clicks. Everything else seeks to the word
-    // closest to the pointer, including whitespace between wrapped lines.
     if (event.target instanceof Element && event.target.closest("button"))
       return;
 
-    const wordElements =
-      transcriptRef.current?.querySelectorAll<HTMLElement>("[data-word-index]");
-    if (!wordElements?.length) return;
-
-    let nearestWordIndex = -1;
-    let nearestDistanceSquared = Number.POSITIVE_INFINITY;
-    for (const element of wordElements) {
-      const index = Number(element.dataset.wordIndex);
-      if (!Number.isInteger(index) || !words[index]) continue;
-
-      const rect = element.getBoundingClientRect();
-      const deltaX = Math.max(
-        rect.left - event.clientX,
-        0,
-        event.clientX - rect.right,
-      );
-      const deltaY = Math.max(
-        rect.top - event.clientY,
-        0,
-        event.clientY - rect.bottom,
-      );
-      const distanceSquared = deltaX * deltaX + deltaY * deltaY;
-      if (distanceSquared < nearestDistanceSquared) {
-        nearestDistanceSquared = distanceSquared;
-        nearestWordIndex = index;
-        if (distanceSquared === 0) break;
-      }
-    }
-
-    if (nearestWordIndex === -1) return;
+    const nearestWordIndex = nearestWordIndexFromPointer(
+      transcriptRef.current,
+      event,
+      "data-word-index",
+      (index) => Boolean(words[index]),
+    );
+    if (nearestWordIndex == null) return;
     event.stopPropagation();
     onWordClick(
       wordAbsoluteTimeSec(words[nearestWordIndex], wordTimeOffsetSec),

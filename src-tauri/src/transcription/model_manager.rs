@@ -204,12 +204,12 @@ pub fn delete_model(app: &AppHandle) -> Result<(), String> {
     let model_dir = model_dir_for_app(app)?;
     if model_dir.exists() {
         fs::remove_dir_all(&model_dir)
-            .map_err(|error| format!("Nie udało się usunąć modelu: {error}"))?;
+            .map_err(|error| format!("Failed to delete model: {error}"))?;
     }
     let legacy_dir = legacy_model_dir_for_app(app)?;
     if legacy_dir.exists() {
         fs::remove_dir_all(&legacy_dir)
-            .map_err(|error| format!("Nie udało się usunąć legacy modelu: {error}"))?;
+            .map_err(|error| format!("Failed to delete legacy model: {error}"))?;
     }
     let archive = model_dir
         .parent()
@@ -248,12 +248,12 @@ pub fn ensure_model_files(app: &AppHandle) -> Result<PathBuf, TranscriptionError
 
     let models_root = cache_dir
         .parent()
-        .ok_or_else(|| TranscriptionError::ModelLoad("Brak katalogu models".into()))?;
+        .ok_or_else(|| TranscriptionError::ModelLoad("Missing models directory".into()))?;
     fs::create_dir_all(models_root).map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Nie udało się utworzyć katalogu: {error}"))
+        TranscriptionError::ModelLoad(format!("Failed to create directory: {error}"))
     })?;
     fs::create_dir_all(&cache_dir).map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Nie udało się utworzyć katalogu modelu: {error}"))
+        TranscriptionError::ModelLoad(format!("Failed to create model directory: {error}"))
     })?;
 
     // The per-model manifest is required to validate the four model files.
@@ -285,7 +285,7 @@ pub fn ensure_model_files(app: &AppHandle) -> Result<PathBuf, TranscriptionError
 
     if !is_model_installed(&cache_dir) {
         return Err(TranscriptionError::ModelLoad(
-            "Po pobraniu brakuje wymaganych plików modelu".into(),
+            "Model is missing required files after download".into(),
         ));
     }
     verify_manifest(&cache_dir)?;
@@ -297,7 +297,7 @@ fn rename_extracted_dir(models_root: &Path) -> Result<(), TranscriptionError> {
     let target = models_root.join(MODEL_DIR_NAME);
     if extracted.is_dir() && !target.is_dir() {
         fs::rename(&extracted, &target).map_err(|error| {
-            TranscriptionError::ModelLoad(format!("Nie udało się przenieść modelu: {error}"))
+            TranscriptionError::ModelLoad(format!("Failed to move model: {error}"))
         })?;
     }
     Ok(())
@@ -307,15 +307,15 @@ fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
     let manifest_path = model_dir.join(MODEL_MANIFEST_FILE);
     let manifest_bytes = fs::read(&manifest_path).map_err(|error| {
         TranscriptionError::ModelLoad(format!(
-            "Brak manifestu modelu ({}): {error}",
+            "Missing model manifest ({}): {error}",
             manifest_path.display()
         ))
     })?;
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Nieprawidłowy manifest modelu: {error}"))
+        TranscriptionError::ModelLoad(format!("Invalid model manifest: {error}"))
     })?;
     let files = manifest["files"].as_object().ok_or_else(|| {
-        TranscriptionError::ModelLoad("Manifest modelu nie zawiera sekcji files".into())
+        TranscriptionError::ModelLoad("Model manifest is missing the files section".into())
     })?;
 
     for file in REQUIRED_FILES {
@@ -323,15 +323,15 @@ fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
             .get(file)
             .and_then(|entry| entry["sha256"].as_str())
             .ok_or_else(|| {
-                TranscriptionError::ModelLoad(format!("Manifest nie zawiera SHA dla {file}"))
+                TranscriptionError::ModelLoad(format!("Manifest is missing SHA for {file}"))
             })?;
         let path = model_dir.join(file);
         let actual = sha256_file(&path).map_err(|error| {
-            TranscriptionError::ModelLoad(format!("Nie można odczytać {}: {error}", path.display()))
+            TranscriptionError::ModelLoad(format!("Cannot read {}: {error}", path.display()))
         })?;
         if actual != expected {
             return Err(TranscriptionError::ModelLoad(format!(
-                "SHA-256 niezgodny dla {file}"
+                "SHA-256 mismatch for {file}"
             )));
         }
     }
@@ -341,12 +341,12 @@ fn verify_manifest(model_dir: &Path) -> Result<(), TranscriptionError> {
 fn verify_file_hash(path: &Path, file_name: &str) -> Result<bool, TranscriptionError> {
     let manifest_path = path.parent().unwrap_or(path).join(MODEL_MANIFEST_FILE);
     let manifest_bytes = fs::read(&manifest_path)
-        .map_err(|error| TranscriptionError::ModelLoad(format!("Brak manifestu: {error}")))?;
+        .map_err(|error| TranscriptionError::ModelLoad(format!("Missing manifest: {error}")))?;
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| TranscriptionError::ModelLoad(format!("Manifest: {error}")))?;
     let expected = manifest["files"][file_name]["sha256"]
         .as_str()
-        .ok_or_else(|| TranscriptionError::ModelLoad(format!("Brak SHA dla {file_name}")))?;
+        .ok_or_else(|| TranscriptionError::ModelLoad(format!("Missing SHA for {file_name}")))?;
     let actual = sha256_file(path).map_err(|error| TranscriptionError::ModelLoad(error))?;
     Ok(actual == expected)
 }
@@ -380,7 +380,7 @@ fn extract_archive(
     models_root: &Path,
 ) -> Result<(), TranscriptionError> {
     extract_tar_bz2(archive_path, models_root).map_err(|error| {
-        TranscriptionError::ModelLoad(format!("Rozpakowywanie archiwum nie powiodło się: {error}"))
+        TranscriptionError::ModelLoad(format!("Failed to extract archive: {error}"))
     })?;
     emit_model_download_event(app, MODEL_DIR_NAME, 1, Some(1), true, None);
     Ok(())

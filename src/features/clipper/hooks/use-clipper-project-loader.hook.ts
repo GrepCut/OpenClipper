@@ -28,6 +28,8 @@ import {
 import { yieldToMain } from "../shared/yield-to-main.util";
 import {
   clipperPipelineService,
+  computeResumePlan,
+  resolvePersistedClipRange,
   type ClipperFaceAnalysisRecord,
   type ClipperPipelineStepRecord,
   type ClipperResumePlan,
@@ -109,7 +111,7 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
 
       try {
         await applyLoading(simpleLoadingStatus("Reading project metadata"));
-        const metadata = getClipperMetadataFromProject(project.metadata);
+        let metadata = getClipperMetadataFromProject(project.metadata);
         isRestoreFlow = isRestoreBootFlow(null, metadata.stage);
 
         await report(
@@ -130,10 +132,19 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
           "Loading pipeline state",
           "Fetching completed steps and resume plan from the server",
         );
-        const pipelineState = await clipperPipelineService.getPipeline(project.id, {
+        const pipelineState = await clipperPipelineService.getPipeline(project.id);
+        const { steps, faceAnalysis } = pipelineState;
+        // Single normalization point: from here on `metadata` carries the confirmed range,
+        // so downstream `resolvePersistedClipRange` calls only re-run the step fallback for
+        // callers that never went through this loader.
+        const range = resolvePersistedClipRange(metadata, steps);
+        if (range.clipEnd != null) {
+          metadata = { ...metadata, clipStart: range.clipStart, clipEnd: range.clipEnd };
+        }
+        const resumePlan = computeResumePlan(steps, {
           requiredAnalyzerVersion: AUTOFLIP_ANALYZER_VERSION,
+          hasClipRange: range.clipEnd != null,
         });
-        const { steps, resumePlan, faceAnalysis } = pipelineState;
         isRestoreFlow = isRestoreBootFlow(resumePlan, metadata.stage);
 
         await report(
@@ -146,36 +157,6 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
           fetchRenderQueueFormats(project.id),
         ]);
         const sanitizedRenderQueue = sanitizeRenderQueueSelections(renderQueueFormats);
-
-        if (!metadata.sourceMediaFileId) {
-          if (!isStale()) {
-            setLoadingStatus(
-              isRestoreFlow
-                ? {
-                    message: "Project ready",
-                    detail: "No source video attached yet",
-                    steps: markStepsThroughDone(CLIPPER_SESSION_BOOT_STEPS, "finalize"),
-                  }
-                : simpleLoadingStatus("Project ready"),
-            );
-            setLoaded({
-              metadata,
-              settings,
-              renderQueueFormats: sanitizedRenderQueue,
-              sourceFile: null,
-              sourceUrl: null,
-              sourceDuration: null,
-              sourceFileName: null,
-              mediaFileId: null,
-              words: [],
-              steps,
-              resumePlan,
-              faceAnalysis,
-            });
-            setPhase("ready");
-          }
-          return;
-        }
 
         await report(
           "source",
@@ -210,13 +191,17 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
               isRestoreFlow
                 ? {
                     message: "Project ready",
-                    detail: "Source video file could not be located on this device",
+                    detail: metadata.sourceMediaFileId
+                      ? "Source video file could not be located on this device"
+                      : "No source video attached yet",
                     steps: markStepsThroughDone(CLIPPER_SESSION_BOOT_STEPS, "finalize"),
                   }
                 : simpleLoadingStatus("Project ready"),
             );
             setLoaded({
-              metadata: { ...metadata, sourceMediaFileId: null, stage: "idle" },
+              metadata: metadata.sourceMediaFileId
+                ? { ...metadata, sourceMediaFileId: null, stage: "idle" }
+                : metadata,
               settings,
               renderQueueFormats: sanitizedRenderQueue,
               sourceFile: null,
@@ -232,6 +217,10 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
             setPhase("ready");
           }
           return;
+        }
+
+        if (!metadata.sourceMediaFileId) {
+          metadata = { ...metadata, sourceMediaFileId: source.mediaFile.id };
         }
 
         let words: WordCue[] = [];

@@ -1,21 +1,26 @@
+import { useEffect, useState } from "react";
 import { Box, HStack, Spinner, Text } from "@chakra-ui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
-import type { User } from "../../../shared/types/auth.types";
+import { UserAvatar } from "../../../shared/components/user-avatar.component";
+import { getUserDisplayName } from "../../../shared/utils/user-display.util";
 import { useTheme } from "../../../theme";
 import { clipperTheme } from "../../clipper/shared/theme.util";
-
-function getUserDisplayName(user: User): string {
-  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
-  return name || user.email;
-}
+import { LogoutConfirmModal } from "./logout-confirm-modal.component";
 
 export function AccountHeaderAction() {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAuthenticated, hasTriedInit, isLoggingOut, logout } = useAuth();
+  const { user, isAuthenticated, hasTriedInit, isLoggingOut } = useAuth();
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLogoutModalOpen(false);
+    }
+  }, [isAuthenticated]);
 
   if (!hasTriedInit) {
     return (
@@ -69,54 +74,85 @@ export function AccountHeaderAction() {
   const displayName = getUserDisplayName(user);
 
   return (
-    <HStack gap={2} align="center" flexShrink={0}>
-      <Text
-        fontSize="sm"
-        fontWeight="medium"
-        color={theme.text.primary}
-        maxW="160px"
-        truncate
-        title={user.email}
-      >
-        {displayName}
-      </Text>
-      <Box
-        as="button"
-        display="inline-flex"
-        alignItems="center"
-        justifyContent="center"
+    <>
+      <HStack
         gap={1.5}
-        minW="72px"
-        px={2.5}
-        py={1}
+        align="center"
+        flexShrink={0}
+        pl={1}
+        pr={0.5}
+        py={0.5}
+        mr={1}
         borderRadius="full"
-        fontSize="xs"
-        fontWeight="600"
-        color={theme.text.muted}
+        bg={theme.surface.subtle}
         border="1px solid"
-        borderColor={theme.dashboard.border}
-        bg="transparent"
-        cursor={isLoggingOut ? "wait" : "pointer"}
-        disabled={isLoggingOut}
-        aria-busy={isLoggingOut}
-        title={`Sign out (${user.email})`}
-        onClick={() => {
-          if (isLoggingOut) return;
-          void logout();
-        }}
-        transition="all 0.2s ease"
-        _hover={
-          isLoggingOut
-            ? undefined
-            : {
-                bg: theme.surface.hover,
-                color: theme.text.primary,
-                borderColor: theme.text.muted,
-              }
-        }
+        borderColor={theme.border.primary}
+        data-no-drag=""
       >
-        {isLoggingOut ? <Spinner size="xs" borderWidth="2px" /> : "Log out"}
-      </Box>
-    </HStack>
+        <UserAvatar user={user} size={24} />
+        <Text
+          fontSize="xs"
+          fontWeight="700"
+          letterSpacing="-0.01em"
+          color={theme.text.primary}
+          maxW="160px"
+          truncate
+          title={user.email}
+        >
+          {displayName}
+        </Text>
+        <Box
+          as="button"
+          display="inline-flex"
+          alignItems="center"
+          justifyContent="center"
+          w="28px"
+          h="28px"
+          borderRadius="full"
+          color={theme.status.danger}
+          bg="transparent"
+          cursor={isLoggingOut ? "wait" : "pointer"}
+          disabled={isLoggingOut}
+          aria-busy={isLoggingOut}
+          aria-label="Log out"
+          title={`Sign out (${user.email})`}
+          onClick={() => {
+            if (isLoggingOut) return;
+            setIsLogoutModalOpen(true);
+          }}
+          transition="all 0.2s ease"
+          _hover={
+            isLoggingOut
+              ? undefined
+              : {
+                  bg: theme.interactive.destructiveHover,
+                }
+          }
+        >
+          {isLoggingOut ? (
+            <Spinner size="xs" borderWidth="2px" />
+          ) : (
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M12 2v10" />
+              <path d="M18.36 6.64a9 9 0 1 1-12.72 0" />
+            </svg>
+          )}
+        </Box>
+      </HStack>
+      <LogoutConfirmModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+      />
+    </>
   );
 }

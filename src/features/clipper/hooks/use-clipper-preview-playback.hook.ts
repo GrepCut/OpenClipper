@@ -25,6 +25,7 @@ export function useClipperPreviewPlayback({
   primaryFormat,
   getFrameContext,
   settings,
+  brandingLogoEpoch = 0,
   onSelectClip,
 }: UseClipperPreviewPlaybackParams) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -275,7 +276,7 @@ export function useClipperPreviewPlayback({
   useEffect(() => {
     if (!previewActive) return;
     scheduleRedraw({ forceSecondary: true });
-  }, [previewActive, settings, scheduleRedraw]);
+  }, [previewActive, settings, brandingLogoEpoch, scheduleRedraw]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;

@@ -69,13 +69,13 @@ export function resolveAutoPartsClips(
   const fromPreviews = (
     prev.autoPartsClipPreviews.length > 0
       ? prev.autoPartsClipPreviews
-      : prev.clipSourceMode !== "ai"
+      : prev.clipSourceMode === "auto-parts"
         ? prev.clipPreviews
         : []
   ).map((preview) => preview.clip);
   if (fromPreviews.length > 0) return fromPreviews;
 
-  return session.clipSourceMode !== "ai" ? getActiveClips(session) : [];
+  return session.clipSourceMode === "auto-parts" ? getActiveClips(session) : [];
 }
 
 /** Word-index segments for one persisted clip, when every segment has them (falls back to time-only rebuild otherwise). */
@@ -115,21 +115,16 @@ export function rebuildClipsFromDbPayload(
     );
   }
 
-  return rebuildClipsFromGeneratedMetadata(
-    dbClips.map((clip) => ({
-      index: clip.index,
-      startSec: clip.startSec,
-      endSec: clip.endSec,
-    })),
-    rangeWords,
-    wordsPerGroup,
-  );
+  return rebuildClipsFromGeneratedMetadata(dbClips, rangeWords, wordsPerGroup);
 }
 
 export function activeClipPreviewsForMode(
   mode: ClipSourceMode,
   autoPartsClipPreviews: ClipperClipPreview[],
   aiClipPreviews: ClipperClipPreview[],
+  manualClipPreviews: ClipperClipPreview[] = [],
 ): ClipperClipPreview[] {
-  return mode === "ai" ? aiClipPreviews : autoPartsClipPreviews;
+  if (mode === "ai") return aiClipPreviews;
+  if (mode === "manual") return manualClipPreviews;
+  return autoPartsClipPreviews;
 }

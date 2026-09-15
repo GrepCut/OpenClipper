@@ -10,12 +10,16 @@ interface DeleteParakeetModelModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
+  title?: string;
+  message?: string;
 }
 
 export function DeleteParakeetModelModal({
   isOpen,
   onClose,
   onConfirm,
+  title = "Delete speech model",
+  message = "Remove Parakeet from this device? Captions will need the ~671 MB download again.",
 }: DeleteParakeetModelModalProps) {
   const { theme } = useClipperUi();
   const [isLoading, setIsLoading] = useState(false);
@@ -38,7 +42,7 @@ export function DeleteParakeetModelModal({
     <StyledModal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Delete speech model"
+      title={title}
       size="md"
       isLoading={isLoading}
       footer={
@@ -53,7 +57,7 @@ export function DeleteParakeetModelModal({
     >
       <VStack gap={3} align="stretch">
         <Text color={theme.text.primary} lineHeight="1.6">
-          Remove Parakeet from this device? Captions will need the ~671 MB download again.
+          {message}
         </Text>
       </VStack>
     </StyledModal>

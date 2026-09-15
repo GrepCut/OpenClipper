@@ -33,6 +33,9 @@ export const toggleMaximize = async () => {
 
 export const closeWindow = async () => {
   await runWindowAction("close()", async () => {
+    // `close()` (not `destroy()`) so this goes through the same close-requested hook as the
+    // OS close button. That hook owns flushing pending clipper writes before destroying the
+    // window — see registerTauriCloseFlush() in clipper/persistence/metadata-autosave.util.
     const win = await getWindow();
     await win.close();
   });

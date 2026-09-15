@@ -99,9 +99,12 @@ export function resolveClipperSessionVisibility(
   const hasClips = clipCount > 0;
   const hasVideo = rangeTrimmedVideoUrl != null;
   const hasFullPreview = hasVideo && hasClips;
-  const isRestoringSession =
-    loaded?.resumePlan.target === "restoring" && !hasClips && stage !== "error";
   const isPreparing = isPreparingStage(stage);
+  // The boot checklist describes restoring project data. Once a resume re-enters a real
+  // pipeline phase, the live stage UI (ClipperProcessing) owns the screen — otherwise a
+  // multi-minute face analysis is painted as a frozen checklist with no progress.
+  const isRestoringSession =
+    loaded?.resumePlan.target === "restoring" && stage === "uploading" && !hasClips;
   const previewStageReady = isPreviewReadyStage(stage);
   /** Clips hydrated early during restore — show preview shell before video URL is ready. */
   const hasEarlyPreviewShell =

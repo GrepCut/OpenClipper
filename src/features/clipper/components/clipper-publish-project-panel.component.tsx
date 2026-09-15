@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
-import { AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
+import { CheckCircle2, ExternalLink } from "lucide-react";
 import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { ThemedSelect } from "../../../shared/components/ui/themed-select.component";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
-import { missingMetadataFieldLabels } from "../persistence/clipper-export-social.util";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
+import { ClipperPublishMetadataIncompleteTag } from "./clipper-publish-metadata-incomplete-tag.component";
 import {
   buildAvailableOwnerChannels,
   resolvePublishConnectionsForOwner,
@@ -37,6 +37,7 @@ interface ClipperPublishProjectPanelProps {
   canPublish: boolean;
   publishLoadingExportId: string | null;
   onPublishExport: (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => void;
+  onSelectExport: (exportId: string) => void;
   connectedSplit?: boolean;
 }
 
@@ -44,64 +45,12 @@ function exportPublishTargets(item: ClipperExportMapItem): SocialPublishablePlat
   return getPublishTargetsForFormat(item.formatId);
 }
 
-function MetadataIncompleteBanner({
-  missingFields,
-  warningColor,
-}: {
-  missingFields: string[];
-  warningColor: string;
-}) {
-  const labels = missingMetadataFieldLabels(missingFields);
-  if (labels.length === 0) return null;
-
-  return (
-    <HStack
-      align="start"
-      gap={2.5}
-      px={3}
-      py={2.5}
-      borderRadius="lg"
-      bg="rgba(255, 149, 0, 0.1)"
-      border="1px solid"
-      borderColor="rgba(255, 149, 0, 0.28)"
-    >
-      <Box flexShrink={0} mt="1px" color={warningColor}>
-        <AlertTriangle size={14} />
-      </Box>
-      <VStack align="start" gap={1.5} flex={1} minW={0}>
-        <Text fontSize="xs" fontWeight="semibold" color={warningColor} lineHeight="1.35">
-          Metadata incomplete
-        </Text>
-        <HStack gap={1.5} flexWrap="wrap">
-          {labels.map((label) => (
-            <Box
-              key={label}
-              as="span"
-              px={2}
-              py={0.5}
-              borderRadius="full"
-              bg="rgba(255, 149, 0, 0.14)"
-              border="1px solid"
-              borderColor="rgba(255, 149, 0, 0.22)"
-              fontSize="xs"
-              fontWeight="medium"
-              color={warningColor}
-              lineHeight="1.2"
-            >
-              {label}
-            </Box>
-          ))}
-        </HStack>
-      </VStack>
-    </HStack>
-  );
-}
-
 export function ClipperPublishProjectPanel({
   project,
   canPublish,
   publishLoadingExportId,
   onPublishExport,
+  onSelectExport,
   connectedSplit = false,
 }: ClipperPublishProjectPanelProps) {
   const { theme } = useClipperUi();
@@ -330,9 +279,8 @@ export function ClipperPublishProjectPanel({
               ) : null}
 
               {showMetadataWarning ? (
-                <MetadataIncompleteBanner
-                  missingFields={item.missingFields}
-                  warningColor={theme.status.warning}
+                <ClipperPublishMetadataIncompleteTag
+                  onClick={() => onSelectExport(item.id)}
                 />
               ) : null}
 

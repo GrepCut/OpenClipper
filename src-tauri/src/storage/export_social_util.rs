@@ -25,6 +25,8 @@ pub fn format_platform(format_id: &str) -> &'static str {
         "youtube-shorts" => "youtube-shorts",
         "instagram" => "instagram",
         "tiktok" => "tiktok",
+        "vertical-short" => "tiktok",
+        "vertical-reels" => "instagram",
         "instagram-portrait" => "instagram",
         "twitter" => "twitter",
         _ => "unknown",
@@ -34,8 +36,8 @@ pub fn format_platform(format_id: &str) -> &'static str {
 pub fn publish_platform(format_id: &str) -> &'static str {
     match format_id {
         "youtube" | "youtube-shorts" => "youtube",
-        "instagram" | "instagram-portrait" => "instagram",
-        "tiktok" => "tiktok",
+        "instagram" | "instagram-portrait" | "vertical-reels" => "instagram",
+        "tiktok" | "vertical-short" => "tiktok",
         "twitter" => "x",
         _ => "unknown",
     }
@@ -47,7 +49,9 @@ pub fn format_label(format_id: &str) -> &'static str {
         "youtube-shorts" => "YouTube Shorts",
         "instagram" => "Instagram",
         "tiktok" => "TikTok",
-        "instagram-portrait" => "Instagram Portrait",
+        "vertical-short" => "TikTok / YouTube Shorts",
+        "vertical-reels" => "Instagram Reels / Threads / Facebook",
+        "instagram-portrait" => "Instagram / Facebook Portrait",
         "twitter" => "X / Twitter",
         _ => "Unknown",
     }

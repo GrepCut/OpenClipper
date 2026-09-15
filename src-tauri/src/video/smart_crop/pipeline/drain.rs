@@ -120,7 +120,7 @@ pub(crate) fn drain_workers(
     if worker_panicked {
         return Err(NativeVisionError::new(
             "evaluation_failed",
-            "Native vision worker crashed; see open-clipper-face-action.log in Downloads",
+            "Native vision worker crashed",
             true,
         ));
     }

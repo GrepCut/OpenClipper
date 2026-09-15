@@ -1,4 +1,7 @@
-import { rebuildClipsFromGeneratedMetadata } from "../../engine/segmentation";
+import {
+  rebuildClipsFromGeneratedMetadata,
+  type ClipperClipBounds,
+} from "../../engine/segmentation";
 import type { WordCue } from "../../lib/media/transcription-export.util";
 import type { ClipSourceMode, ClipperPipelineState } from "../../shared/state.util";
 import {
@@ -8,16 +11,11 @@ import {
 } from "./clip-preview.util";
 import type { ClipperClipPayload } from "../../persistence/clipper-clips-api.util";
 
-export type EarlyClipBoundary = {
-  index: number;
-  startSec: number;
-  endSec: number;
-};
-
 /** Builds an early preview state patch from DB clip boundaries + range words. */
 export function buildEarlyPreviewStatePatch(input: {
-  clipsForResume: EarlyClipBoundary[];
+  clipsForResume: ClipperClipBounds[];
   aiDbClips: ClipperClipPayload[];
+  manualDbClips: ClipperClipPayload[];
   words: WordCue[];
   wordsPerGroup: number;
   rangeDuration: number;
@@ -29,6 +27,7 @@ export function buildEarlyPreviewStatePatch(input: {
   const {
     clipsForResume,
     aiDbClips,
+    manualDbClips,
     words,
     wordsPerGroup,
     rangeDuration,
@@ -46,12 +45,18 @@ export function buildEarlyPreviewStatePatch(input: {
     words.length > 0
       ? rebuildClipsFromDbPayload(aiDbClips, words, wordsPerGroup, rangeDuration)
       : [];
+  const earlyManualClips =
+    words.length > 0
+      ? rebuildClipsFromDbPayload(manualDbClips, words, wordsPerGroup, rangeDuration)
+      : [];
   const earlyAutoPartsPreviews = buildClipPreviews(earlyAutoPartsClips);
   const earlyAiPreviews = buildClipPreviews(earlyAiClips);
+  const earlyManualPreviews = buildClipPreviews(earlyManualClips);
   const earlyClipPreviews = activeClipPreviewsForMode(
     clipSourceMode,
     earlyAutoPartsPreviews,
     earlyAiPreviews,
+    earlyManualPreviews,
   );
 
   if (earlyClipPreviews.length === 0 && words.length === 0) return null;
@@ -66,6 +71,7 @@ export function buildEarlyPreviewStatePatch(input: {
     clipPreviews: earlyClipPreviews,
     autoPartsClipPreviews: earlyAutoPartsPreviews,
     aiClipPreviews: earlyAiPreviews,
+    manualClipPreviews: earlyManualPreviews,
     clipSourceMode,
     activeClipIndex: earlyClipPreviews.length > 0 ? earlyActive : activeClipIndex,
     clipStart: snappedStart,
@@ -90,5 +96,9 @@ export function mergeEarlyPreviewPatch(
         : prev.autoPartsClipPreviews,
     aiClipPreviews:
       (patch.aiClipPreviews?.length ?? 0) > 0 ? patch.aiClipPreviews! : prev.aiClipPreviews,
+    manualClipPreviews:
+      (patch.manualClipPreviews?.length ?? 0) > 0
+        ? patch.manualClipPreviews!
+        : prev.manualClipPreviews,
   };
 }

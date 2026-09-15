@@ -43,14 +43,14 @@ export async function runTrimStage(
   let trimmedFile: File;
   let trimmedVideoUrl: string;
 
-  if (session.trimmedFile) {
-    const existingPath = getNativeFilePath(session.trimmedFile);
+  if (session.rangeTrimmedFile) {
+    const existingPath = getNativeFilePath(session.rangeTrimmedFile);
     if (existingPath) {
-      trimmedFile = session.trimmedFile;
+      trimmedFile = session.rangeTrimmedFile;
       trimmedVideoUrl =
-        session.trimmedVideoUrl ?? (await resolveFilePlayableUrl(trimmedFile));
+        session.rangeTrimmedVideoUrl ?? (await resolveFilePlayableUrl(trimmedFile));
     } else {
-      const trimmedBuffer = await session.trimmedFile.arrayBuffer();
+      const trimmedBuffer = await session.rangeTrimmedFile.arrayBuffer();
       trimmedFile = new File([trimmedBuffer], "clip-trimmed.mp4", { type: "video/mp4" });
       trimmedVideoUrl = URL.createObjectURL(trimmedFile);
     }
@@ -136,6 +136,4 @@ export async function trimNativeSourceEarly(
   const trimmed = await trimClipSegment(session, projectId, snappedStart, end, reporter, options);
   session.rangeTrimmedFile = trimmed.trimmedFile;
   session.rangeTrimmedVideoUrl = trimmed.trimmedVideoUrl;
-  session.trimmedFile = trimmed.trimmedFile;
-  session.trimmedVideoUrl = trimmed.trimmedVideoUrl;
 }

@@ -135,17 +135,17 @@ pub fn download_and_install_model(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|_| "Vocals model download lock poisoned".to_string())?;
     let path = model_dir(app)?;
     fs::create_dir_all(&path)
-        .map_err(|error| format!("Nie udało się utworzyć katalogu modelu wokalu: {error}"))?;
+        .map_err(|error| format!("Failed to create vocals model directory: {error}"))?;
 
     for file in REQUIRED_FILES {
         let local = path.join(file);
         let remote = format!("{MODEL_CDN_PREFIX}/{file}");
         download_model_file_to_cache(app, &local, &remote)
-            .map_err(|error| format!("Nie udało się pobrać {file}: {error}"))?;
+            .map_err(|error| format!("Failed to download {file}: {error}"))?;
     }
 
     if !installed(&path) {
-        return Err("Po pobraniu brakuje wymaganych plików modelu wokalu".to_string());
+        return Err("Vocals model is missing required files after download".to_string());
     }
     Ok(path)
 }
@@ -154,7 +154,7 @@ pub fn delete_model(app: &AppHandle) -> Result<(), String> {
     let path = model_dir(app)?;
     if path.exists() {
         fs::remove_dir_all(&path)
-            .map_err(|error| format!("Nie udało się usunąć modelu wokalu: {error}"))?;
+            .map_err(|error| format!("Failed to delete vocals model: {error}"))?;
     }
     let mut cache = SESSION_CACHE
         .lock()
@@ -194,12 +194,12 @@ fn ensure_ort_loaded(exe_dir: &Path) -> Result<(), String> {
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            "Nie znaleziono onnxruntime_ort.dll (third_party/onnxruntime-directml/1.23.0 lub obok exe)"
+            "onnxruntime_ort.dll not found (third_party/onnxruntime-directml/1.23.0 or next to the exe)"
                 .to_string()
         })?;
     log::info!("Vocals ORT loaded from {}", dll.display());
     ort::init_from(dll.to_string_lossy().as_ref())
-        .map_err(|error| format!("Nie udało się załadować ONNX Runtime: {error}"))?
+        .map_err(|error| format!("Failed to load ONNX Runtime: {error}"))?
         .commit();
     *initialized = true;
     Ok(())
@@ -355,7 +355,7 @@ fn unpack_and_istft(
     let plane = DIM_F * DIM_T;
     if pred.len() < DIM_C * plane {
         return Err(format!(
-            "Nieoczekiwany rozmiar wyjścia MDX: {} (need {})",
+            "Unexpected MDX output size: {} (need {})",
             pred.len(),
             DIM_C * plane
         ));
@@ -371,7 +371,7 @@ fn unpack_and_istft(
 
 fn read_wav_f32(path: &Path) -> Result<(Vec<f32>, u32, u16), String> {
     let mut reader = hound::WavReader::open(path)
-        .map_err(|error| format!("Nie udało się otworzyć WAV: {error}"))?;
+        .map_err(|error| format!("Failed to open WAV: {error}"))?;
     let spec = reader.spec();
     let samples: Result<Vec<f32>, _> = match spec.sample_format {
         hound::SampleFormat::Float => reader.samples::<f32>().collect(),
@@ -383,7 +383,7 @@ fn read_wav_f32(path: &Path) -> Result<(Vec<f32>, u32, u16), String> {
                 .collect()
         }
     };
-    let interleaved = samples.map_err(|error| format!("Błąd odczytu próbek WAV: {error}"))?;
+    let interleaved = samples.map_err(|error| format!("Failed to read WAV samples: {error}"))?;
     Ok((interleaved, spec.sample_rate, spec.channels))
 }
 
@@ -395,17 +395,17 @@ fn write_wav_f32_mono(path: &Path, samples: &[f32], sample_rate: u32) -> Result<
         sample_format: hound::SampleFormat::Int,
     };
     let mut writer = hound::WavWriter::create(path, spec)
-        .map_err(|error| format!("Nie udało się utworzyć WAV: {error}"))?;
+        .map_err(|error| format!("Failed to create WAV: {error}"))?;
     for &sample in samples {
         let clipped = sample.clamp(-1.0, 1.0);
         let i = (clipped * i16::MAX as f32).round() as i16;
         writer
             .write_sample(i)
-            .map_err(|error| format!("Zapis próbki WAV: {error}"))?;
+            .map_err(|error| format!("Failed to write WAV sample: {error}"))?;
     }
     writer
         .finalize()
-        .map_err(|error| format!("Finalizacja WAV: {error}"))?;
+        .map_err(|error| format!("Failed to finalize WAV: {error}"))?;
     Ok(())
 }
 
@@ -489,7 +489,7 @@ fn build_session(onnx_path: &Path) -> Result<(Session, String), String> {
 
     let session = builder
         .commit_from_file(onnx_path)
-        .map_err(|error| format!("Nie udało się załadować MDX ONNX: {error}"))?;
+        .map_err(|error| format!("Failed to load MDX ONNX: {error}"))?;
     Ok((session, provider_label))
 }
 
@@ -544,7 +544,7 @@ pub fn isolate_vocals_with_model(
 ) -> Result<String, String> {
     if !installed(model_path) {
         return Err(format!(
-            "Model izolacji wokalu nie jest zainstalowany w {}",
+            "Vocals isolation model is not installed at {}",
             model_path.display()
         ));
     }
@@ -568,7 +568,7 @@ pub fn isolate_vocals_to_wav(
     let model_path = model_dir(app)?;
     if !installed(&model_path) {
         return Err(
-            "Model izolacji wokalu nie jest zainstalowany. Pobierz go w ustawieniach transkrypcji."
+            "Vocals isolation model is not installed. Download it in transcription settings."
                 .into(),
         );
     }
@@ -600,7 +600,7 @@ fn isolate_vocals_at_model(
 
     let (interleaved, sample_rate, channels) = read_wav_f32(input_wav)?;
     if channels == 0 {
-        return Err("WAV nie ma kanałów".to_string());
+        return Err("WAV has no channels".to_string());
     }
     let (left, right) = interleaved_to_planar_stereo(&interleaved, channels);
     let left = resample_linear(&left, sample_rate, SAMPLE_RATE);
@@ -621,7 +621,7 @@ fn isolate_vocals_at_model(
     let (mut cache, active_provider, _session_rebuilt) = get_or_create_session(&onnx_path)?;
     let session = &mut cache
         .as_mut()
-        .ok_or_else(|| "Brak sesji ORT".to_string())?
+        .ok_or_else(|| "ORT session is missing".to_string())?
         .session;
 
     let n_sample = total_len;
@@ -702,7 +702,7 @@ fn isolate_vocals_at_model(
 
     if let Some(parent) = output_wav.parent() {
         fs::create_dir_all(parent)
-            .map_err(|error| format!("Nie udało się utworzyć katalogu wyjściowego: {error}"))?;
+            .map_err(|error| format!("Failed to create output directory: {error}"))?;
     }
 
     if let Some(callback) = on_progress.as_deref_mut() {

@@ -34,6 +34,10 @@ function fitImageInBox(
   };
 }
 
+function isDrawableLogo(logo: HTMLImageElement): boolean {
+  return logo.naturalWidth > 0 && logo.naturalHeight > 0;
+}
+
 interface ClipperGraphTheme {
   surface: { elevated: string };
   background: { card: string };
@@ -241,7 +245,7 @@ export function drawExportNode(
 
   if (platforms.length === 1) {
     const logo = loadPlatformLogo(platforms[0]);
-    if (logo) {
+    if (logo && isDrawableLogo(logo)) {
       const innerDiameter = (radius - 2) * 2;
       const fitted = fitImageInBox(
         logo.naturalWidth,
@@ -265,7 +269,7 @@ export function drawExportNode(
   } else if (platforms.length > 1) {
     const logos = platforms
       .map((platform) => loadPlatformLogo(platform))
-      .filter((logo): logo is HTMLImageElement => Boolean(logo));
+      .filter((logo): logo is HTMLImageElement => logo != null && isDrawableLogo(logo));
     if (logos.length > 0) {
       const slot = Math.min(radius * 1.05, (radius * 1.6) / logos.length);
       const totalWidth = logos.length * slot - (logos.length - 1) * slot * 0.25;

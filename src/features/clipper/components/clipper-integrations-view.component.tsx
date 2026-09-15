@@ -1,10 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
-import {
-  Youtube,
-  Instagram,
-  Facebook,
-} from "lucide-react";
 import { colors, useTheme } from "../../../theme";
 import { youtubeAuthService } from "../../../services/youtube-auth.service";
 import { socialAuthService } from "../../../services/social-auth.service";
@@ -16,6 +11,7 @@ import type {
 } from "../../../services/types/social-auth.types";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
+import { refreshAllIntegrations } from "../../../stores/refresh-all-integrations.util";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { StyledModal } from "../../../shared/components/styled-modal.component";
@@ -28,6 +24,20 @@ import { logIntegration } from "../../../shared/utils/integration-logger.util";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 
 const INTEGRATIONS_RETURN_PATH = "/clipper?tab=integrations";
+
+/**
+ * Platforms parked until their Meta / X app review is redone. The UI for them is kept
+ * intact on purpose — removing a flow from this Set fully restores that integration
+ * (card stops being greyed out, connect works, and the Meta Page picker below opens again).
+ */
+const COMING_SOON_OAUTH_FLOWS = new Set<SocialOAuthFlow>([
+  "meta",
+  "instagram",
+  "threads",
+  "x",
+]);
+
+const isComingSoonFlow = (flow: SocialOAuthFlow) => COMING_SOON_OAUTH_FLOWS.has(flow);
 
 interface PlatformIntegrationSectionProps {
   name: string;
@@ -58,7 +68,14 @@ function PlatformIntegrationSection({
   const rowBg = mode === "dark" ? theme.background.card : "gray.50";
 
   return (
-    <Box bg={rowBg} borderRadius="2xl" p={{ base: 4, md: 5 }}>
+    <Box
+      bg={rowBg}
+      borderRadius="2xl"
+      p={{ base: 4, md: 5 }}
+      opacity={comingSoon ? 0.5 : 1}
+      filter={comingSoon ? "grayscale(1)" : undefined}
+      transition="opacity 0.2s, filter 0.2s"
+    >
       <VStack align="stretch" gap={3}>
         <HStack justify="space-between" align="center" gap={4}>
           <HStack gap={3} minW={0} flex={1}>
@@ -66,7 +83,7 @@ function PlatformIntegrationSection({
               {icon}
             </Box>
             <VStack align="start" gap={0.5} minW={0}>
-              <Text fontWeight="semibold" color={theme.text.primary}>
+              <Text fontWeight="semibold" color={comingSoon ? theme.text.muted : theme.text.primary}>
                 {name}
               </Text>
               {subtitle ? (
@@ -104,7 +121,7 @@ function PlatformIntegrationSection({
           </HStack>
         </HStack>
 
-        {isChecking ? (
+        {comingSoon && connections.length === 0 ? null : isChecking ? (
           <Text fontSize="sm" color={theme.text.muted}>
             Checking connected accounts…
           </Text>
@@ -166,22 +183,6 @@ function PlatformIntegrationSection({
   );
 }
 
-function TikTokIcon() {
-  return (
-    <Text as="span" fontSize="sm" fontWeight="bold" lineHeight={1}>
-      TT
-    </Text>
-  );
-}
-
-function XIcon() {
-  return (
-    <Text as="span" fontSize="sm" fontWeight="bold" lineHeight={1}>
-      𝕏
-    </Text>
-  );
-}
-
 const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const { theme } = useTheme();
   const {
@@ -190,7 +191,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
     refreshStatus: refreshYoutubeStatus,
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((s) => s.platforms);
-  const refreshSocial = useSocialStore((s) => s.refreshAll);
 
   const [isYoutubeConnecting, setIsYoutubeConnecting] = useState(false);
   const [connectingFlow, setConnectingFlow] = useState<SocialOAuthFlow | null>(null);
@@ -199,26 +199,25 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const [selectedMetaPageId, setSelectedMetaPageId] = useState<string | null>(null);
   const [isSavingMetaTarget, setIsSavingMetaTarget] = useState(false);
 
-  const loadMetaTargets = useCallback(async () => {
-    try {
-      const targets = await socialAuthService.getMetaTargets();
-      setMetaTargets(targets);
-      setSelectedMetaPageId((current) =>
-        current && targets.targets.some((target) => target.id === current)
-          ? current
-          : targets.targets[0]?.id ?? null,
-      );
-    } catch {
+  const applyMetaTargets = useCallback((targets: MetaTargetsResponse | null) => {
+    if (!targets) {
       setMetaTargets(null);
+      return;
     }
+    setMetaTargets(targets);
+    setSelectedMetaPageId((current) =>
+      current && targets.targets.some((target) => target.id === current)
+        ? current
+        : targets.targets[0]?.id ?? null,
+    );
   }, []);
 
   useEffect(() => {
     void (async () => {
-      await Promise.all([refreshYoutubeStatus(), refreshSocial()]);
-      await loadMetaTargets();
+      const targets = await refreshAllIntegrations();
+      if (targets) applyMetaTargets(targets);
     })();
-  }, [loadMetaTargets, refreshYoutubeStatus, refreshSocial]);
+  }, [applyMetaTargets]);
 
   const handleConnectYoutube = useCallback(() => {
     setIsYoutubeConnecting(true);
@@ -233,6 +232,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   }, []);
 
   const handleConnectSocial = useCallback((flow: SocialOAuthFlow) => {
+    if (isComingSoonFlow(flow)) return;
     setConnectingFlow(flow);
     logIntegration("integrations.connect_clicked", { flow });
     void socialAuthService
@@ -270,7 +270,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
       void socialAuthService
         .disconnect(platform, connectionId)
         .then(async () => {
-          await refreshSocial();
+          await refreshAllIntegrations();
           appToast.success("Disconnected");
         })
         .catch((error: unknown) => {
@@ -283,16 +283,17 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           setDisconnectingConnectionId(null);
         });
     },
-    [refreshSocial],
+    [],
   );
 
   const handleSelectMetaTarget = useCallback(() => {
-    if (!selectedMetaPageId) return;
+    if (!selectedMetaPageId || isSavingMetaTarget) return;
     setIsSavingMetaTarget(true);
     void socialAuthService
       .selectMetaTarget(selectedMetaPageId, metaTargets?.metaConnectionId ?? undefined)
       .then(async () => {
-        await Promise.all([refreshSocial(), loadMetaTargets()]);
+        const targets = await refreshAllIntegrations();
+        if (targets) applyMetaTargets(targets);
         appToast.success("Facebook Page connected");
       })
       .catch((error: unknown) => {
@@ -302,7 +303,9 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
         );
       })
       .finally(() => setIsSavingMetaTarget(false));
-  }, [loadMetaTargets, metaTargets?.metaConnectionId, refreshSocial, selectedMetaPageId]);
+  }, [applyMetaTargets, isSavingMetaTarget, metaTargets?.metaConnectionId, selectedMetaPageId]);
+
+  const isMetaComingSoon = isComingSoonFlow("meta");
 
   const fb = socialPlatforms.facebook;
   const ig = socialPlatforms.instagram;
@@ -328,7 +331,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
       <VStack align="stretch" gap={3}>
         <PlatformIntegrationSection
           name="YouTube"
-          icon={<Youtube size={20} color="#FF0000" />}
+          icon={<ClipperPlatformIcon platform="youtube" size={20} />}
           subtitle="Each Google account or Brand Account is a separate connection."
           connections={youtubeConnections}
           isChecking={isYoutubeChecking}
@@ -338,8 +341,19 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           disconnectingConnectionId={disconnectingConnectionId}
         />
         <PlatformIntegrationSection
+          name="TikTok"
+          icon={<ClipperPlatformIcon platform="tiktok" size={20} />}
+          subtitle="Connect a TikTok account to publish clips directly from exports."
+          connections={tt.connections}
+          isChecking={tt.isChecking}
+          onConnect={() => handleConnectSocial("tiktok")}
+          isConnecting={connectingFlow === "tiktok"}
+          onDisconnect={(connectionId) => handleDisconnectSocial("tiktok", connectionId)}
+          disconnectingConnectionId={disconnectingConnectionId}
+        />
+        <PlatformIntegrationSection
           name="Facebook"
-          icon={<Facebook size={20} />}
+          icon={<ClipperPlatformIcon platform="facebook" size={20} />}
           subtitle="Each Meta OAuth flow can add one Facebook Page."
           connections={fb.connections}
           isChecking={fb.isChecking}
@@ -347,10 +361,11 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "meta"}
           onDisconnect={(connectionId) => handleDisconnectSocial("facebook", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
         <PlatformIntegrationSection
           name="Instagram"
-          icon={<Instagram size={20} />}
+          icon={<ClipperPlatformIcon platform="instagram" size={20} />}
           subtitle="Instagram Business or Creator accounts via Instagram Login."
           connections={ig.connections}
           isChecking={ig.isChecking}
@@ -358,6 +373,7 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "instagram"}
           onDisconnect={(connectionId) => handleDisconnectSocial("instagram", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
         <PlatformIntegrationSection
           name="Threads"
@@ -369,37 +385,29 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
           isConnecting={connectingFlow === "threads"}
           onDisconnect={(connectionId) => handleDisconnectSocial("threads", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
-        />
-        <PlatformIntegrationSection
-          name="TikTok"
-          icon={<TikTokIcon />}
-          subtitle="Connect a TikTok account to publish clips directly from exports."
-          connections={tt.connections}
-          isChecking={tt.isChecking}
-          onConnect={() => handleConnectSocial("tiktok")}
-          isConnecting={connectingFlow === "tiktok"}
-          onDisconnect={(connectionId) => handleDisconnectSocial("tiktok", connectionId)}
-          disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
         <PlatformIntegrationSection
           name="X"
-          icon={<XIcon />}
+          icon={<ClipperPlatformIcon platform="twitter" size={20} />}
           connections={x.connections}
           isChecking={x.isChecking}
           onConnect={() => handleConnectSocial("x")}
           isConnecting={connectingFlow === "x"}
           onDisconnect={(connectionId) => handleDisconnectSocial("x", connectionId)}
           disconnectingConnectionId={disconnectingConnectionId}
+          comingSoon
         />
       </VStack>
 
       <StyledModal
-        isOpen={metaTargets?.selectionRequired === true}
+        isOpen={metaTargets?.selectionRequired === true && !isMetaComingSoon}
         onClose={() => setMetaTargets(null)}
         title="Choose your Facebook Page"
         size="md"
         isLoading={isSavingMetaTarget}
         closeOnOverlayClick={!isSavingMetaTarget}
+        onFormSubmit={handleSelectMetaTarget}
       >
         <VStack align="stretch" gap={3}>
           <Text fontSize="sm" color={theme.text.muted}>
@@ -412,38 +420,44 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
             return (
               <Box
                 key={target.id}
-                as="button"
+                asChild
+                w="full"
+                cursor="pointer"
                 textAlign="left"
                 p={4}
                 borderRadius="xl"
                 border="1px solid"
                 borderColor={selected ? colors.purple.medium : theme.dashboard.border}
                 bg={selected ? theme.brand.purpleSoftAlpha12 : theme.background.card}
-                onClick={() => {
-                  if (isSavingMetaTarget) return;
-                  setSelectedMetaPageId(target.id);
-                }}
-                aria-disabled={isSavingMetaTarget || undefined}
                 pointerEvents={isSavingMetaTarget ? "none" : undefined}
                 opacity={isSavingMetaTarget ? 0.65 : 1}
               >
-                <Text fontWeight="semibold" color={theme.text.primary}>
-                  {target.name}
-                </Text>
-                <Text mt={1} fontSize="sm" color={theme.text.muted}>
-                  {target.instagramUserId
-                    ? "Instagram Business/Creator account linked"
-                    : "Facebook only — no linked Instagram Business account"}
-                </Text>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSavingMetaTarget) return;
+                    setSelectedMetaPageId(target.id);
+                  }}
+                  aria-disabled={isSavingMetaTarget || undefined}
+                >
+                  <Text fontWeight="semibold" color={theme.text.primary}>
+                    {target.name}
+                  </Text>
+                  <Text mt={1} fontSize="sm" color={theme.text.muted}>
+                    {target.instagramUserId
+                      ? "Instagram Business/Creator account linked"
+                      : "Facebook only, no linked Instagram Business account"}
+                  </Text>
+                </button>
               </Box>
             );
           })}
           <OutlinedActionButton
+            type="submit"
             width="100%"
             justifyContent="center"
             loading={isSavingMetaTarget}
             disabled={!selectedMetaPageId}
-            onClick={handleSelectMetaTarget}
           >
             Add selected Page
           </OutlinedActionButton>

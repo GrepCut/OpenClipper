@@ -15,6 +15,7 @@ const PLATFORM_LOGO: Record<ClipperPlatform, string> = {
   tiktok: asset("/clipper/tiktok-logo.webp"),
   twitter: asset("/clipper/x-logo.webp"),
   threads: asset("/clipper/threads-logo.webp"),
+  facebook: asset("/clipper/facebook-logo.webp"),
 };
 
 const PLATFORM_LOGO_FIT: Record<ClipperPlatform, "cover" | "contain"> = {
@@ -24,6 +25,7 @@ const PLATFORM_LOGO_FIT: Record<ClipperPlatform, "cover" | "contain"> = {
   tiktok: "cover",
   twitter: "cover",
   threads: "cover",
+  facebook: "cover",
 };
 
 function ClipperPlatformLogoCircle({

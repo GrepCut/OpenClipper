@@ -84,8 +84,8 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
   }, [navigate]);
 
   const completeDescription = sourceFileName
-    ? `${completedExports.length} file${completedExports.length !== 1 ? "s" : ""} from ${sourceFileName} — saved to your project exports folder.`
-    : `${completedExports.length} export${completedExports.length !== 1 ? "s" : ""} from this batch — saved to your project exports folder.`;
+    ? `${completedExports.length} file${completedExports.length !== 1 ? "s" : ""} from ${sourceFileName}, saved to your project exports folder.`
+    : `${completedExports.length} export${completedExports.length !== 1 ? "s" : ""} from this batch, saved to your project exports folder.`;
 
   const renderCompletedExportRow = (result: ClipperFormatResult) => (
     <ClipperExportFormatRow

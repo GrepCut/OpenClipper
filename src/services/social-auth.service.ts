@@ -15,6 +15,7 @@ import type {
   SocialPublishablePlatform,
   SocialStatusResponse,
   MetaTargetsResponse,
+  SocialAllStatusResponse,
   TikTokCreatorInfo,
   PublishClipperToTikTokParams,
 } from "./types/social-auth.types";
@@ -71,6 +72,11 @@ export const socialAuthService = {
     const response = await apiClient.get<SocialStatusResponse>(
       `/social/${platform}/status`,
     );
+    return response.data;
+  },
+
+  async checkAllConnections(): Promise<SocialAllStatusResponse> {
+    const response = await apiClient.get<SocialAllStatusResponse>("/social/status");
     return response.data;
   },
 
@@ -250,11 +256,27 @@ export const socialAuthService = {
 
     await apiClient.post(`/social/tiktok/clipper/staging/${jobId}/complete`, { parts });
     params.onUploadPhaseChange?.("publishing");
-    const response = await apiClient.post<{
+    const init = await apiClient.post<{
       jobId: string;
       status: SocialPublishJobStatus;
     }>(`/social/tiktok/clipper/publish/${jobId}`);
-    return response.data;
+    if (init.data.status !== "processing") {
+      return init.data;
+    }
+
+    const polled = await this.pollUntilTerminal(init.data.jobId, {
+      maxAttempts: 60,
+      intervalMs: 3_000,
+    });
+    if (polled.status === "failed") {
+      throw new Error(polled.error || "TikTok publish failed");
+    }
+    return {
+      jobId: polled.id,
+      status: polled.status,
+      watchUrl: polled.watchUrl ?? undefined,
+      externalId: polled.externalId ?? undefined,
+    };
   },
 
   async pollUntilTerminal(

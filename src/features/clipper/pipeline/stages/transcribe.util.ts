@@ -84,7 +84,7 @@ export async function runTranscribeStage(
   reporter.stageProgress(0);
   reporter.stageDetail("Preparing audio", 0);
 
-  const rangeFile = session.rangeTrimmedFile ?? session.trimmedFile;
+  const rangeFile = session.rangeTrimmedFile;
   const transcriptionSource = rangeFile ?? session.sourceFile;
   if (!(await hasTranscribableAudioTrack(transcriptionSource))) {
     session.audioEnvelope = null;

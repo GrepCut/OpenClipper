@@ -42,6 +42,35 @@ export function deriveWordRangesFromClip(
   return groupContiguousWordIndices(indices);
 }
 
+/**
+ * Single word span covering a contiguous clip. Padded segment times can overlap a
+ * neighbouring word, so the time-derived span is narrowed to the clip's own words.
+ */
+export function wordSpanForClip(
+  clip: ClipperGeneratedClip,
+  rangeWords: WordCue[],
+): AiClipSegmentRange | null {
+  const segments = deriveWordRangesFromClip(clip, rangeWords);
+  const first = segments[0];
+  const last = segments.at(-1);
+  if (!first || !last) return null;
+
+  const span = { wordStartIdx: first.wordStartIdx, wordEndIdx: last.wordEndIdx };
+  const count = clip.words.length;
+  if (count === 0 || span.wordEndIdx - span.wordStartIdx + 1 <= count) return span;
+
+  for (let start = span.wordStartIdx; start + count - 1 <= span.wordEndIdx; start++) {
+    const end = start + count - 1;
+    if (
+      rangeWords[start]?.text === clip.words[0]!.text &&
+      rangeWords[end]?.text === clip.words[count - 1]!.text
+    ) {
+      return { wordStartIdx: start, wordEndIdx: end };
+    }
+  }
+  return span;
+}
+
 export interface ClipPayloadFromWordRangesOptions {
   /** When false, uses segmentTimes (or base word times) instead of padded pre/post-roll windows. */
   usePaddedTimes?: boolean;

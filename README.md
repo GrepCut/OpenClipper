@@ -1,27 +1,26 @@
-<table width="100%">
-  <tr>
-    <td align="left" width="120">
-      <img src="public/clipper/clipper-logo.png" alt="Open Clipper logo" width="100" />
-    </td>
-    <td align="right">
-      <h1>Open Clipper</h1>
-      <h3 style="margin-top: -10px;">AI-powered video clipping and publishing by <a href="https://grepcut.com/">GrepCut</a>. <a href="https://grepcut.com/en/open-clipper">Product page</a></h3>
-    </td>
-  </tr>
-</table>
 
-[![Website](https://img.shields.io/badge/website-open_clipper-111?logo=google-chrome&logoColor=fff&style=flat)](https://grepcut.com/en/open-clipper)
-[![GrepCut](https://img.shields.io/badge/GrepCut-grepcut.com-111?style=flat)](https://grepcut.com/)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=fff&style=flat)](https://discord.gg/2uXgrUpe)
-[![X](https://img.shields.io/badge/follow-%40GrepCut-000?logo=x&logoColor=fff&style=flat)](https://x.com/GrepCut)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&logoColor=fff&style=flat)](https://www.linkedin.com/in/adam-zi%C3%B3%C5%82ko-9b6603351/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
+|                                                       |                                                                                                                                               |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![Open Clipper logo](public/clipper/clipper-logo.png) | Open ClipperAI-powered video clipping and publishing by [GrepCut](https://grepcut.com/). [Product page](https://grepcut.com/en/open-clipper) |
+
+
+![Website](https://img.shields.io/badge/website-open_clipper-111?logo=google-chrome&logoColor=fff&style=flat)
+![GrepCut](https://img.shields.io/badge/GrepCut-grepcut.com-111?style=flat)
+![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=fff&style=flat)
+![X](https://img.shields.io/badge/follow-%40GrepCut-000?logo=x&logoColor=fff&style=flat)
+![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&logoColor=fff&style=flat)
+![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)
 
 Free, open-source Windows desktop app for turning long videos into short, platform-ready clips. Local or cloud transcription (Whisper, Parakeet), scene-aware autoreframe, styled captions, and batch export to TikTok, YouTube, Instagram, and more.
 
-**Download:** [grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper)
+> [!WARNING]
+> **Just want to use the app? Do not build from source.** Open Clipper ships as a Windows installer. Download the `.exe` from **[grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper)**, run it, and it works — no Node, Rust, or Visual Studio required. The **Developing from source** section below is only for people who want to run or change the code.
+
+
 
 ## Features
+
+
 
 ### From upload to transcript in one flow
 
@@ -53,17 +52,23 @@ Get complete control, frame-level precision, and the freedom to make any fix or 
 
 [open-studio-from-clipper.webm](https://github.com/user-attachments/assets/7098a65d-8cdd-42f2-9da0-0570117b2e55)
 
-## Prerequisites
+## Developing from source
 
-Windows is the primary development target today.
+Skip this entire section unless you want to contribute or run the app from this repo. Everyday use is the Windows installer at [grepcut.com/en/open-clipper](https://grepcut.com/en/open-clipper).
+
+### Prerequisites
+
+Windows is the primary development target today. These tools are required only to build and run from source.
 
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install) **≥ 1.91**
 - [Visual Studio 2022](https://visualstudio.microsoft.com/) or [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Windows 10 SDK**
 - [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (required by Tauri 2 on Windows)
-- Static **FFmpeg** via [vcpkg](https://vcpkg.io/) (`x64-windows-static`). The repo expects paths in [`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml) — adjust `VCPKG_ROOT`, `FFMPEG_DIR`, and the MSVC `linker` path for your machine.
+- Static **FFmpeg** via [vcpkg](https://vcpkg.io/) (`x64-windows-static`). The repo expects paths in `[src-tauri/.cargo/config.toml](src-tauri/.cargo/config.toml)` — adjust `VCPKG_ROOT`, `FFMPEG_DIR`, and the MSVC `linker` path for your machine.
 
-## Development
+
+
+### Development
 
 ```bash
 npm install
@@ -72,19 +77,21 @@ npm run tauri:dev
 
 `tauri:dev` starts Vite on `http://localhost:1420` via `beforeDevCommand`. Close any running `open-clipper.exe` before rebuilding to avoid file locks.
 
-## Build
+### Build
 
-| Goal | Command | Output |
-|------|---------|--------|
-| Fast release EXE (no installer) | `npm run tauri:build:fast` | `src-tauri/target-fast/release/open-clipper.exe` |
-| Fast build + launch | `npm run tauri:build:preview:fast` | same EXE, then starts it |
-| Full build with installers | `npm run tauri:build` | `src-tauri/target/release/` + bundles |
-| Launch existing EXE only | `npm run tauri:preview` | `src-tauri/target/release/open-clipper.exe` |
-| Launch existing fast EXE | `npm run tauri:preview:fast` | `src-tauri/target-fast/release/open-clipper.exe` |
+
+| Goal                            | Command                            | Output                                           |
+| ------------------------------- | ---------------------------------- | ------------------------------------------------ |
+| Fast release EXE (no installer) | `npm run tauri:build:fast`         | `src-tauri/target-fast/release/open-clipper.exe` |
+| Fast build + launch             | `npm run tauri:build:preview:fast` | same EXE, then starts it                         |
+| Full build with installers      | `npm run tauri:build`              | `src-tauri/target/release/` + bundles            |
+| Launch existing EXE only        | `npm run tauri:preview`            | `src-tauri/target/release/open-clipper.exe`      |
+| Launch existing fast EXE        | `npm run tauri:preview:fast`       | `src-tauri/target-fast/release/open-clipper.exe` |
+
 
 `tauri:build:fast` uses lighter Cargo flags (`LTO=off`, `opt-level=2`) and a separate `target-fast/` cache. Production builds run `beforeBuildCommand` (`build:tauri` + MCP staging); models from `public/models` are not copied into `dist` — the app downloads them on demand into AppData.
 
-## Faster builds on Windows
+### Faster builds on Windows
 
 You can optionally exclude the Open Clipper Cargo caches from Windows Defender. Run **PowerShell as administrator** from the project root:
 
@@ -111,14 +118,18 @@ if (Test-Path $targetFast) {
 }
 ```
 
+
+
 ## MCP
 
 Open Clipper exposes local project data to AI agents over two transports (no login):
 
-| Transport | When it works | Endpoint |
-|-----------|---------------|----------|
-| **HTTP** | Desktop app is running | `http://127.0.0.1:12742/mcp` (override with `OPEN_CLIPPER_MCP_PORT`) |
-| **Stdio** | Separate `open-clipper-mcp` process, no GUI | Full path to the staged binary (preferred in Cursor) |
+
+| Transport | When it works                               | Endpoint                                                             |
+| --------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| **HTTP**  | Desktop app is running                      | `http://127.0.0.1:12742/mcp` (override with `OPEN_CLIPPER_MCP_PORT`) |
+| **Stdio** | Separate `open-clipper-mcp` process, no GUI | Full path to the staged binary (preferred in Cursor)                 |
+
 
 Both transports read the same SQLite database (`%APPDATA%\com.openclipper.app\clipper.sqlite3`, or `OPEN_CLIPPER_DB_PATH`).
 
@@ -138,12 +149,14 @@ This runs automatically during `tauri:build` and `tauri:build:fast` (via `before
 
 ## Stack
 
-| Layer | Version |
-|-------|---------|
-| Tauri | 2.x |
-| React | 19.x |
-| Vite | 7.x |
-| TypeScript | 5.8.x |
+
+| Layer      | Version |
+| ---------- | ------- |
+| Tauri      | 2.x     |
+| React      | 19.x    |
+| Vite       | 7.x     |
+| TypeScript | 5.8.x   |
+
 
 Bundle identifier: `com.openclipper.app`
 
@@ -155,14 +168,14 @@ Analyzer version: `autoflip-v43-snap-layout-on-cut`. Vision bundle: `clipper-vis
 
 ### Two-tier pipeline
 
-**Native (Windows)** — FFmpeg decode and WinML/DirectML inference in [`src-tauri/src/video/smart_crop/`](src-tauri/src/video/smart_crop/), started via `start_clipper_winml_analysis`:
+**Native (Windows)** — FFmpeg decode and WinML/DirectML inference in `[src-tauri/src/video/smart_crop/](src-tauri/src/video/smart_crop/)`, started via `start_clipper_winml_analysis`:
 
 - Shot boundaries on every decoded frame (histogram + frame-diff)
 - Detectors at **5 FPS** (200 ms cadence): SCRFD faces, YOLOX objects, MoveNet pose fallback
 - **ByteTrack v2** on three streams (person / face / pose); trackers reset on scene cuts
 - Cheap motion-grid saliency on every detection sample (no model)
 
-**TypeScript graph** — [`src/features/clipper/engine/autoflip/`](src/features/clipper/engine/autoflip) (`buildAutoFlipTrack`):
+**TypeScript graph** — `[src/features/clipper/engine/autoflip/](src/features/clipper/engine/autoflip)` (`buildAutoFlipTrack`):
 
 - Canonical identity fusion, composition memory, importance timeline
 - Per-format camera path (polynomial or kinematic, scene-split)
@@ -178,16 +191,22 @@ flowchart LR
   layout --> render[CropExport]
 ```
 
+
+
+
+
 ### Models
 
-Production models ship in [`src-tauri/resources/models/clipper-vision/`](src-tauri/resources/models/clipper-vision/) (see **Models** below for sync/CDN).
+Production models ship in `[src-tauri/resources/models/clipper-vision/](src-tauri/resources/models/clipper-vision/)` (see **Models** below for sync/CDN).
 
-| Model | Role |
-|-------|------|
-| YOLOX-S | Person/object boxes; tiled recovery on long edge |
-| SCRFD-10G | Face boxes + 5 keypoints; tiled recovery |
+
+| Model             | Role                                                  |
+| ----------------- | ----------------------------------------------------- |
+| YOLOX-S           | Person/object boxes; tiled recovery on long edge      |
+| SCRFD-10G         | Face boxes + 5 keypoints; tiled recovery              |
 | MoveNet MultiPose | Pose fallback; injects person boxes when YOLOX misses |
-| ByteTrack v2 | Stable `trackId` per stream; reset on scene cuts |
+| ByteTrack v2      | Stable `trackId` per stream; reset on scene cuts      |
+
 
 Saliency also uses a cheap motion-grid on every detection sample (no model). 
 
@@ -211,13 +230,15 @@ A visibility controller plans single vs split crops with a rescue ladder (shifte
 
 ### Code map
 
-| Area | Path |
-|------|------|
-| Native pipeline | [`src-tauri/src/video/smart_crop/`](src-tauri/src/video/smart_crop/) |
-| Tauri command | `start_clipper_winml_analysis` in [`src-tauri/src/commands/clipper/video.rs`](src-tauri/src/commands/clipper/video.rs) |
-| AutoFlip graph | [`src/features/clipper/engine/autoflip/build-track.util.ts`](src/features/clipper/engine/autoflip/build-track.util.ts) |
-| Pipeline stages | [`analyze-faces.util.ts`](src/features/clipper/pipeline/stages/analyze-faces.util.ts), [`analyze-subjects.util.ts`](src/features/clipper/pipeline/stages/analyze-subjects.util.ts) |
-| Types and output | [`src/features/clipper/shared/smart-crop.util.ts`](src/features/clipper/shared/smart-crop.util.ts) |
+
+| Area             | Path                                                                                                                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Native pipeline  | `[src-tauri/src/video/smart_crop/](src-tauri/src/video/smart_crop/)`                                                                                                               |
+| Tauri command    | `start_clipper_winml_analysis` in `[src-tauri/src/commands/clipper/video.rs](src-tauri/src/commands/clipper/video.rs)`                                                             |
+| AutoFlip graph   | `[src/features/clipper/engine/autoflip/build-track.util.ts](src/features/clipper/engine/autoflip/build-track.util.ts)`                                                             |
+| Pipeline stages  | `[analyze-faces.util.ts](src/features/clipper/pipeline/stages/analyze-faces.util.ts)`, `[analyze-subjects.util.ts](src/features/clipper/pipeline/stages/analyze-subjects.util.ts)` |
+| Types and output | `[src/features/clipper/shared/smart-crop.util.ts](src/features/clipper/shared/smart-crop.util.ts)`                                                                                 |
+
 
 Headless benchmarks (`--benchmark-run`) evaluate reframe quality via focus-hit metrics and optional miss-frame export.
 
@@ -227,7 +248,7 @@ ASR models (Parakeet, Whisper) download on first use into `%APPDATA%\com.opencli
 
 WinML vision models ship in `src-tauri/resources/models/clipper-vision/`.
 
-CDN publishing workflow: [`models_automation/README.md`](models_automation/README.md).
+CDN publishing workflow: `[models_automation/README.md](models_automation/README.md)`.
 
 ## DirectML (Windows GPU)
 
@@ -244,14 +265,14 @@ To enable GPU ASR:
 npm run sherpa:directml
 ```
 
-3. Rebuild the app so Cargo links the custom libs:
+1. Rebuild the app so Cargo links the custom libs:
 
 ```bash
 cd src-tauri && cargo clean && cd ..
 npm run tauri:dev
 ```
 
-`npm run sherpa:directml` writes `SHERPA_ONNX_LIB_DIR` to [`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml) pointing at `third_party/sherpa-onnx-directml/install/lib`.
+`npm run sherpa:directml` writes `SHERPA_ONNX_LIB_DIR` to `[src-tauri/.cargo/config.toml](src-tauri/.cargo/config.toml)` pointing at `third_party/sherpa-onnx-directml/install/lib`.
 
 ## Roadmap
 
@@ -260,12 +281,20 @@ Planned work — not yet shipped:
 - [x] **Auto-updater & Cloudflare Releases** — in-app update checks and installs from Cloudflare-hosted releases
 - [x] **Model hosting on Cloudflare R2** — ASR and vision bundles published to R2 for CDN delivery
 - [ ] **Social provider verification** — account verification before publishing clips
-  - [ ] TikTok — submitted for review (pending approval)
-  - [ ] YouTube — submitted for review (pending approval; `youtube.upload` scope)
-  - [ ] Meta (Instagram / Facebook) — business verification submitted (pending approval)
+  - [x] TikTok
+    - [x] App review — approved (Production Live)
+    - [x] Direct Post audit — approved (Content Posting API)
+  - [x] YouTube — approved (`youtube.upload` scope)
+  - [ ] Meta (Instagram / Facebook / Threads)
+    - [x] Business verification — accepted
+    - [ ] App verification — submitted for review (pending approval)
   - [ ] X — TBD (paid API; evaluate cost vs. need)
-- [ ] **Paddle integration** — billing and subscriptions via Paddle
-- [ ] **Studio integration** — connect Open Clipper with GrepCut Studio
+
+- [x] **Studio integration** — connect Open Clipper with GrepCut Studio
+- [ ] **MCP video presentation** — present videos via MCP
+- [ ] **MCP clip generation / scoring** — generate and score clips via MCP
+
+
 
 ## Contributing
 

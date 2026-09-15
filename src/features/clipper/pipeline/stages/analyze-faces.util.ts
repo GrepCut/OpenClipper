@@ -15,6 +15,7 @@ import {
 } from "../../persistence/project-data-files.util";
 import {
   clipperPipelineService,
+  markClipperStepActive,
   markClipperStepCompleted,
 } from "../../persistence/pipeline-api.util";
 import type { PipelineReporter } from "../reporter.util";
@@ -102,6 +103,7 @@ export async function runAnalyzeFacesStage(
       faceDetectSkipped ? "Analyzing motion and important subjects…" : "Detecting faces…",
     );
     if (!faceDetectSkipped) {
+      await markClipperStepActive(projectId, "analyze_faces", { progress: 0 });
       reporter.faceProgress(0);
       reporter.stageProgress(null);
     }
@@ -121,12 +123,12 @@ export async function runAnalyzeFacesStage(
     benchmark.enterPhase(faceDetectSkipped ? "subject-extraction-only" : "face-subject-analysis");
 
     const endFaceAnalysis = clipperTimer(`pipeline[${runId}]: face+subject analysis`);
-    const nativePath = getNativeFilePath(session.trimmedFile ?? session.sourceFile);
+    const nativePath = getNativeFilePath(session.rangeTrimmedFile ?? session.sourceFile);
     if (!nativePath) {
       throw new Error("Smart crop requires a native trimmed video path.");
     }
 
-    const summary = await prefillFaceSampleCache(session.trimmedFile!, session.faceCache!, {
+    const summary = await prefillFaceSampleCache(session.rangeTrimmedFile!, session.faceCache!, {
       signal: options.signal,
       nativeSource: { filePath: nativePath, startTime: snappedStart, endTime: end },
       ingestFaces: !faceDetectSkipped,

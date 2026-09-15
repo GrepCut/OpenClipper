@@ -36,7 +36,7 @@ export function accordionStatusText(
   activeProvider: string | null,
 ): string {
   if (modelStatus?.installed) {
-    return `Model installed — loads for each transcription and is released when it finishes${activeProvider ? ` — ${activeProvider}` : ""}`;
+    return `Model installed, loads for each transcription and is released when it finishes${activeProvider ? `: ${activeProvider}` : ""}`;
   }
   return "Model not installed (~671 MB)";
 }
@@ -216,7 +216,7 @@ export function useParakeetModelDownload() {
     };
   }, [clearProgress, refreshStatus]);
 
-  const handleDownload = useCallback(async () => {
+  const handleDownload = useCallback(async (): Promise<ParakeetModelStatus | null> => {
     setError(null);
     sessionActiveRef.current = true;
     setDownloading(true);
@@ -227,14 +227,15 @@ export function useParakeetModelDownload() {
     setDownloadTotal(null);
     try {
       await transcriptionService.downloadParakeetModel();
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return null;
       progressRef.current = 1;
       setDownloadProgress(1);
-      await refreshStatus();
+      return await refreshStatus();
     } catch (downloadError) {
       if (isMountedRef.current) {
         setError(downloadError instanceof Error ? downloadError.message : String(downloadError));
       }
+      return null;
     } finally {
       sessionActiveRef.current = false;
       if (isMountedRef.current) {
@@ -274,6 +275,7 @@ export function useParakeetModelDownload() {
     showDownload,
     showDelete,
     badge: statusBadge(modelStatus, downloading),
+    refreshStatus,
     handleDownload,
     handleDelete,
   };

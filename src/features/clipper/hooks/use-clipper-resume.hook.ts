@@ -1,9 +1,19 @@
 import { useEffect } from "react";
-import { isClipperStepCompleted } from "../persistence/pipeline-api.util";
-import { clipperError, clipperLog } from "../shared/logger.util";
+import { deriveRangeLocked } from "./clipper-pipeline/clipper-pipeline-context";
+import type {
+  ClipperPipelineStepKey,
+  ClipperResumeStageKey,
+} from "../persistence/pipeline-api.util";
+import { clipperLog } from "../shared/logger.util";
 import { yieldToMain } from "../shared/yield-to-main.util";
 import type { PipelineReporter } from "../pipeline/reporter.util";
-import { buildLoadedResumeKey, planResumeExecution } from "../pipeline/resume.util";
+import {
+  buildLoadedResumeKey,
+  planResumeExecution,
+  resumePlanStateFields,
+  RESUME_ERROR_MESSAGE,
+  type ResumePreviewOptions,
+} from "../pipeline/resume.util";
 import { createFaceCache, normalizeClipperSession, type ClipperSession } from "../pipeline/session.util";
 import type { ClipperLoadedProject } from "./use-clipper-project-loader.hook";
 import type { ClipperPipelineState } from "../shared/state.util";
@@ -22,6 +32,8 @@ interface UseClipperResumeOptions {
   reporter: PipelineReporter;
   initialState: ClipperPipelineState;
   activeClipIndexRef: React.MutableRefObject<number>;
+  /** Bumped by an explicit retry; also tells the planner to ignore a persisted error stage. */
+  retryToken: number;
   preparePreviewFromRange: (
     session: ClipperSession,
     snappedStart: number,
@@ -29,15 +41,24 @@ interface UseClipperResumeOptions {
     words: import("../lib/media/transcription-export.util").WordCue[],
     controller: AbortController,
     runId: string,
-    options: {
-      skipFaceDetect?: boolean;
-      skipSubjectAnalysis?: boolean;
-      skipTrim?: boolean;
-      projectId: string;
-      mediaFileId: string;
-    },
+    options: ResumePreviewOptions,
   ) => Promise<void>;
-  confirmRange: (start: number, end: number) => Promise<void>;
+  resumeFromTranscribe: (
+    session: ClipperSession,
+    snappedStart: number,
+    end: number,
+    controller: AbortController,
+    runId: string,
+    options: ResumePreviewOptions,
+  ) => Promise<void>;
+  /** Records the failed phase and paints the error panel — the only path that makes the
+   *  "Resume this step" button appear, and the only one that survives a reopen. */
+  failPhase: (stepKey: ClipperPipelineStepKey, error: unknown, runId: string) => Promise<void>;
+}
+
+/** Resume phases map 1:1 onto step keys except `preview`, whose step is `preview_ready`. */
+function stepKeyForResumeStage(stage: ClipperResumeStageKey): ClipperPipelineStepKey {
+  return stage === "preview" ? "preview_ready" : stage;
 }
 
 /** Handles project reload resume sequencing (StrictMode-safe). */
@@ -55,8 +76,10 @@ export function useClipperResume({
   reporter,
   initialState,
   activeClipIndexRef,
+  retryToken,
   preparePreviewFromRange,
-  confirmRange,
+  resumeFromTranscribe,
+  failPhase,
 }: UseClipperResumeOptions): void {
   useEffect(() => {
     if (!loaded) return;
@@ -67,12 +90,11 @@ export function useClipperResume({
       loadedResumeKeyRef.current = resumeKey;
       resumeStartedRef.current = false;
       setSettingsState(loaded.settings);
-      setRangeLocked(isClipperStepCompleted(loaded.steps, "confirm_range"));
+      setRangeLocked(deriveRangeLocked(loaded));
+      metadataRef.current = loaded.metadata;
     }
 
-    metadataRef.current = loaded.metadata;
-
-    const plan = planResumeExecution(loaded, loaded.metadata, loaded.resumePlan, projectId);
+    const plan = planResumeExecution(loaded, metadataRef.current, loaded.resumePlan, projectId);
 
     if (plan.kind === "idle") {
       if (!loaded.sourceFile) setState({ ...initialState, stage: "idle" });
@@ -80,15 +102,19 @@ export function useClipperResume({
     }
 
     if (plan.kind === "trimming") {
-      setState({
-        ...initialState,
-        stage: "trimming",
-        stageMessage: "Choose your source range",
-        sourceFileName: plan.sourceFileName,
-        sourceDuration: plan.sourceDuration,
-        clipStart: plan.clipStart,
-        clipEnd: plan.clipEnd,
+      setState({ ...initialState, ...resumePlanStateFields(plan) });
+      return;
+    }
+
+    if (plan.kind === "error") {
+      clipperLog("pipeline[resume]: halted on persisted error", {
+        resumeStage: plan.resumeStage,
       });
+      setState((prev) => ({
+        ...prev,
+        ...resumePlanStateFields(plan),
+        error: prev.error ?? RESUME_ERROR_MESSAGE,
+      }));
       return;
     }
 
@@ -101,16 +127,15 @@ export function useClipperResume({
         mediaFileId: loaded.mediaFileId!,
         rangeTrimmedFile: null,
         rangeTrimmedVideoUrl: null,
-        trimmedFile: null,
-        trimmedVideoUrl: null,
         rangeWords: loaded.words,
         words: loaded.words,
-        rangeStart: loaded.metadata.clipStart,
-        rangeEnd: loaded.metadata.clipEnd ?? 0,
-        clipStart: loaded.metadata.clipStart,
-        clipEnd: loaded.metadata.clipEnd ?? 0,
+        rangeStart: plan.clipStart,
+        rangeEnd: plan.clipEnd,
+        clipStart: plan.clipStart,
+        clipEnd: plan.clipEnd,
         autoPartsClips: [],
         aiClips: [],
+        manualClips: [],
         clipSourceMode: loaded.metadata.clipSourceMode ?? "auto-parts",
         clips: [],
         activeClipIndex: loaded.metadata.activeClipIndex ?? 0,
@@ -127,7 +152,10 @@ export function useClipperResume({
 
     activeClipIndexRef.current = loaded.metadata.activeClipIndex ?? 0;
 
-    clipperLog("pipeline[resume]: plan", { ...loaded.resumePlan });
+    clipperLog("pipeline[resume]: plan", {
+      ...loaded.resumePlan,
+      resumeStage: plan.resumeStage,
+    });
     if (resumeStartedRef.current) return;
 
     resumeStartedRef.current = true;
@@ -137,21 +165,22 @@ export function useClipperResume({
 
     setState({
       ...initialState,
-      stage: "uploading",
-      stageMessage: "Restoring trimmed video from project data…",
-      sourceFileName: plan.sourceFileName,
-      sourceDuration: plan.sourceDuration,
-      clipStart: plan.clipStart,
-      clipEnd: plan.clipEnd,
+      ...resumePlanStateFields(plan),
+      clipSourceMode: loaded.metadata.clipSourceMode ?? "auto-parts",
       activeClipIndex: loaded.metadata.activeClipIndex ?? 0,
       stageProgress: 0,
     });
 
-    const shouldPreparePreview =
-      plan.kind === "restore" && (plan.useFastPreviewRestore || plan.useWords);
-
-    const resumePromise = shouldPreparePreview
-      ? preparePreviewFromRange(
+    const resumePromise = plan.needsTranscribe
+      ? resumeFromTranscribe(
+          session,
+          plan.clipStart,
+          plan.clipEnd,
+          controller,
+          "resume",
+          plan.previewOptions,
+        )
+      : preparePreviewFromRange(
           session,
           plan.clipStart,
           plan.clipEnd,
@@ -159,37 +188,35 @@ export function useClipperResume({
           controller,
           "resume",
           plan.previewOptions,
-        )
-      : confirmRange(plan.clipStart, plan.clipEnd);
+        );
 
     let finished = false;
     void (async () => {
       await yieldToMain();
       try {
         await resumePromise;
-        finished = true;
       } catch (error) {
+        if (!controller.signal.aborted) {
+          await failPhase(stepKeyForResumeStage(plan.resumeStage), error, "resume");
+        }
+      } finally {
         finished = true;
-        if (controller.signal.aborted) return;
-        clipperError("pipeline[resume]: failed", error);
-        setState((prev) => ({
-          ...prev,
-          stage: "error",
-          stageMessage: "Could not restore your clip session",
-          error: error instanceof Error ? error.message : "Could not restore preview.",
-          sourceFileName: plan.sourceFileName,
-          sourceDuration: plan.sourceDuration,
-          clipStart: plan.clipStart,
-          clipEnd: plan.clipEnd,
-        }));
       }
     })();
 
     return () => {
-      if (!finished) {
-        abortRef.current?.abort();
+      if (!finished) abortRef.current?.abort();
+      if (!finished || controller.signal.aborted) {
         resumeStartedRef.current = false;
       }
     };
-  }, [activeClipIndexRef, confirmRange, loaded, preparePreviewFromRange, projectId]);
+  }, [
+    activeClipIndexRef,
+    failPhase,
+    loaded,
+    preparePreviewFromRange,
+    projectId,
+    resumeFromTranscribe,
+    retryToken,
+  ]);
 }

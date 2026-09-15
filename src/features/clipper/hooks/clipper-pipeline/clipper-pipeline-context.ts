@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-import { isClipperStepCompleted } from "../../persistence/pipeline-api.util";
+import { isClipperStepCompleted, resolvePersistedClipRange } from "../../persistence/pipeline-api.util";
 import { normalizeAutoPartsSegmentLengthSec } from "../../engine/segmentation";
 import { createThrottledReporter } from "../../pipeline/throttled-reporter.util";
 import type { ClipperPipelineState } from "../../shared/state.util";
@@ -29,6 +29,7 @@ export function usePipelineRefs(
   const resumeStartedRef = useRef(false);
   const loadedResumeKeyRef = useRef<string | null>(null);
   const aiClipsMetaRef = useRef<ClipperPipelineRefs["aiClipsMetaRef"]["current"]>([]);
+  const manualClipsMetaRef = useRef<ClipperPipelineRefs["manualClipsMetaRef"]["current"]>([]);
   const reporterRef = useRef(createThrottledReporter(createReporter(setState)));
 
   return {
@@ -40,12 +41,15 @@ export function usePipelineRefs(
     resumeStartedRef,
     loadedResumeKeyRef,
     aiClipsMetaRef,
+    manualClipsMetaRef,
     reporterRef,
   };
 }
 
 export function deriveRangeLocked(loaded: ClipperLoadedProject | null): boolean {
-  return loaded ? isClipperStepCompleted(loaded.steps, "confirm_range") : false;
+  if (!loaded) return false;
+  if (!isClipperStepCompleted(loaded.steps, "confirm_range")) return false;
+  return resolvePersistedClipRange(loaded.metadata, loaded.steps).clipEnd != null;
 }
 
 export function deriveAutoPartsSegmentLengthSec(loaded: ClipperLoadedProject | null) {

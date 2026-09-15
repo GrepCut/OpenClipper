@@ -2,6 +2,7 @@ import {
   localRecordGet,
   localRecordPut,
 } from "../../../shared/persistence/local-database.util";
+import type { ClipperClipBounds } from "../engine/types/segmentation.types";
 import type { ClipSourceMode } from "../shared/state.util";
 
 export interface ClipperClipSegmentPayload {
@@ -12,10 +13,7 @@ export interface ClipperClipSegmentPayload {
   wordEndIdx?: number | null;
 }
 
-export interface ClipperClipPayload {
-  index: number;
-  startSec: number;
-  endSec: number;
+export interface ClipperClipPayload extends ClipperClipBounds {
   label?: string;
   segments: ClipperClipSegmentPayload[];
 }

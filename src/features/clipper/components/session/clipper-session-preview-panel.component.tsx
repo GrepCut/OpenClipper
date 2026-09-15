@@ -22,6 +22,7 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     settings,
     updateSettings,
     getFrameContext,
+    getRangeFrameContext,
     setActiveClipIndex,
     setClipSourceMode,
     resegmentAutoParts,
@@ -29,6 +30,8 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     autoPartsResegmenting,
     deleteAiClip,
     deleteAutoPartsClip,
+    upsertManualClip,
+    deleteManualClip,
     disabledCollageRegionIds,
     toggleCollageRegion,
     isRendering,
@@ -51,15 +54,19 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         clipPreviews={state.clipPreviews}
         autoPartsClipPreviews={state.autoPartsClipPreviews ?? state.clipPreviews}
         aiClipPreviews={state.aiClipPreviews ?? []}
+        manualClipPreviews={state.manualClipPreviews ?? []}
         clipSourceMode={state.clipSourceMode ?? "auto-parts"}
         activeClipIndex={state.activeClipIndex}
         onSelectClip={setActiveClipIndex}
         onClipSourceModeChange={setClipSourceMode}
         onDeleteAiClip={deleteAiClip}
         onDeleteAutoPartsClip={deleteAutoPartsClip}
+        onDeleteManualClip={deleteManualClip}
+        onUpsertManualClip={upsertManualClip}
         settings={settings}
         onUpdateSettings={updateSettings}
         getFrameContext={getFrameContext}
+        getRangeFrameContext={getRangeFrameContext}
         sourceFileName={state.sourceFileName}
         isRendering={isRendering}
         onOpenRenderQueue={renderQueue.openRenderQueue}

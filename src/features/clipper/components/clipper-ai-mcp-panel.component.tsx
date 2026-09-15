@@ -32,7 +32,7 @@ export const ClipperAiMcpPanel: React.FC<ClipperAiMcpPanelProps> = ({
         </Text>
         <Text fontSize="sm" color={theme.text.muted} lineHeight="1.5">
           {clipCount > 0
-            ? `${clipCount} AI clip${clipCount === 1 ? "" : "s"} — updates live (~0.5s) when an agent calls patch_ai_clips.`
+            ? `${clipCount} AI clip${clipCount === 1 ? "" : "s"}, updates live (~0.5s) when an agent calls patch_ai_clips.`
             : "Ask your MCP agent to call get_project_transcript, then patch_ai_clips. No login required."}
         </Text>
         <Text fontSize="xs" color={theme.text.muted} fontFamily="mono">
@@ -75,7 +75,7 @@ export const ClipperAiMcpEmptyState: React.FC = () => {
             No AI clips yet
           </Text>
           <Text fontSize="sm" color={theme.text.muted} lineHeight="1.5">
-            Generate clips from your MCP client (Cursor, etc.) — this panel reacts within half a
+            Generate clips from your MCP client (Cursor, etc.). This panel reacts within half a
             second. No chat, no account.
           </Text>
         </VStack>

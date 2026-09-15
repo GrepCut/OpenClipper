@@ -1,6 +1,4 @@
 import type { WordCue } from "../lib/media/transcription-export.util";
-import { captionWordsPerGroup } from "../lib/captions/caption-presets.util";
-import type { ClipperSettings } from "../settings/settings.util";
 import {
   buildCollageTracksForRegions,
   deriveCollageTracks,
@@ -15,12 +13,10 @@ import {
   FACE_SAMPLE_INTERVAL_SEC,
   FaceSampleCache,
   hasAnyFaces,
-  type CentroidSample,
 } from "../engine/reframe";
 import type { ClipperFrameContext } from "../engine/render/index";
 import type { AutoFlipStaticFeatureSample, ClipperFrameAnalysis, ImportanceSignalSample, SubjectDetectionSample } from "../shared/smart-crop.util";
 import type { FaceBoxSample } from "../shared/face-samples.util";
-import { groupCaptionWords } from "../engine/transcript";
 import type { ClipSourceMode } from "../persistence/project-metadata.util";
 import type { PipelineReporter } from "./reporter.util";
 import type { RmsEnvelope } from "../engine/types/audio.types";
@@ -51,9 +47,6 @@ export interface ClipperSession {
   /** Trimmed file for the full selected source range (used for preview + sub-trim at render). */
   rangeTrimmedFile: File | null;
   rangeTrimmedVideoUrl: string | null;
-  /** @deprecated Alias for rangeTrimmedFile — kept for stages that read trimmedFile. */
-  trimmedFile: File | null;
-  trimmedVideoUrl: string | null;
   /** Full transcription for the selected range (0-based relative to range start). */
   rangeWords: WordCue[];
   words: WordCue[];
@@ -65,10 +58,11 @@ export interface ClipperSession {
   clipEnd: number;
   autoPartsClips: ClipperGeneratedClip[];
   aiClips: ClipperGeneratedClip[];
+  manualClips: ClipperGeneratedClip[];
   clipSourceMode: ClipSourceMode;
   /** Ids of auto-detected two-speaker regions (see CollageRegion) where the user turned split-screen off. */
   disabledCollageRegionIds: string[];
-  /** Active clip set used for preview/render (auto-parts or AI). */
+  /** Active clip set used for preview/render (auto-parts, AI, or manual). */
   clips: ClipperGeneratedClip[];
   activeClipIndex: number;
   faceCache: FaceSampleCache | null;
@@ -93,16 +87,16 @@ export interface ClipperSession {
   } | null;
 }
 
-/** Ensures legacy/in-memory sessions have auto-parts/AI clip fields after hot reload. */
+/** Ensures legacy/in-memory sessions have auto-parts/AI/manual clip fields after hot reload. */
 export function normalizeClipperSession(session: ClipperSession): ClipperSession {
   const legacyClips = session.clips ?? [];
   session.autoPartsClips = session.autoPartsClips ?? legacyClips;
   session.aiClips = session.aiClips ?? [];
+  session.manualClips = session.manualClips ?? [];
   session.clipSourceMode = session.clipSourceMode ?? "auto-parts";
   session.disabledCollageRegionIds = session.disabledCollageRegionIds ?? [];
   session.smartCropAnalysis = session.smartCropAnalysis ?? null;
-  session.clips =
-    session.clipSourceMode === "ai" ? session.aiClips : session.autoPartsClips;
+  session.clips = clipsForSourceMode(session);
   return session;
 }
 
@@ -164,7 +158,6 @@ export function resolveFaceRender(
   ) {
     const samples = cache.sortedSamples();
     const collageSamples = session.collageFaceSamples ?? samples;
-    // Single source of truth: AutoFlip layoutTracks (same as preview split).
     const collageRegions = deriveRegionsFromLayoutTracks(session.smartCropAnalysis);
     cached = {
       collageRegionKey,
@@ -188,52 +181,22 @@ export function resolveFaceRender(
   };
 }
 
-/** Builds frame draw context for a specific generated clip within the trimmed range. */
-export function buildFrameContext(
+/** Returns the clip list for a source mode. */
+export function clipsForSourceMode(
   session: ClipperSession,
-  settings: ClipperSettings,
-  clipIndex = session.activeClipIndex,
-): ClipperFrameContext | null {
-  if (!session) return null;
-
-  normalizeClipperSession(session);
-  const clip = findClipByIndex(getActiveClips(session), clipIndex);
-  if (!clip) return null;
-
-  const wordsPerGroup = captionWordsPerGroup(settings.captions);
-  let cached = session.captionGroupsCache;
-  if (!cached || cached.wordsPerGroup !== wordsPerGroup || cached.clip !== clip) {
-    cached = {
-      wordsPerGroup,
-      clip,
-      groups:
-        clip.words.length > 0
-          ? groupCaptionWords(clip.words, wordsPerGroup)
-          : clip.captionGroups,
-    };
-    session.captionGroupsCache = cached;
-  }
-
-  return {
-    settings,
-    captionGroups: cached.groups,
-    faceCache: session.faceCache,
-    faceRender: resolveFaceRender(session),
-    smartCropAnalysis: session.smartCropAnalysis,
-    disabledCollageRegionIds: session.disabledCollageRegionIds ?? [],
-    segments: clip.segments,
-  };
+  mode: ClipSourceMode = session.clipSourceMode ?? "auto-parts",
+): ClipperGeneratedClip[] {
+  if (mode === "ai") return session.aiClips ?? [];
+  if (mode === "manual") return session.manualClips ?? [];
+  return session.autoPartsClips ?? session.clips ?? [];
 }
 
 /** Returns the active clip list based on source mode. */
 export function getActiveClips(session: ClipperSession): ClipperGeneratedClip[] {
-  const autoPartsClips = session.autoPartsClips ?? session.clips ?? [];
-  const aiClips = session.aiClips ?? [];
-  const mode = session.clipSourceMode ?? "auto-parts";
-  return mode === "ai" ? aiClips : autoPartsClips;
+  return clipsForSourceMode(session);
 }
 
-/** Syncs session.clips to the active auto-parts/AI set. */
+/** Syncs session.clips to the active auto-parts/AI/manual set. */
 export function syncSessionActiveClips(session: ClipperSession): void {
   normalizeClipperSession(session);
   session.clips = getActiveClips(session);

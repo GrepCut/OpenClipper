@@ -8,6 +8,7 @@ import { ClipperProcessing } from "../components/clipper-processing.component";
 import { ClipperProjectLoadingPanel } from "../components/clipper-project-loading-panel.component";
 import { ClipperTrimSelect } from "../components/clipper-trim-select.component";
 import { ClipperUpload } from "../components/clipper-upload.component";
+import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { ClipperSocialPublishDialog } from "../components/clipper-youtube-publish-dialog.component";
 import { ClipperSessionPreviewPanel } from "../components/session/clipper-session-preview-panel.component";
 import { useClipperSessionView } from "../hooks/use-clipper-session-view.hook";
@@ -28,6 +29,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     reset,
     sourceUrl,
     rangeLocked,
+    retryResume,
     handleFile,
     handleOpenExportsFolder,
     step,
@@ -43,7 +45,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
 
   return (
     <ClipperLayout
-      step={visibility.showLoadingUi ? undefined : step}
+      step={visibility.showRestoreLoader ? undefined : step}
       backLink={visibility.layoutBackLink}
     >
       {visibility.showUpload && <ClipperUpload onFile={handleFile} fill />}
@@ -164,6 +166,13 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           <Text color={theme.text.muted} mb={4}>
             {state.error}
           </Text>
+          {rangeLocked && (
+            <Box mb={4}>
+              <OutlinedActionButton onClick={retryResume}>
+                Resume this step
+              </OutlinedActionButton>
+            </Box>
+          )}
           <ClipperUpload onFile={handleFile} />
         </Box>
       )}

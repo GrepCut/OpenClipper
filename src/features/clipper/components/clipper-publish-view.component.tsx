@@ -17,6 +17,7 @@ import {
 } from "../../../services/social-auth.service";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
+import { refreshAllIntegrations } from "../../../stores/refresh-all-integrations.util";
 import {
   buildMcpConfigSnippet,
   type ExportSocialFields,
@@ -65,6 +66,7 @@ export function ClipperPublishView() {
     selectedProject,
     selectedResult,
     selectNode,
+    selectExport,
     refresh,
     updateItemPublishStatus,
   } = useClipperPublishMap();
@@ -82,16 +84,13 @@ export function ClipperPublishView() {
   const {
     connections: youtubeConnections,
     isConnected: isYoutubeConnected,
-    refreshStatus: refreshYoutubeStatus,
   } = useYoutubeStore();
   const socialPlatforms = useSocialStore((s) => s.platforms);
-  const refreshSocial = useSocialStore((s) => s.refreshAll);
 
   useEffect(() => {
     if (!canUseAccountFeatures) return;
-    void refreshYoutubeStatus();
-    void refreshSocial();
-  }, [canUseAccountFeatures, refreshYoutubeStatus, refreshSocial]);
+    void refreshAllIntegrations();
+  }, [canUseAccountFeatures]);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,7 +277,7 @@ export function ClipperPublishView() {
         </HStack>
       </HStack>
 
-      {loading ? (
+      {loading && items.length === 0 ? (
         <Center py={16} flex="1">
           <AppLoader />
         </Center>
@@ -332,6 +331,7 @@ export function ClipperPublishView() {
                 canPublish={canUseAccountFeatures}
                 publishLoadingExportId={publishLoadingExportId}
                 onPublishExport={(item, platform) => void handlePublishExport(item, platform)}
+                onSelectExport={selectExport}
                 connectedSplit
               />
             )
@@ -352,8 +352,7 @@ export function ClipperPublishView() {
         publishPlatform={publishPlatform}
         onRequestConnect={handleRequestConnect}
         onPublishComplete={(record) => {
-          if (!publishItem) return;
-          updateItemPublishStatus(publishItem.id, record);
+          updateItemPublishStatus(record.exportId, record);
         }}
       />
     </VStack>

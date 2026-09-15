@@ -78,7 +78,6 @@ export function DeleteAccountModal({ isOpen, onClose }: DeleteAccountModalProps)
       title="Delete account"
       size="md"
       isLoading={isLoading}
-      onFormSubmit={() => void handleDelete()}
       footer={
         <StyledModalFooter
           onCancel={handleClose}

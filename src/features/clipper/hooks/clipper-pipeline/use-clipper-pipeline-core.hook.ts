@@ -2,19 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import { normalizeAutoPartsSegmentLengthSec, type AutoPartsSegmentLengthSec } from "../../engine/segmentation";
 import {
-  flushClipperProjectMetadataSave,
+  flushClipperPersistence,
   registerClipperPersistenceFlushListeners,
   scheduleClipperProjectMetadataSave,
   scheduleClipperProjectMetadataSaveImmediate,
 } from "../../persistence/metadata-autosave.util";
 import {
-  flushClipperProjectSettingsSave,
   scheduleClipperProjectSettingsSave,
 } from "../../persistence/settings-autosave.util";
 import {
   fetchClipperExportRecords,
 } from "./export-manifest-resolve.util";
 import { loadClipperExportsFromDb } from "../../persistence/clipper-export-db-load.util";
+import { clearActiveClipperSteps } from "../../persistence/pipeline-api.util";
 import type { ClipperProjectMetadata } from "../../persistence/project-metadata.util";
 import { releasePlayableMediaUrl } from "../../persistence/tauri-media.util";
 import { deriveInitialPipelineState } from "../../pipeline/resume.util";
@@ -29,7 +29,7 @@ import { deriveAutoPartsSegmentLengthSec, deriveRangeLocked, usePipelineRefs } f
 import { patchPipelineState } from "./clipper-pipeline-state.util";
 import {
   INITIAL_PIPELINE_STATE,
-  METADATA_IMMEDIATE_FLUSH_STAGES,
+  METADATA_DEBOUNCED_STAGES,
   type ClipperPipelineRefs,
 } from "./clipper-pipeline.types";
 
@@ -48,7 +48,7 @@ export interface UseClipperPipelineCoreResult {
   setDisabledCollageRegionIds: React.Dispatch<React.SetStateAction<string[]>>;
   autoPartsSegmentLengthSec: AutoPartsSegmentLengthSec;
   setAutoPartsSegmentLengthSec: React.Dispatch<React.SetStateAction<AutoPartsSegmentLengthSec>>;
-  persistMetadata: (patch: Partial<ClipperProjectMetadata>, stage?: ClipperStage) => void;
+  persistMetadata: (patch: Partial<ClipperProjectMetadata>, stage?: ClipperStage) => Promise<void>;
   revokePreviewUrls: () => void;
   clearSession: () => void;
   updateSettings: (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => void;
@@ -109,17 +109,17 @@ export function useClipperPipelineCore(
   }, [metadataRef, previewUrlsRef, project.id]);
 
   const persistMetadata = useCallback(
-    (patch: Partial<ClipperProjectMetadata>, stage?: ClipperStage) => {
+    async (patch: Partial<ClipperProjectMetadata>, stage?: ClipperStage) => {
       metadataRef.current = {
         ...metadataRef.current,
         ...patch,
         stage: stage ?? patch.stage ?? metadataRef.current.stage,
       };
       const nextStage = metadataRef.current.stage;
-      if (METADATA_IMMEDIATE_FLUSH_STAGES.includes(nextStage)) {
-        scheduleClipperProjectMetadataSaveImmediate(project.id, metadataRef.current);
-      } else {
+      if (METADATA_DEBOUNCED_STAGES.includes(nextStage)) {
         scheduleClipperProjectMetadataSave(project.id, metadataRef.current);
+      } else {
+        await scheduleClipperProjectMetadataSaveImmediate(project.id, metadataRef.current);
       }
     },
     [metadataRef, project.id],
@@ -138,8 +138,6 @@ export function useClipperPipelineCore(
       releasePlayableMediaUrl(session.sourceUrl);
       if (session.rangeTrimmedVideoUrl?.startsWith("blob:")) {
         URL.revokeObjectURL(session.rangeTrimmedVideoUrl);
-      } else if (session.trimmedVideoUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(session.trimmedVideoUrl);
       }
       sessionRef.current = null;
     }
@@ -236,14 +234,17 @@ export function useClipperPipelineCore(
   }, []);
 
   useEffect(() => {
+    const projectId = project.id;
     return () => {
       abortRef.current?.abort();
       revokePreviewUrls();
       clearSession();
-      void flushClipperProjectMetadataSave();
-      void flushClipperProjectSettingsSave();
+      void (async () => {
+        await clearActiveClipperSteps(projectId);
+        await flushClipperPersistence();
+      })();
     };
-  }, [abortRef, clearSession, revokePreviewUrls]);
+  }, [abortRef, clearSession, project.id, revokePreviewUrls]);
 
   return {
     projectId: project.id,

@@ -35,7 +35,7 @@ export const ClipperExportsView: React.FC<ClipperExportsViewProps> = ({
   }, [navigate]);
 
   const description = sourceFileName
-    ? `${totalExports} file${totalExports !== 1 ? "s" : ""} from ${sourceFileName} — saved to your project exports folder.`
+    ? `${totalExports} file${totalExports !== 1 ? "s" : ""} from ${sourceFileName}, saved to your project exports folder.`
     : "Rendered files are saved to your project exports folder.";
 
   return (

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Box } from "@chakra-ui/react";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import {
@@ -7,23 +7,30 @@ import {
 } from "./clipper-ai-mcp-panel.component";
 import { ClipperAutoPartsLengthIsland } from "./clipper-auto-parts-length-island.component";
 import { ClipperClipSelector } from "./clipper-clip-selector.component";
-import { ClipsListScroller } from "./clipper-clips-list-scroller.component";
 import {
   AUTO_PARTS_LENGTH_OVERLAY_PAD,
   clipSelectorTranscriptProps,
   type ClipperClipsSectionProps,
 } from "./clipper-clips-section.types";
 
+const ClipperManualClipsSection = lazy(async () => {
+  const mod = await import("./clipper-manual-clips-section.component");
+  return { default: mod.ClipperManualClipsSection };
+});
+
 export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   projectId,
   clipPreviews,
   autoPartsClipPreviews,
   aiClipPreviews,
+  manualClipPreviews,
   clipSourceMode,
   activeClipIndex,
   onSelectClip,
   onDeleteAiClip,
   onDeleteAutoPartsClip,
+  onDeleteManualClip,
+  onUpsertManualClip,
   onOpenInStudio,
   openingInStudio = false,
   rangeWords,
@@ -35,13 +42,23 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
   onAutoPartsSegmentLengthChange,
   onResetAutoParts,
   autoPartsResegmenting = false,
+  rangeTrimmedVideoUrl,
+  rangeDurationSec,
+  getRangeFrameContext,
+  onManualEditorOpen,
 }) => {
-  const { leftScrollbarCss } = useClipperUi();
+  const { theme } = useClipperUi();
   const isAiMode = clipSourceMode === "ai";
+  const isManualMode = clipSourceMode === "manual";
   const safeAutoPartsPreviews = autoPartsClipPreviews ?? [];
   const safeAiPreviews = aiClipPreviews ?? [];
+  const safeManualPreviews = manualClipPreviews ?? [];
   const safeClipPreviews = clipPreviews ?? safeAutoPartsPreviews;
-  const listPreviews = isAiMode ? safeAiPreviews : safeAutoPartsPreviews;
+  const listPreviews = isAiMode
+    ? safeAiPreviews
+    : isManualMode
+      ? safeManualPreviews
+      : safeAutoPartsPreviews;
   const transcriptProps = clipSelectorTranscriptProps(
     rangeWords,
     collageRegions,
@@ -50,8 +67,39 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
     onSeekToTranscriptTime,
   );
 
-  if (!isAiMode && safeAutoPartsPreviews.length === 0) {
+  if (!isAiMode && !isManualMode && safeAutoPartsPreviews.length === 0) {
     return null;
+  }
+
+  if (isManualMode) {
+    return (
+      <Suspense
+        fallback={
+          <Box flex="1" minH={0} display="flex" alignItems="center" justifyContent="center">
+            <Box fontSize="sm" color={theme.text.muted}>Loading manual clips…</Box>
+          </Box>
+        }
+      >
+        <ClipperManualClipsSection
+          clipPreviews={safeManualPreviews}
+          activeClipIndex={activeClipIndex}
+          onSelectClip={onSelectClip}
+          onDeleteManualClip={onDeleteManualClip}
+          onUpsertManualClip={onUpsertManualClip}
+          onOpenInStudio={onOpenInStudio}
+          openingInStudio={openingInStudio}
+          rangeWords={rangeWords}
+          collageRegions={collageRegions}
+          disabledCollageRegionIds={disabledCollageRegionIds}
+          onToggleCollageRegion={onToggleCollageRegion}
+          onSeekToTranscriptTime={onSeekToTranscriptTime}
+          rangeTrimmedVideoUrl={rangeTrimmedVideoUrl}
+          rangeDurationSec={rangeDurationSec}
+          getRangeFrameContext={getRangeFrameContext}
+          onManualEditorOpen={onManualEditorOpen}
+        />
+      </Suspense>
+    );
   }
 
   return (
@@ -65,7 +113,7 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
           flexDirection="column"
         >
           {listPreviews.length > 0 ? (
-            <ClipsListScroller showBottomFade={false} css={leftScrollbarCss}>
+            <Box flex="1" minH={0} overflow="hidden" display="flex" flexDirection="column">
               <ClipperClipSelector
                 clipPreviews={listPreviews}
                 activeClipIndex={activeClipIndex}
@@ -75,7 +123,8 @@ export const ClipperClipsSection: React.FC<ClipperClipsSectionProps> = ({
                 openingInStudio={openingInStudio}
                 hideTitle
                 {...transcriptProps}
-              />            </ClipsListScroller>
+              />
+            </Box>
           ) : (
             <ClipperAiMcpEmptyState />
           )}

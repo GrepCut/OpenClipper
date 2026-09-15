@@ -34,6 +34,28 @@ export default tseslint.config(
     },
   },
   {
+    // User-visible copy lives in components. Comments are not matched by these selectors,
+    // so prose in code stays untouched.
+    files: ["src/**/*.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[value=/—/]",
+          message: "Use a colon, comma, or sentence break instead of an em dash.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/—/]",
+          message: "Use a colon, comma, or sentence break instead of an em dash.",
+        },
+        {
+          selector: "JSXText[value=/—/]",
+          message: "Use a colon, comma, or sentence break instead of an em dash.",
+        },
+      ],
+    },
+  },
+  {
     files: ["src/main.tsx", "src/**/index.ts", "src/vite-env.d.ts"],
     rules: {
       "unicorn/filename-case": "off",

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scheduleRenderQueueSave } from "../persistence/render-queue-autosave.util";
+import { saveLastRenderQueueFormatIds } from "../settings/settings-storage.util";
 import { CLIPPER_FORMAT_DEFS } from "../shared/formats.util";
 import {
   buildRenderQueueSnapshot,
+  deriveRenderQueueFormatTemplate,
+  hydrateRenderQueueSelections,
   resolveClipFormatIds,
-  sanitizeRenderQueueSelections,
 } from "../shared/render-queue-utils.util";
 import type { SessionViewMode } from "../shared/clipper-session-view.types";
 import type { ClipperLoadedProject } from "./use-clipper-project-loader.hook";
@@ -15,7 +17,6 @@ export interface UseClipperRenderQueueOptions {
   loaded: ClipperLoadedProject | null;
   clipIndices: number[];
   clipPreviews: ClipperClipPreview[];
-  enabledFormatIds: string[];
   isRendering: boolean;
   view: SessionViewMode;
   setView: (view: SessionViewMode) => void;
@@ -27,7 +28,6 @@ export function useClipperRenderQueue({
   loaded,
   clipIndices,
   clipPreviews,
-  enabledFormatIds,
   setView,
   renderExports,
 }: UseClipperRenderQueueOptions) {
@@ -53,9 +53,9 @@ export function useClipperRenderQueue({
 
     skipRenderQueueSaveRef.current = true;
     setClipFormatSelections(
-      sanitizeRenderQueueSelections(
+      hydrateRenderQueueSelections(
         loaded.renderQueueFormats,
-        clipsReady ? clipIndices : undefined,
+        clipsReady ? clipIndices : [],
       ),
     );
     renderQueueHydratedRef.current = true;
@@ -69,32 +69,28 @@ export function useClipperRenderQueue({
     }
     if (clipIndices.length === 0) return;
 
-    const snapshot = buildRenderQueueSnapshot(
-      clipIndices,
-      clipFormatSelections,
-      enabledFormatIds,
-    );
+    const snapshot = buildRenderQueueSnapshot(clipIndices, clipFormatSelections);
     scheduleRenderQueueSave(projectId, snapshot);
-  }, [clipFormatSelections, clipIndices, loaded, projectId, enabledFormatIds]);
+    const template = deriveRenderQueueFormatTemplate(snapshot);
+    if (template.length > 0) {
+      saveLastRenderQueueFormatIds(template);
+    }
+  }, [clipFormatSelections, clipIndices, loaded, projectId]);
 
   const getClipFormatIds = useCallback(
-    (clipIndex: number): string[] =>
-      resolveClipFormatIds(clipIndex, clipFormatSelections, enabledFormatIds),
-    [clipFormatSelections, enabledFormatIds],
+    (clipIndex: number): string[] => resolveClipFormatIds(clipIndex, clipFormatSelections),
+    [clipFormatSelections],
   );
 
-  const toggleClipFormat = useCallback(
-    (clipIndex: number, formatId: string) => {
-      setClipFormatSelections((prev) => {
-        const current = resolveClipFormatIds(clipIndex, prev, enabledFormatIds);
-        const next = current.includes(formatId)
-          ? current.filter((id) => id !== formatId)
-          : [...current, formatId];
-        return { ...prev, [clipIndex]: next };
-      });
-    },
-    [enabledFormatIds],
-  );
+  const toggleClipFormat = useCallback((clipIndex: number, formatId: string) => {
+    setClipFormatSelections((prev) => {
+      const current = resolveClipFormatIds(clipIndex, prev);
+      const next = current.includes(formatId)
+        ? current.filter((id) => id !== formatId)
+        : [...current, formatId];
+      return { ...prev, [clipIndex]: next };
+    });
+  }, []);
 
   const setFormatForAllClips = useCallback(
     (formatId: string, enabled: boolean) => {
@@ -102,7 +98,7 @@ export function useClipperRenderQueue({
         const next: Record<number, string[]> = { ...prev };
         for (const p of clipPreviews) {
           const clipIndex = p.clip.index;
-          const current = resolveClipFormatIds(clipIndex, prev, enabledFormatIds);
+          const current = resolveClipFormatIds(clipIndex, prev);
           next[clipIndex] = enabled
             ? current.includes(formatId)
               ? current
@@ -112,7 +108,7 @@ export function useClipperRenderQueue({
         return next;
       });
     },
-    [enabledFormatIds, clipPreviews],
+    [clipPreviews],
   );
 
   const setAllFormatsForClip = useCallback((clipIndex: number, enabled: boolean) => {

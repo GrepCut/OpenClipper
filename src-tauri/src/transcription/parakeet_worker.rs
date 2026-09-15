@@ -162,7 +162,7 @@ impl ParakeetService {
                     WorkerState::Ready { job_tx, .. } => job_tx.clone(),
                     WorkerState::Unloaded => {
                         return Err(TranscriptionError::ModelLoad(
-                            "Worker Parakeet nie jest gotowy".into(),
+                            "Parakeet worker is not ready".into(),
                         ));
                     }
                 }
@@ -177,12 +177,12 @@ impl ParakeetService {
                     response: response_tx,
                 })
                 .map_err(|_| {
-                    TranscriptionError::Inference("Worker Parakeet nie odpowiada".into())
+                    TranscriptionError::Inference("Parakeet worker is not responding".into())
                 })?;
 
             response_rx
                 .recv_timeout(Duration::from_secs(3600))
-                .map_err(|_| TranscriptionError::Inference("Timeout transkrypcji".into()))?
+                .map_err(|_| TranscriptionError::Inference("Transcription timed out".into()))?
                 .map_err(TranscriptionError::Inference)
         })();
 

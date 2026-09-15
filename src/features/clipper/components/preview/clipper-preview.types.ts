@@ -7,7 +7,8 @@ import type { AutoPartsSegmentLengthSec } from "../../persistence/project-metada
 import type { ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
 import type { ClipperClipPreview, ClipperPipelineState, ClipSourceMode } from "../../shared/state.util";
-import type { SidePanelTab } from "./clipper-preview.constants";
+import type { RangeFrameContextGetter } from "../../engine/types/render.types";
+import type { UpsertManualClipHandler } from "../clipper-clips-section.types";
 
 export interface ClipperPreviewProps {
   projectId: string;
@@ -16,15 +17,19 @@ export interface ClipperPreviewProps {
   clipPreviews: ClipperClipPreview[];
   autoPartsClipPreviews: ClipperClipPreview[];
   aiClipPreviews: ClipperClipPreview[];
+  manualClipPreviews: ClipperClipPreview[];
   clipSourceMode: ClipSourceMode;
   activeClipIndex: number;
   onSelectClip: (index: number) => void;
   onClipSourceModeChange: (mode: ClipSourceMode) => void;
   onDeleteAiClip?: (index: number) => void;
   onDeleteAutoPartsClip?: (index: number) => void;
+  onDeleteManualClip?: (index: number) => void;
+  onUpsertManualClip?: UpsertManualClipHandler;
   settings: ClipperSettings;
   onUpdateSettings: (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => void;
   getFrameContext: (clipIndex?: number) => ClipperFrameContext | null;
+  getRangeFrameContext?: RangeFrameContextGetter;
   sourceFileName: string | null;
   isRendering?: boolean;
   onOpenRenderQueue: () => void;
@@ -53,6 +58,7 @@ export interface UseClipperPreviewPlaybackParams {
   primaryFormat: ClipperFormatDef | undefined;
   getFrameContext: (clipIndex?: number) => ClipperFrameContext | null;
   settings: ClipperSettings;
+  brandingLogoEpoch?: number;
   onSelectClip: (index: number) => void;
 }
 
@@ -85,10 +91,10 @@ export interface ClipperPreviewSidePanelProps extends ClipperPreviewProps {
   theme: Theme;
   safeAutoPartsPreviews: ClipperClipPreview[];
   safeAiPreviews: ClipperClipPreview[];
+  safeManualPreviews: ClipperClipPreview[];
   collageRegions: CollageRegion[];
   seekToTranscriptTime: (clipIndex: number, sourceTimeSec: number) => void;
-  sidePanelTab: SidePanelTab;
-  onSidePanelTabChange: (tab: SidePanelTab) => void;
+  pausePreview: () => void;
 }
 
 export interface ClipperPreviewFormatsFooterProps {

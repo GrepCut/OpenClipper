@@ -1,16 +1,25 @@
-import type { ClipperStage } from "../shared/stages.util";
+import type { ClipperClipBounds } from "../engine/types/segmentation.types";
 import { normalizeAutoPartsSegmentLengthSec } from "../engine/segmentation";
 import {
-  DEFAULT_CLIPPER_SETTINGS,
   mergeClipperSettings,
   type ClipperSettings,
 } from "../settings/settings.util";
 import { loadClipperSettings } from "../settings/settings-storage.util";
-import { isClipperPreviewReadyStage } from "../shared/stages.util";
+import {
+  isClipperPreviewReadyStage,
+  parseClipperStage,
+  type ClipperStage,
+} from "../shared/stages.util";
+import { parseClipperClipBoundsList } from "./parse-clipper-clip-bounds.util";
 
 export const CLIPPER_METADATA_VERSION = 1 as const;
 
-export type ClipSourceMode = "auto-parts" | "ai";
+export type ClipSourceMode = "auto-parts" | "ai" | "manual";
+
+export function parseClipSourceMode(value: unknown): ClipSourceMode | undefined {
+  if (value === "ai" || value === "auto-parts" || value === "manual") return value;
+  return undefined;
+}
 
 export type AutoPartsSegmentLengthSec = number;
 
@@ -24,9 +33,9 @@ export interface ClipperProjectMetadata {
   settings?: ClipperSettings;
   transcribedClipStart?: number;
   transcribedClipEnd?: number;
-  /** Legacy jsonb fields — manual/AI clips are now stored in dedicated clipper_clip tables; kept optionally readable only for one-time server-side migration. */
-  generatedClips?: Array<{ index: number; startSec: number; endSec: number }>;
-  aiGeneratedClips?: Array<Record<string, unknown>>;
+  /** Legacy jsonb fields — clips now live in clipper-clips; kept for one-time migration. */
+  generatedClips?: ClipperClipBounds[];
+  aiGeneratedClips?: ClipperClipBounds[];
   clipSourceMode?: ClipSourceMode;
   activeClipIndex?: number;
   autoPartsSegmentLengthSec?: AutoPartsSegmentLengthSec;
@@ -47,71 +56,46 @@ export function createDefaultClipperProjectSettings(): ClipperSettings {
   return loadClipperSettings();
 }
 
+function parseOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
 export function parseClipperProjectMetadata(
   raw: Record<string, unknown> | null | undefined,
 ): ClipperProjectMetadata {
   const defaults = createDefaultClipperMetadata();
   if (!raw || typeof raw !== "object") return defaults;
-
-  const partial = raw as Partial<ClipperProjectMetadata>;
-  if (partial.version !== CLIPPER_METADATA_VERSION) return defaults;
+  if (raw.version !== CLIPPER_METADATA_VERSION) return defaults;
 
   return {
     version: CLIPPER_METADATA_VERSION,
-    stage: partial.stage ?? defaults.stage,
+    stage: parseClipperStage(raw.stage) ?? defaults.stage,
     sourceMediaFileId:
-      typeof partial.sourceMediaFileId === "string"
-        ? partial.sourceMediaFileId
-        : partial.sourceMediaFileId === null
+      typeof raw.sourceMediaFileId === "string"
+        ? raw.sourceMediaFileId
+        : raw.sourceMediaFileId === null
           ? null
           : defaults.sourceMediaFileId,
-    clipStart: typeof partial.clipStart === "number" ? partial.clipStart : defaults.clipStart,
+    clipStart: typeof raw.clipStart === "number" ? raw.clipStart : defaults.clipStart,
     clipEnd:
-      typeof partial.clipEnd === "number"
-        ? partial.clipEnd
-        : partial.clipEnd === null
+      typeof raw.clipEnd === "number"
+        ? raw.clipEnd
+        : raw.clipEnd === null
           ? null
           : defaults.clipEnd,
-    settings: partial.settings
-      ? mergeClipperSettings(loadClipperSettings(), partial.settings)
-      : undefined,
-    transcribedClipStart:
-      typeof partial.transcribedClipStart === "number"
-        ? partial.transcribedClipStart
+    settings:
+      raw.settings != null && typeof raw.settings === "object" && !Array.isArray(raw.settings)
+        ? mergeClipperSettings(loadClipperSettings(), raw.settings as Partial<ClipperSettings>)
         : undefined,
-    transcribedClipEnd:
-      typeof partial.transcribedClipEnd === "number" ? partial.transcribedClipEnd : undefined,
-    generatedClips: Array.isArray(partial.generatedClips)
-      ? partial.generatedClips.filter(
-          (c): c is { index: number; startSec: number; endSec: number } =>
-            c != null &&
-            typeof c === "object" &&
-            typeof (c as { index?: unknown }).index === "number" &&
-            typeof (c as { startSec?: unknown }).startSec === "number" &&
-            typeof (c as { endSec?: unknown }).endSec === "number",
-        )
-      : undefined,
-    aiGeneratedClips: Array.isArray(partial.aiGeneratedClips)
-      ? partial.aiGeneratedClips.filter(
-          (c): c is Record<string, unknown> =>
-            c != null &&
-            typeof c === "object" &&
-            typeof (c as { index?: unknown }).index === "number" &&
-            typeof (c as { startSec?: unknown }).startSec === "number" &&
-            typeof (c as { endSec?: unknown }).endSec === "number",
-        )
-      : undefined,
-    clipSourceMode:
-      partial.clipSourceMode === "ai"
-        ? "ai"
-        : partial.clipSourceMode === "auto-parts" || partial.clipSourceMode === "manual"
-          ? "auto-parts"
-          : undefined,
-    activeClipIndex:
-      typeof partial.activeClipIndex === "number" ? partial.activeClipIndex : undefined,
+    transcribedClipStart: parseOptionalNumber(raw.transcribedClipStart),
+    transcribedClipEnd: parseOptionalNumber(raw.transcribedClipEnd),
+    generatedClips: parseClipperClipBoundsList(raw.generatedClips),
+    aiGeneratedClips: parseClipperClipBoundsList(raw.aiGeneratedClips),
+    clipSourceMode: parseClipSourceMode(raw.clipSourceMode),
+    activeClipIndex: parseOptionalNumber(raw.activeClipIndex),
     autoPartsSegmentLengthSec:
-      typeof partial.autoPartsSegmentLengthSec === "number"
-        ? normalizeAutoPartsSegmentLengthSec(partial.autoPartsSegmentLengthSec)
+      typeof raw.autoPartsSegmentLengthSec === "number"
+        ? normalizeAutoPartsSegmentLengthSec(raw.autoPartsSegmentLengthSec)
         : undefined,
   };
 }

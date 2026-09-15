@@ -3,6 +3,7 @@ import { HStack, Text, VStack } from "@chakra-ui/react";
 import { CheckCircle2, Circle } from "lucide-react";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
+import { resolveProcessingLabels } from "../shared/stage-labels.util";
 import type { ClipperPipelineState } from "../shared/state.util";
 import { ClipperProgressBar } from "./clipper-progress-bar.component";
 
@@ -62,6 +63,18 @@ export const ClipperProcessing: React.FC<ClipperProcessingProps> = ({ state }) =
       state.stage === "analyzing-faces" ||
       state.stage === "analyzing-subjects") &&
     state.stageDetailLabel != null;
+  const showUploadBar = state.stage === "uploading" && state.stageProgress != null;
+
+  const barLabel = showDetailBar
+    ? state.stageDetailLabel
+    : showUploadBar
+      ? 
+        state.stageMessage.trim() ||
+        (state.stageMessage.toLowerCase().includes("trim")
+          ? "Trimming clip"
+          : "Saving to project")
+      : null;
+  const labels = resolveProcessingLabels(state.stageMessage, barLabel);
 
   return (
     <VStack align="stretch" gap={6}>
@@ -101,20 +114,19 @@ export const ClipperProcessing: React.FC<ClipperProcessingProps> = ({ state }) =
         })}
       </VStack>
 
-      {state.stage === "uploading" && state.stageProgress != null && (
-        <ClipperProgressBar
-          label={
-            state.stageMessage.toLowerCase().includes("trim")
-              ? "Trimming clip"
-              : "Saving to project"
-          }
-          value={state.stageProgress}
-        />
+      {labels.message ? (
+        <Text fontSize="sm" color={theme.text.muted}>
+          {labels.message}
+        </Text>
+      ) : null}
+
+      {showUploadBar && labels.detailLabel && (
+        <ClipperProgressBar label={labels.detailLabel} value={state.stageProgress} />
       )}
 
-      {showDetailBar && (
+      {showDetailBar && labels.detailLabel && (
         <ClipperProgressBar
-          label={state.stageDetailLabel!}
+          label={labels.detailLabel}
           value={state.stageDetailProgress}
           caption={
             state.stage === "analyzing-faces"

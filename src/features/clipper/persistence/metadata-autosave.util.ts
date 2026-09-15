@@ -45,8 +45,8 @@ export function scheduleClipperProjectMetadataSave(
 export function scheduleClipperProjectMetadataSaveImmediate(
   projectId: string,
   metadata: ClipperProjectMetadata,
-): void {
-  metadataSaver.scheduleImmediate({ projectId, metadata });
+): Promise<void> {
+  return metadataSaver.scheduleImmediate({ projectId, metadata });
 }
 
 export async function flushClipperProjectMetadataSave(): Promise<void> {
@@ -62,6 +62,28 @@ export async function flushClipperPersistence(): Promise<void> {
 }
 
 let flushListenersRegistered = false;
+let tauriCloseInProgress = false;
+
+async function registerTauriCloseFlush(): Promise<void> {
+  try {
+    const { isTauri } = await import("../../../shared/utils/platform.util");
+    if (!isTauri()) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    await win.onCloseRequested(async (event) => {
+      if (tauriCloseInProgress) return;
+      event.preventDefault();
+      tauriCloseInProgress = true;
+      try {
+        await flushClipperPersistence();
+      } finally {
+        await win.destroy();
+      }
+    });
+  } catch {
+    // Window close hook is best-effort; persistence still flushes on unmount.
+  }
+}
 
 /** Ensures pending metadata and settings writes flush when the tab closes or hides. */
 export function registerClipperPersistenceFlushListeners(): void {
@@ -76,4 +98,6 @@ export function registerClipperPersistenceFlushListeners(): void {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flush();
   });
+
+  void registerTauriCloseFlush();
 }

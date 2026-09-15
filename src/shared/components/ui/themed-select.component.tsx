@@ -11,6 +11,7 @@ import { useTheme } from "../../../theme";
 export interface ThemedSelectOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 interface ThemedSelectProps {
@@ -20,6 +21,8 @@ interface ThemedSelectProps {
   placeholder?: string;
   disabled?: boolean;
   width?: string;
+  /** Must beat StyledModal (9999); Chakra zIndex tokens are ignored on Positioner. */
+  zIndex?: number;
 }
 
 export const ThemedSelect: React.FC<ThemedSelectProps> = ({
@@ -29,21 +32,30 @@ export const ThemedSelect: React.FC<ThemedSelectProps> = ({
   placeholder = "Unassigned",
   disabled = false,
   width = "full",
+  zIndex = 40000,
 }) => {
   const { theme } = useTheme();
   const collection = useMemo(
-    () => createListCollection({ items: options }),
+    () =>
+      createListCollection({
+        items: options,
+        isItemDisabled: (item) => Boolean(item.disabled),
+      }),
     [options],
   );
   const selectedOption = options.find((option) => option.value === value);
   const displayLabel = selectedOption?.label ?? placeholder;
+  const selectedValues = selectedOption ? [value] : [];
 
   return (
     <Select.Root
       collection={collection}
-      value={[value]}
+      value={selectedValues}
       onValueChange={(details) => {
-        onChange(details.value[0] ?? "");
+        const nextValue = details.value[0] ?? "";
+        const nextOption = options.find((option) => option.value === nextValue);
+        if (nextOption?.disabled) return;
+        onChange(nextValue);
       }}
       size="sm"
       disabled={disabled}
@@ -81,7 +93,7 @@ export const ThemedSelect: React.FC<ThemedSelectProps> = ({
       </Select.Trigger>
 
       <Portal>
-        <Select.Positioner zIndex={30000}>
+        <Select.Positioner css={{ zIndex }} style={{ zIndex }}>
           <Select.Content
             className="intelligent-scrollbar"
             bg={theme.background.secondary}
@@ -93,9 +105,11 @@ export const ThemedSelect: React.FC<ThemedSelectProps> = ({
             minW="var(--reference-width)"
             maxH="280px"
             overflowY="auto"
+            style={{ zIndex }}
           >
             {collection.items.map((item) => {
               const isSelected = item.value === value;
+              const isDisabled = Boolean(item.disabled);
               return (
                 <Select.Item
                   key={item.value || "__empty__"}
@@ -103,17 +117,16 @@ export const ThemedSelect: React.FC<ThemedSelectProps> = ({
                   px={3}
                   py={2}
                   borderRadius="lg"
-                  cursor="pointer"
+                  cursor={isDisabled ? "not-allowed" : "pointer"}
                   fontSize="sm"
                   color={theme.text.primary}
                   fontWeight={isSelected ? "semibold" : "normal"}
                   bg={isSelected ? theme.surface.active : "transparent"}
                   borderWidth={isSelected ? "1px" : "0"}
                   borderColor={isSelected ? theme.border.primary : "transparent"}
+                  opacity={isDisabled ? 0.5 : 1}
                   mb={1}
-                  _hover={{
-                    bg: theme.surface.active,
-                  }}
+                  _hover={isDisabled ? {} : { bg: theme.surface.active }}
                   _last={{ mb: 0 }}
                 >
                   <Select.ItemText>{item.label}</Select.ItemText>
