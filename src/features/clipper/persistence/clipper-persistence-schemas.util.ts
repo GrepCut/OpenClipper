@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { CLIPPER_BRANDING_KINDS } from "../settings/branding-settings.util";
 import type { ClipperSmartCropBlob } from "../shared/smart-crop.util";
 import { CLIPPER_EXPORT_MANIFEST_VERSION } from "./export-files.types";
 
@@ -8,8 +9,6 @@ const clipperSettingsSchema = z
     captions: z
       .object({
         enabled: z.boolean(),
-        // Keep legacy/unknown IDs parseable so mergeClipperSettings can migrate
-        // the caption preset without discarding unrelated saved settings.
         presetId: z.string(),
         position: z.enum(["top", "center", "bottom"]),
         size: z.enum(["small", "medium", "large"]),
@@ -51,6 +50,18 @@ const clipperSettingsSchema = z
       .partial()
       .optional(),
     lastDurationPresetSec: z.number().optional(),
+    branding: z
+      .object({
+        kind: z.enum(CLIPPER_BRANDING_KINDS),
+        imagePath: z.string().nullable(),
+        offsetX: z.number(),
+        offsetY: z.number(),
+        opacity: z.number(),
+        logoWidthRatio: z.number(),
+        text: z.string(),
+      })
+      .partial()
+      .optional(),
   })
   .passthrough();
 

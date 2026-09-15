@@ -8,6 +8,7 @@ import type { ClipperFormatDef } from "../../shared/formats.util";
 import { canonicalFormatDims } from "../../shared/formats.util";
 import type { ClipperResolutionCap, ClipperSettings } from "../../settings/settings.util";
 import type { ClipperFrameContext } from "../types/render.types";
+import { drawClipperBranding } from "./branding-draw.util";
 import { drawClipperCaptions } from "./canvas-draw.util";
 import { resolveClipperFrameGeometry } from "./frame-geometry.util";
 
@@ -35,7 +36,7 @@ export function formatNeedsFaceTracking(formatDef: ClipperFormatDef, settings: C
   return formatDef.mode === "crop";
 }
 
-/** Full per-frame draw: crop/collage framing + captions. Shared by the live preview and the final render. */
+/** Full per-frame draw: crop/collage framing + captions + branding. Shared by the live preview and the final render. */
 export function drawClipperFrame(
   formatDef: ClipperFormatDef,
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -54,6 +55,7 @@ export function drawClipperFrame(
   }
 
   drawClipperCaptions(ctx, output, t, render);
+  drawClipperBranding(ctx, output, render.settings.branding);
 }
 
 /** Draws one preview frame onto a display canvas at a fixed height. */
@@ -71,10 +73,6 @@ export function drawClipperPreviewFrame(
   const scale = displayHeight / canonicalOutput.height;
   const displayW = Math.round(canonicalOutput.width * scale);
   const displayH = displayHeight;
-  // Preview is a display-only render. Compositing at the final 1080p output
-  // and then shrinking it forced six expensive CPU canvas passes per video
-  // frame. Geometry is normalized, so rendering directly at display size is
-  // visually equivalent while keeping captions and layout decisions intact.
   const output = { width: displayW, height: displayH };
 
   if (canvas.width !== displayW) canvas.width = displayW;

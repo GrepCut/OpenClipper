@@ -58,6 +58,7 @@ export interface UseClipperPreviewPlaybackParams {
   primaryFormat: ClipperFormatDef | undefined;
   getFrameContext: (clipIndex?: number) => ClipperFrameContext | null;
   settings: ClipperSettings;
+  brandingLogoEpoch?: number;
   onSelectClip: (index: number) => void;
 }
 

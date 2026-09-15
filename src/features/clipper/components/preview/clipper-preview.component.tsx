@@ -3,6 +3,7 @@ import { Box, VStack } from "@chakra-ui/react";
 import { deriveRegionsFromLayoutTracks } from "../../engine/reframe/collage";
 import type { ClipperClipSegmentWindow } from "../../engine/segmentation";
 import { useClipperPreviewPlayback } from "../../hooks/use-clipper-preview-playback.hook";
+import { useClipperBrandingLogo } from "../../hooks/use-clipper-branding-logo.hook";
 import { activeClipPreviewsForMode } from "../../hooks/clipper-pipeline/clip-preview.util";
 import { CLIPPER_TRIMMED_SEGMENT_FILE } from "../../platform/native-source.util";
 import {
@@ -172,6 +173,10 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     [smartCropAnalysis],
   );
 
+  const { epoch: brandingLogoEpoch } = useClipperBrandingLogo(
+    settings.branding.kind === "logo" ? settings.branding.imagePath : null,
+  );
+
   const { videoRef, registerCanvas, previewRegionRef, togglePlay, seekToTranscriptTime } =
     useClipperPreviewPlayback({
       rangeTrimmedVideoUrl,
@@ -187,6 +192,7 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       primaryFormat,
       getFrameContext,
       settings,
+      brandingLogoEpoch,
       onSelectClip,
     });
 

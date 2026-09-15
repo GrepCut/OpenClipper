@@ -5,6 +5,11 @@ import {
 } from "../lib/captions/caption-presets.util";
 import { clamp } from '../lib/math.util';
 import { migrateEnabledFormatIds } from "../shared/formats.util";
+import {
+  DEFAULT_CLIPPER_BRANDING_SETTINGS,
+  mergeClipperBrandingSettings,
+  type ClipperBrandingSettings,
+} from "./branding-settings.util";
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
@@ -71,6 +76,7 @@ export interface ClipperPublishSettings {
 
 export interface ClipperSettings {
   captions: ClipperCaptionSettings;
+  branding: ClipperBrandingSettings;
   formats: ClipperFormatSettings;
   audio: ClipperAudioSettings;
   transcription: ClipperTranscriptionSettings;
@@ -98,6 +104,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     size: "medium",
     wordsPerGroup: 4,
   },
+  branding: DEFAULT_CLIPPER_BRANDING_SETTINGS,
   formats: {
     enabledFormatIds: ["vertical-short", "vertical-reels", "instagram-portrait"],
     quality: "standard",
@@ -199,6 +206,7 @@ export function mergeClipperSettings(
           ? partial.publish.fillMetadataAgentPrompt
           : base.publish.fillMetadataAgentPrompt,
     },
+    branding: mergeClipperBrandingSettings(base.branding, partial.branding),
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };
 }

@@ -39,6 +39,7 @@ import type { ClipperFrameContext } from "../types/render.types";
 import { rebaseVideoSampleForWindow } from "./windowed-video.util";
 import { applySeamFades, trimAudioSampleToWindow } from "../audio/windowed-samples.util";
 import { ensureCaptionFontsReady } from "../../lib/captions/caption-presets.util";
+import { ensureBrandingLogo } from "./branding-logo-cache.util";
 import { evenInt } from "../../lib/media/video-draw.util";
 
 const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
@@ -178,6 +179,13 @@ export async function renderClipperFormat(
   const { signal, onProgress, clipWindow, outputSink } = options;
   throwIfAborted(signal);
   await ensureCaptionFontsReady();
+  const { branding } = render.settings;
+  const brandingLogo =
+    branding.kind === "logo" && branding.imagePath
+      ? await ensureBrandingLogo(branding.imagePath)
+      : null;
+  const hasBranding =
+    branding.kind === "text" ? branding.text.trim().length > 0 : brandingLogo != null;
   throwIfAborted(signal);
 
   const input = await createMediabunnyInput(trimmedFile);
@@ -222,7 +230,7 @@ export async function renderClipperFormat(
 
     const canvasCache = new FrameCanvasCache();
     const encodeBackpressure = new EncodeBackpressure();
-    const skipCanvas = !render.settings.captions.enabled;
+    const skipCanvas = !render.settings.captions.enabled && !hasBranding;
 
     const encodeSample = async (
       sample: VideoSample,
