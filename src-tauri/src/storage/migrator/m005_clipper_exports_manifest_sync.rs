@@ -151,6 +151,7 @@ async fn sync_manifest_entry(
             social_description: None,
             social_description_timestamped: None,
             social_hashtags: None,
+            render_signature: None,
         },
     )
     .await

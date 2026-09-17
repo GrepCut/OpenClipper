@@ -51,6 +51,8 @@ export interface ClipperFormatSettings {
   resolutionCap: ClipperResolutionCap;
   /** May reference {name} and {platform}. */
   filenameTemplate: string;
+  /** Render queue leaves out formats already exported from identical render inputs. */
+  skipExisting: boolean;
 }
 
 export interface ClipperAudioSettings {
@@ -110,6 +112,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     quality: "standard",
     resolutionCap: "source",
     filenameTemplate: "{name}-clip-{clip}-{platform}",
+    skipExisting: true,
   },
   audio: {
     mute: false,
@@ -187,6 +190,10 @@ export function mergeClipperSettings(
             ? mergedFormats.enabledFormatIds
             : base.formats.enabledFormatIds,
         ),
+        skipExisting:
+          typeof mergedFormats.skipExisting === "boolean"
+            ? mergedFormats.skipExisting
+            : base.formats.skipExisting,
       };
     })(),
     audio: { ...base.audio, ...partial.audio },

@@ -5,6 +5,7 @@ pub mod m004_clipper_export_publishes;
 pub mod m005_clipper_exports_manifest_sync;
 pub mod m008_repair_clipper_export_publishes;
 pub mod m009_clipper_owners;
+pub mod m010_clipper_export_render_signature;
 
 use chrono::Utc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, Statement};
@@ -34,6 +35,7 @@ impl ManualMigrator {
             Box::new(m005_clipper_exports_manifest_sync::M005ClipperExportsManifestSync),
             Box::new(m008_repair_clipper_export_publishes::M008RepairClipperExportPublishes),
             Box::new(m009_clipper_owners::M009ClipperOwners),
+            Box::new(m010_clipper_export_render_signature::M010ClipperExportRenderSignature),
         ]
     }
 

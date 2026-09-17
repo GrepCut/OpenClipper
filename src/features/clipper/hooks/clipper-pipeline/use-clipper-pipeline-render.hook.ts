@@ -1,14 +1,31 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
-import { appendUniqueExportResults } from "../../shared/export-results.util";
-import { applyFilenameTemplate, baseName } from "../../shared/filename-template.util";
+import { baseName } from "../../shared/filename-template.util";
 import { clipperError } from "../../shared/logger.util";
-import type { ClipperFormatResult } from "../../shared/state.util";
+import {
+  existingFormatIds,
+  findExistingExports,
+  type ExistingExportsByClip,
+} from "../../shared/existing-exports.util";
+import { renderProgressKey } from "../../shared/render-progress.util";
+import {
+  applyRenderBatchStartState,
+  applyRenderFailureState,
+  applyRenderStopState,
+  applySuccessfulClipResults,
+  buildInitialRenderProgress,
+  remainingFormatIds,
+  withoutStaleRenderProgress,
+  type RenderBatchOutcome,
+  type RenderExportsOptions,
+} from "../../shared/render-batch.util";
 import { buildFrameContext } from "../../pipeline/frame-context.util";
+import { computeClipRenderSignature } from "../../pipeline/render-signature.util";
 import { getActiveClips, syncSessionActiveClips } from "../../pipeline/session.util";
-import { runRenderClipJob, runRerenderFormat, getClipperFormatDef } from "../../pipeline/stages/render.util";
+import { runRenderClipJob } from "../../pipeline/stages/render.util";
 import { patchPipelineState } from "./clipper-pipeline-state.util";
+import { createRenderBatchReporter, type RenderBatchReporter } from "./render-batch-reporter.util";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
 
 export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
@@ -24,14 +41,64 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
   } = core;
   const { abortRef, previewUrlsRef, sessionRef, reporterRef } = refs;
 
+  /**
+   * Formats already exported from the clips' current render inputs. Session fields read
+   * through the ref (collage overrides, layout analysis) change together with the stage,
+   * face revision and collage state listed as dependencies.
+   */
+  const existingExports = useMemo<ExistingExportsByClip>(() => {
+    const session = sessionRef.current;
+    if (!session || state.exportHistory.length === 0) return {};
+    const clips = state.clipPreviews.map((preview) => preview.clip);
+    const signatures: Record<number, string> = {};
+    for (const clip of clips) {
+      signatures[clip.index] = computeClipRenderSignature(session, settings, clip);
+    }
+    return findExistingExports(clips, signatures, state.exportHistory);
+  }, [
+    core.disabledCollageRegionIds,
+    sessionRef,
+    settings,
+    state.clipPreviews,
+    state.exportHistory,
+    state.faceSampleRevision,
+    state.stage,
+  ]);
+  /** Render batch still running (null once its loop has settled). */
+  const activeBatchRef = useRef<{ controller: AbortController; progress: RenderBatchReporter } | null>(
+    null,
+  );
+
+  const stopRender = useCallback(() => {
+    const batch = activeBatchRef.current;
+    if (!batch) {
+      // Nothing running (e.g. stale statuses): just settle the UI.
+      patchPipelineState(setState, applyRenderStopState);
+      return;
+    }
+    if (batch.controller.signal.aborted) return;
+    batch.progress.resetInFlightProgress();
+    batch.controller.abort();
+    // The batch loop applies the stop state once in-flight exports have settled, so their
+    // results are kept and Continue cannot start while an old job is still writing files.
+    patchPipelineState(setState, (draft) => {
+      draft.stageMessage = "Stopping…";
+    });
+  }, [setState]);
+
   const renderExports = useCallback(
-    async (perClipFormatIds?: Record<number, string[]>): Promise<boolean> => {
+    async (
+      perClipFormatIds?: Record<number, string[]>,
+      options?: RenderExportsOptions,
+    ): Promise<RenderBatchOutcome> => {
+      const skipCompleted = options?.skipCompleted === true;
+      const skipExisting = options?.skipExisting === true;
       const session = sessionRef.current;
       if (!session?.rangeTrimmedFile) {
         patchPipelineState(setState, (draft) => {
           draft.error = "Source video is not ready. Return to preview and try again.";
         });
-        return false;
+        return "failed";
       }
 
       syncSessionActiveClips(session);
@@ -40,54 +107,85 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
         patchPipelineState(setState, (draft) => {
           draft.error = "No clips are available to render.";
         });
-        return false;
+        return "failed";
       }
 
-      const formatIdsForClip = (clipIndex: number): string[] =>
-        perClipFormatIds?.[clipIndex] ?? settings.formats.enabledFormatIds;
-      const formatsForClip = (clipIndex: number) =>
-        CLIPPER_FORMAT_DEFS.filter((f) => formatIdsForClip(clipIndex).includes(f.id));
+      const selectedByClip: Record<number, string[]> = {};
+      const clipSignatures: Record<number, string> = {};
+      for (const clip of activeClips) {
+        const requested = perClipFormatIds?.[clip.index] ?? settings.formats.enabledFormatIds;
+        selectedByClip[clip.index] = CLIPPER_FORMAT_DEFS.filter((format) =>
+          requested.includes(format.id),
+        ).map((format) => format.id);
+        clipSignatures[clip.index] = computeClipRenderSignature(session, settings, clip);
+      }
+      const completedProgress = skipCompleted
+        ? withoutStaleRenderProgress(state.renderProgress, state.renderSignatures, clipSignatures)
+        : {};
+      if (skipExisting) {
+        const existing = findExistingExports(activeClips, clipSignatures, state.exportHistory);
+        for (const clip of activeClips) {
+          for (const formatId of existingFormatIds(existing, clip.index)) {
+            if (selectedByClip[clip.index]?.includes(formatId)) {
+              completedProgress[renderProgressKey(clip.index, formatId)] = 1;
+            }
+          }
+        }
+      }
+      const pendingByClip = remainingFormatIds(selectedByClip, completedProgress);
 
-      const clipsToRender = activeClips.filter((clip) => formatsForClip(clip.index).length > 0);
+      const clipsToRender = activeClips.filter((clip) => pendingByClip[clip.index] !== undefined);
       if (clipsToRender.length === 0) {
+        if (skipCompleted || skipExisting) {
+          persistMetadata({}, "done");
+          patchPipelineState(setState, (draft) => {
+            draft.stage = "done";
+            draft.stageMessage = "Your clips are ready!";
+            draft.error = null;
+          });
+          return "completed";
+        }
         patchPipelineState(setState, (draft) => {
           draft.error = "Select at least one export format.";
         });
-        return false;
+        return "failed";
       }
-      const renderedClipIndices = new Set(clipsToRender.map((clip) => clip.index));
 
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const progress = createRenderBatchReporter(reporterRef.current, controller.signal);
+      const activeBatch = { controller, progress };
+      activeBatchRef.current = activeBatch;
 
-      const initialProgress: Record<string, number | null> = {};
-      for (const clip of clipsToRender) {
-        for (const f of formatsForClip(clip.index)) initialProgress[`${clip.index}:${f.id}`] = null;
-      }
-
+      const initialProgress = buildInitialRenderProgress(selectedByClip, completedProgress);
       const stem = baseName(state.sourceFileName ?? "clip");
       const filenameTemplate = settings.formats.filenameTemplate;
 
       persistMetadata({}, "preview");
       patchPipelineState(setState, (draft) => {
-        draft.stage = "preview";
-        draft.stageMessage = `Rendering ${clipsToRender.length} clip${clipsToRender.length > 1 ? "s" : ""}…`;
-        draft.renderProgress = initialProgress;
-        draft.error = null;
-        for (const preview of draft.clipPreviews) {
-          if (!renderedClipIndices.has(preview.clip.index)) continue;
-          preview.renderStatus = "queued";
-          preview.renderProgress = null;
-          preview.results = [];
-        }
+        applyRenderBatchStartState(draft, {
+          clipCount: clipsToRender.length,
+          initialProgress,
+          skipCompleted,
+          selectedByClip,
+        });
       });
+
+      /** False once another pipeline flow (new file, reset, new batch) took over the state. */
+      const ownsState = () => abortRef.current === controller;
+      const applyAbort = () => {
+        if (ownsState()) patchPipelineState(setState, applyRenderStopState);
+      };
 
       let failedClipIndex: number | null = null;
 
       try {
         for (const [queuePosition, clip] of clipsToRender.entries()) {
-          if (controller.signal.aborted) return false;
+          if (controller.signal.aborted) {
+            applyAbort();
+            return "aborted";
+          }
 
           const frameContext = buildFrameContext(session, settings, clip.index);
           if (!frameContext) continue;
@@ -105,41 +203,44 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
 
           failedClipIndex = clip.index;
 
-          const clipResults = await runRenderClipJob(
+          const job = await runRenderClipJob(
             session,
             frameContext,
             {
               projectId,
               clipIndex: clip.index,
-              enabledFormatIds: formatIdsForClip(clip.index),
+              enabledFormatIds: pendingByClip[clip.index]!,
               filenameStem: stem,
               filenameTemplate,
+              renderSignature: clipSignatures[clip.index],
             },
-            reporterRef.current,
+            progress.reporter,
             { signal: controller.signal, previewUrls: previewUrlsRef.current },
           );
+          progress.releaseKeys();
 
-          for (const r of clipResults) {
-            if (r.previewUrl.startsWith("blob:")) {
-              previewUrlsRef.current.push(r.previewUrl);
-            }
-          }
+          if (!ownsState()) return "aborted";
 
+          // Finished formats are already on disk / in the DB — record them even when the
+          // batch was stopped or a sibling format failed.
           patchPipelineState(setState, (draft) => {
-            draft.exportHistory = appendUniqueExportResults(draft.exportHistory, clipResults);
-            const preview = draft.clipPreviews.find((p) => p.clip.index === clip.index);
-            if (preview) {
-              preview.renderStatus = "done";
-              preview.renderProgress = 1;
-              preview.results = clipResults;
-            }
-            for (const format of formatsForClip(clip.index)) {
-              draft.renderProgress[`${clip.index}:${format.id}`] = 1;
-            }
+            applySuccessfulClipResults(
+              draft,
+              clip.index,
+              job.results,
+              selectedByClip[clip.index]!,
+              clipSignatures[clip.index]!,
+            );
+            if (controller.signal.aborted) applyRenderStopState(draft);
           });
+          if (controller.signal.aborted) return "aborted";
+          if (job.error) throw job.error;
         }
 
-        if (controller.signal.aborted) return false;
+        if (controller.signal.aborted) {
+          applyAbort();
+          return "aborted";
+        }
 
         persistMetadata({}, "done");
         patchPipelineState(setState, (draft) => {
@@ -147,30 +248,24 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           draft.stageMessage = "Your clips are ready!";
           draft.error = null;
         });
-        return true;
+        return "completed";
       } catch (error) {
-        if (controller.signal.aborted) return false;
+        if (controller.signal.aborted) {
+          applyAbort();
+          return "aborted";
+        }
         clipperError("pipeline: render failed", error);
         persistMetadata({}, "preview");
         patchPipelineState(setState, (draft) => {
-          draft.stage = "preview";
-          draft.stageMessage = "Render failed, adjust preview and try again";
-          draft.stageProgress = null;
-          draft.error = error instanceof Error ? error.message : "Render failed.";
-          for (const preview of draft.clipPreviews) {
-            if (failedClipIndex != null && preview.clip.index === failedClipIndex) {
-              preview.renderStatus = "error";
-              continue;
-            }
-            if (preview.renderStatus === "rendering") {
-              preview.renderStatus = "idle";
-              preview.renderProgress = null;
-            } else if (preview.renderStatus === "queued") {
-              preview.renderStatus = "idle";
-            }
-          }
+          applyRenderFailureState(
+            draft,
+            error instanceof Error ? error.message : "Render failed.",
+            failedClipIndex,
+          );
         });
-        return false;
+        return "failed";
+      } finally {
+        if (activeBatchRef.current === activeBatch) activeBatchRef.current = null;
       }
     },
     [
@@ -182,84 +277,11 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
       sessionRef,
       setState,
       settings,
+      state.renderProgress,
+      state.exportHistory,
+      state.renderSignatures,
       state.sourceFileName,
     ],
-  );
-
-  const rerenderFormat = useCallback(
-    async (formatId: string, clipIndex: number) => {
-      const session = sessionRef.current;
-      const formatDef = getClipperFormatDef(formatId);
-      if (!session?.rangeTrimmedFile) return;
-      if (!formatDef) return;
-
-      const frameContext = buildFrameContext(session, settings, clipIndex);
-      if (!frameContext) return;
-
-      const progressKey = `${clipIndex}:${formatId}`;
-      patchPipelineState(setState, (draft) => {
-        draft.renderProgress[progressKey] = null;
-      });
-
-      const stem = baseName(state.sourceFileName ?? "clip");
-      try {
-        const result = await runRerenderFormat(
-          session,
-          formatDef,
-          frameContext,
-          clipIndex,
-          {
-            projectId,
-            filenameStem: stem,
-            filenameTemplate: settings.formats.filenameTemplate,
-          },
-          reporterRef.current,
-          { signal: abortRef.current?.signal, previewUrls: previewUrlsRef.current },
-        );
-        if (result.previewUrl.startsWith("blob:")) {
-          previewUrlsRef.current.push(result.previewUrl);
-        }
-
-        patchPipelineState(setState, (draft) => {
-          draft.renderProgress[progressKey] = 1;
-          draft.exportHistory = appendUniqueExportResults(draft.exportHistory, [result]);
-          const preview = draft.clipPreviews.find((p) => p.clip.index === clipIndex);
-          if (preview) {
-            preview.results = appendUniqueExportResults(preview.results, [result]);
-          }
-        });
-      } catch (error) {
-        patchPipelineState(setState, (draft) => {
-          draft.error = error instanceof Error ? error.message : "Re-render failed.";
-        });
-      }
-    },
-    [
-      abortRef,
-      previewUrlsRef,
-      projectId,
-      reporterRef,
-      sessionRef,
-      setState,
-      settings,
-      state.sourceFileName,
-    ],
-  );
-
-  const download = useCallback(
-    (result: ClipperFormatResult, sourceName: string | null) => {
-      const stem = baseName(sourceName ?? "clip");
-      const anchor = document.createElement("a");
-      anchor.href = result.previewUrl;
-      anchor.download = `${applyFilenameTemplate(
-        settings.formats.filenameTemplate,
-        stem,
-        result.formatId,
-        result.clipIndex,
-      )}.mp4`;
-      anchor.click();
-    },
-    [settings.formats.filenameTemplate],
   );
 
   const exportCount = Math.max(state.exportHistory.length, persistedExportCount);
@@ -270,8 +292,8 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
 
   return {
     renderExports,
-    rerenderFormat,
-    download,
+    existingExports,
+    stopRender,
     exportCount,
     refreshExportHistory,
   };

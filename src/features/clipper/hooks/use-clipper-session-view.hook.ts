@@ -45,7 +45,8 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     confirmRange,
     retryResume,
     renderExports,
-    rerenderFormat,
+    existingExports,
+    stopRender,
     refreshExportHistory,
     updateExportMetadata,
     reset,
@@ -101,7 +102,10 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
   }, [project.id]);
 
   const goToPreview = useCallback(() => setView("preview"), [setView]);
-  const goToRenderQueue = useCallback(() => setView("queue"), [setView]);
+  const goToRenderQueue = useCallback(() => {
+    if (isRendering) stopRender();
+    setView("queue");
+  }, [isRendering, setView, stopRender]);
   const goToExports = useCallback(() => setView("exports"), [setView]);
 
   const step = useMemo(
@@ -150,7 +154,6 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     updateSettings,
     confirmRange,
     retryResume,
-    rerenderFormat,
     refreshExportHistory,
     updateExportMetadata,
     reset,
@@ -179,5 +182,7 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     resumeLoadingStatus,
     canUseAccountFeatures,
     renderQueue,
+    existingExports,
+    stopRender,
   };
 }

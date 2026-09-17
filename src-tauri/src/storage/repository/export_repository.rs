@@ -50,6 +50,7 @@ pub struct ClipperExportRecord {
     pub social_description: String,
     pub social_description_timestamped: String,
     pub social_hashtags: String,
+    pub render_signature: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -75,6 +76,8 @@ pub struct ClipperExportUpsertInput {
     pub social_description: Option<String>,
     pub social_description_timestamped: Option<String>,
     pub social_hashtags: Option<String>,
+    #[serde(default)]
+    pub render_signature: Option<String>,
 }
 
 impl ExportRepository {
@@ -132,6 +135,9 @@ impl ExportRepository {
         let social_hashtags = input
             .social_hashtags
             .unwrap_or_else(|| existing.as_ref().map(|r| r.social_hashtags.clone()).unwrap_or_default());
+        let render_signature = input
+            .render_signature
+            .or_else(|| existing.as_ref().and_then(|r| r.render_signature.clone()));
 
         let active_model = ActiveModel {
             id: sea_orm::Set(input.id.clone()),
@@ -153,6 +159,7 @@ impl ExportRepository {
             social_description: sea_orm::Set(social_description),
             social_description_timestamped: sea_orm::Set(social_description_timestamped),
             social_hashtags: sea_orm::Set(social_hashtags),
+            render_signature: sea_orm::Set(render_signature),
             created_at: sea_orm::Set(created_at),
             updated_at: sea_orm::Set(now),
         };
@@ -179,6 +186,7 @@ impl ExportRepository {
                         Column::SocialDescription,
                         Column::SocialDescriptionTimestamped,
                         Column::SocialHashtags,
+                        Column::RenderSignature,
                         Column::UpdatedAt,
                     ])
                     .to_owned(),
@@ -360,6 +368,7 @@ mod tests {
             social_description: None,
             social_description_timestamped: None,
             social_hashtags: None,
+            render_signature: None,
         };
         ExportRepository::upsert(&db, "project-1", input).await.expect("upsert");
 
@@ -405,6 +414,7 @@ mod tests {
             social_description: None,
             social_description_timestamped: None,
             social_hashtags: None,
+            render_signature: None,
         };
         ExportRepository::upsert(&db, "project-1", input).await.expect("upsert");
 
@@ -425,6 +435,43 @@ mod tests {
 
         assert_eq!(patched.social_title, "New");
         assert_eq!(patched.social_short_description, "");
+    }
+
+    #[tokio::test]
+    async fn upsert_keeps_render_signature_when_input_omits_it() {
+        let db = test_db().await;
+        let exported_at = chrono::Utc::now().to_rfc3339();
+        let input = |render_signature: Option<String>| ClipperExportUpsertInput {
+            id: "export-3".into(),
+            clip_index: 0,
+            format_id: "tiktok".into(),
+            file_name: "clip.mp4".into(),
+            relative_path: "clip.mp4".into(),
+            width: 1080,
+            height: 1920,
+            file_size: 1000,
+            exported_at: exported_at.clone(),
+            clip_start_sec: None,
+            clip_end_sec: None,
+            transcript_plain: None,
+            transcript_timestamped: None,
+            social_title: None,
+            social_short_description: None,
+            social_description: None,
+            social_description_timestamped: None,
+            social_hashtags: None,
+            render_signature,
+        };
+
+        let created = ExportRepository::upsert(&db, "project-1", input(Some("sig-1".into())))
+            .await
+            .expect("upsert");
+        assert_eq!(created.render_signature.as_deref(), Some("sig-1"));
+
+        let updated = ExportRepository::upsert(&db, "project-1", input(None))
+            .await
+            .expect("upsert again");
+        assert_eq!(updated.render_signature.as_deref(), Some("sig-1"));
     }
 }
 
@@ -469,6 +516,7 @@ fn model_to_record(model: Model) -> ClipperExportRecord {
         social_description: model.social_description,
         social_description_timestamped: model.social_description_timestamped,
         social_hashtags: model.social_hashtags,
+        render_signature: model.render_signature,
         created_at: model.created_at,
         updated_at: model.updated_at,
     }

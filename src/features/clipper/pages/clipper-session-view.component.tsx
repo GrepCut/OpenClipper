@@ -38,7 +38,9 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     exportCount,
     sessionResults,
     renderQueue,
+    existingExports,
     goToExports,
+    stopRender,
   } = session;
 
   return (
@@ -106,7 +108,10 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onSetFormatForAll={renderQueue.setFormatForAllClips}
           onSetAllFormatsForClip={renderQueue.setAllFormatsForClip}
           isRendering={isRendering}
-          onRender={renderQueue.startQueuedRender}
+          existingExports={existingExports}
+          onRender={() =>
+            renderQueue.startQueuedRender({ skipExisting: settings.formats.skipExisting })
+          }
           exportCount={exportCount}
           onViewExports={goToExports}
         />
@@ -131,6 +136,11 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           sourceFileName={state.sourceFileName}
           projectId={project.id}
           onOpenFolder={handleOpenExportsFolder}
+          onStop={stopRender}
+          onContinue={() =>
+            renderQueue.startQueuedRender({ skipCompleted: true, skipExisting: true })
+          }
+          onRestart={() => renderQueue.startQueuedRender()}
         />
         </>
       )}

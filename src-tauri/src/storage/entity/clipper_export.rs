@@ -37,6 +37,8 @@ pub struct Model {
     pub social_description_timestamped: String,
     #[sea_orm(column_type = "Text")]
     pub social_hashtags: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub render_signature: Option<String>,
     #[sea_orm(column_type = "Text")]
     pub created_at: String,
     #[sea_orm(column_type = "Text")]

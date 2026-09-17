@@ -11,12 +11,14 @@ import {
   publishGraphTopologyKey,
   type PublishGraphSimNode,
 } from "../shared/clipper-publish-graph-payload.util";
+import { useClipperPublishGraphDeletePopupPosition } from "../hooks/use-clipper-publish-graph-delete-popup-position.hook";
 import {
   drawExportNode,
   drawOwnerNode,
   drawProjectNode,
   paintNodeHitArea,
 } from "./clipper-publish-graph-draw.util";
+import { ClipperPublishGraphDeleteConfirm } from "./clipper-publish-graph-delete-confirm.component";
 import { loadPlatformLogo } from "./clipper-publish-graph-logos.util";
 
 const PROJECT_LINK_DISTANCE = 200;
@@ -30,6 +32,8 @@ interface ClipperPublishGraphProps {
   selectedProjectId: string | null;
   selectedOwnerId: string | null;
   onNodeClick: (nodeId: string | null, nodeType?: PublishGraphNode["type"]) => void;
+  deleteConfirmArmed?: boolean;
+  onCancelDeleteConfirm?: () => void;
   connectedSplit?: boolean;
 }
 
@@ -40,6 +44,8 @@ export function ClipperPublishGraph({
   selectedProjectId,
   selectedOwnerId,
   onNodeClick,
+  deleteConfirmArmed = false,
+  onCancelDeleteConfirm,
   connectedSplit = false,
 }: ClipperPublishGraphProps) {
   const { theme } = useClipperUi();
@@ -50,6 +56,17 @@ export function ClipperPublishGraph({
   const dimensionsRef = useRef({ width: 640, height: 480 });
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
   const [logoVersion, setLogoVersion] = useState(0);
+  const deletePopupActive = deleteConfirmArmed && Boolean(selectedExportId);
+  const {
+    position: deletePopupPosition,
+    updatePosition: updateDeletePopupPosition,
+    clearPosition: clearDeletePopupPosition,
+  } = useClipperPublishGraphDeletePopupPosition({
+    graphRef,
+    liveNodesRef,
+    exportId: selectedExportId,
+    active: deletePopupActive,
+  });
 
   const onLogoReady = useCallback(() => {
     setLogoVersion((version) => version + 1);
@@ -160,9 +177,18 @@ export function ClipperPublishGraph({
     ],
   );
 
+  const syncDeletePopupPosition = useCallback(() => {
+    if (deletePopupActive) {
+      updateDeletePopupPosition();
+    } else {
+      clearDeletePopupPosition();
+    }
+  }, [clearDeletePopupPosition, deletePopupActive, updateDeletePopupPosition]);
+
   return (
     <Box
       ref={containerRef}
+      position="relative"
       flex="1"
       minH="320px"
       h="full"
@@ -192,6 +218,13 @@ export function ClipperPublishGraph({
           const n = node as PublishGraphNode;
           onNodeClick(n.id, n.type);
         }}
+        onBackgroundClick={() => {
+          if (deleteConfirmArmed) {
+            onCancelDeleteConfirm?.();
+          }
+        }}
+        onZoom={syncDeletePopupPosition}
+        onRenderFramePost={syncDeletePopupPosition}
         nodeCanvasObject={(node, ctx, globalScale) =>
           drawNode(node as PublishGraphNode, ctx, globalScale)
         }
@@ -203,6 +236,13 @@ export function ClipperPublishGraph({
           paintNodeHitArea(n, color, ctx, thumbnail);
         }}
       />
+      {deletePopupActive && deletePopupPosition ? (
+        <ClipperPublishGraphDeleteConfirm
+          screenX={deletePopupPosition.x}
+          screenY={deletePopupPosition.y}
+          onCancel={() => onCancelDeleteConfirm?.()}
+        />
+      ) : null}
     </Box>
   );
 }

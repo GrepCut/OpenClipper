@@ -54,8 +54,8 @@ pub fn format_label(format_id: &str) -> &'static str {
         "instagram" => "Instagram",
         "tiktok" => "TikTok",
         "vertical-short" => "TikTok / YouTube Shorts",
-        "vertical-reels" => "Instagram Reels / Threads / Facebook",
-        "instagram-portrait" => "Instagram / Facebook Portrait",
+        "vertical-reels" => "Reels",
+        "instagram-portrait" => "Meta Portrait",
         "twitter" => "X / Twitter",
         _ => "Unknown",
     }

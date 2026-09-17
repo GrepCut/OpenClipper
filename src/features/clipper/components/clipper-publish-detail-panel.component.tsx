@@ -4,10 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SlideToDeleteControl } from "../../../shared/components/slide-to-delete-control.component";
 import { AppLoader } from "../../../shared/components/app-loader.component";
-import { appToast } from "../../../shared/utils/toast.service";
 import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
-import { removeClipperExport } from "../persistence/clipper-export-remove.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
@@ -22,7 +20,8 @@ interface ClipperPublishDetailPanelProps {
   result: ClipperFormatResult | null;
   mediaLoading: boolean;
   onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
-  onDeleted: () => void;
+  onDeleteExport: () => Promise<void>;
+  onDeleteInteractionStart?: () => void;
   onBack: () => void;
   connectedSplit?: boolean;
 }
@@ -32,7 +31,8 @@ export function ClipperPublishDetailPanel({
   result,
   mediaLoading,
   onMetadataSaved,
-  onDeleted,
+  onDeleteExport,
+  onDeleteInteractionStart,
   onBack,
   connectedSplit = false,
 }: ClipperPublishDetailPanelProps) {
@@ -44,24 +44,6 @@ export function ClipperPublishDetailPanel({
     },
     [onMetadataSaved],
   );
-
-  const handleSlideDelete = useCallback(async () => {
-    if (!item) return;
-
-    try {
-      await removeClipperExport({
-        projectId: item.projectId,
-        exportId: item.id,
-      });
-
-      appToast.success("Export removed", "The export was removed from the publish map.");
-      onDeleted();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not remove export.";
-      appToast.error("Delete failed", message);
-      throw error;
-    }
-  }, [item, onDeleted]);
 
   if (!item || !result) {
     return (
@@ -201,8 +183,9 @@ export function ClipperPublishDetailPanel({
       >
         <SlideToDeleteControl
           label="Slide to delete"
-          onComplete={handleSlideDelete}
+          onComplete={onDeleteExport}
           disabled={mediaLoading || result.isMissing}
+          onInteractionStart={onDeleteInteractionStart}
         />
       </VStack>
     </VStack>

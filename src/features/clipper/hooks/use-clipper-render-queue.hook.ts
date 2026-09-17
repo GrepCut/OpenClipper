@@ -9,6 +9,7 @@ import {
   resolveClipFormatIds,
 } from "../shared/render-queue-utils.util";
 import type { SessionViewMode } from "../shared/clipper-session-view.types";
+import type { RenderBatchOutcome, RenderExportsOptions } from "../shared/render-batch.util";
 import type { ClipperLoadedProject } from "./use-clipper-project-loader.hook";
 import type { ClipperClipPreview } from "../shared/state.util";
 
@@ -20,7 +21,10 @@ export interface UseClipperRenderQueueOptions {
   isRendering: boolean;
   view: SessionViewMode;
   setView: (view: SessionViewMode) => void;
-  renderExports: (formatIdsByClip: Record<number, string[]>) => Promise<boolean>;
+  renderExports: (
+    formatIdsByClip: Record<number, string[]>,
+    options?: RenderExportsOptions,
+  ) => Promise<RenderBatchOutcome>;
 }
 
 export function useClipperRenderQueue({
@@ -103,7 +107,9 @@ export function useClipperRenderQueue({
             ? current.includes(formatId)
               ? current
               : [...current, formatId]
-            : current.filter((id) => id !== formatId);
+            : current.includes(formatId)
+              ? current.filter((id) => id !== formatId)
+              : current;
         }
         return next;
       });
@@ -130,15 +136,18 @@ export function useClipperRenderQueue({
     setView("queue");
   }, [setView]);
 
-  const startQueuedRender = useCallback(() => {
-    setView("rendering");
-    void (async () => {
-      const started = await renderExports(formatIdsByClip);
-      if (!started) {
-        setView("queue");
-      }
-    })();
-  }, [formatIdsByClip, renderExports, setView]);
+  const startQueuedRender = useCallback(
+    (options?: RenderExportsOptions) => {
+      setView("rendering");
+      void (async () => {
+        const outcome = await renderExports(formatIdsByClip, options);
+        if (outcome === "failed") {
+          setView("queue");
+        }
+      })();
+    },
+    [formatIdsByClip, renderExports, setView],
+  );
 
   return {
     getClipFormatIds,

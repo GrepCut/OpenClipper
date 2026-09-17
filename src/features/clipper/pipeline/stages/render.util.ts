@@ -1,10 +1,10 @@
-import { CLIPPER_FORMAT_DEFS, getClipperFormatDef, type ClipperFormatDef } from "../../shared/formats.util";
+import { CLIPPER_FORMAT_DEFS, type ClipperFormatDef } from "../../shared/formats.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
 import { resolveClipperOutputSize } from "../../engine/render/frame-draw.util";
 import { renderClipperFormat, type ClipperClipWindow } from "../../engine/render/index";
 import type { ClipperFrameContext } from "../../engine/render/index";
 import { isTauri } from "../../../../shared/utils/platform.util";
-import { clipperError, clipperTimer } from "../../shared/logger.util";
+import { clipperTimer } from "../../shared/logger.util";
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
 import { findClipByIndex, type ClipperGeneratedClip } from "../../engine/segmentation";
@@ -15,6 +15,8 @@ import {
 } from "../../persistence/export-files.util";
 import { persistClipperExport } from "../../persistence/clipper-export-persist.util";
 import type { ClipperExportRecord } from "../../persistence/clipper-export-db-api.util";
+import { renderProgressKey } from "../../shared/render-progress.util";
+
 export interface RenderStageInput {
   projectId: string;
   enabledFormatIds: string[];
@@ -26,6 +28,8 @@ export interface RenderClipJobInput {
   enabledFormatIds: string[];
   filenameStem: string;
   filenameTemplate: string;
+  /** Render-input fingerprint stored with each export (see render-signature.util). */
+  renderSignature?: string;
 }
 
 function trackPreviewUrl(previewUrl: string, previewUrls: string[]): void {
@@ -70,6 +74,7 @@ async function renderFormatToResult(
     clipIndex: number;
     filenameStem: string;
     filenameTemplate: string;
+    renderSignature?: string;
   },
   options: { signal: AbortSignal; onProgress: (ratio: number) => void },
   previewUrls: string[],
@@ -114,6 +119,7 @@ async function renderFormatToResult(
         exportedAt: exportedAtIso,
         clipStartSec: envelope.startSec,
         clipEndSec: envelope.endSec,
+        renderSignature: input.renderSignature,
       });
       return {
         id: exportId,
@@ -129,6 +135,7 @@ async function renderFormatToResult(
         clipStartSec: envelope.startSec,
         clipEndSec: envelope.endSec,
         relativePath: disk.relativePath,
+        renderSignature: input.renderSignature,
         displayPath: disk.displayPath,
         filePath: disk.filePath,
         file: disk.file,
@@ -162,6 +169,7 @@ async function renderFormatToResult(
       exportedAt: exportedAtIso,
       clipStartSec: envelope.startSec,
       clipEndSec: envelope.endSec,
+      renderSignature: input.renderSignature,
       blob: encodeResult.blob,
     };
   } catch (error) {
@@ -172,6 +180,13 @@ async function renderFormatToResult(
   }
 }
 
+export interface RenderClipJobOutcome {
+  /** Formats that finished (already written to disk / DB), even when a sibling format failed. */
+  results: ClipperFormatResult[];
+  /** First non-abort failure among the formats, or null. */
+  error: unknown;
+}
+
 /** Renders all enabled export formats for one generated clip (windowed from range file). */
 export async function runRenderClipJob(
   session: ClipperSession,
@@ -179,7 +194,7 @@ export async function runRenderClipJob(
   input: RenderClipJobInput,
   reporter: PipelineReporter,
   options: { signal: AbortSignal; previewUrls?: string[] },
-): Promise<ClipperFormatResult[]> {
+): Promise<RenderClipJobOutcome> {
   const clip = findClipByIndex(session.clips, input.clipIndex);
   if (!clip) throw new Error(`Clip ${input.clipIndex} not found.`);
 
@@ -198,9 +213,9 @@ export async function runRenderClipJob(
   const clipWindow: ClipperClipWindow = { segments: clip.segments };
   const envelope = { startSec: clip.startSec, endSec: clip.endSec };
 
-  const results = await Promise.all(
+  const settled = await Promise.allSettled(
     formats.map(async (formatDef): Promise<ClipperFormatResult> => {
-      const progressKey = `${input.clipIndex}:${formatDef.id}`;
+      const progressKey = renderProgressKey(input.clipIndex, formatDef.id);
       const endFormat = clipperTimer(`pipeline[${runId}]: render ${formatDef.id}`);
       const result = await renderFormatToResult(
         rangeFile,
@@ -221,61 +236,16 @@ export async function runRenderClipJob(
     }),
   );
 
-  if (options.signal.aborted) throw new DOMException("Conversion aborted", "AbortError");
-  endRun();
-  return results;
-}
-
-/** Re-renders a single export format for one clip. */
-export async function runRerenderFormat(
-  session: ClipperSession,
-  formatDef: ClipperFormatDef,
-  frameContext: ClipperFrameContext,
-  clipIndex: number,
-  input: {
-    projectId: string;
-    filenameStem: string;
-    filenameTemplate: string;
-  },
-  reporter: PipelineReporter,
-  options: { signal?: AbortSignal; previewUrls?: string[] },
-): Promise<ClipperFormatResult> {
-  try {
-    const clip = findClipByIndex(session.clips, clipIndex);
-    if (!clip) throw new Error(`Clip ${clipIndex} not found.`);
-
-    const rangeFile = session.rangeTrimmedFile;
-    if (!rangeFile) throw new Error("Range video is not ready, cannot render.");
-
-    const progressKey = `${clipIndex}:${formatDef.id}`;
-    const clipWindow: ClipperClipWindow = { segments: clip.segments };
-    const envelope = { startSec: clip.startSec, endSec: clip.endSec };
-    const previewUrls = options.previewUrls ?? [];
-    const result = await renderFormatToResult(
-      rangeFile,
-      formatDef,
-      frameContext,
-      clipWindow,
-      clip,
-      envelope,
-      {
-        projectId: input.projectId,
-        clipIndex,
-        filenameStem: input.filenameStem,
-        filenameTemplate: input.filenameTemplate,
-      },
-      {
-        signal: options.signal ?? new AbortController().signal,
-        onProgress: (ratio) => reporter.renderProgress(progressKey, ratio),
-      },
-      previewUrls,
-    );
-    reporter.renderProgress(progressKey, 1);
-    return result;
-  } catch (error) {
-    clipperError(`rerender[${formatDef.id}]: failed`, error);
-    throw error;
+  const results: ClipperFormatResult[] = [];
+  let error: unknown = null;
+  for (const item of settled) {
+    if (item.status === "fulfilled") {
+      results.push(item.value);
+    } else if (!options.signal.aborted) {
+      error ??= item.reason;
+    }
   }
-}
 
-export { getClipperFormatDef };
+  endRun();
+  return { results, error };
+}

@@ -27,6 +27,7 @@ import {
   getOpenClipperMcpPath,
   type ClipperExportMapItem,
 } from "../persistence/clipper-export-db-api.util";
+import { useClipperPublishExportDelete } from "../hooks/use-clipper-publish-export-delete.hook";
 import { useClipperPublishMap } from "../hooks/use-clipper-publish-map.hook";
 import { resolveExportMapItemMedia } from "../shared/clipper-publish-graph.util";
 import type { ClipperFormatResult } from "../shared/state.util";
@@ -249,6 +250,12 @@ export function ClipperPublishView() {
     selectNode(null);
   }, [selectNode]);
 
+  const { deleteConfirmArmed, disarmDeleteConfirm, executeDelete } = useClipperPublishExportDelete({
+    item: selection.kind === "export" ? selectedItem : null,
+    canDelete: Boolean(selectedItem),
+    onDeleted: handleExportDeleted,
+  });
+
   const handleBackToProject = useCallback(() => {
     if (!selectedItem) return;
     selectNode(`project:${selectedItem.projectId}`, "project");
@@ -312,6 +319,8 @@ export function ClipperPublishView() {
               selectedProjectId={selectedProjectId}
               selectedOwnerId={selectedOwnerId}
               onNodeClick={selectNode}
+              deleteConfirmArmed={deleteConfirmArmed}
+              onCancelDeleteConfirm={disarmDeleteConfirm}
               connectedSplit
             />
           }
@@ -322,7 +331,8 @@ export function ClipperPublishView() {
                 result={selectedResult}
                 mediaLoading={mediaLoading}
                 onMetadataSaved={handleMetadataSaved}
-                onDeleted={handleExportDeleted}
+                onDeleteExport={executeDelete}
+                onDeleteInteractionStart={disarmDeleteConfirm}
                 onBack={handleBackToProject}
                 connectedSplit
               />

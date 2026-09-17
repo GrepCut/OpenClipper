@@ -142,6 +142,7 @@ export function useClipperPipelineSessionActions(
       activeClipIndex: 0,
       error: null,
       renderProgress: {},
+      renderSignatures: {},
     }));
   }, [
     activeClipIndexRef,

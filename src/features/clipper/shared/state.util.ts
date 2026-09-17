@@ -29,6 +29,8 @@ export interface ClipperFormatResult {
   clipStartSec?: number;
   clipEndSec?: number;
   relativePath?: string;
+  /** Render-input fingerprint the file was encoded with; absent for older exports. */
+  renderSignature?: string;
   displayPath?: string;
   filePath?: string;
   /** Present only for in-memory fallback exports. */
@@ -47,6 +49,8 @@ export interface ClipperPipelineState {
   stage: ClipperStage;
   stageMessage: string;
   renderProgress: Record<string, number | null>;
+  /** Render-input fingerprint per clip index at the time its exports finished (see render-signature.util). */
+  renderSignatures: Record<number, string>;
   /** Persisted export history from disk/DB — shown in Your exports. */
   exportHistory: ClipperFormatResult[];
   /** Shared trimmed range video URL for multi-clip preview playback. */
