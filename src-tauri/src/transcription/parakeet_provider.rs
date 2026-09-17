@@ -4,7 +4,8 @@ use super::parakeet_tokens::{
 use super::types::{
     ParakeetTranscriptionProgress, ParakeetTranscriptionResult, TranscriptionError,
 };
-use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig, Wave};
+use super::wav_pcm::WavPcmSource;
+use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -84,54 +85,26 @@ impl ParakeetProvider {
         F: FnMut(ParakeetTranscriptionProgress) -> Result<(), String>,
     {
         let started = Instant::now();
-        let audio_path = audio_path.as_ref();
-        let audio_path_str = audio_path.to_str().ok_or_else(|| {
-            TranscriptionError::InvalidAudio("Invalid audio path".into())
-        })?;
-
-        let wave = Wave::read(audio_path_str).ok_or_else(|| {
-            TranscriptionError::InvalidAudio("Failed to read audio".into())
-        })?;
-
-        let duration_ms = if wave.sample_rate() > 0 {
-            wave.samples().len() as u64 * 1000 / wave.sample_rate() as u64
-        } else {
-            0
-        };
-        let duration_sec = duration_ms as f64 / 1000.0;
-        if duration_sec > super::whisper_genai::MAX_ASR_AUDIO_SECONDS {
-            return Err(TranscriptionError::InvalidAudio(format!(
-                "Audio clip is too long for local Parakeet ({duration_sec:.1}s). Maximum is {:.0}s.",
-                super::whisper_genai::MAX_ASR_AUDIO_SECONDS
-            )));
-        }
-
+        let mut wave = WavPcmSource::open(audio_path.as_ref())?;
         let sample_rate = wave.sample_rate();
-        if sample_rate <= 0 {
-            return Err(TranscriptionError::InvalidAudio(
-                "Audio has an invalid sample rate".into(),
-            ));
-        }
-
+        let duration_ms = wave.duration_ms();
         let chunk_samples = (sample_rate as usize).saturating_mul(MAX_DECODE_CHUNK_SECONDS);
-        if chunk_samples == 0 {
-            return Err(TranscriptionError::InvalidAudio(
-                "Cannot split audio into chunks".into(),
-            ));
-        }
 
-        let chunks: Vec<&[f32]> = wave.samples().chunks(chunk_samples).collect();
-        let chunk_count = chunks.len().max(1);
-
+        let chunk_count = wave.chunk_count(MAX_DECODE_CHUNK_SECONDS).max(1);
         let mut text_parts = Vec::new();
         let mut words = Vec::new();
-        for (chunk_index, samples) in chunks.into_iter().enumerate() {
+        let mut chunk_index = 0usize;
+        loop {
             if cancelled.is_some_and(|flag| flag.load(Ordering::Acquire)) {
                 return Err(TranscriptionError::Cancelled);
             }
 
+            let Some(samples) = wave.next_mono_chunk(chunk_samples)? else {
+                break;
+            };
+
             let stream = self.recognizer.create_stream();
-            stream.accept_waveform(sample_rate, samples);
+            stream.accept_waveform(sample_rate, &samples);
             self.recognizer.decode(&stream);
 
             let result = stream
@@ -165,6 +138,7 @@ impl ParakeetProvider {
                 })
                 .map_err(TranscriptionError::Inference)?;
             }
+            chunk_index += 1;
         }
 
         let segments = group_words_into_segments(&words);

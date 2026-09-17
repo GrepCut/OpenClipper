@@ -44,8 +44,6 @@ const OVERLAP_DEDUPE_SECONDS: f64 = 0.75;
 const WHISPER_FEATURE_DIM: i32 = 128;
 /// Multilingual Whisper tail padding (samples after the last speech frame).
 const WHISPER_TAIL_PADDINGS: i32 = 300;
-/// Reject clips longer than this before loading the full WAV into memory.
-pub const MAX_ASR_AUDIO_SECONDS: f64 = 900.0;
 /// Dense decode loops (chars / second of covered span) trigger n-gram truncation.
 const COMPRESSION_CHARS_PER_SEC: f64 = 60.0;
 
@@ -206,14 +204,6 @@ where
     }
 
     let duration_ms = (sample_count as u64 * 1000) / sample_rate as u64;
-    let duration_sec = duration_ms as f64 / 1000.0;
-    if duration_sec > MAX_ASR_AUDIO_SECONDS {
-        let err = format!(
-            "Audio clip is too long for local Whisper ({duration_sec:.1}s). Maximum is {:.0}s.",
-            MAX_ASR_AUDIO_SECONDS
-        );
-        return Err(TranscriptionError::InvalidAudio(err).to_string());
-    }
 
     let encoder_path = match required_model_path(&model_dir, "encoder.int8.onnx") {
         Ok(p) => p,
