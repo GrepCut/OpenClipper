@@ -12,7 +12,7 @@ import {
   type OwnerPublishConnectionResult,
 } from "../shared/clipper-owner-channels.util";
 import { useClipperPublishExportThumbnails } from "../hooks/use-clipper-publish-export-thumbnails.hook";
-import { getMapPublishTargets, isFolderOnlyFormat } from "../shared/clipper-map-publish.util";
+import { compareMapPublishExports, getMapPublishTargets } from "../shared/clipper-map-publish.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPublishProjectExportRow } from "./clipper-publish-project-export-row.component";
 
@@ -73,12 +73,7 @@ export function ClipperPublishProjectPanel({
   const hasOwner = Boolean(project?.clipperOwnerId);
   const sortedExports = useMemo(() => {
     if (!project) return [];
-    return [...project.exports].sort(
-      (a, b) =>
-        a.clipIndex - b.clipIndex ||
-        Number(isFolderOnlyFormat(a.formatId)) - Number(isFolderOnlyFormat(b.formatId)) ||
-        a.formatLabel.localeCompare(b.formatLabel),
-    );
+    return [...project.exports].sort(compareMapPublishExports);
   }, [project]);
 
   const { thumbnails } = useClipperPublishExportThumbnails(sortedExports);

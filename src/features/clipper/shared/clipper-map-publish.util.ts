@@ -30,6 +30,18 @@ export function isFolderOnlyFormat(formatId: string): boolean {
   return getMapPublishTargets(formatId).length === 0;
 }
 
+/** TikTok / YouTube first, folder-only platforms last, then clip index. */
+export function compareMapPublishExports(
+  a: Pick<ClipperExportMapItem, "formatId" | "clipIndex" | "formatLabel">,
+  b: Pick<ClipperExportMapItem, "formatId" | "clipIndex" | "formatLabel">,
+): number {
+  return (
+    Number(isFolderOnlyFormat(a.formatId)) - Number(isFolderOnlyFormat(b.formatId))
+    || a.clipIndex - b.clipIndex
+    || a.formatLabel.localeCompare(b.formatLabel)
+  );
+}
+
 export function mapPublishPlatformLabel(platform: string, formatId: string): string {
   if (platform === "youtube" && getMapPublishTargets(formatId).includes("tiktok")) {
     return "YouTube Shorts";
