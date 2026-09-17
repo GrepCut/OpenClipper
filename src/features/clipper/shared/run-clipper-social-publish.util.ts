@@ -9,7 +9,8 @@ import type { TikTokPostOptions } from "../../../services/types/social-auth.type
 import { youtubeAuthService } from "../../../services/youtube-auth.service";
 import { getPreciseVideoDuration } from "../lib/media/get-precise-video-duration.util";
 
-export type SocialPublishUploadPhase = "uploading" | "publishing";
+/** "preparing" is client-side only: reading the export off disk before upload. */
+export type SocialPublishUploadPhase = "preparing" | "uploading" | "publishing";
 
 export interface SocialPublishRunResult {
   jobId: string;

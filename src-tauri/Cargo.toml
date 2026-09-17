@@ -1,6 +1,6 @@
 [package]
 name = "open-clipper"
-version = "26.9.7"
+version = "26.9.8"
 description = "Open Clipper desktop app"
 authors = ["GrepCut"]
 license = "MIT"

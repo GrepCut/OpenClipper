@@ -16,6 +16,7 @@ import {
   areMapTargetsPublished,
   getMapPublishTargets,
   isPlatformPublished,
+  isPlatformPublishInFlight,
   mapPublishPlatformLabel,
   publishRecordForPlatform,
   succeededPublishesOutsideMapTargets,
@@ -26,6 +27,7 @@ interface ClipperPublishProjectExportRowProps {
   hasOwner: boolean;
   canPublish: boolean;
   publishLoadingExportId: string | null;
+  publishingKeys: ReadonlySet<string>;
   connections: Map<string, OwnerPublishConnectionResult>;
   thumbnail?: HTMLCanvasElement;
   onPublishExport: (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => void;
@@ -70,6 +72,7 @@ export function ClipperPublishProjectExportRow({
   hasOwner,
   canPublish,
   publishLoadingExportId,
+  publishingKeys,
   connections,
   thumbnail,
   onPublishExport,
@@ -146,18 +149,22 @@ export function ClipperPublishProjectExportRow({
               );
             }
 
-            const connection = connections.get(`${item.id}:${platform}`);
+            const publishKey = `${item.id}:${platform}`;
+            const connection = connections.get(publishKey);
             const channelConnected = connection?.connected ?? false;
+            const inFlight =
+              publishingKeys.has(publishKey) || isPlatformPublishInFlight(item, platform);
+            const opening = publishLoadingExportId === publishKey;
             return (
               <OutlinedActionButton
                 key={platform}
                 width="100%"
                 justifyContent="center"
-                loading={publishLoadingExportId === `${item.id}:${platform}`}
+                loading={inFlight || opening}
                 onClick={() => onPublishExport(item, platform)}
-                disabled={!hasOwner || !canPublish || !channelConnected}
+                disabled={!hasOwner || !canPublish || !channelConnected || inFlight || opening}
               >
-                Publish to {label}
+                {inFlight ? `Publishing to ${label}…` : `Publish to ${label}`}
               </OutlinedActionButton>
             );
           })}

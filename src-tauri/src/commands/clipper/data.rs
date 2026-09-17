@@ -7,7 +7,7 @@ use crate::clipper::data::{
 use crate::video::ffmpeg::studio_thumbnails::ExtractClipperStudioThumbnailsResult;
 use serde::Serialize;
 use std::fs;
-use tauri::ipc::{InvokeBody, Request};
+use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
@@ -287,6 +287,22 @@ pub fn get_clipper_export_file_path(
         return Err(format!("Export file not found: {file_name}"));
     }
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn read_clipper_export_file_bytes(
+    app: AppHandle,
+    project_id: String,
+    file_name: String,
+) -> Result<Response, String> {
+    let path = clipper_export_file_path(&app, &project_id, &file_name)?;
+    if !path.exists() {
+        return Err(format!("Export file not found: {file_name}"));
+    }
+    let bytes = tokio::task::spawn_blocking(move || fs::read(&path).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(Response::new(bytes))
 }
 
 #[tauri::command]

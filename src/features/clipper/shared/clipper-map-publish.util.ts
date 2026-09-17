@@ -63,6 +63,26 @@ export function isPlatformPublished(
   return publishRecordForPlatform(item, platform)?.status === "succeeded";
 }
 
+/**
+ * A pending record is a claim on this export: either written locally right
+ * before the upload starts, or left behind by a job the backend is still
+ * finishing. Nothing reconciles it if the app dies mid-upload, so it is only
+ * trusted while fresh — the backend expires its own abandoned jobs on the same
+ * timescale, and a click after that gets a clear 409 instead of a dead button.
+ */
+const PUBLISH_CLAIM_TTL_MS = 15 * 60 * 1_000;
+
+export function isPlatformPublishInFlight(
+  item: Pick<ClipperExportMapItem, "publishes">,
+  platform: string,
+  now = Date.now(),
+): boolean {
+  const record = publishRecordForPlatform(item, platform);
+  if (record?.status !== "pending") return false;
+  const claimedAt = Date.parse(record.updatedAt || record.createdAt);
+  return Number.isFinite(claimedAt) && now - claimedAt < PUBLISH_CLAIM_TTL_MS;
+}
+
 export function areMapTargetsPublished(
   item: Pick<ClipperExportMapItem, "formatId" | "publishes">,
 ): boolean {

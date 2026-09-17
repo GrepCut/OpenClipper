@@ -11,13 +11,11 @@ export function useClipperTikTokPublishForm({
   enabled,
   defaultConnected,
   connectionId,
-  resetAllowed,
 }: {
   isOpen: boolean;
   enabled: boolean;
   defaultConnected: boolean;
   connectionId: string | null;
-  resetAllowed: boolean;
 }) {
   const [tiktokCreator, setTikTokCreator] = useState<TikTokCreatorInfo | null>(null);
   const [tiktokPrivacy, setTikTokPrivacy] = useState<TikTokPrivacyLevel | "">("");
@@ -32,7 +30,7 @@ export function useClipperTikTokPublishForm({
   const [tiktokError, setTikTokError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !resetAllowed) return;
+    if (!isOpen) return;
     setTikTokPrivacy("");
     setAllowComment(false);
     setAllowDuet(false);
@@ -44,7 +42,7 @@ export function useClipperTikTokPublishForm({
     setMusicUsageConfirmed(false);
     setTikTokError(null);
     setTikTokCreator(null);
-  }, [isOpen, resetAllowed]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !enabled || !defaultConnected || !connectionId) return;

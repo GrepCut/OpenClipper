@@ -54,4 +54,6 @@ export interface ClipperSocialPublishDialogProps {
   publishPlatform?: SocialPublishablePlatform;
   onRequestConnect: (platform: SocialPublishablePlatform) => void;
   onPublishComplete?: (record: import("../persistence/clipper-export-db-api.util").ClipperExportPublishRecord) => void;
+  onPublishStart?: () => void;
+  onPublishError?: () => void;
 }

@@ -38,7 +38,8 @@ export interface YoutubePublishResponse {
 export interface YoutubePublishJobStatusResponse {
   id: string;
   status: YoutubePublishJobStatus;
-  youtubeVideoId: string | null;
+  youtubeVideoId?: string | null;
+  externalId?: string | null;
   watchUrl: string | null;
   error: string | null;
   title: string;

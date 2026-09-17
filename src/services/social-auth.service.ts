@@ -9,7 +9,6 @@ import type {
   PublishClipperToSocialParams,
   SocialDisconnectResponse,
   SocialOAuthFlow,
-  SocialPublishJobStatus,
   SocialPublishJobStatusResponse,
   SocialPublishResponse,
   SocialPublishablePlatform,
@@ -18,6 +17,8 @@ import type {
   SocialAllStatusResponse,
   TikTokCreatorInfo,
   PublishClipperToTikTokParams,
+  ClipperStagingInitResponse,
+  ClipperStagedPublishResponse,
 } from "./types/social-auth.types";
 
 export * from "./types/social-auth.types";
@@ -212,25 +213,27 @@ export const socialAuthService = {
   async publishClipperToTikTok(
     params: PublishClipperToTikTokParams,
   ): Promise<SocialPublishResponse> {
-    const staging = await apiClient.post<{
-      jobId: string;
-      partSize: number;
-      totalParts: number;
-    }>("/social/tiktok/clipper/staging", {
-      projectId: params.projectId,
-      exportId: params.exportId,
-      connectionId: params.connectionId,
-      clipIndex: params.clipIndex,
-      formatId: params.formatId,
-      fileName: params.video.name || "clip.mp4",
-      mimeType: params.video.type || "video/mp4",
-      fileSize: params.video.size,
-      options: params.options,
-    });
+    const staging = await apiClient.post<ClipperStagingInitResponse>(
+      "/social/tiktok/clipper/staging",
+      {
+        projectId: params.projectId,
+        exportId: params.exportId,
+        connectionId: params.connectionId,
+        clipIndex: params.clipIndex,
+        formatId: params.formatId,
+        fileName: params.video.name || "clip.mp4",
+        mimeType: params.video.type || "video/mp4",
+        fileSize: params.video.size,
+        options: params.options,
+      },
+    );
 
     const { jobId, partSize, totalParts } = staging.data;
+
     const parts: Array<{ partNumber: number; etag: string }> = [];
     let uploaded = 0;
+    // One part URL per request on purpose: each call is also the upload
+    // heartbeat that keeps the backend from expiring this job.
     for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
       const urls = await apiClient.post<Array<{ partNumber: number; url: string }>>(
         `/social/tiktok/clipper/staging/${jobId}/parts`,
@@ -255,13 +258,31 @@ export const socialAuthService = {
     }
 
     await apiClient.post(`/social/tiktok/clipper/staging/${jobId}/complete`, { parts });
+
     params.onUploadPhaseChange?.("publishing");
-    const init = await apiClient.post<{
-      jobId: string;
-      status: SocialPublishJobStatus;
-    }>(`/social/tiktok/clipper/publish/${jobId}`);
+    return this.finishTikTokPublish(jobId);
+  },
+
+  /** Idempotent on the backend: a repeated call reports the job it already owns. */
+  async finishTikTokPublish(jobId: string): Promise<SocialPublishResponse> {
+    const init = await apiClient.post<ClipperStagedPublishResponse>(
+      `/social/tiktok/clipper/publish/${jobId}`,
+    );
+    if (init.data.status === "published") {
+      return {
+        jobId: init.data.jobId,
+        status: "published",
+        watchUrl: init.data.watchUrl ?? undefined,
+        externalId: init.data.externalId ?? undefined,
+      };
+    }
     if (init.data.status !== "processing") {
-      return init.data;
+      return {
+        jobId: init.data.jobId,
+        status: init.data.status,
+        watchUrl: init.data.watchUrl ?? undefined,
+        externalId: init.data.externalId ?? undefined,
+      };
     }
 
     const polled = await this.pollUntilTerminal(init.data.jobId, {

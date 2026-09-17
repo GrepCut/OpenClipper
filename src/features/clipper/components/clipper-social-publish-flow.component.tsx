@@ -18,6 +18,8 @@ export function ClipperSocialPublishDialog({
   publishPlatform: requestedPlatform,
   onRequestConnect,
   onPublishComplete,
+  onPublishStart,
+  onPublishError,
 }: ClipperSocialPublishDialogProps) {
   const publish = useClipperSocialPublish({
     isOpen,
@@ -29,6 +31,8 @@ export function ClipperSocialPublishDialog({
     projectId,
     onRequestConnect,
     onPublishComplete,
+    onPublishStart,
+    onPublishError,
   });
 
   const showSuccess =

@@ -28,6 +28,7 @@ interface ClipperPublishProjectPanelProps {
   project: SelectedPublishProject | null;
   canPublish: boolean;
   publishLoadingExportId: string | null;
+  publishingKeys: ReadonlySet<string>;
   onPublishExport: (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => void;
   onSelectExport: (exportId: string) => void;
   connectedSplit?: boolean;
@@ -37,6 +38,7 @@ export function ClipperPublishProjectPanel({
   project,
   canPublish,
   publishLoadingExportId,
+  publishingKeys,
   onPublishExport,
   onSelectExport,
   connectedSplit = false,
@@ -180,6 +182,7 @@ export function ClipperPublishProjectPanel({
               hasOwner={hasOwner}
               canPublish={canPublish}
               publishLoadingExportId={publishLoadingExportId}
+              publishingKeys={publishingKeys}
               connections={exportConnections}
               thumbnail={thumbnails[item.id]}
               onPublishExport={onPublishExport}
