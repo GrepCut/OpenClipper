@@ -33,14 +33,18 @@ pub fn format_platform(format_id: &str) -> &'static str {
     }
 }
 
-pub fn publish_platform(format_id: &str) -> &'static str {
+/// Platforms the publish map can post to in-app. Empty means folder-only.
+pub fn map_in_app_publish_targets(format_id: &str) -> &'static [&'static str] {
     match format_id {
-        "youtube" | "youtube-shorts" => "youtube",
-        "instagram" | "instagram-portrait" | "vertical-reels" => "instagram",
-        "tiktok" | "vertical-short" => "tiktok",
-        "twitter" => "x",
-        _ => "unknown",
+        "vertical-short" | "tiktok" | "youtube-shorts" => &["tiktok", "youtube"],
+        "youtube" => &["youtube"],
+        _ => &[],
     }
+}
+
+/// MCP list/get/patch only see in-app publish formats (TikTok / YouTube).
+pub fn mcp_export_visible(format_id: &str) -> bool {
+    !map_in_app_publish_targets(format_id).is_empty()
 }
 
 pub fn format_label(format_id: &str) -> &'static str {
@@ -193,5 +197,30 @@ mod tests {
         let transcript = "[0:00] a\n[0:10] b\n[0:20] c";
         let result = apply_description_timestamps(body, transcript, 20.0);
         assert_eq!(result, "[0:00] wrong\n[0:20] also wrong");
+    }
+
+    #[test]
+    fn map_targets_split_tiktok_and_youtube_for_vertical_short() {
+        assert_eq!(
+            map_in_app_publish_targets("vertical-short"),
+            &["tiktok", "youtube"]
+        );
+        assert_eq!(map_in_app_publish_targets("youtube"), &["youtube"]);
+        assert!(map_in_app_publish_targets("vertical-reels").is_empty());
+        assert!(map_in_app_publish_targets("instagram-portrait").is_empty());
+        assert!(map_in_app_publish_targets("twitter").is_empty());
+    }
+
+    #[test]
+    fn mcp_export_visible_matches_in_app_publish_targets() {
+        assert!(mcp_export_visible("youtube"));
+        assert!(mcp_export_visible("tiktok"));
+        assert!(mcp_export_visible("vertical-short"));
+        assert!(mcp_export_visible("youtube-shorts"));
+        assert!(!mcp_export_visible("instagram"));
+        assert!(!mcp_export_visible("instagram-portrait"));
+        assert!(!mcp_export_visible("vertical-reels"));
+        assert!(!mcp_export_visible("twitter"));
+        assert!(!mcp_export_visible("unknown"));
     }
 }

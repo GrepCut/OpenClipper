@@ -1,28 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, HStack, Text, VStack } from "@chakra-ui/react";
-import { CheckCircle2, ExternalLink } from "lucide-react";
+import { Box, Text, VStack } from "@chakra-ui/react";
 import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
-import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { ThemedSelect } from "../../../shared/components/ui/themed-select.component";
 import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
-import { ClipperPublishMetadataIncompleteTag } from "./clipper-publish-metadata-incomplete-tag.component";
 import {
   buildAvailableOwnerChannels,
   resolvePublishConnectionsForOwner,
   type OwnerPublishConnectionResult,
 } from "../shared/clipper-owner-channels.util";
-import { getOwnerPublishBlockedMessage } from "../shared/resolve-owner-publish-connection.util";
+import { useClipperPublishExportThumbnails } from "../hooks/use-clipper-publish-export-thumbnails.hook";
+import { getMapPublishTargets, isFolderOnlyFormat } from "../shared/clipper-map-publish.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
-import {
-  getBadgePlatformsForFormat,
-  getClipperFormatDef,
-  getPublishTargetsForFormat,
-} from "../shared/formats.util";
-import { PLATFORM_LABELS } from "./clipper-social-publish-dialog.constants";
+import { ClipperPublishProjectExportRow } from "./clipper-publish-project-export-row.component";
 
 interface SelectedPublishProject {
   projectId: string;
@@ -39,10 +31,6 @@ interface ClipperPublishProjectPanelProps {
   onPublishExport: (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => void;
   onSelectExport: (exportId: string) => void;
   connectedSplit?: boolean;
-}
-
-function exportPublishTargets(item: ClipperExportMapItem): SocialPublishablePlatform[] {
-  return getPublishTargetsForFormat(item.formatId);
 }
 
 export function ClipperPublishProjectPanel({
@@ -86,16 +74,21 @@ export function ClipperPublishProjectPanel({
   const sortedExports = useMemo(() => {
     if (!project) return [];
     return [...project.exports].sort(
-      (a, b) => a.clipIndex - b.clipIndex || a.formatLabel.localeCompare(b.formatLabel),
+      (a, b) =>
+        a.clipIndex - b.clipIndex ||
+        Number(isFolderOnlyFormat(a.formatId)) - Number(isFolderOnlyFormat(b.formatId)) ||
+        a.formatLabel.localeCompare(b.formatLabel),
     );
   }, [project]);
+
+  const { thumbnails } = useClipperPublishExportThumbnails(sortedExports);
 
   const exportConnections = useMemo(() => {
     const map = new Map<string, OwnerPublishConnectionResult>();
     if (!project?.clipperOwnerId) return map;
 
     for (const item of project.exports) {
-      for (const platform of exportPublishTargets(item)) {
+      for (const platform of getMapPublishTargets(item.formatId)) {
         map.set(
           `${item.id}:${platform}`,
           resolvePublishConnectionsForOwner({
@@ -180,118 +173,25 @@ export function ClipperPublishProjectPanel({
         <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
           Publish
         </Text>
-        {sortedExports.map((item) => {
-          const formatDef = getClipperFormatDef(item.formatId);
-          const badgePlatforms = getBadgePlatformsForFormat(item.formatId);
-          const targets = exportPublishTargets(item);
-          const watchUrl = item.publishStatus?.watchUrl;
-          const showMetadataWarning = !item.isPublished && item.missingFields.length > 0;
-          const blockedHints = targets
-            .map((platform) => {
-              const connection = exportConnections.get(`${item.id}:${platform}`);
-              if (!hasOwner || !connection) return null;
-              return getOwnerPublishBlockedMessage(platform, connection);
-            })
-            .filter((hint): hint is string => Boolean(hint));
-
-          return (
-            <VStack
+        {sortedExports.length === 0 ? (
+          <Text fontSize="xs" color={theme.text.muted} lineHeight="1.5">
+            No exports for this project yet.
+          </Text>
+        ) : (
+          sortedExports.map((item) => (
+            <ClipperPublishProjectExportRow
               key={item.id}
-              align="stretch"
-              gap={2.5}
-              borderRadius="xl"
-              border="1px solid"
-              borderColor={theme.surface.hover}
-              bg={theme.surface.faint}
-              px={3.5}
-              py={3}
-            >
-              <HStack align="center" gap={3}>
-                {formatDef ? (
-                  <Box
-                    flexShrink={0}
-                    minW="40px"
-                    h="40px"
-                    borderRadius="lg"
-                    bg={theme.background.surface}
-                    border="1px solid"
-                    borderColor={theme.surface.hover}
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    gap={0.5}
-                    px={1}
-                  >
-                    {(badgePlatforms.length > 0 ? badgePlatforms : [formatDef.platform]).map(
-                      (platform) => (
-                        <ClipperPlatformIcon key={platform} platform={platform} size={18} />
-                      ),
-                    )}
-                  </Box>
-                ) : null}
-                <VStack align="start" gap={0.5} flex={1} minW={0}>
-                  <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={1}>
-                    {item.formatLabel}
-                  </Text>
-                  <Text fontSize="xs" color={theme.text.muted}>
-                    Clip {item.clipIndex + 1}
-                  </Text>
-                </VStack>
-                {item.isPublished ? (
-                  <HStack gap={2} flexShrink={0}>
-                    <CheckCircle2 size={16} color="#22c55e" />
-                    {watchUrl ? (
-                      <Box asChild>
-                        <a href={watchUrl} target="_blank" rel="noopener noreferrer">
-                          <OutlinedActionButton size="sm" startIcon={<ExternalLink size={14} />}>
-                            Open
-                          </OutlinedActionButton>
-                        </a>
-                      </Box>
-                    ) : (
-                      <Text fontSize="xs" color={theme.text.muted}>
-                        Published
-                      </Text>
-                    )}
-                  </HStack>
-                ) : null}
-              </HStack>
-
-              {!item.isPublished ? (
-                <VStack align="stretch" gap={2}>
-                  {targets.map((platform) => {
-                    const connection = exportConnections.get(`${item.id}:${platform}`);
-                    const channelConnected = connection?.connected ?? false;
-                    return (
-                      <OutlinedActionButton
-                        key={platform}
-                        width="100%"
-                        justifyContent="center"
-                        loading={publishLoadingExportId === `${item.id}:${platform}`}
-                        onClick={() => onPublishExport(item, platform)}
-                        disabled={!hasOwner || !canPublish || !channelConnected}
-                      >
-                        Publish to {PLATFORM_LABELS[platform]}
-                      </OutlinedActionButton>
-                    );
-                  })}
-                </VStack>
-              ) : null}
-
-              {showMetadataWarning ? (
-                <ClipperPublishMetadataIncompleteTag
-                  onClick={() => onSelectExport(item.id)}
-                />
-              ) : null}
-
-              {!item.isPublished && blockedHints.length > 0 ? (
-                <Text fontSize="xs" color={theme.text.muted} lineHeight="1.5" px={0.5}>
-                  {blockedHints[0]}
-                </Text>
-              ) : null}
-            </VStack>
-          );
-        })}
+              item={item}
+              hasOwner={hasOwner}
+              canPublish={canPublish}
+              publishLoadingExportId={publishLoadingExportId}
+              connections={exportConnections}
+              thumbnail={thumbnails[item.id]}
+              onPublishExport={onPublishExport}
+              onSelectExport={onSelectExport}
+            />
+          ))
+        )}
       </VStack>
     </VStack>
   );

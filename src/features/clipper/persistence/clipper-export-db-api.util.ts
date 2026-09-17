@@ -131,8 +131,8 @@ export interface ClipperExportMapItem {
   updatedAt: string;
   missingFields: string[];
   hasTranscript: boolean;
-  publishStatus?: ClipperExportPublishRecord;
-  isPublished: boolean;
+  /** Latest publish record per platform. */
+  publishes: ClipperExportPublishRecord[];
 }
 
 export interface ClipperExportPublishUpsertInput {

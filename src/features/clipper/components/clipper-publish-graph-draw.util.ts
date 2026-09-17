@@ -1,7 +1,4 @@
-import {
-  getExportNodeStatus,
-  type ExportNodeStatus,
-} from "../persistence/clipper-export-social.util";
+import type { ExportNodeStatus } from "../persistence/clipper-export-social.util";
 import type { PublishGraphNode } from "../shared/clipper-publish-graph.util";
 import { PROJECT_THUMB_MAX_DIMENSION } from "../shared/clipper-publish-graph.util";
 
@@ -9,6 +6,7 @@ const STATUS_DOT_COLORS: Record<ExportNodeStatus, string> = {
   incomplete: "#ef4444",
   ready: "#eab308",
   published: "#22c55e",
+  manual: "#94a3b8",
 };
 
 const PROJECT_LABEL_GAP = 5;
@@ -293,9 +291,7 @@ export function drawExportNode(
     }
   }
 
-  const status = node.exportItem
-    ? getExportNodeStatus(node.exportItem)
-    : "incomplete";
+  const status = node.exportStatus ?? "incomplete";
   const bx = (node.x ?? 0) + radius - 4 / globalScale;
   const by = (node.y ?? 0) + radius - 4 / globalScale;
   drawStatusDot(

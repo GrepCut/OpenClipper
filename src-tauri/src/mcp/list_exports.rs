@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::storage::export_social_util::mcp_export_visible;
 use crate::storage::repository::export_map_repository::ClipperExportMapItem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -120,6 +121,7 @@ pub fn list_exports_response(
 ) -> McpExportListResponse {
     let mut filtered: Vec<ClipperExportMapItem> = items
         .into_iter()
+        .filter(|item| mcp_export_visible(&item.format_id))
         .filter(|item| {
             let status = export_status(item);
             matches_status_filter(status, params.status)
@@ -160,6 +162,7 @@ mod tests {
 
     fn sample_item(
         id: &str,
+        format_id: &str,
         exported_at: &str,
         title: &str,
         is_published: bool,
@@ -182,9 +185,9 @@ mod tests {
             clipper_owner_id: None,
             clipper_owner_name: None,
             clip_index: 0,
-            format_id: "youtube".to_string(),
-            platform: "youtube".to_string(),
-            format_label: "YouTube".to_string(),
+            format_id: format_id.to_string(),
+            platform: format_id.to_string(),
+            format_label: format_id.to_string(),
             file_name: "clip.mp4".to_string(),
             relative_path: "clip.mp4".to_string(),
             width: 1920,
@@ -204,22 +207,22 @@ mod tests {
             updated_at: exported_at.to_string(),
             missing_fields,
             has_transcript: !transcript.is_empty(),
-            publish_status: None,
+            publishes: vec![],
             is_published,
         }
     }
 
     #[test]
     fn export_status_reflects_publish_and_metadata_state() {
-        let incomplete = sample_item("a", "2026-01-01T00:00:00Z", "", false, "[0:00] hi");
+        let incomplete = sample_item("a", "youtube", "2026-01-01T00:00:00Z", "", false, "[0:00] hi");
         assert_eq!(export_status(&incomplete), McpExportStatus::Incomplete);
 
-        let ready = sample_item("b", "2026-01-02T00:00:00Z", "title", false, "[0:00] hi");
+        let ready = sample_item("b", "youtube", "2026-01-02T00:00:00Z", "title", false, "[0:00] hi");
         let mut ready = ready;
         ready.missing_fields.clear();
         assert_eq!(export_status(&ready), McpExportStatus::Ready);
 
-        let published = sample_item("c", "2026-01-03T00:00:00Z", "title", true, "[0:00] hi");
+        let published = sample_item("c", "youtube", "2026-01-03T00:00:00Z", "title", true, "[0:00] hi");
         let mut published = published;
         published.missing_fields.clear();
         assert_eq!(export_status(&published), McpExportStatus::Published);
@@ -228,10 +231,10 @@ mod tests {
     #[test]
     fn list_exports_defaults_filter_incomplete_with_transcript_and_newest_sort() {
         let items = vec![
-            sample_item("old", "2026-01-01T00:00:00Z", "", false, "[0:00] a"),
-            sample_item("new", "2026-01-03T00:00:00Z", "", false, "[0:00] b"),
-            sample_item("no-transcript", "2026-01-04T00:00:00Z", "", false, ""),
-            sample_item("ready", "2026-01-05T00:00:00Z", "title", false, "[0:00] c"),
+            sample_item("old", "youtube", "2026-01-01T00:00:00Z", "", false, "[0:00] a"),
+            sample_item("new", "youtube", "2026-01-03T00:00:00Z", "", false, "[0:00] b"),
+            sample_item("no-transcript", "youtube", "2026-01-04T00:00:00Z", "", false, ""),
+            sample_item("ready", "youtube", "2026-01-05T00:00:00Z", "title", false, "[0:00] c"),
         ];
         let mut ready = items[3].clone();
         ready.missing_fields.clear();
@@ -266,9 +269,9 @@ mod tests {
     #[test]
     fn list_exports_supports_pagination_and_status_filter() {
         let items = vec![
-            sample_item("one", "2026-01-01T00:00:00Z", "", false, "[0:00] a"),
-            sample_item("two", "2026-01-02T00:00:00Z", "", false, "[0:00] b"),
-            sample_item("three", "2026-01-03T00:00:00Z", "", false, "[0:00] c"),
+            sample_item("one", "youtube", "2026-01-01T00:00:00Z", "", false, "[0:00] a"),
+            sample_item("two", "youtube", "2026-01-02T00:00:00Z", "", false, "[0:00] b"),
+            sample_item("three", "youtube", "2026-01-03T00:00:00Z", "", false, "[0:00] c"),
         ];
 
         let params = ListExportsParams {
@@ -284,5 +287,33 @@ mod tests {
         assert_eq!(response.total, 3);
         assert_eq!(response.items.len(), 1);
         assert_eq!(response.items[0].export_id, "two");
+    }
+
+    #[test]
+    fn list_exports_omits_folder_only_formats_before_pagination() {
+        let items = vec![
+            sample_item("yt", "youtube", "2026-01-08T00:00:00Z", "", false, "[0:00] a"),
+            sample_item("tt", "tiktok", "2026-01-07T00:00:00Z", "", false, "[0:00] b"),
+            sample_item("vs", "vertical-short", "2026-01-06T00:00:00Z", "", false, "[0:00] c"),
+            sample_item("ys", "youtube-shorts", "2026-01-05T00:00:00Z", "", false, "[0:00] d"),
+            sample_item("ig", "instagram", "2026-01-09T00:00:00Z", "", false, "[0:00] e"),
+            sample_item("igp", "instagram-portrait", "2026-01-10T00:00:00Z", "", false, "[0:00] f"),
+            sample_item("reels", "vertical-reels", "2026-01-11T00:00:00Z", "", false, "[0:00] g"),
+            sample_item("x", "twitter", "2026-01-12T00:00:00Z", "", false, "[0:00] h"),
+        ];
+
+        let params = ListExportsParams {
+            project_id: None,
+            status: McpExportStatusFilter::Incomplete,
+            has_transcript: true,
+            skip: 0,
+            rows: 20,
+            sort: McpExportSort::Newest,
+        };
+
+        let response = list_exports_response(items, &params);
+        let ids: Vec<&str> = response.items.iter().map(|item| item.export_id.as_str()).collect();
+        assert_eq!(response.total, 4);
+        assert_eq!(ids, vec!["yt", "tt", "vs", "ys"]);
     }
 }

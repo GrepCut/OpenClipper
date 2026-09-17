@@ -21,6 +21,7 @@ use crate::mcp::ai_clips::{
 };
 use crate::mcp::helpers::format_platform;
 use crate::mcp::list_exports::{list_exports_response, ListExportsParams};
+use crate::storage::export_social_util::mcp_export_visible;
 use crate::storage::repository::export_map_repository::ExportMapRepository;
 use crate::storage::repository::export_repository::{
     ClipperExportRecord, ClipperExportSocialPatch, ExportRepository, SocialPatchMode,
@@ -143,6 +144,16 @@ fn patch_mode_from_mcp(mode: McpPatchMode) -> SocialPatchMode {
     }
 }
 
+fn mcp_export_or_not_found(
+    record: Option<ClipperExportRecord>,
+    export_id: &str,
+) -> Result<ClipperExportRecord, String> {
+    match record {
+        Some(record) if mcp_export_visible(&record.format_id) => Ok(record),
+        _ => Err(format!("Export not found: {export_id}")),
+    }
+}
+
 #[tool_router]
 impl OpenClipperMcpServer {
     #[tool(
@@ -169,8 +180,8 @@ impl OpenClipperMcpServer {
     ) -> Result<String, String> {
         let record = ExportRepository::get_by_id(self.database.as_ref(), &params.export_id)
             .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Export not found: {}", params.export_id))?;
+            .map_err(|e| e.to_string())?;
+        let record = mcp_export_or_not_found(record, &params.export_id)?;
         serde_json::to_string_pretty(&export_details(&record)).map_err(|e| e.to_string())
     }
 
@@ -181,6 +192,11 @@ impl OpenClipperMcpServer {
         &self,
         Parameters(params): Parameters<PatchExportSocialParams>,
     ) -> Result<String, String> {
+        let existing = ExportRepository::get_by_id(self.database.as_ref(), &params.export_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        mcp_export_or_not_found(existing, &params.export_id)?;
+
         let patch = ClipperExportSocialPatch {
             social_title: params.title,
             social_short_description: None,
@@ -384,5 +400,38 @@ mod tests {
         assert!(!obj.contains_key("transcriptTimestamped"));
         assert!(!obj.contains_key("fileName"));
         assert!(!obj.contains_key("relativePath"));
+    }
+
+    #[test]
+    fn mcp_export_or_not_found_allows_in_app_formats() {
+        let youtube = mcp_export_or_not_found(Some(sample_record()), "export-1");
+        assert!(youtube.is_ok());
+
+        let mut tiktok = sample_record();
+        tiktok.id = "export-tt".to_string();
+        tiktok.format_id = "tiktok".to_string();
+        assert!(mcp_export_or_not_found(Some(tiktok), "export-tt").is_ok());
+    }
+
+    #[test]
+    fn mcp_export_or_not_found_hides_folder_only_and_missing() {
+        assert_eq!(
+            mcp_export_or_not_found(None, "missing-id").unwrap_err(),
+            "Export not found: missing-id"
+        );
+
+        for format_id in [
+            "instagram",
+            "instagram-portrait",
+            "vertical-reels",
+            "twitter",
+        ] {
+            let mut record = sample_record();
+            record.format_id = format_id.to_string();
+            assert_eq!(
+                mcp_export_or_not_found(Some(record), "export-1").unwrap_err(),
+                "Export not found: export-1"
+            );
+        }
     }
 }

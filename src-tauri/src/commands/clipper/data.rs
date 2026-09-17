@@ -328,3 +328,20 @@ pub fn open_clipper_project_exports_dir(
         .map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
 }
+
+#[tauri::command]
+pub fn reveal_clipper_export_in_folder(
+    app: AppHandle,
+    project_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    let path = clipper_export_file_path(&app, &project_id, &file_name)?;
+    if !path.exists() {
+        return Err(format!("Export file not found: {file_name}"));
+    }
+
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}

@@ -14,7 +14,6 @@ import { resumeStepsForStage } from "../shared/loading-status.util";
 import { isClipperActivelyRendering } from "../shared/stages.util";
 import { useClipperPipeline } from "./use-clipper-pipeline.hook";
 import { useClipperRenderQueue } from "./use-clipper-render-queue.hook";
-import { useClipperSessionPublish } from "./use-clipper-session-publish.hook";
 
 export function useClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
   const auth = useAuth();
@@ -88,11 +87,6 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     view,
     setView,
     renderExports,
-  });
-
-  const publish = useClipperSessionPublish({
-    projectId: project.id,
-    canUseAccountFeatures,
   });
 
   const handleFile = useCallback(
@@ -185,6 +179,5 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     resumeLoadingStatus,
     canUseAccountFeatures,
     renderQueue,
-    publish,
   };
 }

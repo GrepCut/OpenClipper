@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { Box, Center, HStack, Text, VStack } from "@chakra-ui/react";
-import { CheckCircle2, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SlideToDeleteControl } from "../../../shared/components/slide-to-delete-control.component";
 import { AppLoader } from "../../../shared/components/app-loader.component";
@@ -12,7 +12,10 @@ import type { ClipperFormatResult } from "../shared/state.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 import { ClipperExportMetadataPanel } from "./clipper-export-metadata-panel.component";
+import { ClipperExportRevealButton } from "./clipper-export-reveal-button.component";
+import { ClipperPublishDetailStatus } from "./clipper-publish-detail-status.component";
 import { getBadgePlatformsForFormat, getClipperFormatDef } from "../shared/formats.util";
+import { isFolderOnlyFormat } from "../shared/clipper-map-publish.util";
 
 interface ClipperPublishDetailPanelProps {
   item: ClipperExportMapItem | null;
@@ -20,6 +23,7 @@ interface ClipperPublishDetailPanelProps {
   mediaLoading: boolean;
   onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
   onDeleted: () => void;
+  onBack: () => void;
   connectedSplit?: boolean;
 }
 
@@ -29,6 +33,7 @@ export function ClipperPublishDetailPanel({
   mediaLoading,
   onMetadataSaved,
   onDeleted,
+  onBack,
   connectedSplit = false,
 }: ClipperPublishDetailPanelProps) {
   const { theme } = useClipperUi();
@@ -81,7 +86,7 @@ export function ClipperPublishDetailPanel({
 
   const formatDef = getClipperFormatDef(item.formatId);
   const badgePlatforms = getBadgePlatformsForFormat(item.formatId);
-  const watchUrl = item.publishStatus?.watchUrl;
+  const metadataReadOnly = isFolderOnlyFormat(item.formatId);
 
   return (
     <VStack
@@ -97,82 +102,94 @@ export function ClipperPublishDetailPanel({
       overflow="auto"
     >
       <HStack justify="space-between" align="start" gap={3}>
-        <VStack align="start" gap={1} flex={1}>
-          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-            {item.projectName}
-          </Text>
-          <Text fontSize="xs" color={theme.text.muted}>
-            Clip {item.clipIndex + 1} · {item.formatLabel}
-          </Text>
-        </VStack>
-        {formatDef ? (
-          <HStack gap={1} flexShrink={0}>
-            {(badgePlatforms.length > 0 ? badgePlatforms : [formatDef.platform]).map((platform) => (
-              <ClipperPlatformIcon key={platform} platform={platform} size={28} />
-            ))}
-          </HStack>
-        ) : null}
+        <HStack align="start" gap={2.5} flex={1} minW={0}>
+          {formatDef ? (
+            <HStack gap={1} flexShrink={0} pt={0.5}>
+              {(badgePlatforms.length > 0 ? badgePlatforms : [formatDef.platform]).map((platform) => (
+                <ClipperPlatformIcon key={platform} platform={platform} size={28} />
+              ))}
+            </HStack>
+          ) : null}
+          <VStack align="start" gap={1} flex={1} minW={0}>
+            <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary} lineClamp={2}>
+              {item.projectName}
+            </Text>
+            <Text fontSize="xs" color={theme.text.muted}>
+              Clip {item.clipIndex + 1}
+              {!formatDef ? ` · ${item.formatLabel}` : null}
+            </Text>
+          </VStack>
+        </HStack>
+        <OutlinedActionButton
+          flexShrink={0}
+          aria-label="Back to project"
+          startIcon={<ArrowLeft size={16} />}
+          onClick={onBack}
+          px={2.5}
+        >
+          Back
+        </OutlinedActionButton>
       </HStack>
 
-      {item.isPublished ? (
-        <HStack
-          gap={2}
-          p={3}
-          borderRadius="xl"
-          bg="rgba(34, 197, 94, 0.12)"
-          border="1px solid"
-          borderColor="rgba(34, 197, 94, 0.35)"
-        >
-          <CheckCircle2 size={18} color="#22c55e" />
-          <Text fontSize="sm" color={theme.text.primary} flex={1}>
-            Published to {item.formatLabel}
-          </Text>
-          {watchUrl ? (
-            <Box asChild>
-              <a href={watchUrl} target="_blank" rel="noopener noreferrer">
-                <OutlinedActionButton
-                  size="sm"
-                  startIcon={<ExternalLink size={14} />}
-                >
-                  Open
-                </OutlinedActionButton>
-              </a>
-            </Box>
-          ) : null}
-        </HStack>
-      ) : null}
+      <ClipperExportRevealButton
+        projectId={item.projectId}
+        fileName={item.fileName}
+        disabled={!mediaLoading && result.isMissing}
+      />
 
-      <Box
-        borderRadius="xl"
-        overflow="hidden"
-        bg={theme.background.surface}
-        border="1px solid"
-        borderColor={theme.surface.hover}
-        minH="180px"
-      >
-        {mediaLoading ? (
-          <Center minH="180px">
-            <AppLoader />
-          </Center>
-        ) : result.isMissing ? (
-          <Center minH="180px" px={4}>
-            <Text fontSize="sm" color={theme.text.muted} textAlign="center">
-              Export file not found on disk.
-            </Text>
-          </Center>
-        ) : (
-          <video
-            src={result.previewUrl}
-            controls
-            style={{ width: "100%", display: "block", maxHeight: "280px" }}
-          />
-        )}
-      </Box>
+      <ClipperPublishDetailStatus item={item} />
+
+      {mediaLoading ? (
+        <Center
+          flexShrink={0}
+          minH="180px"
+          w="100%"
+          borderRadius="xl"
+          border="1px solid"
+          borderColor={theme.surface.hover}
+          bg="#000"
+        >
+          <AppLoader />
+        </Center>
+      ) : result.isMissing ? (
+        <Center
+          flexShrink={0}
+          minH="180px"
+          w="100%"
+          px={4}
+          borderRadius="xl"
+          border="1px solid"
+          borderColor={theme.surface.hover}
+          bg="#000"
+        >
+          <Text fontSize="sm" color={theme.text.muted} textAlign="center">
+            Export file not found on disk.
+          </Text>
+        </Center>
+      ) : (
+        <Box
+          asChild
+          flexShrink={0}
+          alignSelf="center"
+          maxH="50%"
+          maxW="100%"
+          w="auto"
+          h="auto"
+          display="block"
+          bg="#000"
+          borderRadius="xl"
+          border="1px solid"
+          borderColor={theme.surface.hover}
+          objectFit="contain"
+        >
+          <video src={result.previewUrl} controls playsInline preload="metadata" />
+        </Box>
+      )}
 
       <ClipperExportMetadataPanel
         result={result}
         onMetadataSaved={handleMetadataSaved}
-        variant="inline"
+        readOnly={metadataReadOnly}
       />
 
       <VStack

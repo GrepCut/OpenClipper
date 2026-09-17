@@ -34,6 +34,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::data::get_clipper_export_file_path,
             crate::commands::clipper::data::stat_clipper_export_file,
             crate::commands::clipper::data::open_clipper_project_exports_dir,
+            crate::commands::clipper::data::reveal_clipper_export_in_folder,
             crate::commands::clipper::exports::clipper_export_upsert,
             crate::commands::clipper::exports::clipper_exports_list,
             crate::commands::clipper::exports::clipper_exports_list_all,

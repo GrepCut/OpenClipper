@@ -249,6 +249,11 @@ export function ClipperPublishView() {
     selectNode(null);
   }, [selectNode]);
 
+  const handleBackToProject = useCallback(() => {
+    if (!selectedItem) return;
+    selectNode(`project:${selectedItem.projectId}`, "project");
+  }, [selectNode, selectedItem]);
+
   return (
     <VStack align="stretch" gap={6} flex="1" minH={0}>
       <HStack justify="space-between" align="center" flexWrap="wrap" gap={3} flexShrink={0}>
@@ -318,6 +323,7 @@ export function ClipperPublishView() {
                 mediaLoading={mediaLoading}
                 onMetadataSaved={handleMetadataSaved}
                 onDeleted={handleExportDeleted}
+                onBack={handleBackToProject}
                 connectedSplit
               />
             ) : selection.kind === "owner" ? (

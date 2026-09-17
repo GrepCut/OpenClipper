@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use sea_orm::DatabaseConnection;
 
 use crate::infra::error::DbResult;
-use crate::storage::export_social_util::{format_label, format_platform, missing_social_fields, publish_platform};
+use crate::storage::export_social_util::{
+    format_label, format_platform, map_in_app_publish_targets, missing_social_fields,
+};
 use crate::storage::repository::export_publish_repository::{
     ClipperExportPublishRecord, ExportPublishRepository,
 };
@@ -42,7 +44,8 @@ pub struct ClipperExportMapItem {
     pub updated_at: String,
     pub missing_fields: Vec<String>,
     pub has_transcript: bool,
-    pub publish_status: Option<ClipperExportPublishRecord>,
+    /// Latest publish record per platform.
+    pub publishes: Vec<ClipperExportPublishRecord>,
     pub is_published: bool,
 }
 
@@ -71,24 +74,21 @@ impl ExportMapRepository {
                 log::warn!("export map: publish status lookup failed: {error}");
                 vec![]
             });
-        let publish_by_export_platform: HashMap<(String, String), ClipperExportPublishRecord> =
-            publish_rows
-                .into_iter()
-                .map(|row| ((row.export_id.clone(), row.platform.clone()), row))
-                .collect();
+        let mut publishes_by_export: HashMap<String, Vec<ClipperExportPublishRecord>> =
+            HashMap::new();
+        for row in publish_rows {
+            publishes_by_export
+                .entry(row.export_id.clone())
+                .or_default()
+                .push(row);
+        }
 
         Ok(exports
             .into_iter()
             .map(|record| {
                 let platform = format_platform(&record.format_id).to_string();
-                let publish_platform_key = publish_platform(&record.format_id).to_string();
-                let publish_status = publish_by_export_platform
-                    .get(&(record.id.clone(), publish_platform_key.clone()))
-                    .cloned();
-                let is_published = publish_status
-                    .as_ref()
-                    .map(|row| row.status == "succeeded")
-                    .unwrap_or(false);
+                let publishes = publishes_by_export.remove(&record.id).unwrap_or_default();
+                let is_published = export_is_map_published(&record.format_id, &publishes);
                 let project_name = project_names
                     .get(&record.project_id)
                     .cloned()
@@ -131,10 +131,20 @@ impl ExportMapRepository {
                     updated_at: record.updated_at,
                     missing_fields,
                     has_transcript,
-                    publish_status,
+                    publishes,
                     is_published,
                 }
             })
             .collect())
     }
+}
+
+fn export_is_map_published(format_id: &str, publishes: &[ClipperExportPublishRecord]) -> bool {
+    let targets = map_in_app_publish_targets(format_id);
+    !targets.is_empty()
+        && targets.iter().all(|platform| {
+            publishes
+                .iter()
+                .any(|row| row.platform == *platform && row.status == "succeeded")
+        })
 }

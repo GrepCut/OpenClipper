@@ -1,42 +1,28 @@
 import React from "react";
 import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/react";
-import { AlertTriangle, FolderOpen, RotateCcw } from "lucide-react";
-import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
-import type { SocialPublishablePlatform } from "../../../services/types/social-auth.types";
+import { AlertTriangle } from "lucide-react";
 import {
   CLIPPER_FORMAT_DEFS,
   getBadgePlatformsForFormat,
   getClipperCardFrameSize,
-  getPublishTargetsForFormat,
 } from "../shared/formats.util";
+import { resolveClipperExportFileName } from "../persistence/resolve-export-upload-file.util";
 import { formatBytes } from "../shared/logger.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
-import type { ExportSocialFields } from "../persistence/clipper-export-social.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
-import { ClipperExportMetadataPanel } from "./clipper-export-metadata-panel.component";
-import { PLATFORM_LABELS } from "./clipper-social-publish-dialog.constants";
-
-export type ClipperPublishTarget = SocialPublishablePlatform;
+import { ClipperExportRevealButton } from "./clipper-export-reveal-button.component";
 
 const THUMB_HEIGHT = 144;
 const PLATFORM_ICON_SIZE = 28;
 const PREVIEW_COLUMN_WIDTH = Math.max(
   ...CLIPPER_FORMAT_DEFS.map((def) => getClipperCardFrameSize(def.id, THUMB_HEIGHT).width),
 );
-/** Wide enough for the publishing action labels at sm + 16px icon without clipping. */
-const ACTIONS_COLUMN_WIDTH = 232;
+const ACTIONS_COLUMN_WIDTH = 180;
 
 interface ClipperExportFormatRowProps {
   result: ClipperFormatResult;
-  isRerendering: boolean;
-  showRerender?: boolean;
-  showMetadata?: boolean;
-  showActions?: boolean;
-  onOpenFolder?: () => void;
-  onPublish?: (result: ClipperFormatResult, target: ClipperPublishTarget) => void;
-  onRerender: (formatId: string, clipIndex: number) => void;
-  onMetadataSaved?: (exportId: string, fields: ExportSocialFields) => void;
+  projectId: string;
 }
 
 function formatExportedAt(exportedAt: string): string {
@@ -45,26 +31,9 @@ function formatExportedAt(exportedAt: string): string {
   return date.toLocaleString();
 }
 
-function PublishTargetIcon({ target }: { target: SocialPublishablePlatform }) {
-  if (target === "facebook") return <ClipperPlatformIcon platform="facebook" size={16} />;
-  if (target === "x") return <ClipperPlatformIcon platform="twitter" size={16} />;
-  if (target === "threads") return <ClipperPlatformIcon platform="threads" size={16} />;
-  if (target === "youtube") return <ClipperPlatformIcon platform="youtube" size={16} />;
-  if (target === "instagram") return <ClipperPlatformIcon platform="instagram" size={16} />;
-  if (target === "tiktok") return <ClipperPlatformIcon platform="tiktok" size={16} />;
-  return <ClipperPlatformIcon platform="youtube" size={16} />;
-}
-
 export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
   result,
-  isRerendering,
-  showRerender = false,
-  showMetadata = false,
-  showActions = false,
-  onOpenFolder,
-  onPublish,
-  onRerender,
-  onMetadataSaved,
+  projectId,
 }) => {
   const { theme } = useClipperUi();
   const frame = getClipperCardFrameSize(result.formatId, THUMB_HEIGHT);
@@ -72,7 +41,6 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
   const exportedAtLabel = formatExportedAt(result.exportedAt);
   const clipLabel = `Clip ${result.clipIndex + 1}`;
   const badgePlatforms = getBadgePlatformsForFormat(result.formatId);
-  const publishTargets = getPublishTargetsForFormat(result.formatId);
 
   return (
     <HStack
@@ -175,56 +143,21 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
             ) : null}
           </VStack>
         </HStack>
-        {showMetadata && onMetadataSaved ? (
-          <ClipperExportMetadataPanel result={result} onMetadataSaved={onMetadataSaved} />
-        ) : null}
       </VStack>
 
-      {showActions ? (
-        <VStack
-          align="stretch"
-          gap={2}
-          flexShrink={0}
-          w={{ base: "full", lg: `${ACTIONS_COLUMN_WIDTH}px` }}
-          minW={{ lg: `${ACTIONS_COLUMN_WIDTH}px` }}
-        >
-          <OutlinedActionButton
-            width="100%"
-            justifyContent="center"
-            whiteSpace="nowrap"
-            startIcon={<FolderOpen size={16} />}
-            onClick={onOpenFolder}
-            disabled={isMissing}
-          >
-            Open folder
-          </OutlinedActionButton>
-          {publishTargets.map((target) => (
-            <OutlinedActionButton
-              key={target}
-              width="100%"
-              justifyContent="center"
-              whiteSpace="nowrap"
-              startIcon={<PublishTargetIcon target={target} />}
-              onClick={() => onPublish?.(result, target)}
-              disabled={isMissing}
-            >
-              Publish to {PLATFORM_LABELS[target]}
-            </OutlinedActionButton>
-          ))}
-          {showRerender ? (
-            <OutlinedActionButton
-              width="100%"
-              justifyContent="center"
-              startIcon={<RotateCcw size={16} />}
-              loading={isRerendering}
-              onClick={() => onRerender(result.formatId, result.clipIndex)}
-              disabled={isMissing}
-            >
-              Re-render
-            </OutlinedActionButton>
-          ) : null}
-        </VStack>
-      ) : null}
+      <VStack
+        align="stretch"
+        gap={2}
+        flexShrink={0}
+        w={{ base: "full", lg: `${ACTIONS_COLUMN_WIDTH}px` }}
+        minW={{ lg: `${ACTIONS_COLUMN_WIDTH}px` }}
+      >
+        <ClipperExportRevealButton
+          projectId={projectId}
+          fileName={resolveClipperExportFileName(result)}
+          disabled={isMissing}
+        />
+      </VStack>
     </HStack>
   );
 };

@@ -26,6 +26,7 @@ interface ClipperRenderQueueProps {
   results: ClipperFormatResult[];
   isRendering: boolean;
   sourceFileName: string | null;
+  projectId: string;
   onOpenFolder: () => void;
 }
 
@@ -45,6 +46,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
   results,
   isRendering,
   sourceFileName,
+  projectId,
   onOpenFolder,
 }) => {
   const { theme } = useClipperUi();
@@ -88,12 +90,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
     : `${completedExports.length} export${completedExports.length !== 1 ? "s" : ""} from this batch, saved to your project exports folder.`;
 
   const renderCompletedExportRow = (result: ClipperFormatResult) => (
-    <ClipperExportFormatRow
-      key={result.id}
-      result={result}
-      isRerendering={false}
-      onRerender={() => {}}
-    />
+    <ClipperExportFormatRow key={result.id} result={result} projectId={projectId} />
   );
 
   const renderProgressRows = () =>
@@ -137,7 +134,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
           onOpenFolder={onOpenFolder}
           onGoToPublish={handleGoToPublish}
         />
-        <ClipperExportHistoryList exports={completedExports} />
+        <ClipperExportHistoryList exports={completedExports} projectId={projectId} />
       </VStack>
     );
   }

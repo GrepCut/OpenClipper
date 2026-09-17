@@ -3,10 +3,7 @@ import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { Box } from "@chakra-ui/react";
 import { useClipperPublishGraphThumbnails } from "../hooks/use-clipper-publish-graph-thumbnails.hook";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
-import {
-  getExportNodeStatus,
-  getExportNodeStatusLabel,
-} from "../persistence/clipper-export-social.util";
+import { getExportNodeStatusLabel } from "../persistence/clipper-export-social.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { PublishGraphData, PublishGraphNode } from "../shared/clipper-publish-graph.util";
 import {
@@ -184,9 +181,7 @@ export function ClipperPublishGraph({
           const n = node as PublishGraphNode;
           if (n.type === "project") return n.label;
           if (n.type === "owner") return n.label;
-          const status = n.exportItem
-            ? getExportNodeStatus(n.exportItem)
-            : "incomplete";
+          const status = n.exportStatus ?? "incomplete";
           return `${n.label}${getExportNodeStatusLabel(status)}`;
         }}
         linkColor={() => theme.border.primary}
