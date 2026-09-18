@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ForceGraphMethods } from "react-force-graph-2d";
 import type { PublishGraphSimNode } from "../shared/clipper-publish-graph-payload.util";
 
@@ -15,7 +15,18 @@ export function useClipperPublishGraphDeletePopupPosition({
   exportId,
   active,
 }: UseClipperPublishGraphDeletePopupPositionOptions) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [position, setPositionState] = useState<{ x: number; y: number } | null>(null);
+  const positionRef = useRef(position);
+
+  // force-graph fires onZoom during its own render; skip no-op updates so React
+  // does not warn about updating ClipperPublishGraph while rendering ForceGraph2D.
+  const setPosition = useCallback((next: { x: number; y: number } | null) => {
+    const previous = positionRef.current;
+    if (previous === next) return;
+    if (previous && next && previous.x === next.x && previous.y === next.y) return;
+    positionRef.current = next;
+    setPositionState(next);
+  }, []);
 
   const updatePosition = useCallback(() => {
     if (!active || !exportId) {
@@ -32,11 +43,11 @@ export function useClipperPublishGraphDeletePopupPosition({
 
     const coords = graph.graph2ScreenCoords(node.x, node.y);
     setPosition({ x: coords.x, y: coords.y });
-  }, [active, exportId, graphRef, liveNodesRef]);
+  }, [active, exportId, graphRef, liveNodesRef, setPosition]);
 
   const clearPosition = useCallback(() => {
     setPosition(null);
-  }, []);
+  }, [setPosition]);
 
   return {
     position,

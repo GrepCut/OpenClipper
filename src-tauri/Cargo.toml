@@ -88,12 +88,17 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 webview2-com = "0.38"
 windows-collections = "0.2"
 windows = { version = "0.61", features = [
+  "Win32_Devices_HumanInterfaceDevice",
   "Win32_Foundation",
   "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Gdi",
   "AI_MachineLearning",
   "Foundation_Collections",
   "Win32_System_Com",
+  "Win32_System_LibraryLoader",
   "Win32_System_ProcessStatus",
   "Win32_System_SystemInformation",
-  "Win32_System_Threading"
+  "Win32_System_Threading",
+  "Win32_UI_Input",
+  "Win32_UI_WindowsAndMessaging"
 ] }

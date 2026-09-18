@@ -12,14 +12,17 @@ import {
   type PublishGraphSimNode,
 } from "../shared/clipper-publish-graph-payload.util";
 import { useClipperPublishGraphDeletePopupPosition } from "../hooks/use-clipper-publish-graph-delete-popup-position.hook";
+import { useClipperPublishGraphGestures } from "../hooks/use-clipper-publish-graph-gestures.hook";
 import {
   drawExportNode,
   drawOwnerNode,
   drawProjectNode,
+  nodeAtGraphPoint,
   paintNodeHitArea,
 } from "./clipper-publish-graph-draw.util";
 import { ClipperPublishGraphDeleteConfirm } from "./clipper-publish-graph-delete-confirm.component";
 import { loadPlatformLogo } from "./clipper-publish-graph-logos.util";
+import { ClipperPublishGraphZoomControls } from "./clipper-publish-graph-zoom-controls.component";
 
 const PROJECT_LINK_DISTANCE = 200;
 const CHARGE_STRENGTH = -560;
@@ -67,6 +70,16 @@ export function ClipperPublishGraph({
     exportId: selectedExportId,
     active: deletePopupActive,
   });
+  const hitsNodeRef = useRef<(point: { x: number; y: number }) => boolean>(() => false);
+  hitsNodeRef.current = (point) =>
+    nodeAtGraphPoint(liveNodesRef.current, point, thumbnails) !== null;
+  const { shouldIgnoreNodeClick, applyZoomAction } = useClipperPublishGraphGestures({
+    containerRef,
+    graphRef,
+    hitsNodeRef,
+    deleteConfirmArmed,
+    onCancelDeleteConfirm,
+  });
 
   const onLogoReady = useCallback(() => {
     setLogoVersion((version) => version + 1);
@@ -107,30 +120,20 @@ export function ClipperPublishGraph({
   }, [graphPayload]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const simTimer = window.setTimeout(() => {
       const fg = graphRef.current;
       if (!fg) return;
-
-      const linkForce = fg.d3Force("link");
-      if (linkForce) {
-        linkForce.distance(PROJECT_LINK_DISTANCE);
-      }
-
-      const chargeForce = fg.d3Force("charge");
-      if (chargeForce) {
-        chargeForce.strength(CHARGE_STRENGTH);
-      }
-
+      fg.d3Force("link")?.distance(PROJECT_LINK_DISTANCE);
+      fg.d3Force("charge")?.strength(CHARGE_STRENGTH);
       fg.d3ReheatSimulation();
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, [topologyKey]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const fitTimer = window.setTimeout(() => {
       graphRef.current?.zoomToFit(400, 72);
     }, 300);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(simTimer);
+      window.clearTimeout(fitTimer);
+    };
   }, [topologyKey]);
 
   const drawNode = useCallback(
@@ -197,6 +200,8 @@ export function ClipperPublishGraph({
       borderColor={theme.border.primary}
       bg={theme.background.card}
       overflow="hidden"
+      touchAction="none"
+      overscrollBehavior="none"
     >
       <ForceGraph2D
         ref={graphRef}
@@ -214,14 +219,13 @@ export function ClipperPublishGraph({
         linkWidth={1}
         cooldownTicks={120}
         d3VelocityDecay={0.35}
+        enableNodeDrag={false}
+        enablePanInteraction={false}
+        enableZoomInteraction={false}
         onNodeClick={(node) => {
+          if (shouldIgnoreNodeClick()) return;
           const n = node as PublishGraphNode;
           onNodeClick(n.id, n.type);
-        }}
-        onBackgroundClick={() => {
-          if (deleteConfirmArmed) {
-            onCancelDeleteConfirm?.();
-          }
         }}
         onZoom={syncDeletePopupPosition}
         onRenderFramePost={syncDeletePopupPosition}
@@ -243,6 +247,7 @@ export function ClipperPublishGraph({
           onCancel={() => onCancelDeleteConfirm?.()}
         />
       ) : null}
+      <ClipperPublishGraphZoomControls onZoomAction={applyZoomAction} />
     </Box>
   );
 }

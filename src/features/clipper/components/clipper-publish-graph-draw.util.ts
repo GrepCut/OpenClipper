@@ -324,3 +324,31 @@ export function paintNodeHitArea(
   ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI);
   ctx.fill();
 }
+
+export function isPointInNodeHitArea(
+  node: PublishGraphNode,
+  point: { x: number; y: number },
+  thumbnail?: HTMLCanvasElement,
+): boolean {
+  const radius = getNodeHitRadius(node, 11, thumbnail);
+  const dx = point.x - (node.x ?? 0);
+  const dy = point.y - (node.y ?? 0);
+  if (node.type === "project") {
+    return Math.abs(dx) <= radius && Math.abs(dy) <= radius;
+  }
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+export function nodeAtGraphPoint(
+  nodes: readonly PublishGraphNode[],
+  point: { x: number; y: number },
+  thumbnails?: Record<string, HTMLCanvasElement>,
+): PublishGraphNode | null {
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const node = nodes[i];
+    if (!node) continue;
+    const thumbnail = node.projectId ? thumbnails?.[node.projectId] : undefined;
+    if (isPointInNodeHitArea(node, point, thumbnail)) return node;
+  }
+  return null;
+}

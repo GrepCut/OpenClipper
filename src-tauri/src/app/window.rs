@@ -35,8 +35,10 @@ pub fn apply_webview_background(window: &tauri::WebviewWindow) {
 
             if let Ok(core) = controller.CoreWebView2() {
                 if let Ok(settings) = core.Settings() {
+                    let _ = settings.SetIsZoomControlEnabled(false);
                     if let Ok(settings9) = settings.cast::<ICoreWebView2Settings9>() {
                         let _ = settings9.SetIsNonClientRegionSupportEnabled(true);
+                        let _ = settings9.SetIsSwipeNavigationEnabled(false);
                     }
                 }
             }

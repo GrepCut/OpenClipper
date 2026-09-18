@@ -80,6 +80,8 @@ pub fn run() {
                 window::apply_webview_background(&window);
                 window::attach_webview_crash_recovery(&window);
             }
+            #[cfg(windows)]
+            super::touchpad_gestures::start(app.handle().clone());
             // The main window is intentionally created hidden to avoid a white WebView
             // flash. Always reveal it once native initialization has completed: without
             // this fallback a production/preview launch can remain running but invisible.
