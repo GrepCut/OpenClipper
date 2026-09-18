@@ -1,5 +1,5 @@
 import React from "react";
-import { Flex, Text } from "@chakra-ui/react";
+import { Text, chakra } from "@chakra-ui/react";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 
@@ -14,11 +14,11 @@ export function ClipperPublishMetadataIncompleteTag({
   const warningColor = theme.status.warning;
 
   return (
-    <Flex
-      as="button"
+    <chakra.button
       type="button"
       onClick={onClick}
-      align="center"
+      display="flex"
+      alignItems="center"
       gap={1.5}
       px={2.5}
       py={1}
@@ -37,6 +37,6 @@ export function ClipperPublishMetadataIncompleteTag({
         Metadata incomplete
       </Text>
       <ChevronRight size={14} color={warningColor} />
-    </Flex>
+    </chakra.button>
   );
 }

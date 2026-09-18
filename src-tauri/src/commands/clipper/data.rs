@@ -1,9 +1,11 @@
 use crate::clipper::data::{
     clipper_export_file_path, clipper_project_data_dir, clipper_project_exports_dir,
     clipper_project_root, clipper_projects_root, extract_segment_to_project_data,
-    extract_studio_thumbnails_for_project, validate_export_file_name, write_export_file_bytes_at,
+    extract_studio_clip_for_project, extract_studio_thumbnails_for_project,
+    validate_export_file_name, write_export_file_bytes_at,
     write_project_data_file_bytes_at,
 };
+use crate::video::ffmpeg::studio_clip::ExtractClipperStudioClipResult;
 use crate::video::ffmpeg::studio_thumbnails::ExtractClipperStudioThumbnailsResult;
 use serde::Serialize;
 use std::fs;
@@ -227,16 +229,26 @@ pub async fn extract_clipper_segment_to_project_data(
 }
 
 #[tauri::command]
+pub async fn extract_clipper_studio_clip(
+    app: AppHandle,
+    project_id: String,
+    start_sec: f64,
+    end_sec: f64,
+) -> Result<ExtractClipperStudioClipResult, String> {
+    extract_studio_clip_for_project(&app, &project_id, start_sec, end_sec).await
+}
+
+#[tauri::command]
 pub async fn extract_clipper_studio_thumbnails(
     app: AppHandle,
     project_id: String,
-    duration_secs: Option<f64>,
+    video_file_name: String,
     force: Option<bool>,
 ) -> Result<ExtractClipperStudioThumbnailsResult, String> {
     extract_studio_thumbnails_for_project(
         &app,
         &project_id,
-        duration_secs,
+        video_file_name,
         force.unwrap_or(false),
     )
     .await

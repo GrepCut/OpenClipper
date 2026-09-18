@@ -9,7 +9,7 @@ import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import { ClipperProgressBar } from "../clipper-progress-bar.component";
 
 const PHASE_LABELS: Record<OpenInStudioPhase, string> = {
-  preparing: "Preparing clip…",
+  preparing: "Cutting clip…",
   thumbnails: "Generating thumbnails…",
   staging: "Staging import…",
   opening: "Opening Studio…",

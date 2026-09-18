@@ -168,6 +168,9 @@ fn sync_ort_directml_dll() {
 fn main() {
     verify_clipper_vision_models();
     if cfg!(target_os = "windows") {
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'");
+        println!("cargo:rustc-link-arg-bins=/MANIFEST:NO");
         verify_sherpa_directml_libs();
         sync_ort_directml_dll();
         println!(

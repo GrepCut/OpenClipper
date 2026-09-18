@@ -185,8 +185,34 @@ export interface ClipperStudioThumbnailsResult {
   indexFileName: string;
   packFileName: string;
   intervalSec: number;
+  videoFileName: string;
   height: number;
   count: number;
+}
+
+export interface ClipperStudioClipRange {
+  startSec: number;
+  endSec: number;
+}
+
+/** Studio-sized cut of `clip-trimmed.mp4`: the clip plus padding, nothing else. */
+export interface ClipperStudioClipCut {
+  fileName: string;
+  /** Where the cut's t=0 sits on the `clip-trimmed.mp4` timeline. */
+  offsetSec: number;
+  durationSec: number;
+  reused: boolean;
+}
+
+export async function extractClipperStudioClip(
+  projectId: string,
+  range: ClipperStudioClipRange,
+): Promise<ClipperStudioClipCut> {
+  return invoke<ClipperStudioClipCut>("extract_clipper_studio_clip", {
+    projectId,
+    startSec: range.startSec,
+    endSec: range.endSec,
+  });
 }
 
 export const CLIPPER_THUMBNAILS_INDEX_FILE = "clip-thumbnails.json";
@@ -202,7 +228,7 @@ export interface StudioThumbnailsProgressEvent {
 
 export async function extractClipperStudioThumbnails(
   projectId: string,
-  durationSecs: number,
+  videoFileName: string,
   force = false,
   onProgress?: (ratio: number) => void,
 ): Promise<ClipperStudioThumbnailsResult | null> {
@@ -225,7 +251,7 @@ export async function extractClipperStudioThumbnails(
   try {
     return await invoke<ClipperStudioThumbnailsResult>("extract_clipper_studio_thumbnails", {
       projectId,
-      durationSecs,
+      videoFileName,
       force,
     });
   } finally {

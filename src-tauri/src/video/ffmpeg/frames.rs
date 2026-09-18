@@ -189,6 +189,26 @@ pub(crate) fn should_decode_video_packet(is_key: bool, seen_keyframe: bool) -> b
     seen_keyframe || is_key
 }
 
+fn seconds_to_stream_ticks(seconds: f64, time_base: ffmpeg::Rational) -> i64 {
+    (seconds * time_base.denominator() as f64 / time_base.numerator() as f64).round() as i64
+}
+
+#[cfg(test)]
+mod studio_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn snapped_5994_fps_keyframes_keep_their_exact_pts() {
+        let tb = ffmpeg::Rational(1, 90_000);
+        for pts in [150_150_i64, 15_315_300] {
+            let snapped = pts as f64 * (1.0 / 90_000.0);
+            assert!(pts as f64 / 90_000.0 < snapped);
+            assert_eq!(seconds_to_stream_ticks(snapped, tb), pts);
+            assert!(pts - 1 < seconds_to_stream_ticks(snapped, tb));
+        }
+    }
+}
+
 pub(crate) fn snap_to_keyframe_blocking(file_path: String, start_time: f64) -> Result<f64, String> {
     if start_time <= 0.0 {
         return Ok(0.0);
@@ -203,6 +223,7 @@ pub(crate) fn snap_to_keyframe_blocking(file_path: String, start_time: f64) -> R
     let index = stream.index();
     let tb = stream.time_base();
     let tb_sec = tb.numerator() as f64 / tb.denominator() as f64;
+    let target_pts = seconds_to_stream_ticks(start_time, tb);
     let target = (start_time * 1_000_000.0).round() as i64;
     input
         .seek(target, ..target)
@@ -212,11 +233,11 @@ pub(crate) fn snap_to_keyframe_blocking(file_path: String, start_time: f64) -> R
         if packet_stream.index() != index || !packet.is_key() {
             continue;
         }
-        let timestamp = packet.pts().or_else(|| packet.dts()).unwrap_or(0) as f64 * tb_sec;
-        if timestamp > start_time {
+        let pts = packet.pts().or_else(|| packet.dts()).unwrap_or(0);
+        if pts > target_pts {
             break;
         }
-        best = timestamp.max(0.0);
+        best = (pts as f64 * tb_sec).max(0.0);
     }
     Ok(best)
 }
@@ -266,13 +287,13 @@ pub(crate) fn extract_clipper_segment_to_path_blocking(
         let is_video = medium == Type::Video;
         let is_audio = medium == Type::Audio;
         let input_tb = input_stream.time_base();
-        let timestamp = packet.pts().or_else(|| packet.dts()).unwrap_or(0) as f64
-            * input_tb.numerator() as f64
-            / input_tb.denominator() as f64;
-        if timestamp < start_time {
+        let timestamp = packet.pts().or_else(|| packet.dts()).unwrap_or(0);
+        let start_ts = seconds_to_stream_ticks(start_time, input_tb);
+        let end_ts = seconds_to_stream_ticks(end_time, input_tb);
+        if timestamp < start_ts {
             continue;
         }
-        if timestamp > end_time {
+        if timestamp > end_ts {
             if is_video {
                 break;
             }
@@ -291,8 +312,6 @@ pub(crate) fn extract_clipper_segment_to_path_blocking(
             .stream(output_index)
             .ok_or("Missing output stream")?
             .time_base();
-        let start_ts = (start_time / (input_tb.numerator() as f64 / input_tb.denominator() as f64))
-            .round() as i64;
         packet.set_pts(packet.pts().map(|pts| pts - start_ts));
         packet.set_dts(packet.dts().map(|dts| dts - start_ts));
         packet.rescale_ts(input_tb, output_tb);

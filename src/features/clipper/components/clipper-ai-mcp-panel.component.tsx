@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, VStack } from "@chakra-ui/react";
+import { Box, Text, VStack, chakra } from "@chakra-ui/react";
 import { Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { clipperTheme } from "../shared/theme.util";
@@ -38,8 +38,7 @@ export const ClipperAiMcpPanel: React.FC<ClipperAiMcpPanelProps> = ({
         <Text fontSize="xs" color={theme.text.muted} fontFamily="mono">
           projectId: {projectId}
         </Text>
-        <Box
-          as="button"
+        <chakra.button
           type="button"
           alignSelf="start"
           fontSize="sm"
@@ -49,7 +48,7 @@ export const ClipperAiMcpPanel: React.FC<ClipperAiMcpPanelProps> = ({
           _hover={{ textDecoration: "underline" }}
         >
           Open MCP setup
-        </Box>
+        </chakra.button>
       </VStack>
     </Box>
   );

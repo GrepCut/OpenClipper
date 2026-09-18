@@ -2,6 +2,7 @@ import { Box, HStack, Input, Text, VStack } from "@chakra-ui/react";
 import { OutlinedActionButton } from "../../../../shared/components/buttons/outlined-action-button.component";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import { useCloudTranscriptionProvider } from "../../hooks/use-cloud-transcription-provider.hook";
+import type { CloudTranscriptionProvider } from "../../../../services/transcription-api-keys.service";
 
 interface CloudTranscriptionProviderRowProps {
   provider: CloudTranscriptionProvider;

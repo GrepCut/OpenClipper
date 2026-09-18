@@ -4,7 +4,8 @@ import { appendUniqueExportResults } from "../../shared/export-results.util";
 import { applyFilenameTemplate, baseName } from "../../shared/filename-template.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
 import { buildFrameContext } from "../../pipeline/frame-context.util";
-import { runRerenderFormat, getClipperFormatDef } from "../../pipeline/stages/render.util";
+import { runRenderClipJob } from "../../pipeline/stages/render.util";
+import { getClipperFormatDef } from "../../shared/formats.util";
 import { patchPipelineState } from "./clipper-pipeline-state.util";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
 
@@ -29,22 +30,24 @@ export function useClipperPipelineRerender(core: UseClipperPipelineCoreResult) {
 
       const stem = baseName(state.sourceFileName ?? "clip");
       try {
-        const result = await runRerenderFormat(
+        const signal = abortRef.current?.signal ?? new AbortController().signal;
+        const job = await runRenderClipJob(
           session,
-          formatDef,
           frameContext,
-          clipIndex,
           {
             projectId,
+            clipIndex,
+            enabledFormatIds: [formatDef.id],
             filenameStem: stem,
             filenameTemplate: settings.formats.filenameTemplate,
           },
           reporterRef.current,
-          { signal: abortRef.current?.signal, previewUrls: previewUrlsRef.current },
+          { signal, previewUrls: previewUrlsRef.current },
         );
-        if (result.previewUrl.startsWith("blob:")) {
-          previewUrlsRef.current.push(result.previewUrl);
-        }
+        if (signal.aborted) return;
+        if (job.error) throw job.error;
+        const result = job.results[0];
+        if (!result) throw new Error("Re-render did not produce an export.");
 
         patchPipelineState(setState, (draft) => {
           draft.renderProgress[progressKey] = 1;

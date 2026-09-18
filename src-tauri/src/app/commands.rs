@@ -26,6 +26,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::data::open_clipper_project_data_dir,
             crate::commands::clipper::data::stage_clipper_studio_import,
             crate::commands::clipper::data::extract_clipper_segment_to_project_data,
+            crate::commands::clipper::data::extract_clipper_studio_clip,
             crate::commands::clipper::data::extract_clipper_studio_thumbnails,
             crate::commands::clipper::data::ensure_clipper_project_exports_dir,
             crate::commands::clipper::data::write_clipper_export_file_bytes_at,

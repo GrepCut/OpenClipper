@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, HStack, Text, VStack } from "@chakra-ui/react";
+import { Box, HStack, Text, VStack, chakra } from "@chakra-ui/react";
 import { Check, Plug } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
@@ -130,9 +130,8 @@ export function ClipperOwnerChannelPicker({
               ? true
               : row.available != null && selectedKeys.has(ownerChannelKey(row.available));
             return (
-              <Box
+              <chakra.button
                 key={row.key}
-                as="button"
                 type="button"
                 onClick={() => {
                   if (row.isOrphan && row.linked) {
@@ -171,7 +170,7 @@ export function ClipperOwnerChannelPicker({
                     ) : null}
                   </HStack>
                 </HStack>
-              </Box>
+              </chakra.button>
             );
           })}
         </VStack>
