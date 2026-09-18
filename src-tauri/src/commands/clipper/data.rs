@@ -98,14 +98,12 @@ pub fn write_clipper_project_data_bytes(
 }
 
 #[tauri::command]
-pub fn write_clipper_project_data_bytes_at(
+pub async fn write_clipper_project_data_bytes_at(
     app: AppHandle,
-    project_id: String,
-    file_name: String,
-    position: u64,
-    contents: Vec<u8>,
+    request: Request<'_>,
 ) -> Result<(), String> {
-    write_project_data_file_bytes_at(&app, &project_id, &file_name, position, &contents)
+    let (project_id, file_name, position, contents) = raw_positional_write(&request)?;
+    write_project_data_file_bytes_at(&app, &project_id, &file_name, position, contents)
 }
 
 #[tauri::command]
@@ -264,15 +262,40 @@ pub fn ensure_clipper_project_exports_dir(
     Ok(path.to_string_lossy().to_string())
 }
 
+fn raw_write_header(request: &Request<'_>, name: &str) -> Result<String, String> {
+    let value = request
+        .headers()
+        .get(name)
+        .ok_or_else(|| format!("Missing {name} header."))?
+        .to_str()
+        .map_err(|error| format!("Invalid {name} header: {error}"))?;
+    percent_encoding::percent_decode_str(value)
+        .decode_utf8()
+        .map(|decoded| decoded.into_owned())
+        .map_err(|error| format!("Invalid {name} header: {error}"))
+}
+
+fn raw_positional_write<'a>(
+    request: &'a Request<'_>,
+) -> Result<(String, String, u64, &'a [u8]), String> {
+    let project_id = raw_write_header(request, "x-clipper-project-id")?;
+    let file_name = raw_write_header(request, "x-clipper-file-name")?;
+    let position = raw_write_header(request, "x-clipper-position")?
+        .parse::<u64>()
+        .map_err(|error| format!("Invalid x-clipper-position header: {error}"))?;
+    let InvokeBody::Raw(contents) = request.body() else {
+        return Err("Expected a raw binary request body.".to_string());
+    };
+    Ok((project_id, file_name, position, contents))
+}
+
 #[tauri::command]
-pub fn write_clipper_export_file_bytes_at(
+pub async fn write_clipper_export_file_bytes_at(
     app: AppHandle,
-    project_id: String,
-    file_name: String,
-    position: u64,
-    contents: Vec<u8>,
+    request: Request<'_>,
 ) -> Result<(), String> {
-    write_export_file_bytes_at(&app, &project_id, &file_name, position, &contents)
+    let (project_id, file_name, position, contents) = raw_positional_write(&request)?;
+    write_export_file_bytes_at(&app, &project_id, &file_name, position, contents)
 }
 
 #[tauri::command]

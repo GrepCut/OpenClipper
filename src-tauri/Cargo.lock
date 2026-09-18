@@ -3907,6 +3907,7 @@ dependencies = [
  "log",
  "ndarray 0.16.1",
  "ort",
+ "percent-encoding",
  "realfft",
  "reqwest",
  "rmcp",

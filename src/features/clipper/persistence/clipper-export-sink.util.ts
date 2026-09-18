@@ -1,35 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { StreamTargetChunk } from "mediabunny";
 import { getExportDirectory } from "./project-sync.util";
 import { resolveFilePlayableUrl } from "./tauri-media.util";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { createFileSystemWriteProxy } from "../lib/convert/file-system-write-proxy.util";
 import { pathBackedClipperFile } from "../platform/native-source.util";
+import { createTauriRawPositionalWritable } from "./tauri-raw-write.util";
 import {
   CLIPPER_EXPORTS_SUBDIR,
   CLIPPER_WEB_DATA_SUBDIR,
   type ClipperDiskExport,
   type ClipperExportSink,
 } from "./export-files.types";
-
-function chunkBytes(chunk: StreamTargetChunk): Uint8Array {
-  return chunk.data;
-}
-
-function createTauriExportWritable(projectId: string, fileName: string): WritableStream<StreamTargetChunk> {
-  return new WritableStream<StreamTargetChunk>({
-    async write(chunk) {
-      const bytes = chunkBytes(chunk);
-      if (bytes.length === 0) return;
-      await invoke("write_clipper_export_file_bytes_at", {
-        projectId,
-        fileName,
-        position: chunk.position,
-        contents: bytes,
-      });
-    },
-  });
-}
 
 async function ensureWebClipperExportsDir(
   root: FileSystemDirectoryHandle,
@@ -98,7 +79,7 @@ async function createTauriExportSink(projectId: string, fileName: string): Promi
   const relativePath = `${CLIPPER_EXPORTS_SUBDIR}/${fileName}`;
 
   return {
-    writable: createTauriExportWritable(projectId, fileName),
+    writable: createTauriRawPositionalWritable("write_clipper_export_file_bytes_at", projectId, fileName),
     relativePath,
     fileName,
     async finalize(): Promise<ClipperDiskExport> {

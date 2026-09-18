@@ -19,13 +19,12 @@ import {
   highQualityVideoBitrate,
   processAudioTrack,
   renderSizedEffectFrame,
-  resolveVideoSourceSize,
   throwIfAborted,
   type FrameEffectSize,
   type InputAudioTrack,
 } from "../../lib/media/video-frame-effect.util";
 import { EncodeBackpressure } from "../../lib/media/encode-backpressure.util";
-import { clipperError } from "../../shared/logger.util";
+import { clipperLog } from "../../shared/logger.util";
 import type { ClipperFormatDef, ClipperPlatform } from "../../shared/formats.util";
 import type { ClipperQualityPreset } from "../../settings/settings.util";
 import type { ClipperClipWindow, RenderClipperResult } from "../types/render.types";
@@ -205,7 +204,6 @@ export async function renderClipperFormat(
       ? Math.max(0.001, segmentsTotalDuration(clipWindow.segments))
       : Math.max(0.001, totalDuration);
 
-    const sourceSize = await resolveVideoSourceSize(videoTrack);
     const outputSize = resolveClipperOutputSize(formatDef, render.settings.formats.resolutionCap);
 
     const output = new Output({ format, target });
@@ -231,6 +229,7 @@ export async function renderClipperFormat(
     const canvasCache = new FrameCanvasCache();
     const encodeBackpressure = new EncodeBackpressure();
     const skipCanvas = !render.settings.captions.enabled && !hasBranding;
+    let encodedFrames = 0;
 
     const encodeSample = async (
       sample: VideoSample,
@@ -276,6 +275,7 @@ export async function renderClipperFormat(
           });
           try {
             await encodeBackpressure.run(() => videoSource.add(outSample));
+            encodedFrames++;
           } finally {
             outSample.close();
           }
@@ -345,6 +345,7 @@ export async function renderClipperFormat(
 
     try {
       onProgress?.(0);
+      const loopStartedAt = performance.now();
       await output.start();
       const audioPromise = clipWindow
         ? processAudioTrackInWindow(audioTrack, audioSource as AudioSampleSource | null, clipWindow, signal)
@@ -355,7 +356,16 @@ export async function renderClipperFormat(
       if (failed) throw (failed as PromiseRejectedResult).reason;
 
       throwIfAborted(signal);
+      const finalizeStartedAt = performance.now();
       await output.finalize();
+      const loopSec = (finalizeStartedAt - loopStartedAt) / 1000;
+      clipperLog(`render ${formatDef.id}: encoded`, {
+        frames: encodedFrames,
+        loopSec: Number(loopSec.toFixed(2)),
+        fps: Number((encodedFrames / Math.max(0.001, loopSec)).toFixed(1)),
+        finalizeMs: Math.round(performance.now() - finalizeStartedAt),
+        skipCanvas,
+      });
     } catch (error) {
       if (output.state !== "finalized" && output.state !== "canceled") {
         await output.cancel().catch(() => {});
