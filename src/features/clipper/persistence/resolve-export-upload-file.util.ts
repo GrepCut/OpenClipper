@@ -1,6 +1,5 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../../../shared/utils/platform.util";
-import { getNativeFilePath } from "../platform/native-source.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 
 const MIN_UPLOAD_BYTES = 1024;
@@ -44,6 +43,7 @@ export function assertClipperExportUploadSize(
 /** Materializes in-memory or on-disk clipper exports into a File suitable for multipart upload. */
 export async function resolveClipperExportUploadFile(
   result: ClipperFormatResult,
+  projectId: string,
 ): Promise<File | null> {
   if (result.isMissing) {
     return null;
@@ -62,18 +62,12 @@ export async function resolveClipperExportUploadFile(
     return result.file;
   }
 
-  const nativePath =
-    (result.file ? getNativeFilePath(result.file) : null) ??
-    result.filePath ??
-    null;
-
-  if (nativePath && isTauri()) {
-    const response = await fetch(convertFileSrc(nativePath));
-    if (!response.ok) {
-      throw new Error(`Failed to read export file: ${response.statusText}`);
-    }
-    const blob = await response.blob();
-    const file = new File([blob], fileName, { type: "video/mp4" });
+  if (isTauri()) {
+    const bytes = await invoke<ArrayBuffer>("read_clipper_export_file_bytes", {
+      projectId,
+      fileName,
+    });
+    const file = new File([bytes], fileName, { type: "video/mp4" });
     assertClipperExportUploadSize(file, result.fileSize);
     return file;
   }

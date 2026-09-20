@@ -3,6 +3,7 @@ import {
   fetchClipperExportsAll,
   purgeClipperExportsMissing,
   type ClipperExportMapItem,
+  type ClipperExportPublishRecord,
 } from "../persistence/clipper-export-db-api.util";
 import {
   exportMapItemsVisuallyEqual,
@@ -18,6 +19,7 @@ import {
   type PublishSelection,
 } from "../shared/clipper-publish-graph.util";
 import type { ClipperFormatResult } from "../shared/state.util";
+import { mergePublishRecord } from "../shared/clipper-map-publish.util";
 
 interface LoadExportsOptions {
   purge?: boolean;
@@ -182,16 +184,10 @@ export function useClipperPublishMap() {
   }, []);
 
   const updateItemPublishStatus = useCallback(
-    (exportId: string, publishStatus: ClipperExportMapItem["publishStatus"]) => {
+    (exportId: string, publishStatus: ClipperExportPublishRecord) => {
       setItems((prev) =>
         prev.map((item) =>
-          item.id === exportId
-            ? {
-                ...item,
-                publishStatus,
-                isPublished: publishStatus?.status === "succeeded",
-              }
-            : item,
+          item.id === exportId ? mergePublishRecord(item, publishStatus) : item,
         ),
       );
     },

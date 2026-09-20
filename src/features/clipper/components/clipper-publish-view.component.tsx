@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Box, Center, HStack, Text, VStack } from "@chakra-ui/react";
 import { Copy } from "lucide-react";
@@ -27,6 +27,7 @@ import {
   getOpenClipperMcpPath,
   type ClipperExportMapItem,
 } from "../persistence/clipper-export-db-api.util";
+import { useClipperPublishExportDelete } from "../hooks/use-clipper-publish-export-delete.hook";
 import { useClipperPublishMap } from "../hooks/use-clipper-publish-map.hook";
 import { resolveExportMapItemMedia } from "../shared/clipper-publish-graph.util";
 import type { ClipperFormatResult } from "../shared/state.util";
@@ -75,6 +76,10 @@ export function ClipperPublishView() {
   const [publishItem, setPublishItem] = useState<ClipperExportMapItem | null>(null);
   const [publishResult, setPublishResult] = useState<ClipperFormatResult | null>(null);
   const [publishLoadingExportId, setPublishLoadingExportId] = useState<string | null>(null);
+  const openingPublishRef = useRef(false);
+  const [publishingKeys, setPublishingKeys] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const [publishConnection, setPublishConnection] = useState<OwnerPublishConnectionResult | null>(null);
   const [publishTargetPlatform, setPublishTargetPlatform] =
     useState<SocialPublishablePlatform>("youtube");
@@ -189,8 +194,19 @@ export function ClipperPublishView() {
     [canUseAccountFeatures, location.pathname],
   );
 
+  const markPublishing = useCallback((key: string, busy: boolean) => {
+    setPublishingKeys((previous) => {
+      if (busy === previous.has(key)) return previous;
+      const next = new Set(previous);
+      if (busy) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+
   const handlePublishExport = useCallback(
     async (item: ClipperExportMapItem, platform: SocialPublishablePlatform) => {
+      if (openingPublishRef.current || publishOpen) return;
       if (!item.clipperOwnerId) {
         appToast.error("Owner required", "Assign an owner to this project before publishing.");
         return;
@@ -200,6 +216,7 @@ export function ClipperPublishView() {
         return;
       }
 
+      openingPublishRef.current = true;
       setPublishLoadingExportId(`${item.id}:${platform}`);
       try {
         const ownerConnection = await resolveOwnerPublishConnection({
@@ -223,10 +240,11 @@ export function ClipperPublishView() {
         setPublishResult(result);
         setPublishOpen(true);
       } finally {
+        openingPublishRef.current = false;
         setPublishLoadingExportId(null);
       }
     },
-    [canUseAccountFeatures, requestAccount, socialPlatforms, youtubeConnections],
+    [canUseAccountFeatures, publishOpen, requestAccount, socialPlatforms, youtubeConnections],
   );
 
   const handlePublishDialogClose = useCallback(() => {
@@ -248,6 +266,17 @@ export function ClipperPublishView() {
   const handleExportDeleted = useCallback(() => {
     selectNode(null);
   }, [selectNode]);
+
+  const { deleteConfirmArmed, disarmDeleteConfirm, executeDelete } = useClipperPublishExportDelete({
+    item: selection.kind === "export" ? selectedItem : null,
+    canDelete: Boolean(selectedItem),
+    onDeleted: handleExportDeleted,
+  });
+
+  const handleBackToProject = useCallback(() => {
+    if (!selectedItem) return;
+    selectNode(`project:${selectedItem.projectId}`, "project");
+  }, [selectNode, selectedItem]);
 
   return (
     <VStack align="stretch" gap={6} flex="1" minH={0}>
@@ -307,6 +336,8 @@ export function ClipperPublishView() {
               selectedProjectId={selectedProjectId}
               selectedOwnerId={selectedOwnerId}
               onNodeClick={selectNode}
+              deleteConfirmArmed={deleteConfirmArmed}
+              onCancelDeleteConfirm={disarmDeleteConfirm}
               connectedSplit
             />
           }
@@ -317,7 +348,9 @@ export function ClipperPublishView() {
                 result={selectedResult}
                 mediaLoading={mediaLoading}
                 onMetadataSaved={handleMetadataSaved}
-                onDeleted={handleExportDeleted}
+                onDeleteExport={executeDelete}
+                onDeleteInteractionStart={disarmDeleteConfirm}
+                onBack={handleBackToProject}
                 connectedSplit
               />
             ) : selection.kind === "owner" ? (
@@ -330,6 +363,7 @@ export function ClipperPublishView() {
                 project={selectedProject}
                 canPublish={canUseAccountFeatures}
                 publishLoadingExportId={publishLoadingExportId}
+                publishingKeys={publishingKeys}
                 onPublishExport={(item, platform) => void handlePublishExport(item, platform)}
                 onSelectExport={selectExport}
                 connectedSplit
@@ -351,8 +385,17 @@ export function ClipperPublishView() {
         ownerChannelLabel={publishConnection?.ownerChannelLabel ?? null}
         publishPlatform={publishPlatform}
         onRequestConnect={handleRequestConnect}
+        onPublishStart={() => {
+          if (publishItem) markPublishing(`${publishItem.id}:${publishPlatform}`, true);
+        }}
+        onPublishError={() => {
+          if (publishItem) markPublishing(`${publishItem.id}:${publishPlatform}`, false);
+        }}
         onPublishComplete={(record) => {
           updateItemPublishStatus(record.exportId, record);
+          if (record.status !== "pending") {
+            markPublishing(`${record.exportId}:${record.platform}`, false);
+          }
         }}
       />
     </VStack>

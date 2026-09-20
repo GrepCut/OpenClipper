@@ -190,6 +190,7 @@ export function useClipperPipelineWorkflow(
         stage: "uploading",
         stageMessage: "Preparing your clips…",
         renderProgress: {},
+        renderSignatures: {},
         exportHistory: prev.exportHistory,
         rangeTrimmedVideoUrl: null,
         clipPreviews: [],

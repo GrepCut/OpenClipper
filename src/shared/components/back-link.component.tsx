@@ -34,31 +34,32 @@ export function BackLink(props: BackLinkProps) {
   if ("to" in props) {
     return (
       <HStack
-        as={RouterLink}
-        to={props.to}
+        asChild
         {...styles}
         textDecoration="none"
         data-no-drag
       >
-        <ArrowLeft size={16} />
-        <Text whiteSpace="nowrap">{props.label}</Text>
+        <RouterLink to={props.to}>
+          <ArrowLeft size={16} />
+          <Text whiteSpace="nowrap">{props.label}</Text>
+        </RouterLink>
       </HStack>
     );
   }
 
   return (
     <HStack
-      as="button"
-      type="button"
-      onClick={props.onClick}
+      asChild
       {...styles}
       bg="transparent"
       border="none"
       p={0}
       data-no-drag
     >
-      <ArrowLeft size={16} />
-      <Text whiteSpace="nowrap">{props.label}</Text>
+      <button type="button" onClick={props.onClick}>
+        <ArrowLeft size={16} />
+        <Text whiteSpace="nowrap">{props.label}</Text>
+      </button>
     </HStack>
   );
 }

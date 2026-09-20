@@ -12,12 +12,14 @@ interface SlideToDeleteControlProps {
   label?: string;
   onComplete: () => Promise<void>;
   disabled?: boolean;
+  onInteractionStart?: () => void;
 }
 
 export function SlideToDeleteControl({
   label = "Slide to delete",
   onComplete,
   disabled = false,
+  onInteractionStart,
 }: SlideToDeleteControlProps) {
   const { theme } = useTheme();
   const trackRef = useRef<HTMLDivElement>(null);
@@ -71,12 +73,13 @@ export function SlideToDeleteControl({
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (disabled || isProcessing) return;
+      onInteractionStart?.();
       event.currentTarget.setPointerCapture(event.pointerId);
       dragStartXRef.current = event.clientX;
       dragStartOffsetRef.current = dragX;
       setIsDragging(true);
     },
-    [disabled, dragX, isProcessing],
+    [disabled, dragX, isProcessing, onInteractionStart],
   );
 
   const handlePointerMove = useCallback(

@@ -34,12 +34,14 @@ export function sanitizeRenderQueueSelections(
   return result;
 }
 
+const EMPTY_CLIP_FORMAT_IDS: string[] = [];
+
 /** Effective format list for one clip (empty until the user selects formats). */
 export function resolveClipFormatIds(
   clipIndex: number,
   overrides: Record<number, string[]>,
 ): string[] {
-  return clipIndex in overrides ? overrides[clipIndex]! : [];
+  return clipIndex in overrides ? overrides[clipIndex]! : EMPTY_CLIP_FORMAT_IDS;
 }
 
 /** Load per-project render-queue selections only — no implicit defaults. */

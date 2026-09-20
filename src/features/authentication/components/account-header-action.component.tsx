@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Box, HStack, Spinner, Text } from "@chakra-ui/react";
+import { Box, HStack, Spinner, Text, chakra } from "@chakra-ui/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
@@ -101,8 +101,8 @@ export function AccountHeaderAction() {
         >
           {displayName}
         </Text>
-        <Box
-          as="button"
+        <chakra.button
+          type="button"
           display="inline-flex"
           alignItems="center"
           justifyContent="center"
@@ -147,7 +147,7 @@ export function AccountHeaderAction() {
               <path d="M18.36 6.64a9 9 0 1 1-12.72 0" />
             </svg>
           )}
-        </Box>
+        </chakra.button>
       </HStack>
       <LogoutConfirmModal
         isOpen={isLogoutModalOpen}

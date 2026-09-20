@@ -14,6 +14,7 @@ export interface PersistClipperExportDiskMeta {
   exportedAt: string;
   clipStartSec: number;
   clipEndSec: number;
+  renderSignature?: string;
 }
 
 /** Single write path: upsert clipper_exports with transcript. Backend emits change events. */

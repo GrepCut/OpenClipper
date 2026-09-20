@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from "react";
-import { Box, Text, VStack } from "@chakra-ui/react";
+import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import {
@@ -16,6 +16,7 @@ import { ClipperExportFormatRow } from "./clipper-export-format-row.component";
 import { ClipperExportHistoryList } from "./clipper-export-history-list.component";
 import { ClipperExportsScreenHeader } from "./clipper-exports-screen-header.component";
 import { ClipperProgressBar } from "./clipper-progress-bar.component";
+import { ClipperRenderQueueActions } from "./clipper-render-queue-actions.component";
 import { ClipperRenderFormatProgressRow } from "./clipper-render-format-progress-row.component";
 import { formatDurationMmSs } from "../../../shared/utils/time.util";
 
@@ -26,7 +27,11 @@ interface ClipperRenderQueueProps {
   results: ClipperFormatResult[];
   isRendering: boolean;
   sourceFileName: string | null;
+  projectId: string;
   onOpenFolder: () => void;
+  onStop?: () => void;
+  onContinue?: () => void;
+  onRestart?: () => void;
 }
 
 function clipTimeLabel(preview: ClipperClipPreview): string {
@@ -45,7 +50,11 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
   results,
   isRendering,
   sourceFileName,
+  projectId,
   onOpenFolder,
+  onStop,
+  onContinue,
+  onRestart,
 }) => {
   const { theme } = useClipperUi();
   const navigate = useNavigate();
@@ -88,19 +97,14 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
     : `${completedExports.length} export${completedExports.length !== 1 ? "s" : ""} from this batch, saved to your project exports folder.`;
 
   const renderCompletedExportRow = (result: ClipperFormatResult) => (
-    <ClipperExportFormatRow
-      key={result.id}
-      result={result}
-      isRerendering={false}
-      onRerender={() => {}}
-    />
+    <ClipperExportFormatRow key={result.id} result={result} projectId={projectId} />
   );
 
   const renderProgressRows = () =>
     queuedPreviews.flatMap((preview) => {
       const clipResults = resultsForClip(results, preview.clip.index);
 
-      if (isRendering && preview.renderStatus === "done" && clipResults.length > 0) {
+      if (preview.renderStatus === "done" && clipResults.length > 0) {
         return clipResults.map(renderCompletedExportRow);
       }
 
@@ -137,7 +141,7 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
           onOpenFolder={onOpenFolder}
           onGoToPublish={handleGoToPublish}
         />
-        <ClipperExportHistoryList exports={completedExports} />
+        <ClipperExportHistoryList exports={completedExports} projectId={projectId} />
       </VStack>
     );
   }
@@ -146,15 +150,24 @@ export const ClipperRenderQueue: React.FC<ClipperRenderQueueProps> = ({
     <VStack align="stretch" gap={4}>
       {showProgressUi ? (
         <>
-          <Box>
-            <Text fontSize="lg" fontWeight="semibold" color={theme.text.primary} mb={1}>
-              {state.stageMessage || "Rendering…"}
-            </Text>
-            <Text fontSize="sm" color={theme.text.muted}>
-              {doneExportCount} of {exportJobCount} export{exportJobCount !== 1 ? "s" : ""}{" "}
-              complete
-            </Text>
-          </Box>
+          <HStack justify="space-between" align="flex-start" gap={3} flexWrap="wrap">
+            <Box>
+              <Text fontSize="lg" fontWeight="semibold" color={theme.text.primary} mb={1}>
+                {state.stageMessage || "Rendering…"}
+              </Text>
+              <Text fontSize="sm" color={theme.text.muted}>
+                {doneExportCount} of {exportJobCount} export{exportJobCount !== 1 ? "s" : ""}{" "}
+                complete
+              </Text>
+            </Box>
+            <ClipperRenderQueueActions
+              isRendering={isRendering}
+              hasPendingJobs={hasPendingRenderJobs}
+              onStop={onStop}
+              onContinue={onContinue}
+              onRestart={onRestart}
+            />
+          </HStack>
           <ClipperProgressBar label="Overall progress" value={overallProgress} />
         </>
       ) : null}

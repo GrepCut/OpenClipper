@@ -9,7 +9,6 @@ import { ClipperProjectLoadingPanel } from "../components/clipper-project-loadin
 import { ClipperTrimSelect } from "../components/clipper-trim-select.component";
 import { ClipperUpload } from "../components/clipper-upload.component";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
-import { ClipperSocialPublishDialog } from "../components/clipper-youtube-publish-dialog.component";
 import { ClipperSessionPreviewPanel } from "../components/session/clipper-session-preview-panel.component";
 import { useClipperSessionView } from "../hooks/use-clipper-session-view.hook";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
@@ -39,8 +38,9 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     exportCount,
     sessionResults,
     renderQueue,
+    existingExports,
     goToExports,
-    publish,
+    stopRender,
   } = session;
 
   return (
@@ -108,7 +108,10 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onSetFormatForAll={renderQueue.setFormatForAllClips}
           onSetAllFormatsForClip={renderQueue.setAllFormatsForClip}
           isRendering={isRendering}
-          onRender={renderQueue.startQueuedRender}
+          existingExports={existingExports}
+          onRender={() =>
+            renderQueue.startQueuedRender({ skipExisting: settings.formats.skipExisting })
+          }
           exportCount={exportCount}
           onViewExports={goToExports}
         />
@@ -131,7 +134,13 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           results={sessionResults}
           isRendering={isRendering}
           sourceFileName={state.sourceFileName}
+          projectId={project.id}
           onOpenFolder={handleOpenExportsFolder}
+          onStop={stopRender}
+          onContinue={() =>
+            renderQueue.startQueuedRender({ skipCompleted: true, skipExisting: true })
+          }
+          onRestart={() => renderQueue.startQueuedRender()}
         />
         </>
       )}
@@ -144,19 +153,6 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onRefreshHistory={refreshExportHistory}
         />
       )}
-
-      <ClipperSocialPublishDialog
-        isOpen={publish.queuePublishTarget != null}
-        onClose={publish.closePublishDialog}
-        projectId={project.id}
-        result={publish.queuePublishTarget}
-        sourceFileName={state.sourceFileName}
-        defaultConnected={publish.queuePublishConnection.connected}
-        accountLabel={publish.queuePublishConnection.accountLabel}
-        accountConnections={publish.queuePublishConnection.accountConnections}
-        publishPlatform={publish.queuePublishPlatform}
-        onRequestConnect={publish.handleRequestConnect}
-      />
 
       {state.stage === "error" && (
         <Box p={6} borderRadius="2xl" {...errorPanel}>

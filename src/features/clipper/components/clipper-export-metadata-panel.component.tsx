@@ -1,10 +1,7 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import { Box, HStack, Input, Text, Textarea, VStack } from "@chakra-ui/react";
-import { ChevronDown, ChevronUp, Copy } from "lucide-react";
-import {
-  OutlinedActionButton,
-  getOutlinedActionSurfaceProps,
-} from "../../../shared/components/buttons/outlined-action-button.component";
+import { Copy } from "lucide-react";
+import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { appToast } from "../../../shared/utils/toast.service";
 import { useClipperExportMetadata } from "../hooks/use-clipper-export-metadata.hook";
 import {
@@ -19,8 +16,8 @@ import type { ClipperFormatResult } from "../shared/state.util";
 interface ClipperExportMetadataPanelProps {
   result: ClipperFormatResult;
   onMetadataSaved: (exportId: string, fields: ExportSocialFields) => void;
-  /** collapsible = toggle in session exports; inline = always visible (Publish detail) */
-  variant?: "collapsible" | "inline";
+  /** Folder-only formats: show fields, but do not allow editing. */
+  readOnly?: boolean;
 }
 
 function MetadataFieldLabel({ children }: { children: React.ReactNode }) {
@@ -54,6 +51,7 @@ function SocialField({
     value,
     disabled,
     readOnly: disabled,
+    opacity: disabled ? 0.55 : 1,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       onChange(event.target.value),
   };
@@ -140,12 +138,9 @@ function TranscriptDisplay({
 export const ClipperExportMetadataPanel: React.FC<ClipperExportMetadataPanelProps> = ({
   result,
   onMetadataSaved,
-  variant = "collapsible",
+  readOnly = false,
 }) => {
   const { theme } = useClipperUi();
-  const isInline = variant === "inline";
-  const [expanded, setExpanded] = useState(isInline);
-  const showContent = isInline || expanded;
   const {
     canEdit,
     fields,
@@ -153,114 +148,88 @@ export const ClipperExportMetadataPanel: React.FC<ClipperExportMetadataPanelProp
     save,
     dirty,
     isSaving,
-  } = useClipperExportMetadata({ result, onMetadataSaved, watchExternal: showContent });
+  } = useClipperExportMetadata({ result, onMetadataSaved, watchExternal: true });
+  const fieldsLocked = !canEdit || readOnly;
   const transcriptPlain = result.transcriptPlain?.trim() ?? "";
   const transcriptTimestamped = result.transcriptTimestamped?.trim() ?? "";
-  const missingCount = countMissingSocialFields(result);
+  const missingCount = readOnly ? 0 : countMissingSocialFields(result);
 
   const handleCopyExportId = useCallback(() => {
     void copyToClipboard(result.id, "Export ID copied");
   }, [result.id]);
   return (
-    <VStack align="stretch" gap={3} w="full" mt={isInline ? 0 : 2}>
-      {isInline ? (
-        <HStack justify="space-between" align="center">
-          <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
-            Export metadata
-          </Text>
-          {missingCount > 0 ? (
-            <Text fontSize="xs" color={theme.text.muted}>
-              {missingCount} empty
-            </Text>
-          ) : null}
-        </HStack>
-      ) : (
-        <OutlinedActionButton
-          type="button"
-          width="fit-content"
-          justifyContent="flex-start"
-          gap={2}
-          px={3}
-          py={1}
-          h="auto"
-          minH="32px"
-          fontSize="xs"
-          color={theme.text.muted}
-          {...getOutlinedActionSurfaceProps(theme, expanded)}
-          onClick={() => setExpanded((open) => !open)}
-        >
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+    <VStack align="stretch" gap={3} w="full">
+      <HStack justify="space-between" align="center">
+        <Text fontSize="sm" fontWeight="semibold" color={theme.text.primary}>
           Export metadata
-          {missingCount > 0 ? (
-            <Text as="span" fontSize="xs" color={theme.text.muted}>
-              · {missingCount} empty
-            </Text>
-          ) : null}
-        </OutlinedActionButton>
-      )}
+        </Text>
+        {missingCount > 0 ? (
+          <Text fontSize="xs" color={theme.text.muted}>
+            {missingCount} empty
+          </Text>
+        ) : null}
+      </HStack>
 
-      {showContent ? (
-        <VStack align="stretch" gap={3} w="full">
-          <Box w="full">
-            <MetadataFieldLabel>Transcript</MetadataFieldLabel>
-            <TranscriptDisplay
-              plain={transcriptPlain}
-              timestamped={transcriptTimestamped}
-            />
-          </Box>
-
-          {!canEdit ? (
-            <Text fontSize="xs" color={theme.text.muted}>
-              Social metadata editing is available in the desktop app.
-            </Text>
-          ) : null}
-
-          <SocialField
-            label={EXPORT_SOCIAL_FIELD_LABELS.socialTitle}
-            value={fields.socialTitle ?? ""}
-            disabled={!canEdit}
-            onChange={(value) => updateField("socialTitle", value)}
+      <VStack align="stretch" gap={3} w="full">
+        <Box w="full">
+          <MetadataFieldLabel>Transcript</MetadataFieldLabel>
+          <TranscriptDisplay
+            plain={transcriptPlain}
+            timestamped={transcriptTimestamped}
           />
-          <SocialField
-            label={EXPORT_SOCIAL_FIELD_LABELS.socialDescription}
-            value={fields.socialDescription ?? ""}
-            multiline
-            disabled={!canEdit}
-            onChange={(value) => updateField("socialDescription", value)}
-          />
-          <SocialField
-            label={EXPORT_SOCIAL_FIELD_LABELS.socialHashtags}
-            value={fields.socialHashtags ?? ""}
-            disabled={!canEdit}
-            onChange={(value) => updateField("socialHashtags", value)}
-          />
+        </Box>
 
-          <HStack gap={2} flexWrap="wrap">
-            {canEdit ? (
-              <OutlinedActionButton
-                type="button"
-                width="fit-content"
-                justifyContent="center"
-                gap={2}
-                disabled={!dirty || isSaving}
-                onClick={() => void save()}
-              >
-                {isSaving ? "Saving…" : "Save"}
-              </OutlinedActionButton>
-            ) : null}
+        {!canEdit && !readOnly ? (
+          <Text fontSize="xs" color={theme.text.muted}>
+            Social metadata editing is available in the desktop app.
+          </Text>
+        ) : null}
+
+        <SocialField
+          label={EXPORT_SOCIAL_FIELD_LABELS.socialTitle}
+          value={fields.socialTitle ?? ""}
+          disabled={fieldsLocked}
+          onChange={(value) => updateField("socialTitle", value)}
+        />
+        <SocialField
+          label={EXPORT_SOCIAL_FIELD_LABELS.socialDescription}
+          value={fields.socialDescription ?? ""}
+          multiline
+          disabled={fieldsLocked}
+          onChange={(value) => updateField("socialDescription", value)}
+        />
+        <SocialField
+          label={EXPORT_SOCIAL_FIELD_LABELS.socialHashtags}
+          value={fields.socialHashtags ?? ""}
+          disabled={fieldsLocked}
+          onChange={(value) => updateField("socialHashtags", value)}
+        />
+
+        <HStack gap={2} flexWrap="wrap">
+          {canEdit && !readOnly ? (
             <OutlinedActionButton
               type="button"
               width="fit-content"
               justifyContent="center"
               gap={2}
-              startIcon={<Copy size={14} />}
-              onClick={handleCopyExportId}
+              disabled={!dirty || isSaving}
+              onClick={() => void save()}
             >
-              Copy export ID
+              {isSaving ? "Saving…" : "Save"}
             </OutlinedActionButton>
-          </HStack>
-        </VStack>
-      ) : null}
+          ) : null}
+          <OutlinedActionButton
+            type="button"
+            width="fit-content"
+            justifyContent="center"
+            gap={2}
+            startIcon={<Copy size={14} />}
+            onClick={handleCopyExportId}
+          >
+            Copy export ID
+          </OutlinedActionButton>
+        </HStack>
+      </VStack>
     </VStack>
   );
 };

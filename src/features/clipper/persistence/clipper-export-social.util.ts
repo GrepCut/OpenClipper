@@ -1,7 +1,9 @@
 import type { ClipperExportMapItem } from "./clipper-export-db-api.util";
+import { areMapTargetsPublished, isFolderOnlyFormat } from "../shared/clipper-map-publish.util";
 import type { ClipperFormatResult } from "../shared/state.util";
 
-export type ExportNodeStatus = "incomplete" | "ready" | "published";
+/** `manual` = folder-only format: no in-app publishing, metadata is not required. */
+export type ExportNodeStatus = "incomplete" | "ready" | "published" | "manual";
 
 export type ExportSocialFields = Pick<
   ClipperFormatResult,
@@ -30,9 +32,10 @@ export function countMissingSocialFields(result: ClipperFormatResult): number {
 }
 
 export function getExportNodeStatus(
-  item: Pick<ClipperExportMapItem, "missingFields" | "isPublished">,
+  item: Pick<ClipperExportMapItem, "missingFields" | "formatId" | "publishes">,
 ): ExportNodeStatus {
-  if (item.isPublished) return "published";
+  if (isFolderOnlyFormat(item.formatId)) return "manual";
+  if (areMapTargetsPublished(item)) return "published";
   if (item.missingFields.length > 0) return "incomplete";
   return "ready";
 }
@@ -45,6 +48,8 @@ export function getExportNodeStatusLabel(status: ExportNodeStatus): string {
       return " · Ready to publish";
     case "published":
       return " · Published";
+    case "manual":
+      return " · Manual upload";
   }
 }
 

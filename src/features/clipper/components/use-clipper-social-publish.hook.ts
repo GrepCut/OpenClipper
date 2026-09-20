@@ -10,13 +10,18 @@ import {
 import { appToast } from "../../../shared/utils/toast.service";
 import { resolveClipperExportUploadFile } from "../persistence/resolve-export-upload-file.util";
 import {
+  isAlreadyPublishedConflict,
+  isDuplicatePublishConflict,
   isYoutubeReauthRequired,
   normalizePublishStatus,
   persistPublishRecord,
   publishErrorMessage,
   sanitizeSocialWatchUrl,
 } from "../shared/clipper-social-publish-record.util";
-import { runClipperSocialPublish } from "../shared/run-clipper-social-publish.util";
+import {
+  runClipperSocialPublish,
+  type SocialPublishUploadPhase,
+} from "../shared/run-clipper-social-publish.util";
 import type { ClipperExportPublishRecord } from "../persistence/clipper-export-db-api.util";
 import { PLATFORM_LABELS } from "./clipper-social-publish-dialog.constants";
 import { usePublishUploadStallWarning } from "./use-publish-upload-stall-warning.hook";
@@ -54,9 +59,11 @@ export function useClipperSocialPublish({
   const [isPublishing, setIsPublishing] = useState(false);
   const [didSucceed, setDidSucceed] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadPhase, setUploadPhase] = useState<"uploading" | "publishing">("uploading");
+  const [uploadPhase, setUploadPhase] = useState<SocialPublishUploadPhase>("preparing");
   const [watchUrl, setWatchUrl] = useState<string | null>(null);
   const sessionBusyRef = useRef(false);
+  const publishLockRef = useRef(false);
+  const publishGenerationRef = useRef(0);
   sessionBusyRef.current = isPublishing || didSucceed;
 
   const platform: SocialPublishablePlatform = useMemo(() => {
@@ -76,7 +83,6 @@ export function useClipperSocialPublish({
     enabled: isTikTok,
     defaultConnected,
     connectionId: activeConnectionId,
-    resetAllowed: !sessionBusyRef.current,
   });
 
   const defaultTitle = useMemo(() => {
@@ -96,11 +102,13 @@ export function useClipperSocialPublish({
 
   useEffect(() => {
     if (!isOpen) {
+      publishGenerationRef.current += 1;
+      publishLockRef.current = false;
       setIsPublishing(false);
       setDidSucceed(false);
       setWatchUrl(null);
       setUploadProgress(0);
-      setUploadPhase("uploading");
+      setUploadPhase("preparing");
       return;
     }
     if (sessionBusyRef.current) return;
@@ -111,7 +119,7 @@ export function useClipperSocialPublish({
   }, [isOpen, defaultTitle, defaultDescription, accountConnections]);
 
   const handlePublish = async () => {
-    if (isPublishing || !result || !title.trim()) return;
+    if (publishLockRef.current || isPublishing || !result || !title.trim()) return;
     if (!defaultConnected) {
       onRequestConnect(platform);
       return;
@@ -129,20 +137,40 @@ export function useClipperSocialPublish({
       return;
     }
 
-    const video = await resolveClipperExportUploadFile(result);
-    if (!video) {
-      appToast.error("Upload failed", "Could not read the exported video file.");
-      return;
-    }
-
-    onPublishStart?.();
+    publishLockRef.current = true;
+    const generation = ++publishGenerationRef.current;
     setDidSucceed(false);
     setWatchUrl(null);
     setIsPublishing(true);
     setUploadProgress(0);
-    setUploadPhase("uploading");
+    setUploadPhase("preparing");
+    onPublishStart?.();
 
     try {
+      await persistPublishRecord(
+        { exportId: result.id, platform, status: "pending" },
+        onPublishComplete,
+      );
+
+      const video = await resolveClipperExportUploadFile(result, projectId);
+      if (!video) {
+        appToast.error("Upload failed", "Could not read the exported video file.");
+        await persistPublishRecord(
+          {
+            exportId: result.id,
+            platform,
+            status: "failed",
+            errorMessage: "Could not read the exported video file.",
+          },
+          onPublishComplete,
+        );
+        onPublishError?.();
+        return;
+      }
+
+      if (publishGenerationRef.current !== generation) return;
+      setUploadPhase("uploading");
+
       const response = await runClipperSocialPublish({
         platform,
         platformLabel,
@@ -169,9 +197,17 @@ export function useClipperSocialPublish({
               musicUsageConfirmed: tiktok.musicUsageConfirmed,
             }
           : undefined,
-        onUploadProgress: setUploadProgress,
-        onUploadPhaseChange: setUploadPhase,
+        onUploadProgress: (ratio) => {
+          if (publishGenerationRef.current !== generation) return;
+          setUploadProgress(ratio);
+        },
+        onUploadPhaseChange: (phase) => {
+          if (publishGenerationRef.current !== generation) return;
+          setUploadPhase(phase);
+        },
       });
+
+      if (publishGenerationRef.current !== generation) return;
 
       if (response.watchUrl) setWatchUrl(sanitizeSocialWatchUrl(response.watchUrl) ?? null);
 
@@ -188,22 +224,35 @@ export function useClipperSocialPublish({
         onPublishComplete,
       );
 
-      if (
-        usesPublishModals
-        && (publishStatus === "succeeded" || response.status === "processing")
-      ) {
+      if (usesPublishModals && publishStatus === "succeeded") {
         setDidSucceed(true);
         return;
       }
 
       if (response.status === "processing") {
         appToast.success("Processing", `${platformLabel} is finishing your post. We'll update when it's ready.`);
-      } else {
-        appToast.success("Published", `Your clip is now on ${platformLabel}.`);
+        return;
       }
+
+      appToast.success("Published", `Your clip is now on ${platformLabel}.`);
     } catch (error: unknown) {
+      if (publishGenerationRef.current !== generation) return;
       onPublishError?.();
       const message = publishErrorMessage(error, `${platformLabel} upload failed`);
+
+      if (isDuplicatePublishConflict(error)) {
+        if (isAlreadyPublishedConflict(message)) {
+          await persistPublishRecord(
+            { exportId: result.id, platform, status: "succeeded" },
+            onPublishComplete,
+          );
+          appToast.info("Already published", message);
+          return;
+        }
+        appToast.info("Publishing in progress", message);
+        return;
+      }
+
       await persistPublishRecord(
         { exportId: result.id, platform, status: "failed", errorMessage: message },
         onPublishComplete,
@@ -215,7 +264,10 @@ export function useClipperSocialPublish({
       }
       appToast.error("Publish failed", message);
     } finally {
-      setIsPublishing(false);
+      if (publishGenerationRef.current === generation) {
+        publishLockRef.current = false;
+        setIsPublishing(false);
+      }
     }
   };
 

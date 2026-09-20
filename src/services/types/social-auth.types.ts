@@ -66,6 +66,21 @@ export interface SocialPublishResponse {
   watchUrl?: string;
 }
 
+/** POST /social/{platform}/clipper/staging. A duplicate is rejected with 409. */
+export interface ClipperStagingInitResponse {
+  jobId: string;
+  partSize: number;
+  totalParts: number;
+}
+
+/** POST /social/{platform}/clipper/publish/{jobId}. Idempotent, safe to repeat. */
+export interface ClipperStagedPublishResponse {
+  jobId: string;
+  status: SocialPublishJobStatus;
+  watchUrl?: string | null;
+  externalId?: string | null;
+}
+
 export interface SocialPublishJobStatusResponse {
   id: string;
   platform: string;

@@ -6,6 +6,7 @@ pub mod parakeet_tokens;
 pub mod parakeet_worker;
 pub mod types;
 pub mod vocals_isolate;
+pub mod wav_pcm;
 pub mod whisper_genai;
 
 pub use parakeet_worker::ParakeetService;

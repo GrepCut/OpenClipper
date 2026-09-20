@@ -1,7 +1,4 @@
-import {
-  getExportNodeStatus,
-  type ExportNodeStatus,
-} from "../persistence/clipper-export-social.util";
+import type { ExportNodeStatus } from "../persistence/clipper-export-social.util";
 import type { PublishGraphNode } from "../shared/clipper-publish-graph.util";
 import { PROJECT_THUMB_MAX_DIMENSION } from "../shared/clipper-publish-graph.util";
 
@@ -9,6 +6,7 @@ const STATUS_DOT_COLORS: Record<ExportNodeStatus, string> = {
   incomplete: "#ef4444",
   ready: "#eab308",
   published: "#22c55e",
+  manual: "#94a3b8",
 };
 
 const PROJECT_LABEL_GAP = 5;
@@ -293,9 +291,7 @@ export function drawExportNode(
     }
   }
 
-  const status = node.exportItem
-    ? getExportNodeStatus(node.exportItem)
-    : "incomplete";
+  const status = node.exportStatus ?? "incomplete";
   const bx = (node.x ?? 0) + radius - 4 / globalScale;
   const by = (node.y ?? 0) + radius - 4 / globalScale;
   drawStatusDot(
@@ -327,4 +323,32 @@ export function paintNodeHitArea(
   ctx.beginPath();
   ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI);
   ctx.fill();
+}
+
+export function isPointInNodeHitArea(
+  node: PublishGraphNode,
+  point: { x: number; y: number },
+  thumbnail?: HTMLCanvasElement,
+): boolean {
+  const radius = getNodeHitRadius(node, 11, thumbnail);
+  const dx = point.x - (node.x ?? 0);
+  const dy = point.y - (node.y ?? 0);
+  if (node.type === "project") {
+    return Math.abs(dx) <= radius && Math.abs(dy) <= radius;
+  }
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+export function nodeAtGraphPoint(
+  nodes: readonly PublishGraphNode[],
+  point: { x: number; y: number },
+  thumbnails?: Record<string, HTMLCanvasElement>,
+): PublishGraphNode | null {
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const node = nodes[i];
+    if (!node) continue;
+    const thumbnail = node.projectId ? thumbnails?.[node.projectId] : undefined;
+    if (isPointInNodeHitArea(node, point, thumbnail)) return node;
+  }
+  return null;
 }

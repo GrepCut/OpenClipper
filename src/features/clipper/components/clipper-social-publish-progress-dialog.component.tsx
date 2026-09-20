@@ -1,5 +1,6 @@
 import { Text, VStack } from "@chakra-ui/react";
 import { StyledModal } from "../../../shared/components/styled-modal.component";
+import type { SocialPublishUploadPhase } from "../shared/run-clipper-social-publish.util";
 import { ClipperSocialPublishStatus } from "./clipper-social-publish-status.component";
 
 export function ClipperSocialPublishProgressDialog({
@@ -10,7 +11,7 @@ export function ClipperSocialPublishProgressDialog({
 }: {
   isOpen: boolean;
   platformLabel: string;
-  uploadPhase: "uploading" | "publishing";
+  uploadPhase: SocialPublishUploadPhase;
   uploadProgress: number;
 }) {
   return (

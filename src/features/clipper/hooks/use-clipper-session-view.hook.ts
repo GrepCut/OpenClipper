@@ -14,7 +14,6 @@ import { resumeStepsForStage } from "../shared/loading-status.util";
 import { isClipperActivelyRendering } from "../shared/stages.util";
 import { useClipperPipeline } from "./use-clipper-pipeline.hook";
 import { useClipperRenderQueue } from "./use-clipper-render-queue.hook";
-import { useClipperSessionPublish } from "./use-clipper-session-publish.hook";
 
 export function useClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
   const auth = useAuth();
@@ -46,7 +45,8 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     confirmRange,
     retryResume,
     renderExports,
-    rerenderFormat,
+    existingExports,
+    stopRender,
     refreshExportHistory,
     updateExportMetadata,
     reset,
@@ -90,11 +90,6 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     renderExports,
   });
 
-  const publish = useClipperSessionPublish({
-    projectId: project.id,
-    canUseAccountFeatures,
-  });
-
   const handleFile = useCallback(
     (file: File) => {
       void selectFile(file);
@@ -107,7 +102,10 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
   }, [project.id]);
 
   const goToPreview = useCallback(() => setView("preview"), [setView]);
-  const goToRenderQueue = useCallback(() => setView("queue"), [setView]);
+  const goToRenderQueue = useCallback(() => {
+    if (isRendering) stopRender();
+    setView("queue");
+  }, [isRendering, setView, stopRender]);
   const goToExports = useCallback(() => setView("exports"), [setView]);
 
   const step = useMemo(
@@ -156,7 +154,6 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     updateSettings,
     confirmRange,
     retryResume,
-    rerenderFormat,
     refreshExportHistory,
     updateExportMetadata,
     reset,
@@ -185,6 +182,7 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     resumeLoadingStatus,
     canUseAccountFeatures,
     renderQueue,
-    publish,
+    existingExports,
+    stopRender,
   };
 }

@@ -30,6 +30,7 @@ function recordToMissingResult(
     clipStartSec: record.clipStartSec,
     clipEndSec: record.clipEndSec,
     relativePath: record.relativePath,
+    renderSignature: record.renderSignature ?? undefined,
     displayPath: record.relativePath,
     ...metadataFieldsFromExportRecord(record),
   };
@@ -65,6 +66,7 @@ async function resolveExportRecordMedia(
       clipStartSec: record.clipStartSec,
       clipEndSec: record.clipEndSec,
       relativePath: record.relativePath,
+      renderSignature: record.renderSignature ?? undefined,
       displayPath: filePath,
       filePath,
       file,

@@ -22,6 +22,7 @@ const clipperSettingsSchema = z
         quality: z.enum(["draft", "standard", "high"]),
         resolutionCap: z.enum(["source", "1080p", "720p"]),
         filenameTemplate: z.string(),
+        skipExisting: z.boolean(),
       })
       .partial()
       .optional(),

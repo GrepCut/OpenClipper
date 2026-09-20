@@ -1,4 +1,4 @@
-import { WavOutputFormat, Output, StreamTarget } from "mediabunny";
+import { WavOutputFormat, Output, StreamTarget, type AudioSample } from "mediabunny";
 import { isTauri } from "../../../../shared/utils/platform.util";
 import { createMediabunnyInput } from "../../lib/media/mediabunny-file-source.util";
 import { createThrottledProgressReporter } from "../../lib/convert/throttled-progress.util";
@@ -70,12 +70,7 @@ export async function extractClipAudioForTranscription(
   });
 
   const envelope = createRmsEnvelopeAccumulator(TRANSCRIBE_SAMPLE_RATE);
-  const processSample = (sample: {
-    numberOfChannels: number;
-    sampleRate: number;
-    numberOfFrames: number;
-    copyTo: (destination: Float32Array, options: { format: "f32"; planeIndex: number }) => void;
-  }) => {
+  const processSample = (sample: AudioSample): AudioSample => {
     if (
       sample.numberOfChannels !== 1 ||
       sample.sampleRate !== TRANSCRIBE_SAMPLE_RATE

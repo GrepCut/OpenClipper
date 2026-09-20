@@ -77,6 +77,20 @@ export function publishErrorMessage(error: unknown, fallback: string): string {
   );
 }
 
+/**
+ * The backend rejected a duplicate publish of this export (Redis init lock plus
+ * a unique index over active jobs). Nothing failed: a job is already running or
+ * the clip is already live, so the local record must not be marked failed.
+ */
+export function isDuplicatePublishConflict(error: unknown): boolean {
+  return (error as { response?: { status?: number } })?.response?.status === 409;
+}
+
+/** Distinguishes "already live" from "still uploading" inside a 409. */
+export function isAlreadyPublishedConflict(message: string): boolean {
+  return /already published/i.test(message);
+}
+
 export function isYoutubeReauthRequired(error: unknown, message: string): boolean {
   const status = (error as { response?: { status?: number } })?.response?.status;
   return status === 401 || /authorization expired|connect youtube again/i.test(message);

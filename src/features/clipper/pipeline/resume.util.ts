@@ -16,6 +16,7 @@ export const EMPTY_CLIPPER_PIPELINE_STATE: ClipperPipelineState = {
   stage: "idle",
   stageMessage: "",
   renderProgress: {},
+  renderSignatures: {},
   exportHistory: [],
   rangeTrimmedVideoUrl: null,
   clipPreviews: [],

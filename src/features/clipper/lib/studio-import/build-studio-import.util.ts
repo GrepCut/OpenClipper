@@ -1,3 +1,4 @@
+import { stageManifestForStudioImport } from "./stage-studio-import.util";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { resolveAutoFlipCropTrack } from "../../engine/autoflip/build-track.util";
@@ -24,11 +25,14 @@ import { appToast } from "../../../../shared/utils/toast.service";
 import { openExternalAuthUrl } from "../../../../shared/utils/desktop-auth.util";
 import {
   CLIPPER_STUDIO_IMPORT_MANIFEST_FILE,
-  CLIPPER_TRIMMED_SEGMENT_FILE,
 } from "../../platform/native-source.util";
 import {
+  extractClipperStudioClip,
   extractClipperStudioThumbnails,
+  type ClipperStudioClipCut,
+  type ClipperStudioClipRange,
 } from "../../persistence/project-data-files.util";
+import { clipperWarn } from "../../shared/logger.util";
 import {
   CLIPPER_STUDIO_IMPORT_VERSION,
   type ClipperStudioCropSample,
@@ -285,45 +289,6 @@ export function buildStudioImportUrl(
   return `${base}/from-clipper?${params.toString()}`;
 }
 
-async function stageManifestForStudioImport(
-  projectId: string,
-  manifest: ClipperStudioImportV1,
-): Promise<ClipperStudioImportV1> {
-  const fileName = manifest.manifestFileName || DEFAULT_STUDIO_IMPORT_MANIFEST_NAME;
-  const videoFileName = manifest.sourceVideoFileName || CLIPPER_TRIMMED_SEGMENT_FILE;
-
-  const projectDataDir = await invoke<string>("ensure_clipper_project_data_dir", {
-    projectId,
-  });
-
-  const staged = await invoke<{
-    projectDataDir: string;
-    manifestAbsolutePath: string;
-    videoAbsolutePath: string;
-  }>("stage_clipper_studio_import", {
-    projectId,
-    manifestFileName: fileName,
-    videoFileName,
-    manifestContents: JSON.stringify(manifest, null, 2),
-  });
-
-  const resolvedDataDir = staged.projectDataDir || projectDataDir;
-  if (/[/\\]studio-import[/\\]?$/i.test(resolvedDataDir.replace(/[/\\]+$/, ""))) {
-    throw new Error(
-      "Studio import resolved to obsolete studio-import staging. Restart Open Clipper so it uses Documents\\OpenClipper\\projects\\{id}\\data.",
-    );
-  }
-
-  return {
-    ...manifest,
-    projectDataDir: resolvedDataDir,
-    manifestAbsolutePath:
-      staged.manifestAbsolutePath || `${resolvedDataDir}\\${fileName}`,
-    videoAbsolutePath:
-      staged.videoAbsolutePath || `${resolvedDataDir}\\${videoFileName}`,
-  };
-}
-
 async function openStudioUrl(url: string): Promise<void> {
   if (isTauri()) {
     try {
@@ -353,6 +318,43 @@ export type OpenInStudioPhase =
 export interface OpenInStudioProgress {
   phase: OpenInStudioPhase;
   ratio: number;
+}
+
+function clipRangeForManifest(manifest: ClipperStudioImportV1): ClipperStudioClipRange {
+  const segments = manifest.segments ?? [];
+  if (segments.length === 0) {
+    return { startSec: 0, endSec: Math.max(0.1, manifest.totalDurationSec) };
+  }
+  return {
+    startSec: Math.min(...segments.map((segment) => segment.startSec)),
+    endSec: Math.max(...segments.map((segment) => segment.endSec)),
+  };
+}
+
+/**
+ * Points the manifest at the per-clip cut. Segments and crop samples live on the
+ * source-file timeline, so they shift by the cut offset; words and caption
+ * groups are already clip-relative and stay as they are.
+ */
+export function rebaseManifestForStudioClip(
+  manifest: ClipperStudioImportV1,
+  cut: Pick<ClipperStudioClipCut, "fileName" | "offsetSec" | "durationSec">,
+): ClipperStudioImportV1 {
+  const shift = (t: number) => Math.max(0, t - cut.offsetSec);
+  return {
+    ...manifest,
+    sourceVideoFileName: cut.fileName,
+    segments: manifest.segments.map((segment) => ({
+      startSec: shift(segment.startSec),
+      endSec: Math.min(cut.durationSec, shift(segment.endSec)),
+    })),
+    cropTrack: manifest.cropTrack
+      .filter((sample) => {
+        const t = sample.t - cut.offsetSec;
+        return t >= 0 && t <= cut.durationSec;
+      })
+      .map((sample) => ({ ...sample, t: sample.t - cut.offsetSec })),
+  };
 }
 
 export interface OpenClipInStudioOptions {
@@ -391,22 +393,31 @@ export async function openClipInStudio(
   };
 
   try {
-    report("preparing", 1);
+    report("preparing", 0);
 
     if (isTauri() && projectId) {
-      let withThumbs = manifest;
+      let clipManifest = manifest;
+      try {
+        const cut = await extractClipperStudioClip(projectId, clipRangeForManifest(manifest));
+        clipManifest = rebaseManifestForStudioClip(manifest, cut);
+      } catch (error) {
+        clipperWarn("studio: clip cut failed, sending full range", { error: String(error) });
+      }
+      report("preparing", 1);
+
+      let withThumbs = clipManifest;
       try {
         report("thumbnails", 0);
         const thumbs = await extractClipperStudioThumbnails(
           projectId,
-          Math.max(0.1, manifest.totalDurationSec),
+          clipManifest.sourceVideoFileName,
           false,
           (thumbRatio) => report("thumbnails", thumbRatio),
         );
         report("thumbnails", 1);
         if (thumbs && thumbs.count > 0) {
           withThumbs = {
-            ...manifest,
+            ...clipManifest,
             thumbnails: {
               indexFileName: thumbs.indexFileName,
               packFileName: thumbs.packFileName,
@@ -423,6 +434,7 @@ export async function openClipInStudio(
       resolved = await stageManifestForStudioImport(projectId, withThumbs);
       report("staging", 1);
     } else {
+      report("preparing", 1);
       downloadClipperStudioImportJson(resolved, fileName);
       report("staging", 1);
     }

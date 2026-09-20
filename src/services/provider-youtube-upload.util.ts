@@ -1,3 +1,4 @@
+import axios from "axios";
 import type { SocialPrivacyStatus } from "./types/social-auth.types";
 
 export interface YoutubeDirectUploadParams {
@@ -51,23 +52,28 @@ export async function uploadVideoToYoutube(
     throw new Error("YouTube did not return an upload URL");
   }
 
-  const uploadRes = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": mimeType,
-      "Content-Length": String(params.video.size),
+  const uploadRes = await axios.put(uploadUrl, params.video, {
+    headers: { "Content-Type": mimeType },
+    withCredentials: false,
+    validateStatus: () => true,
+    onUploadProgress: (event) => {
+      const total = event.total || params.video.size;
+      if (!total) return;
+      params.onUploadProgress?.(Math.min(1, event.loaded / total));
     },
-    body: params.video,
   });
 
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
+  if (uploadRes.status < 200 || uploadRes.status >= 300) {
+    const errText =
+      typeof uploadRes.data === "string"
+        ? uploadRes.data
+        : JSON.stringify(uploadRes.data ?? {});
     throw new Error(errText || `YouTube upload failed (${uploadRes.status})`);
   }
 
   params.onUploadProgress?.(1);
 
-  const uploadJson = (await uploadRes.json()) as { id?: string };
+  const uploadJson = (uploadRes.data ?? {}) as { id?: string };
   const videoId = uploadJson.id;
   if (!videoId) {
     throw new Error("YouTube upload succeeded but no video ID was returned");

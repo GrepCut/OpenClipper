@@ -128,6 +128,27 @@ export const youtubeAuthService = {
     const response = await apiClient.get<YoutubePublishJobStatusResponse>(
       `/social/publish/${jobId}`,
     );
-    return response.data;
+    const data = response.data;
+    return {
+      ...data,
+      youtubeVideoId: data.youtubeVideoId ?? data.externalId ?? null,
+    };
+  },
+
+  async pollUntilTerminal(
+    jobId: string,
+    options?: { maxAttempts?: number; intervalMs?: number },
+  ): Promise<YoutubePublishJobStatusResponse> {
+    const maxAttempts = options?.maxAttempts ?? 40;
+    const intervalMs = options?.intervalMs ?? 3000;
+    let last = await this.getPublishJobStatus(jobId);
+    for (let i = 0; i < maxAttempts; i++) {
+      if (last.status === "published" || last.status === "failed") {
+        return last;
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      last = await this.getPublishJobStatus(jobId);
+    }
+    return last;
   },
 };

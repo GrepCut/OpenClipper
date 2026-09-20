@@ -1,8 +1,9 @@
 import axios from "axios";
 import { apiClient } from "../shared/utils/api-client.util";
 import type {
+  ClipperStagedPublishResponse,
+  ClipperStagingInitResponse,
   SocialPrivacyStatus,
-  SocialPublishJobStatus,
   SocialPublishResponse,
 } from "./types/social-auth.types";
 
@@ -64,25 +65,25 @@ async function uploadPartsToR2(
 export async function publishClipperViaR2Staging(
   params: R2StagingPublishParams,
 ): Promise<SocialPublishResponse> {
-  const staging = await apiClient.post<{
-    jobId: string;
-    partSize: number;
-    totalParts: number;
-  }>(`/social/${params.platform}/clipper/staging`, {
-    projectId: params.projectId,
-    exportId: params.exportId,
-    connectionId: params.connectionId,
-    clipIndex: params.clipIndex,
-    formatId: params.formatId,
-    fileName: params.video.name || "clip.mp4",
-    mimeType: params.video.type || "video/mp4",
-    fileSize: params.video.size,
-    title: params.title,
-    description: params.description,
-    privacyStatus: params.privacyStatus,
-  });
+  const staging = await apiClient.post<ClipperStagingInitResponse>(
+    `/social/${params.platform}/clipper/staging`,
+    {
+      projectId: params.projectId,
+      exportId: params.exportId,
+      connectionId: params.connectionId,
+      clipIndex: params.clipIndex,
+      formatId: params.formatId,
+      fileName: params.video.name || "clip.mp4",
+      mimeType: params.video.type || "video/mp4",
+      fileSize: params.video.size,
+      title: params.title,
+      description: params.description,
+      privacyStatus: params.privacyStatus,
+    },
+  );
 
   const { jobId, partSize, totalParts } = staging.data;
+
   await uploadPartsToR2(
     params.video,
     jobId,
@@ -93,10 +94,9 @@ export async function publishClipperViaR2Staging(
   );
 
   params.onUploadPhaseChange?.("publishing");
-  const response = await apiClient.post<{
-    jobId: string;
-    status: SocialPublishJobStatus;
-  }>(`/social/${params.platform}/clipper/publish/${jobId}`);
+  const response = await apiClient.post<ClipperStagedPublishResponse>(
+    `/social/${params.platform}/clipper/publish/${jobId}`,
+  );
 
   if (response.data.status === "processing") {
     const polled = await pollPublishJob(response.data.jobId);
@@ -108,12 +108,11 @@ export async function publishClipperViaR2Staging(
     };
   }
 
-  const status = await apiClient.get(`/social/publish/${response.data.jobId}`);
   return {
     jobId: response.data.jobId,
     status: response.data.status,
-    externalId: status.data.externalId ?? undefined,
-    watchUrl: status.data.watchUrl ?? undefined,
+    externalId: response.data.externalId ?? undefined,
+    watchUrl: response.data.watchUrl ?? undefined,
   };
 }
 

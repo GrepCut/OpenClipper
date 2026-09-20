@@ -5,18 +5,17 @@ import { ClipperExportFormatRow } from "./clipper-export-format-row.component";
 
 interface ClipperExportHistoryListProps {
   exports: ClipperFormatResult[];
+  projectId: string;
 }
 
-export const ClipperExportHistoryList: React.FC<ClipperExportHistoryListProps> = ({ exports }) => {
+export const ClipperExportHistoryList: React.FC<ClipperExportHistoryListProps> = ({
+  exports,
+  projectId,
+}) => {
   return (
     <VStack align="stretch" gap={2}>
       {exports.map((result) => (
-        <ClipperExportFormatRow
-          key={result.id}
-          result={result}
-          isRerendering={false}
-          onRerender={() => {}}
-        />
+        <ClipperExportFormatRow key={result.id} result={result} projectId={projectId} />
       ))}
     </VStack>
   );

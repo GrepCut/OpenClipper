@@ -20,6 +20,7 @@ export interface ClipperExportRecord {
   socialDescription: string;
   socialDescriptionTimestamped: string;
   socialHashtags: string;
+  renderSignature?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +44,7 @@ export interface UpsertClipperExportInput {
   socialDescription?: string;
   socialDescriptionTimestamped?: string;
   socialHashtags?: string;
+  renderSignature?: string;
 }
 
 export interface ClipperExportSocialPatch {
@@ -131,8 +133,8 @@ export interface ClipperExportMapItem {
   updatedAt: string;
   missingFields: string[];
   hasTranscript: boolean;
-  publishStatus?: ClipperExportPublishRecord;
-  isPublished: boolean;
+  /** Latest publish record per platform. */
+  publishes: ClipperExportPublishRecord[];
 }
 
 export interface ClipperExportPublishUpsertInput {

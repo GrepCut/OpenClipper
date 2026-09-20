@@ -1,4 +1,5 @@
 import type { ClipperExportMapItem } from "./clipper-export-db-api.util";
+import { publishesVisualKey } from "../shared/clipper-map-publish.util";
 
 function missingFieldsKey(fields: string[]): string {
   return fields.join(",");
@@ -10,8 +11,7 @@ function itemVisualKey(item: ClipperExportMapItem): string {
     item.projectId,
     item.clipperOwnerId ?? "",
     missingFieldsKey(item.missingFields),
-    item.isPublished ? "1" : "0",
-    item.publishStatus?.status ?? "",
+    publishesVisualKey(item),
     item.socialTitle,
     item.socialDescription,
     item.socialHashtags,

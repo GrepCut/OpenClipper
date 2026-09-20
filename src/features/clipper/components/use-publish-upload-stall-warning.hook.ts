@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { appToast } from "../../../shared/utils/toast.service";
+import type { SocialPublishUploadPhase } from "../shared/run-clipper-social-publish.util";
 
 const UPLOAD_STALL_WARNING_MS = 30_000;
 
 export function usePublishUploadStallWarning(
   isPublishing: boolean,
-  uploadPhase: "uploading" | "publishing",
+  uploadPhase: SocialPublishUploadPhase,
   uploadProgress: number,
 ): void {
   const lastUploadProgressRef = useRef(0);

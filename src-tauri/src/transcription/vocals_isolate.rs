@@ -376,7 +376,7 @@ fn read_wav_f32(path: &Path) -> Result<(Vec<f32>, u32, u16), String> {
     let samples: Result<Vec<f32>, _> = match spec.sample_format {
         hound::SampleFormat::Float => reader.samples::<f32>().collect(),
         hound::SampleFormat::Int => {
-            let max = (1u32 << (spec.bits_per_sample.saturating_sub(1))) as f32;
+            let max = super::wav_pcm::int_sample_scale(spec.bits_per_sample);
             reader
                 .samples::<i32>()
                 .map(|s| s.map(|v| v as f32 / max))

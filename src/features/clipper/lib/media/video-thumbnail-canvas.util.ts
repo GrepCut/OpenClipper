@@ -13,12 +13,19 @@ export function fitFrameSize(
   };
 }
 
+const VIDEO_EVENT_TIMEOUT_MS = 8000;
+
 function waitForVideoEvent(
   video: HTMLVideoElement,
   event: "loadeddata" | "seeked",
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`thumbnail video ${event} timed out`));
+    }, VIDEO_EVENT_TIMEOUT_MS);
     const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener(event, onEvent);
       video.removeEventListener("error", onError);
     };

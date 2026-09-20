@@ -3889,7 +3889,7 @@ dependencies = [
 
 [[package]]
 name = "open-clipper"
-version = "26.9.1"
+version = "26.9.8"
 dependencies = [
  "anyhow",
  "axum",
@@ -3907,6 +3907,7 @@ dependencies = [
  "log",
  "ndarray 0.16.1",
  "ort",
+ "percent-encoding",
  "realfft",
  "reqwest",
  "rmcp",

@@ -22,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 use crate::clipper::data::{clipper_project_data_dir, validate_export_file_name};
 use crate::clipper::exports_notify::{ClipperExportsChangedEvent, enqueue_exports_changed};
 use crate::mcp::server::OpenClipperMcpServer;
+use crate::video::ffmpeg::studio_clip::is_studio_clip_file_name;
 
 pub const DEFAULT_MCP_HTTP_PORT: u16 = 12742;
 
@@ -181,9 +182,30 @@ fn is_safe_project_id(project_id: &str) -> bool {
 fn is_whitelisted_studio_import_file(file_name: &str) -> bool {
     file_name == STUDIO_IMPORT_JSON
         || file_name == STUDIO_IMPORT_VIDEO
+        || is_studio_clip_file_name(file_name)
+        || is_studio_snapshot_file(file_name)
         || file_name == STUDIO_IMPORT_THUMBS_INDEX
         || file_name == STUDIO_IMPORT_THUMBS_PACK
         || is_studio_thumb_jpeg(file_name)
+}
+
+fn is_studio_snapshot_file(name: &str) -> bool {
+    let is_id = |s: &str| s.len() == 32 && s.bytes().all(|c| c.is_ascii_hexdigit());
+    for (prefix, suffix) in [
+        ("clipper-studio-import-", ".json"),
+        ("clip-thumbnails-", ".json"),
+        ("clip-thumbnails-", ".ndjson"),
+    ] {
+        if let Some(id) = name.strip_prefix(prefix).and_then(|s| s.strip_suffix(suffix)) {
+            return is_id(id);
+        }
+    }
+    name.strip_prefix("thumb-")
+        .and_then(|s| s.strip_suffix(".jpg"))
+        .and_then(|s| s.split_once('-'))
+        .is_some_and(|(id, frame)| {
+            is_id(id) && frame.len() >= 4 && frame.bytes().all(|c| c.is_ascii_digit())
+        })
 }
 
 fn content_type_for_file(file_name: &str) -> &'static str {
@@ -362,6 +384,33 @@ pub fn resolve_mcp_http_port() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn studio_snapshot_allowlist_accepts_bundles_but_not_internal_files() {
+        let id = "0123456789abcdef0123456789abcdef";
+        for name in [
+            format!("clipper-studio-import-{id}.json"),
+            format!("clip-thumbnails-{id}.json"),
+            format!("clip-thumbnails-{id}.ndjson"),
+            format!("thumb-{id}-0000.jpg"),
+            format!("thumb-{id}-10000.jpg"),
+            format!("clip-studio-v2-{}.mp4", "a".repeat(64)),
+            "clipper-studio-import.json".to_string(),
+            "clip-trimmed.mp4".to_string(),
+        ] {
+            assert!(is_whitelisted_studio_import_file(&name), "{name}");
+        }
+        for name in [
+            format!("../clipper-studio-import-{id}.json"),
+            format!("clipper-studio-import-{id}.json.part"),
+            format!("clip-thumbnails-{id}.cache"),
+            "clip-thumbnails-xyz.json".to_string(),
+            format!("thumb-{id}-../0000.jpg"),
+            format!("clip-studio-v2-{}.part.mp4", "a".repeat(64)),
+        ] {
+            assert!(!is_whitelisted_studio_import_file(&name), "{name}");
+        }
+    }
 
     #[test]
     fn allows_exact_prod_studio_origin() {
