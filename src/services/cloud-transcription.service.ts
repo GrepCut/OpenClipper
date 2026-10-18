@@ -6,7 +6,12 @@ import type {
 import type { CloudTranscriptionProvider } from "./transcription-api-keys.service";
 import type { PreparedCloudAudioChunk } from "./cloud-transcribe-audio.util";
 
-export const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
+import {
+  DEFAULT_GROQ_WHISPER_MODEL,
+  type GroqWhisperModel,
+} from "./groq-whisper-models.util";
+
+export const GROQ_WHISPER_MODEL = DEFAULT_GROQ_WHISPER_MODEL;
 export const OPENROUTER_WHISPER_MODEL = "openai/whisper-large-v3-turbo";
 export const GROQ_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const CLOUD_FETCH_TIMEOUT_MS = 5 * 60 * 1000;
@@ -113,11 +118,12 @@ function buildFormData(
   audioBytes: Uint8Array,
   mimeType: string,
   filename: string,
+  groqModel?: GroqWhisperModel,
 ): FormData {
   const config = PROVIDER_CONFIG[provider];
   const formData = new FormData();
   formData.append("file", new Blob([audioBytes], { type: mimeType }), filename);
-  formData.append("model", config.model);
+  formData.append("model", provider === "groq" && groqModel ? groqModel : config.model);
   formData.append("response_format", "verbose_json");
   formData.append("timestamp_granularities[]", "word");
   return formData;
@@ -146,6 +152,7 @@ export async function transcribeWithCloudProvider(
     mimeType?: string;
     filename?: string;
     timeOffsetSec?: number;
+    groqModel?: GroqWhisperModel;
     onProgress?: (phase: "uploading" | "waiting", ratio: number) => void;
   },
 ): Promise<Transcription> {
@@ -175,7 +182,7 @@ export async function transcribeWithCloudProvider(
   const response = await fetch(config.endpoint, {
     method: "POST",
     headers,
-    body: buildFormData(provider, audioBytes, mimeType, filename),
+    body: buildFormData(provider, audioBytes, mimeType, filename, options?.groqModel),
     signal: cloudFetchSignal(options?.signal),
   });
 
@@ -202,6 +209,7 @@ export async function transcribeCloudAudioChunks(
   mediaFileId: string,
   options?: {
     signal?: AbortSignal;
+    groqModel?: GroqWhisperModel;
     onProgress?: (
       phase: "uploading" | "waiting",
       ratio: number,
@@ -229,6 +237,7 @@ export async function transcribeCloudAudioChunks(
         mimeType: "audio/mpeg",
         filename: `transcribe-audio-${chunk.index + 1}.mp3`,
         timeOffsetSec: chunk.startSec,
+        groqModel: options?.groqModel,
         onProgress: (phase, ratio) => {
           const overall =
             (chunk.index + ratio) / chunkCount;

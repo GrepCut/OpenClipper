@@ -20,7 +20,6 @@ import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { AppLoader } from "../../../shared/components/app-loader.component";
 import { useLocation, useNavigate } from "react-router-dom";
 import { rememberAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
-import { logIntegration } from "../../../shared/utils/integration-logger.util";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 
 const INTEGRATIONS_RETURN_PATH = "/clipper?tab=integrations";
@@ -234,7 +233,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const handleConnectSocial = useCallback((flow: SocialOAuthFlow) => {
     if (isComingSoonFlow(flow)) return;
     setConnectingFlow(flow);
-    logIntegration("integrations.connect_clicked", { flow });
     void socialAuthService
       .redirectToConnect(flow, INTEGRATIONS_RETURN_PATH)
       .catch(() => {
@@ -247,7 +245,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
 
   const handleDisconnectYoutube = useCallback((connectionId: string) => {
     setDisconnectingConnectionId(connectionId);
-    logIntegration("integrations.disconnect_clicked", { platform: "youtube", connectionId });
     void youtubeAuthService
       .disconnectYoutube(connectionId)
       .then(() => refreshYoutubeStatus())
@@ -266,7 +263,6 @@ const AuthenticatedClipperIntegrationsView: React.FC = () => {
   const handleDisconnectSocial = useCallback(
     (platform: SocialPublishablePlatform, connectionId: string) => {
       setDisconnectingConnectionId(connectionId);
-      logIntegration("integrations.disconnect_clicked", { platform, connectionId });
       void socialAuthService
         .disconnect(platform, connectionId)
         .then(async () => {

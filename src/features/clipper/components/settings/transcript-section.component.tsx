@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { Text } from "@chakra-ui/react";
+import { visibleWordsText } from "../../engine/transcript";
 import type { WordCue } from "../../lib/media/transcription-export.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import { SettingSection } from "./setting-controls.component";
@@ -11,7 +12,7 @@ interface TranscriptSectionProps {
 /** Read-only transcript text — lets you check what was actually transcribed before adjusting caption styling or rendering. */
 export const TranscriptSection: React.FC<TranscriptSectionProps> = ({ words }) => {
   const { theme } = useClipperUi();
-  const text = useMemo(() => words.map((w) => w.text).join(" "), [words]);
+  const text = useMemo(() => visibleWordsText(words), [words]);
 
   return (
     <SettingSection title="Transcript" description="What was transcribed for this clip" defaultOpen>

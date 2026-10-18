@@ -1,5 +1,6 @@
 import type { CaptionGroup, WordCue } from "../../lib/media/transcription-export.util";
 import { groupCaptionWords } from "./cues.util";
+import { visibleWordsText } from "./transcript-edit.util";
 import type {
   ClipperClipSegmentTranscript,
   ClipperClipSegmentWindow,
@@ -19,7 +20,7 @@ function sliceWordsByIndexRange(
 ): WordCue[] {
   const selected = words.slice(wordStartIdx, wordEndIdx + 1);
   return selected.map((word) => ({
-    text: word.text,
+    ...word,
     start: localOffsetSec + Math.max(0, word.start - segmentStartSec),
     end: localOffsetSec + Math.max(0, word.end - segmentStartSec),
   }));
@@ -72,7 +73,7 @@ export function buildClipsFromWordRanges(
       segmentTranscripts.push({
         startSec: segmentStartSec,
         endSec: segmentEndSec,
-        text: segmentWords.map((w) => w.text).join(" ").trim(),
+        text: visibleWordsText(segmentWords),
       });
       localOffsetSec += segmentDurationSec;
     }

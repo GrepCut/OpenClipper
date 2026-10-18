@@ -19,7 +19,7 @@ import type { ClipperProjectMetadata } from "../../persistence/project-metadata.
 import { releasePlayableMediaUrl } from "../../persistence/tauri-media.util";
 import { deriveInitialPipelineState } from "../../pipeline/resume.util";
 import { DEFAULT_CLIPPER_SETTINGS, type ClipperSettings } from "../../settings/settings.util";
-import { saveClipperSettings } from "../../settings/settings-storage.util";
+import { loadClipperSettings, saveClipperSettings } from "../../settings/settings-storage.util";
 import type { ClipperFormatResult } from "../../shared/state.util";
 import type { ExportSocialFields } from "../../persistence/clipper-export-social.util";
 import type { ClipperStage } from "../../shared/stages.util";
@@ -146,10 +146,11 @@ export function useClipperPipelineCore(
   const updateSettings = useCallback(
     (updater: ClipperSettings | ((prev: ClipperSettings) => ClipperSettings)) => {
       setSettingsState((prev) => {
-        const next =
+        const requested =
           typeof updater === "function"
             ? (updater as (p: ClipperSettings) => ClipperSettings)(prev)
             : updater;
+        const next = { ...requested, transcription: loadClipperSettings().transcription };
         scheduleClipperProjectSettingsSave(project.id, next);
         saveClipperSettings(next);
         return next;

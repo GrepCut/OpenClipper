@@ -178,15 +178,17 @@ export function buildClipperStudioImportV1(
   const segments = input.clip.segments?.length
     ? input.clip.segments
     : [{ startSec: input.clip.startSec, endSec: input.clip.endSec }];
-  const words = input.clip.words ?? [];
+  const clipWords = input.clip.words ?? [];
+  const words = clipWords.filter((w) => !w.deleted);
   const wordsPerGroup =
     input.settings.captions.wordsPerGroup || preset.wordsPerGroup;
   const rawCaptionGroups =
     input.clip.captionGroups?.length > 0
       ? input.clip.captionGroups
       : (input.frameContext?.captionGroups ?? []);
+  // All words deleted by the user means no captions, not a fallback to the ASR groups.
   const captionGroups =
-    words.length > 0
+    clipWords.length > 0
       ? wordCuesToCaptionGroups(words, wordsPerGroup)
       : resolveNonOverlappingCaptionGroups(rawCaptionGroups);
 

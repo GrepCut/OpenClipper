@@ -32,6 +32,8 @@ export function useClipperSetupReadiness() {
   const [groq, setGroq] = useState(() => emptyKeyView("groq"));
   const [openrouter, setOpenrouter] = useState(() => emptyKeyView("openrouter"));
   const [keysLoaded, setKeysLoaded] = useState(false);
+  /** The last key read succeeded; a failed read says nothing about whether a key exists. */
+  const [keysReadOk, setKeysReadOk] = useState(false);
 
   const refreshApiKeys = useCallback(async () => {
     try {
@@ -41,7 +43,9 @@ export function useClipperSetupReadiness() {
       ]);
       setGroq(nextGroq);
       setOpenrouter(nextOpenrouter);
+      setKeysReadOk(true);
     } catch {
+      setKeysReadOk(false);
       setGroq(emptyKeyView("groq"));
       setOpenrouter(emptyKeyView("openrouter"));
     } finally {
@@ -72,17 +76,38 @@ export function useClipperSetupReadiness() {
   const setupReady = loaded && vocalsReady && asrReady;
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !keysReadOk) return;
     const available: Record<ClipperTranscriptionEngine, boolean> = {
       parakeet: parakeetInstalled,
       whisper: whisperInstalled,
       groq: groqConfigured,
       openrouter: openrouterConfigured,
     };
-    if (available[loadClipperSettings().transcription.engine]) return;
+    const selected = loadClipperSettings().transcription.engine;
+    if (available[selected]) return;
     const fallback = ENGINE_PRIORITY.find((engine) => available[engine]);
-    if (fallback) saveTranscriptionEngine(fallback);
-  }, [loaded, parakeetInstalled, whisperInstalled, groqConfigured, openrouterConfigured]);
+    if (!fallback) return;
+    if (selected !== "groq" && selected !== "openrouter") {
+      saveTranscriptionEngine(fallback);
+      return;
+    }
+    // Key state here can lag behind a key just saved in Settings: confirm before falling back.
+    let cancelled = false;
+    void transcriptionApiKeysService
+      .getPublic(selected)
+      .then((view) => {
+        if (cancelled || view.isKeyConfigured) return;
+        if (loadClipperSettings().transcription.engine === selected) {
+          saveTranscriptionEngine(fallback);
+        }
+      })
+      .catch(() => {
+        // Unknown key state — keep the user's choice.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, keysReadOk, parakeetInstalled, whisperInstalled, groqConfigured, openrouterConfigured]);
 
   const downloadParakeet = parakeet.handleDownload;
   const downloadParakeetAndSelect = useCallback(async () => {

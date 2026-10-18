@@ -4,6 +4,11 @@ import {
   type ClipperCaptionPresetId,
 } from "../lib/captions/caption-presets.util";
 import { clamp } from '../lib/math.util';
+import {
+  DEFAULT_GROQ_WHISPER_MODEL,
+  isGroqWhisperModel,
+  type GroqWhisperModel,
+} from "../../../services/groq-whisper-models.util";
 import { migrateEnabledFormatIds } from "../shared/formats.util";
 import {
   DEFAULT_CLIPPER_BRANDING_SETTINGS,
@@ -14,7 +19,7 @@ import {
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
 export type ClipperCaptionPosition = "top" | "center" | "bottom";
-export type ClipperCaptionSize = "small" | "medium" | "large";
+export type ClipperCaptionSize = "extra-small" | "small" | "medium" | "large";
 export type ClipperTranscriptionEngine =
   | "parakeet"
   | "whisper"
@@ -69,6 +74,8 @@ export type ClipperIsolateVocalsMode = "on" | "off";
 export interface ClipperTranscriptionSettings {
   engine: ClipperTranscriptionEngine;
   isolateVocals: ClipperIsolateVocalsMode;
+  /** Model used when the Groq engine is active. */
+  groqModel: GroqWhisperModel;
 }
 
 export interface ClipperPublishSettings {
@@ -125,6 +132,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
   transcription: {
     engine: "parakeet",
     isolateVocals: "on",
+    groqModel: DEFAULT_GROQ_WHISPER_MODEL,
   },
   publish: {
     fillMetadataAgentPrompt: "",
@@ -170,6 +178,7 @@ export function mergeClipperSettings(
           ? partialCaptions.position
           : base.captions.position,
       size:
+        partialCaptions?.size === "extra-small" ||
         partialCaptions?.size === "small" ||
         partialCaptions?.size === "medium" ||
         partialCaptions?.size === "large"
@@ -206,6 +215,9 @@ export function mergeClipperSettings(
         partial.transcription?.isolateVocals === "off"
           ? partial.transcription.isolateVocals
           : base.transcription.isolateVocals,
+      groqModel: isGroqWhisperModel(partial.transcription?.groqModel)
+        ? partial.transcription.groqModel
+        : base.transcription.groqModel,
     },
     publish: {
       fillMetadataAgentPrompt:

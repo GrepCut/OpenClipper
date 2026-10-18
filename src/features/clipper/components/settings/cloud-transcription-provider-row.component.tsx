@@ -11,6 +11,9 @@ interface CloudTranscriptionProviderRowProps {
   keyHint: string;
   selected: boolean;
   onSelect?: () => void;
+  models?: readonly { id: string; label: string; hint: string }[];
+  selectedModel?: string;
+  onSelectModel?: (id: string) => void;
 }
 
 export function CloudTranscriptionProviderRow({
@@ -20,6 +23,9 @@ export function CloudTranscriptionProviderRow({
   keyHint,
   selected,
   onSelect,
+  models,
+  selectedModel,
+  onSelectModel,
 }: CloudTranscriptionProviderRowProps) {
   const { theme, mode } = useClipperUi();
   const {
@@ -76,6 +82,56 @@ export function CloudTranscriptionProviderRow({
             </HStack>
           )}
         </HStack>
+
+        {models && onSelectModel && (
+          <VStack align="stretch" gap={2} role="radiogroup" aria-label={`${name} model`}>
+            {models.map((option) => {
+              const active = option.id === selectedModel;
+              return (
+                <HStack
+                  key={option.id}
+                  as="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => onSelectModel(option.id)}
+                  gap={3}
+                  align="start"
+                  textAlign="left"
+                  cursor="pointer"
+                  p={3}
+                  borderWidth="1px"
+                  borderStyle="solid"
+                  borderColor={active ? theme.text.primary : borderColor}
+                  borderRadius="10px"
+                >
+                  <Box
+                    mt="3px"
+                    w="14px"
+                    h="14px"
+                    flexShrink={0}
+                    borderRadius="full"
+                    borderWidth="2px"
+                    borderStyle="solid"
+                    borderColor={active ? theme.text.primary : theme.text.muted}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    {active && <Box w="6px" h="6px" borderRadius="full" bg={theme.text.primary} />}
+                  </Box>
+                  <VStack align="start" gap={0}>
+                    <Text fontSize="sm" fontWeight="medium" color={theme.text.primary}>
+                      {option.label}
+                    </Text>
+                    <Text fontSize="xs" color={theme.text.muted}>
+                      {option.hint}
+                    </Text>
+                  </VStack>
+                </HStack>
+              );
+            })}
+          </VStack>
+        )}
 
         <VStack align="stretch" gap={3}>
           <Text fontSize="xs" color={theme.text.muted}>

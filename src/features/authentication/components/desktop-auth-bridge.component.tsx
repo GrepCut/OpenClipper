@@ -6,7 +6,6 @@ import {
   parseDesktopDeepLink,
 } from "../../../shared/utils/desktop-auth.util";
 import { isTauri } from "../../../shared/utils/platform.util";
-import { logIntegration } from "../../../shared/utils/integration-logger.util";
 
 const handledDeepLinks = new Set<string>();
 
@@ -22,18 +21,11 @@ const navigateToDeepLink = (
 
     const parsed = parseDesktopDeepLink(url);
     if (!parsed) {
-      logIntegration("oauth.deep_link_ignored", { url });
       continue;
     }
 
     const target = `${parsed.route}${parsed.search}`;
     handledDeepLinks.add(url);
-
-    logIntegration("oauth.deep_link_received", {
-      url,
-      target,
-      currentPathWithSearch,
-    });
 
     if (target === currentPathWithSearch) {
       return;
@@ -73,7 +65,9 @@ export function DesktopAuthBridge() {
     const deepLinkApi = (window as Window & { __TAURI__?: { deepLink?: unknown } })
       .__TAURI__?.deepLink as { onOpenUrl?: unknown } | undefined;
     if (typeof deepLinkApi?.onOpenUrl !== "function") {
-      logIntegration("oauth.deep_link_listener_unavailable");
+      console.warn(
+        "[DesktopAuthBridge] deepLink.onOpenUrl unavailable — OAuth redirect may not work",
+      );
       return;
     }
 

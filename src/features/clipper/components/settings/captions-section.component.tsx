@@ -39,6 +39,7 @@ const SIZE_OPTIONS: {
   label: string;
   fontSize: number;
 }[] = [
+  { value: "extra-small", label: "Extra small", fontSize: 13 },
   { value: "small", label: "Small", fontSize: 18 },
   { value: "medium", label: "Medium", fontSize: 26 },
   { value: "large", label: "Large", fontSize: 36 },

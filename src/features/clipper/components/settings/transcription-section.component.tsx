@@ -15,7 +15,15 @@ import { TranscriptionModelRow } from "./transcription-model-row.component";
 import { CloudTranscriptionProviderRow } from "./cloud-transcription-provider-row.component";
 import { useWhisperModelStatus } from "../../hooks/use-whisper-model-status.hook";
 import { useVocalsIsolateModelStatus } from "../../hooks/use-vocals-isolate-model-status.hook";
-import { loadClipperSettings, saveTranscriptionEngine } from "../../settings/settings-storage.util";
+import {
+  loadClipperSettings,
+  saveGroqModel,
+  saveTranscriptionEngine,
+} from "../../settings/settings-storage.util";
+import {
+  GROQ_WHISPER_MODELS,
+  type GroqWhisperModel,
+} from "../../../../services/groq-whisper-models.util";
 import type { ClipperTranscriptionEngine } from "../../settings/settings.util";
 
 interface TranscriptionSectionProps {
@@ -38,6 +46,15 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
   const selectEngine = (engine: ClipperTranscriptionEngine) => {
     saveTranscriptionEngine(engine);
     setActiveEngine(engine);
+  };
+
+  const [groqModel, setGroqModel] = React.useState<GroqWhisperModel>(
+    () => loadClipperSettings().transcription.groqModel,
+  );
+
+  const selectGroqModel = (next: GroqWhisperModel) => {
+    saveGroqModel(next);
+    setGroqModel(next);
   };
 
   const {
@@ -137,11 +154,14 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         />
         <CloudTranscriptionProviderRow
           provider="groq"
-          name="Groq Whisper Large v3 Turbo"
+          name="Groq Whisper"
           description="Cloud speech-to-text via your Groq API key. Audio is vocals-isolated locally, then sent to Groq."
           keyHint="Groq API key from console.groq.com"
           selected={activeEngine === "groq"}
           onSelect={() => selectEngine("groq")}
+          models={GROQ_WHISPER_MODELS}
+          selectedModel={groqModel}
+          onSelectModel={(id) => selectGroqModel(id as GroqWhisperModel)}
         />
         <CloudTranscriptionProviderRow
           provider="openrouter"

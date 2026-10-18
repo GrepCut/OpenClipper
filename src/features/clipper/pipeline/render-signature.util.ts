@@ -49,7 +49,7 @@ export function computeClipRenderSignature(
       settings.formats.resolutionCap,
       clip.segments.map((segment) => [segment.startSec, segment.endSec]),
       clip.words.length > 0
-        ? clip.words.map((word) => [word.text, word.start, word.end])
+        ? clip.words.map((word) => [word.text, word.start, word.end, word.deleted === true])
         : clip.captionGroups,
       collageRegionCacheKey(session.disabledCollageRegionIds ?? []),
       layoutRegionsCacheKey(session.smartCropAnalysis),

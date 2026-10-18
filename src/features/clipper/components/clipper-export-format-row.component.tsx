@@ -12,6 +12,7 @@ import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { ClipperPlatformIcon } from "./clipper-platform-icon.component";
 import { ClipperExportRevealButton } from "./clipper-export-reveal-button.component";
+import { ClipperExportPlayer } from "./clipper-export-player.component";
 
 const THUMB_HEIGHT = 144;
 const PLATFORM_ICON_SIZE = 28;
@@ -87,17 +88,11 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
               </Text>
             </Flex>
           ) : (
-            <video
+            <ClipperExportPlayer
               src={result.previewUrl}
-              controls
-              playsInline
-              preload="metadata"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block",
-              }}
+              width={frame.width}
+              height={frame.height}
+              title={result.label}
             />
           )}
         </Box>

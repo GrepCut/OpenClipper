@@ -6,6 +6,8 @@ type ToastType = "success" | "error" | "loading" | "info" | "warning";
 export interface AppToastOptions {
   duration?: number;
   closable?: boolean;
+  /** Inline button on the toast, e.g. "Undo". */
+  action?: { label: string; onClick: () => void };
 }
 
 /* ── Precomputed base configs (frozen, zero GC pressure) ── */
@@ -50,6 +52,7 @@ function buildConfig(
     duration:
       opts?.duration ?? ("duration" in base ? base.duration : undefined),
     closable: opts?.closable ?? base.closable,
+    action: opts?.action,
   };
 }
 

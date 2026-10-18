@@ -2,7 +2,6 @@ import { apiClient } from "../shared/utils/api-client.util";
 import axios from "axios";
 import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
 import { getAuthClient } from "../shared/utils/auth-client.util";
-import { logIntegration } from "../shared/utils/integration-logger.util";
 import { publishClipperViaR2Staging } from "./social-r2-staging.util";
 import { uploadVideoToX } from "./provider-x-upload.util";
 import type {
@@ -33,38 +32,11 @@ export const socialAuthService = {
     params.append("client", client);
     if (returnPath) params.append("returnPath", returnPath);
 
-    logIntegration("oauth.connect_start", {
-      flow,
-      client,
-      returnPath: returnPath ?? null,
-    });
+    const response = await apiClient.get<{ url: string }>(
+      `/social/${flow}/authorize?${params.toString()}`,
+    );
 
-    try {
-      const response = await apiClient.get<{ url: string }>(
-        `/social/${flow}/authorize?${params.toString()}`,
-      );
-
-      logIntegration("oauth.authorize_url_received", {
-        flow,
-        client,
-        url: response.data.url,
-      });
-
-      await openExternalAuthUrl(response.data.url);
-
-      logIntegration("oauth.browser_opened", {
-        flow,
-        client,
-        url: response.data.url,
-      });
-    } catch (error: unknown) {
-      logIntegration("oauth.connect_failed", {
-        flow,
-        client,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+    await openExternalAuthUrl(response.data.url);
   },
 
   async checkConnection(

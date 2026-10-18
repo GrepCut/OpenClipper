@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Box, Text } from "@chakra-ui/react";
 import { ClipperPreview } from "../preview/clipper-preview.component";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
+import { ClipperTranscriptEditProvider } from "../clipper-transcript-edit.context";
 import type { useClipperSessionView } from "../../hooks/use-clipper-session-view.hook";
 
 type SessionView = ReturnType<typeof useClipperSessionView>;
@@ -34,12 +35,19 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
     deleteManualClip,
     disabledCollageRegionIds,
     toggleCollageRegion,
+    applyTranscriptOp,
+    undoTranscriptEdit,
+    redoTranscriptEdit,
     isRendering,
     renderQueue,
   } = session;
+  const transcriptEditActions = useMemo(
+    () => ({ applyTranscriptOp, undoTranscriptEdit, redoTranscriptEdit }),
+    [applyTranscriptOp, redoTranscriptEdit, undoTranscriptEdit],
+  );
 
   return (
-    <>
+    <ClipperTranscriptEditProvider actions={transcriptEditActions}>
       {state.error && (
         <Box mb={4} p={4} borderRadius="xl" {...errorPanel}>
           <Text color={theme.status.danger} fontSize="sm">
@@ -82,6 +90,6 @@ export const ClipperSessionPreviewPanel: React.FC<ClipperSessionPreviewPanelProp
         autoPartsResegmenting={autoPartsResegmenting}
         settingsDrawerVisible={settingsDrawerVisible}
       />
-    </>
+    </ClipperTranscriptEditProvider>
   );
 };

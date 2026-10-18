@@ -35,7 +35,7 @@ export interface ClipperStudioImportCaption {
   presetId: string;
   wordsPerGroup: number;
   position?: "top" | "center" | "bottom";
-  size?: "small" | "medium" | "large";
+  size?: "extra-small" | "small" | "medium" | "large";
 }
 
 export interface ClipperStudioImportThumbnails {

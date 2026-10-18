@@ -71,6 +71,8 @@ struct WordCue {
     text: String,
     start: f64,
     end: f64,
+    #[serde(default)]
+    deleted: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -185,6 +187,7 @@ async fn load_ai_clips_async(
 fn build_timestamped(words: &[WordCue]) -> String {
     words
         .iter()
+        .filter(|w| !w.deleted)
         .map(|w| format!("[{}] {}", format_ts(w.start), w.text))
         .collect::<Vec<_>>()
         .join(" ")
@@ -308,6 +311,7 @@ pub async fn get_project_transcript_response(
     let mcp_words = words
         .iter()
         .enumerate()
+        .filter(|(_, w)| !w.deleted)
         .map(|(i, w)| McpTranscriptWord {
             i,
             text: w.text.clone(),
@@ -385,16 +389,19 @@ mod tests {
                 text: "hello".into(),
                 start: 0.0,
                 end: 0.4,
+                deleted: false,
             },
             WordCue {
                 text: "world".into(),
                 start: 0.5,
                 end: 0.9,
+                deleted: false,
             },
             WordCue {
                 text: "again".into(),
                 start: 1.0,
                 end: 1.4,
+                deleted: false,
             },
         ]
     }

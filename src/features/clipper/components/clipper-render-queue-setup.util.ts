@@ -2,6 +2,7 @@ import { CLIPPER_FORMAT_DEFS } from "../shared/formats.util";
 import { yieldToMain } from "../shared/yield-to-main.util";
 import type { ExistingExportsByClip } from "../shared/existing-exports.util";
 import type { ClipperClipPreview } from "../shared/state.util";
+import { visibleWordsText } from "../engine/transcript";
 
 export const THUMB_WIDTH = 101;
 export const THUMB_HEIGHT = 180;
@@ -35,7 +36,7 @@ export function thumbKey(clipIndex: number, formatId: string): string {
 }
 
 function clipTranscript(preview: ClipperClipPreview): string {
-  return preview.clip.words.map((word) => word.text).join(" ").trim();
+  return visibleWordsText(preview.clip.words);
 }
 
 export function clipTranscriptsByIndex(clipPreviews: ClipperClipPreview[]): Map<number, string> {

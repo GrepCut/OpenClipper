@@ -65,6 +65,11 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     rangeLocked,
     disabledCollageRegionIds,
     toggleCollageRegion,
+    applyTranscriptOp,
+    undoTranscriptEdit,
+    redoTranscriptEdit,
+    canUndoTranscriptEdit,
+    canRedoTranscriptEdit,
   } = pipeline;
 
   const isRendering = isClipperActivelyRendering(state.clipPreviews, state.stage);
@@ -172,6 +177,11 @@ export function useClipperSessionView({ project, token, loaded }: ClipperSession
     rangeLocked,
     disabledCollageRegionIds,
     toggleCollageRegion,
+    applyTranscriptOp,
+    undoTranscriptEdit,
+    redoTranscriptEdit,
+    canUndoTranscriptEdit,
+    canRedoTranscriptEdit,
     isRendering,
     sessionResults,
     handleFile,

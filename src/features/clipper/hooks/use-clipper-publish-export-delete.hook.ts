@@ -2,13 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { appToast } from "../../../shared/utils/toast.service";
 import type { ClipperExportMapItem } from "../persistence/clipper-export-db-api.util";
 import { removeClipperExport } from "../persistence/clipper-export-remove.util";
-
-export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true;
-  if (target.isContentEditable) return true;
-  return Boolean(target.closest("[contenteditable='true']"));
-}
+import { isEditableKeyboardTarget } from "../shared/keyboard-target.util";
 
 interface UseClipperPublishExportDeleteOptions {
   item: ClipperExportMapItem | null;
