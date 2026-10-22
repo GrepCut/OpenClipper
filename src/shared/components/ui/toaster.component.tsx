@@ -11,6 +11,7 @@ import {
 import { Global } from "@emotion/react";
 import { motion } from "framer-motion";
 import { useTheme } from "../../../theme";
+import { OutlinedActionButton } from "../buttons/outlined-action-button.component";
 
 export const toaster = createToaster({
   placement: "bottom-start",
@@ -51,15 +52,6 @@ const DotsLoader = ({ mode }: { mode: string }) => (
     ))}
   </Box>
 );
-
-/* ── Status accent bar colors ── */
-const accentColor: Record<string, string> = {
-  success: "#34D399",
-  error: "#F87171",
-  loading: "#818CF8",
-  info: "#60A5FA",
-  warning: "#FBBF24",
-};
 
 /*
  * Global CSS targeting Ark UI's toast item wrapper.
@@ -129,17 +121,6 @@ export const Toaster = () => {
                 }
               }}
             >
-              {/* Accent left bar */}
-              <Box
-                position="absolute"
-                left={0}
-                top={0}
-                bottom={0}
-                w="2px"
-                bg={accentColor[toast.type] ?? accentColor.info}
-                borderLeftRadius="2xl"
-              />
-
               <Box display="flex" alignItems="center" gap={2} px={3} py={2.5}>
                 {toast.type === "loading" ? (
                   <DotsLoader mode={mode} />
@@ -168,7 +149,16 @@ export const Toaster = () => {
                   )}
                 </Stack>
                 {toast.action && (
-                  <Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
+                  <Toast.ActionTrigger asChild>
+                    <OutlinedActionButton
+                      borderRadius="full"
+                      h="28px"
+                      px={3}
+                      fontSize="xs"
+                    >
+                      {toast.action.label}
+                    </OutlinedActionButton>
+                  </Toast.ActionTrigger>
                 )}
                 <Toast.CloseTrigger />
               </Box>

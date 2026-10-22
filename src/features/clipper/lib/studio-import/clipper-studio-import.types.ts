@@ -1,4 +1,9 @@
-export const CLIPPER_STUDIO_IMPORT_VERSION = 1 as const;
+/**
+ * Shared contract for Open Clipper → GrepCut Studio ephemeral import.
+ * Keep in sync with client/src/video-editor/features/clipper-import/types/clipper-studio-import.types.ts
+ */
+
+export const CLIPPER_STUDIO_IMPORT_VERSION = 2 as const;
 
 export interface ClipperStudioNormalizedBox {
   x: number;
@@ -24,10 +29,18 @@ export interface ClipperStudioImportCaptionGroup {
   end: number;
 }
 
-export interface ClipperStudioCropSample {
+/** One drawn panel: `source` is normalized to the source frame, `destination` to the output frame. */
+export interface ClipperStudioFramePanel {
+  source: ClipperStudioNormalizedBox;
+  destination: ClipperStudioNormalizedBox;
+}
+
+/** Exact frame geometry the Clipper preview renders at `t` (1 panel = crop, 2-3 = split). */
+export interface ClipperStudioFrameSample {
   t: number;
-  crop: ClipperStudioNormalizedBox;
-  cut?: boolean;
+  /** Hard cut / layout switch — do not interpolate into this sample. */
+  cut?: true;
+  panels: ClipperStudioFramePanel[];
 }
 
 export interface ClipperStudioImportCaption {
@@ -46,7 +59,7 @@ export interface ClipperStudioImportThumbnails {
   count: number;
 }
 
-export interface ClipperStudioImportV1 {
+export interface ClipperStudioImport {
   version: typeof CLIPPER_STUDIO_IMPORT_VERSION;
   createdAt: string;
   formatId: string;
@@ -64,20 +77,6 @@ export interface ClipperStudioImportV1 {
   words: ClipperStudioImportWord[];
   captionGroups: ClipperStudioImportCaptionGroup[];
   caption: ClipperStudioImportCaption;
-  cropTrack: ClipperStudioCropSample[];
-  contentRect?: ClipperStudioNormalizedBox;
-  solidBackgroundColor?: { r: number; g: number; b: number };
+  frameTrack: ClipperStudioFrameSample[];
   thumbnails?: ClipperStudioImportThumbnails;
-}
-
-export function isClipperStudioImportV1(value: unknown): value is ClipperStudioImportV1 {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Partial<ClipperStudioImportV1>;
-  return (
-    v.version === CLIPPER_STUDIO_IMPORT_VERSION &&
-    typeof v.formatId === "string" &&
-    Array.isArray(v.segments) &&
-    Array.isArray(v.words) &&
-    Array.isArray(v.cropTrack)
-  );
 }
