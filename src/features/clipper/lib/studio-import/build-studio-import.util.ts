@@ -1,7 +1,6 @@
 import { stageManifestForStudioImport } from "./stage-studio-import.util";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { resolveAutoFlipCropTrack } from "../../engine/autoflip/build-track.util";
 import type { ClipperGeneratedClip } from "../../engine/segmentation";
 import type { ClipperFrameContext } from "../../engine/types/render.types";
 import { resolveCaptionPreset } from "../captions/caption-presets.util";
@@ -14,11 +13,7 @@ import {
   getClipperFormatDef,
   type ClipperFormatDef,
 } from "../../shared/formats.util";
-import {
-  isClipperRuntimeSmartCropBlob,
-  type ClipperFrameAnalysis,
-  type NormalizedBox,
-} from "../../shared/smart-crop.util";
+import type { FrameEffectSize } from "../media/video-frame-effect.util";
 import type { ClipperSettings } from "../../settings/settings.util";
 import { isTauri } from "../../../../shared/utils/platform.util";
 import { appToast } from "../../../../shared/utils/toast.service";
@@ -35,113 +30,11 @@ import {
 import { clipperWarn } from "../../shared/logger.util";
 import {
   CLIPPER_STUDIO_IMPORT_VERSION,
-  type ClipperStudioCropSample,
-  type ClipperStudioImportV1,
-  type ClipperStudioNormalizedBox,
+  type ClipperStudioImport,
 } from "./clipper-studio-import.types";
+import { sampleStudioFrameTrack } from "./sample-studio-frame-track.util";
 
 export const DEFAULT_STUDIO_IMPORT_MANIFEST_NAME = CLIPPER_STUDIO_IMPORT_MANIFEST_FILE;
-
-function toBox(box: NormalizedBox): ClipperStudioNormalizedBox {
-  return {
-    x: box.x,
-    y: box.y,
-    width: box.width,
-    height: box.height,
-  };
-}
-
-type LayoutTrackLike = {
-  samples?: Array<{
-    t: number;
-    viewports?: NormalizedBox[];
-    crop?: NormalizedBox;
-    cut?: boolean;
-  }>;
-};
-
-function firstNonEmptyTrack(
-  tracks: Record<string, LayoutTrackLike> | undefined,
-  preferredKeys: string[],
-): LayoutTrackLike | undefined {
-  if (!tracks) return undefined;
-  for (const key of preferredKeys) {
-    const track = tracks[key];
-    if (track?.samples?.length) return track;
-  }
-  return Object.values(tracks).find((track) => Boolean(track?.samples?.length));
-}
-
-function samplesFromLayoutTrack(
-  track: LayoutTrackLike,
-): ClipperStudioCropSample[] {
-  if (!track.samples?.length) return [];
-  return track.samples
-    .map((sample) => {
-      const viewport = sample.viewports?.[0] ?? sample.crop;
-      if (!viewport) return null;
-      const out: ClipperStudioCropSample = {
-        t: sample.t,
-        crop: toBox(viewport),
-      };
-      if (sample.cut) out.cut = true;
-      return out;
-    })
-    .filter((s): s is ClipperStudioCropSample => s !== null);
-}
-
-function extractCropTrack(
-  analysis: ClipperFrameAnalysis | null | undefined,
-  formatId: string,
-  aspectId: string,
-): ClipperStudioCropSample[] {
-  if (!analysis) return [];
-
-  if (isClipperRuntimeSmartCropBlob(analysis)) {
-    const track = firstNonEmptyTrack(analysis.layoutTracks, [
-      aspectId,
-      formatId,
-      "default",
-    ]);
-    return track ? samplesFromLayoutTrack(track) : [];
-  }
-
-  const aspectTrack =
-    resolveAutoFlipCropTrack(analysis, formatId) ??
-    resolveAutoFlipCropTrack(analysis, aspectId) ??
-    firstNonEmptyTrack(
-      analysis.aspectTracks as Record<string, LayoutTrackLike> | undefined,
-      [formatId, aspectId, "default"],
-    );
-  if (aspectTrack && "samples" in aspectTrack && aspectTrack.samples?.length) {
-    const legacySamples = aspectTrack.samples as Array<{
-      t: number;
-      crop?: NormalizedBox;
-      viewports?: NormalizedBox[];
-      cut?: boolean;
-    }>;
-    const mapped = legacySamples
-      .map((sample) => {
-        const box = sample.crop ?? sample.viewports?.[0];
-        if (!box) return null;
-        const out: ClipperStudioCropSample = {
-          t: sample.t,
-          crop: toBox(box),
-        };
-        if (sample.cut) out.cut = true;
-        return out;
-      })
-      .filter((s): s is ClipperStudioCropSample => s !== null);
-    if (mapped.length) return mapped;
-  }
-
-  const layoutTrack = firstNonEmptyTrack(analysis.layoutTracks, [
-    aspectId,
-    formatId,
-    "default",
-  ]);
-  return layoutTrack ? samplesFromLayoutTrack(layoutTrack) : [];
-}
 
 function resolvePrimaryFormat(
   settings: ClipperSettings,
@@ -163,30 +56,40 @@ export interface BuildClipperStudioImportInput {
   settings: ClipperSettings;
   frameContext: ClipperFrameContext | null;
   sourceVideoFileName: string;
+  /** Pixel size of the video the preview draws from (`videoWidth` / `videoHeight`). */
+  sourceSize: FrameEffectSize;
   preferredFormatId?: string;
   manifestFileName?: string;
 }
 
-export function buildClipperStudioImportV1(
+export function buildClipperStudioImport(
   input: BuildClipperStudioImportInput,
-): ClipperStudioImportV1 {
+): ClipperStudioImport {
   const format = resolvePrimaryFormat(input.settings, input.preferredFormatId);
   const dims = canonicalFormatDims(format);
-  const analysis = input.frameContext?.smartCropAnalysis ?? null;
-  const cropTrack = extractCropTrack(analysis, format.id, format.aspectId);
   const preset = resolveCaptionPreset(input.settings.captions.presetId);
   const segments = input.clip.segments?.length
     ? input.clip.segments
     : [{ startSec: input.clip.startSec, endSec: input.clip.endSec }];
-  const words = input.clip.words ?? [];
+  const frameTrack = sampleStudioFrameTrack({
+    formatDef: format,
+    source: input.sourceSize,
+    output: dims,
+    analysis: input.frameContext?.smartCropAnalysis ?? null,
+    disabledCollageRegionIds: input.frameContext?.disabledCollageRegionIds ?? [],
+    segments,
+  });
+  const clipWords = input.clip.words ?? [];
+  const words = clipWords.filter((w) => !w.deleted);
   const wordsPerGroup =
     input.settings.captions.wordsPerGroup || preset.wordsPerGroup;
   const rawCaptionGroups =
     input.clip.captionGroups?.length > 0
       ? input.clip.captionGroups
       : (input.frameContext?.captionGroups ?? []);
+  // All words deleted by the user means no captions, not a fallback to the ASR groups.
   const captionGroups =
-    words.length > 0
+    clipWords.length > 0
       ? wordCuesToCaptionGroups(words, wordsPerGroup)
       : resolveNonOverlappingCaptionGroups(rawCaptionGroups);
 
@@ -226,14 +129,12 @@ export function buildClipperStudioImportV1(
       position: input.settings.captions.position,
       size: input.settings.captions.size,
     },
-    cropTrack,
-    contentRect: analysis?.contentRect ? toBox(analysis.contentRect) : undefined,
-    solidBackgroundColor: analysis?.solidBackgroundColor,
+    frameTrack,
   };
 }
 
 export function downloadClipperStudioImportJson(
-  manifest: ClipperStudioImportV1,
+  manifest: ClipperStudioImport,
   fileName = DEFAULT_STUDIO_IMPORT_MANIFEST_NAME,
 ): void {
   const blob = new Blob([JSON.stringify(manifest, null, 2)], {
@@ -269,7 +170,7 @@ async function resolveClipperLocalHttpPort(): Promise<number> {
 }
 
 export function buildStudioImportUrl(
-  manifest: ClipperStudioImportV1,
+  manifest: ClipperStudioImport,
   options?: { projectId?: string; clipperPort?: number },
 ): string {
   const base = getStudioBaseUrl().replace(/\/+$/, "");
@@ -320,7 +221,7 @@ export interface OpenInStudioProgress {
   ratio: number;
 }
 
-function clipRangeForManifest(manifest: ClipperStudioImportV1): ClipperStudioClipRange {
+function clipRangeForManifest(manifest: ClipperStudioImport): ClipperStudioClipRange {
   const segments = manifest.segments ?? [];
   if (segments.length === 0) {
     return { startSec: 0, endSec: Math.max(0.1, manifest.totalDurationSec) };
@@ -332,14 +233,14 @@ function clipRangeForManifest(manifest: ClipperStudioImportV1): ClipperStudioCli
 }
 
 /**
- * Points the manifest at the per-clip cut. Segments and crop samples live on the
+ * Points the manifest at the per-clip cut. Segments and frame samples live on the
  * source-file timeline, so they shift by the cut offset; words and caption
  * groups are already clip-relative and stay as they are.
  */
 export function rebaseManifestForStudioClip(
-  manifest: ClipperStudioImportV1,
+  manifest: ClipperStudioImport,
   cut: Pick<ClipperStudioClipCut, "fileName" | "offsetSec" | "durationSec">,
-): ClipperStudioImportV1 {
+): ClipperStudioImport {
   const shift = (t: number) => Math.max(0, t - cut.offsetSec);
   return {
     ...manifest,
@@ -348,7 +249,7 @@ export function rebaseManifestForStudioClip(
       startSec: shift(segment.startSec),
       endSec: Math.min(cut.durationSec, shift(segment.endSec)),
     })),
-    cropTrack: manifest.cropTrack
+    frameTrack: manifest.frameTrack
       .filter((sample) => {
         const t = sample.t - cut.offsetSec;
         return t >= 0 && t <= cut.durationSec;
@@ -382,7 +283,7 @@ function mapPhaseProgress(
 }
 
 export async function openClipInStudio(
-  manifest: ClipperStudioImportV1,
+  manifest: ClipperStudioImport,
   options?: OpenClipInStudioOptions,
 ): Promise<void> {
   const fileName = manifest.manifestFileName || DEFAULT_STUDIO_IMPORT_MANIFEST_NAME;

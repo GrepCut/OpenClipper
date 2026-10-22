@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
 import { Box, Text } from "@chakra-ui/react";
+import { isWordDeleted } from "../engine/transcript";
 import type { WordCue } from "../lib/media/transcription-export.util";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
@@ -69,6 +70,10 @@ export function ClipperWordRangeTranscript({
             WebkitBoxDecorationBreak: "clone",
             transition: "background-color 100ms ease-out",
           },
+          "& [data-deleted]": {
+            textDecoration: "line-through",
+            opacity: 0.4,
+          },
           "& [data-word-global-index][data-in-range='true']": {
             backgroundColor: MANUAL_CLIP_RANGE_TINT,
           },
@@ -87,6 +92,7 @@ export function ClipperWordRangeTranscript({
               key={index}
               data-word-global-index={index}
               data-in-range={inRange ? "true" : undefined}
+              data-deleted={isWordDeleted(word) || undefined}
             >
               {word.text}{" "}
             </span>

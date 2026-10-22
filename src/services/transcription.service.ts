@@ -25,6 +25,7 @@ import {
   OPENROUTER_WHISPER_MODEL,
   transcribeCloudAudioChunks,
 } from "./cloud-transcription.service";
+import type { GroqWhisperModel } from "./groq-whisper-models.util";
 import { prepareCloudAudioChunks } from "./cloud-transcribe-audio.util";
 import type { ClipperTranscriptionEngine } from "../features/clipper/settings/settings.util";
 
@@ -54,9 +55,11 @@ const engineId = (engine: LocalTranscriptionEngine) => {
 const engineCacheId = (
   engine: LocalTranscriptionEngine,
   isolateVocals = false,
+  groqModel: GroqWhisperModel = GROQ_WHISPER_MODEL,
 ) => {
   if (engine === "groq") {
-    const base = `${engineId(engine)}:${GROQ_WHISPER_MODEL}`;
+    // Turbo keeps its original key so transcripts cached before the model picker stay valid.
+    const base = `${engineId(engine)}:${groqModel}`;
     return isolateVocals ? `${base}:vocals-v2` : base;
   }
   if (engine === "openrouter") {
@@ -73,10 +76,11 @@ const rangeCacheKey = (
   end?: number,
   engine: LocalTranscriptionEngine = "parakeet",
   isolateVocals = false,
+  groqModel?: GroqWhisperModel,
 ) =>
   start == null || end == null
-    ? `full:${engineCacheId(engine, isolateVocals)}`
-    : `${start.toFixed(3)}-${end.toFixed(3)}:${engineCacheId(engine, isolateVocals)}`;
+    ? `full:${engineCacheId(engine, isolateVocals, groqModel)}`
+    : `${start.toFixed(3)}-${end.toFixed(3)}:${engineCacheId(engine, isolateVocals, groqModel)}`;
 
 async function cacheTranscription(
   projectId: string,
@@ -158,6 +162,7 @@ export const transcriptionService = {
       engine?: LocalTranscriptionEngine;
       language?: string;
       isolateVocals?: boolean;
+      groqModel?: GroqWhisperModel;
       onProgress?: (progress: LocalTranscriptionProgress) => void;
     },
   ): Promise<Transcription> => {
@@ -168,6 +173,7 @@ export const transcriptionService = {
       options?.clipEndSec,
       engine,
       isolateVocals,
+      options?.groqModel,
     );
     const cached = await localRecordGet<Transcription>(
       NAMESPACE,
@@ -245,6 +251,7 @@ export const transcriptionService = {
           mediaFileId,
           {
             signal: options?.signal,
+            groqModel: options?.groqModel,
             onProgress: (phase, ratio, chunkIndex, chunkCount) => {
               options?.onProgress?.({
                 phase,
@@ -326,6 +333,7 @@ export const transcriptionService = {
       clipEndSec?: number;
       engine?: LocalTranscriptionEngine;
       isolateVocals?: boolean;
+      groqModel?: GroqWhisperModel;
     },
   ): Promise<Transcription> => {
     const key = options
@@ -336,6 +344,7 @@ export const transcriptionService = {
             options.clipEndSec,
             options.engine,
             Boolean(options.isolateVocals),
+            options.groqModel,
           ),
         )
       : latestKey(mediaFileId);

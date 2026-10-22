@@ -11,7 +11,7 @@ const clipperSettingsSchema = z
         enabled: z.boolean(),
         presetId: z.string(),
         position: z.enum(["top", "center", "bottom"]),
-        size: z.enum(["small", "medium", "large"]),
+        size: z.enum(["extra-small", "small", "medium", "large"]),
         wordsPerGroup: z.number(),
       })
       .partial()
@@ -41,6 +41,7 @@ const clipperSettingsSchema = z
       .object({
         engine: z.enum(["parakeet", "whisper", "groq", "openrouter"]),
         isolateVocals: z.enum(["on", "off"]),
+        groqModel: z.enum(["whisper-large-v3-turbo", "whisper-large-v3"]),
       })
       .partial()
       .optional(),

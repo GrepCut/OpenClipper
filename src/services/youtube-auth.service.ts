@@ -2,7 +2,6 @@ import { apiClient } from "../shared/utils/api-client.util";
 import { uploadVideoToYoutube } from "./provider-youtube-upload.util";
 import { openExternalAuthUrl } from "../shared/utils/desktop-auth.util";
 import { getAuthClient } from "../shared/utils/auth-client.util";
-import { logIntegration } from "../shared/utils/integration-logger.util";
 import type {
   PublishClipperToYoutubeParams,
   YoutubeDisconnectResponse,
@@ -20,29 +19,11 @@ export const youtubeAuthService = {
     params.append("client", client);
     if (returnPath) params.append("returnPath", returnPath);
 
-    logIntegration("oauth.connect_start", {
-      flow: "youtube",
-      client,
-      returnPath: returnPath ?? null,
-    });
-
     const response = await apiClient.get<{ url: string }>(
       `/social/youtube/authorize?${params.toString()}`,
     );
 
-    logIntegration("oauth.authorize_url_received", {
-      flow: "youtube",
-      client,
-      url: response.data.url,
-    });
-
     await openExternalAuthUrl(response.data.url);
-
-    logIntegration("oauth.browser_opened", {
-      flow: "youtube",
-      client,
-      url: response.data.url,
-    });
   },
 
   async checkYoutubeConnection(): Promise<YoutubeStatusResponse> {

@@ -8,6 +8,7 @@ export interface ClipExportTranscript {
 
 function buildFromWordCues(clip: ClipperGeneratedClip): ClipExportTranscript {
   const words = clip.words
+    .filter((word) => !word.deleted)
     .map((word) => ({
       ...word,
       text: word.text.trim(),

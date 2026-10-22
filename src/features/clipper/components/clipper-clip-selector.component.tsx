@@ -11,17 +11,20 @@ import {
 } from "lucide-react";
 import type { CollageRegion } from "../engine/types/collage.types";
 import type { ClipperGeneratedClip } from "../engine/segmentation";
+import { mapClipWordsToRange } from "../engine/transcript";
+import { isEditableKeyboardTarget } from "../shared/keyboard-target.util";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperClipPreview, WordCue } from "../shared/state.util";
 import {
   ClipperInlineTranscript,
   filterRegionsForClip,
-  sliceWordsForTimeWindow,
 } from "./clipper-inline-transcript.component";
 import { ClipperDeleteClipConfirm } from "./clipper-delete-clip-confirm.component";
 import { ClipActionIconButton } from "./clipper-clip-action-icon-button.component";
 import { formatDurationMmSs } from "../../../shared/utils/time.util";
+import { useClipperTranscriptEdit } from "./clipper-transcript-edit.context";
+import { ClipperTranscriptEditCoachmark } from "./clipper-transcript-edit-coachmark.component";
 
 interface ClipperClipSelectorProps {
   clipPreviews: ClipperClipPreview[];
@@ -94,12 +97,47 @@ ClipperVirtuosoScroller.displayName = "ClipperVirtuosoScroller";
 interface ClipTranscriptBlock {
   timeLabel?: string;
   words: WordCue[];
+  /** `rangeWords` index per word (-1 = unmatched). */
+  rangeIndices: number[];
   wordTimeOffsetSec: number;
   windowStartSec: number;
   windowEndSec: number;
 }
 
+function sliceIndexedWordsForTimeWindow(
+  rangeWords: WordCue[],
+  startSec: number,
+  endSec: number,
+): Pick<ClipTranscriptBlock, "words" | "rangeIndices"> {
+  const words: WordCue[] = [];
+  const rangeIndices: number[] = [];
+  rangeWords.forEach((word, index) => {
+    if (word.end > startSec && word.start < endSec) {
+      words.push(word);
+      rangeIndices.push(index);
+    }
+  });
+  return { words, rangeIndices };
+}
+
+const transcriptBlocksCache = new WeakMap<
+  ClipperGeneratedClip,
+  { rangeWords: WordCue[]; blocks: ClipTranscriptBlock[] }
+>();
+
+/** Virtuoso re-renders cards on every scroll tick; the clip→range word mapping is not cheap. */
 function getClipTranscriptBlocks(
+  clip: ClipperGeneratedClip,
+  rangeWords: WordCue[],
+): ClipTranscriptBlock[] {
+  const cached = transcriptBlocksCache.get(clip);
+  if (cached && cached.rangeWords === rangeWords) return cached.blocks;
+  const blocks = buildClipTranscriptBlocks(clip, rangeWords);
+  transcriptBlocksCache.set(clip, { rangeWords, blocks });
+  return blocks;
+}
+
+function buildClipTranscriptBlocks(
   clip: ClipperGeneratedClip,
   rangeWords: WordCue[],
 ): ClipTranscriptBlock[] {
@@ -110,7 +148,7 @@ function getClipTranscriptBlocks(
   if (segments.length > 1) {
     return segments.map((segment) => ({
       timeLabel: `${formatDurationMmSs(segment.startSec)}–${formatDurationMmSs(segment.endSec)}`,
-      words: sliceWordsForTimeWindow(
+      ...sliceIndexedWordsForTimeWindow(
         rangeWords,
         segment.startSec,
         segment.endSec,
@@ -122,14 +160,17 @@ function getClipTranscriptBlocks(
   }
 
   const segment = segments[0];
-  const words =
+  const indexed =
     clip.words.length > 0
-      ? clip.words
-      : sliceWordsForTimeWindow(rangeWords, segment.startSec, segment.endSec);
+      ? {
+          words: clip.words,
+          rangeIndices: mapClipWordsToRange(clip, rangeWords).map((ref) => ref.rangeIndex),
+        }
+      : sliceIndexedWordsForTimeWindow(rangeWords, segment.startSec, segment.endSec);
 
   return [
     {
-      words,
+      ...indexed,
       wordTimeOffsetSec: clip.words.length > 0 ? clip.startSec : 0,
       windowStartSec: segment.startSec,
       windowEndSec: segment.endSec,
@@ -177,8 +218,30 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
 }) => {
   const { theme } = useClipperUi();
   const showCollageMarkers = Boolean(onToggleCollageRegion);
+  const transcriptEdit = useClipperTranscriptEdit();
+  const hasTranscript = clipPreviews.some((preview) => preview.clip.words.length > 0);
+  const showCoachmark =
+    Boolean(transcriptEdit) &&
+    !transcriptEdit?.hints.coachSeen &&
+    hasTranscript &&
+    rangeWords.length > 0;
 
   if (clipPreviews.length === 0) return null;
+
+  const handleListKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!transcriptEdit || isEditableKeyboardTarget(event.target)) return;
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key !== "z" && key !== "y") return;
+    const redo = key === "y" || event.shiftKey;
+    const handled = redo
+      ? transcriptEdit.redoTranscriptEdit()
+      : transcriptEdit.undoTranscriptEdit();
+    if (handled) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
 
   const renderClipCard = (index: number, preview: ClipperClipPreview) => {
     const active = preview.clip.index === activeClipIndex;
@@ -190,6 +253,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
       preview.clip.endSec,
     );
     const isLast = index === clipPreviews.length - 1;
+    const canEditText = Boolean(transcriptEdit) && rangeWords.length > 0;
 
     return (
       <Box
@@ -312,6 +376,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
                       onToggleRegion={onToggleCollageRegion ?? (() => {})}
                       showCollageMarkers={showCollageMarkers}
                       emptyMessage="No transcript for this clip."
+                      rangeIndices={canEditText ? block.rangeIndices : undefined}
                       onWordClick={
                         onSeekToTranscriptTime
                           ? (sourceTimeSec) =>
@@ -332,7 +397,7 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
   };
 
   return (
-    <VStack align="stretch" gap={4} flex="1" minH={0}>
+    <VStack align="stretch" gap={4} flex="1" minH={0} onKeyDown={handleListKeyDown}>
       {!hideTitle ? (
         <Text fontSize="lg" fontWeight="semibold" color={theme.text.primary}>
           Clips
@@ -353,6 +418,13 @@ export const ClipperClipSelector: React.FC<ClipperClipSelectorProps> = ({
           }}
           components={{
             Scroller: ClipperVirtuosoScroller,
+            Header: showCoachmark
+              ? () => (
+                  <ClipperTranscriptEditCoachmark
+                    onDismiss={() => transcriptEdit?.markCoachSeen()}
+                  />
+                )
+              : undefined,
             Footer: () => <Box h={bottomInset} />,
           }}
           itemContent={renderClipCard}

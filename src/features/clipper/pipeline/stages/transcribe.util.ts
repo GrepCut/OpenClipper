@@ -10,6 +10,7 @@ import {
   type PreparedTranscriptionAudio,
 } from "../../engine/audio";
 import { buildWordCuesForTranscription } from "../../engine/transcript";
+import type { GroqWhisperModel } from "../../../../services/groq-whisper-models.util";
 import { clipperLog } from "../../shared/logger.util";
 import { loadClipperSettings } from "../../settings/settings-storage.util";
 import type { WordCue } from "../../lib/media/transcription-export.util";
@@ -30,9 +31,14 @@ const PREPARE_WEIGHT = 0.3;
 const LOAD_END = 0.45;
 const INFER_WEIGHT = 0.55;
 
-function transcriptionModelLabel(engine: LocalTranscriptionEngine): string {
+function transcriptionModelLabel(
+  engine: LocalTranscriptionEngine,
+  groqModel: GroqWhisperModel,
+): string {
   if (engine === "whisper") return "Whisper Turbo local";
-  if (engine === "groq") return "Groq Whisper";
+  if (engine === "groq") {
+    return groqModel === "whisper-large-v3" ? "Groq Whisper Large v3" : "Groq Whisper Turbo";
+  }
   if (engine === "openrouter") return "OpenRouter Whisper";
   return "Parakeet local";
 }
@@ -52,7 +58,8 @@ export async function runTranscribeStage(
     existingWords,
     transcriptionEngine = "parakeet",
   } = input;
-  const isolateVocals = loadClipperSettings().transcription.isolateVocals === "on";
+  const { isolateVocals: isolateVocalsMode, groqModel } = loadClipperSettings().transcription;
+  const isolateVocals = isolateVocalsMode === "on";
 
   if (trimUnchanged && existingWords.length > 0) {
     return existingWords;
@@ -66,6 +73,7 @@ export async function runTranscribeStage(
         clipEndSec: end,
         engine: transcriptionEngine,
         isolateVocals,
+        groqModel,
       },
     );
     const words = buildWordCuesForTranscription(existing, clipDuration);
@@ -74,11 +82,15 @@ export async function runTranscribeStage(
       engine: transcriptionEngine,
     });
     return words;
-  } catch {
-    // Fall through to local ASR run.
+  } catch (error) {
+    clipperLog("transcribe: no cached transcription", {
+      engine: transcriptionEngine,
+      groqModel,
+      reason: String(error),
+    });
   }
 
-  const modelName = transcriptionModelLabel(transcriptionEngine);
+  const modelName = transcriptionModelLabel(transcriptionEngine, groqModel);
   const isCloud = isCloudTranscriptionEngine(transcriptionEngine);
   reporter.stage("transcribing", `Transcribing speech (${modelName})…`);
   reporter.stageProgress(0);
@@ -158,6 +170,7 @@ export async function runTranscribeStage(
       clipEndSec: end,
       engine: transcriptionEngine,
       isolateVocals,
+      groqModel,
       onProgress: (progress) => {
         if (progress.phase === "isolating_vocals") {
           const detailLabel =

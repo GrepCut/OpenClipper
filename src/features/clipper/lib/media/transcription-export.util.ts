@@ -44,6 +44,10 @@ export interface WordCue {
   text: string;
   start: number;
   end: number;
+  /** Removed by the user: hidden from captions but kept so word indices stay stable. */
+  deleted?: boolean;
+  /** ASR text before the user's first edit (absent when unedited). */
+  originalText?: string;
 }
 
 export interface CaptionGroup {
@@ -97,6 +101,7 @@ export function wordCuesToCaptionGroups(
   words: WordCue[],
   wordsPerGroup: number,
 ): CaptionGroup[] {
+  words = words.filter((word) => !word.deleted);
   if (wordsPerGroup <= 0 || words.length === 0) return [];
 
   const blocks: WordCue[][] = [];

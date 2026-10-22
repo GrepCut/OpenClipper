@@ -7,6 +7,7 @@ import {
   mergeClipperSettings,
   type ClipperSettings,
 } from "../settings/settings.util";
+import { loadClipperSettings } from "../settings/settings-storage.util";
 
 const RENDER_QUEUE = "clipper-render-queue";
 const SETTINGS = "clipper-settings";
@@ -34,7 +35,10 @@ export async function fetchClipperProjectSettings(
     SETTINGS,
     projectId,
   );
-  return mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, stored ?? {});
+  return {
+    ...mergeClipperSettings(DEFAULT_CLIPPER_SETTINGS, stored ?? {}),
+    transcription: loadClipperSettings().transcription,
+  };
 }
 
 export async function saveClipperProjectSettings(

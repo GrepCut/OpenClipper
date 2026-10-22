@@ -4,6 +4,7 @@ import { useClipperPipelineClips } from "./use-clipper-pipeline-clips.hook";
 import { useClipperPipelineCore } from "./use-clipper-pipeline-core.hook";
 import { useClipperPipelineManual } from "./use-clipper-pipeline-manual.hook";
 import { useClipperPipelineRender } from "./use-clipper-pipeline-render.hook";
+import { useClipperPipelineTranscript } from "./use-clipper-pipeline-transcript.hook";
 import { useClipperPipelineWorkflow } from "./use-clipper-pipeline-workflow.hook";
 import { useClipperResume } from "../use-clipper-resume.hook";
 import { buildFrameContext, buildRangeFrameContext } from "../../pipeline/frame-context.util";
@@ -30,6 +31,7 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
   const ai = useClipperPipelineAi(core);
   const manual = useClipperPipelineManual(core);
   const render = useClipperPipelineRender(core);
+  const transcript = useClipperPipelineTranscript(core);
 
   const [resumeRetryToken, setResumeRetryToken] = useState(0);
 
@@ -108,5 +110,6 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     rangeLocked,
     disabledCollageRegionIds: clips.disabledCollageRegionIds,
     toggleCollageRegion: clips.toggleCollageRegion,
+    ...transcript,
   };
 }

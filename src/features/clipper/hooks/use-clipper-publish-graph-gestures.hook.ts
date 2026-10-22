@@ -17,7 +17,7 @@ import {
   zoomActionFromShortcut,
   type PublishGraphZoomAction,
 } from "../components/clipper-publish-graph-gestures.util";
-import { isEditableKeyboardTarget } from "./use-clipper-publish-export-delete.hook";
+import { isEditableKeyboardTarget } from "../shared/keyboard-target.util";
 import { useClipperPublishGraphTouchpad } from "./use-clipper-publish-graph-touchpad.hook";
 
 interface PointerPanState {

@@ -8,6 +8,7 @@ import { truncatePreviewUrl, type VideoFrameCallbackCompat } from "../components
 import type { UseClipperPreviewPlaybackParams } from "../components/preview/clipper-preview.types";
 import { FrameCanvasCache } from "../lib/media/video-frame-effect.util";
 import { clipperError, clipperLog } from "../shared/logger.util";
+import { isEditableKeyboardTarget } from "../shared/keyboard-target.util";
 
 export type { UseClipperPreviewPlaybackParams } from "../components/preview/clipper-preview.types";
 
@@ -323,7 +324,7 @@ export function useClipperPreviewPlayback({
   useEffect(() => {
     if (!previewActive) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isEditableKeyboardTarget(e.target)) return;
       if (e.code === "ArrowLeft") {
         nudge(-1);
       } else if (e.code === "ArrowRight") {

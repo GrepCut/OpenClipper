@@ -5,6 +5,7 @@ import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isTauri } from "../../../shared/utils/platform.util";
+import { clipperLog } from "../shared/logger.util";
 
 interface ClipperUploadProps {
   onFile: (file: File) => void;
@@ -27,6 +28,8 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
   const { theme } = useClipperUi();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+  const pickingRef = useRef(false);
+  const [picking, setPicking] = useState(false);
 
   const emit = useCallback(
     (list: FileList | null) => {
@@ -38,9 +41,23 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
   );
 
   const chooseNativeFile = useCallback(async () => {
-    const path = await open({
-      multiple: false,
-      filters: [{ name: "Video", extensions: ["mp4", "mov", "webm", "mkv", "m4v"] }],
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    setPicking(true);
+    const startedAt = performance.now();
+    let path: string | string[] | null;
+    try {
+      path = await open({
+        multiple: false,
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "webm", "mkv", "m4v"] }],
+      });
+    } finally {
+      pickingRef.current = false;
+      setPicking(false);
+    }
+    clipperLog("upload: file picker closed", {
+      ms: Math.round(performance.now() - startedAt),
+      picked: Boolean(path),
     });
     if (!path || Array.isArray(path)) return;
     const name = path.split(/[\\/]/).pop() || "video.mp4";
@@ -72,7 +89,8 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
       as="label"
       role="button"
       tabIndex={disabled ? -1 : 0}
-      opacity={disabled ? 0.6 : 1}
+      aria-busy={picking}
+      opacity={disabled || picking ? 0.6 : 1}
       pointerEvents={disabled ? "none" : "auto"}
       onDragOver={(e: React.DragEvent) => {
         e.preventDefault();
@@ -97,7 +115,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
       backgroundImage={borderImage}
       backgroundSize="100% 100%"
       backgroundRepeat="no-repeat"
-      cursor="pointer"
+      cursor={picking ? "progress" : "pointer"}
       onClick={(event: React.MouseEvent) => {
         if (!isTauri()) return;
         event.preventDefault();
@@ -130,7 +148,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
             Drop your video here
           </Text>
           <Text fontSize="sm" color={theme.text.muted}>
-            Click or drag to start clipping
+            {picking ? "Opening file picker…" : "Click or drag to start clipping"}
           </Text>
         </VStack>
       </VStack>

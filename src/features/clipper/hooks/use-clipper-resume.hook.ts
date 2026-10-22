@@ -61,6 +61,38 @@ function stepKeyForResumeStage(stage: ClipperResumeStageKey): ClipperPipelineSte
   return stage === "preview" ? "preview_ready" : stage;
 }
 
+/** Session rebuilt from a reopened project; `planResumeExecution` already checked the source fields. */
+function buildResumedSession(
+  loaded: ClipperLoadedProject,
+  clipStart: number,
+  clipEnd: number,
+): ClipperSession {
+  return {
+    sourceFile: loaded.sourceFile!,
+    sourceUrl: loaded.sourceUrl!,
+    sourceDuration: loaded.sourceDuration!,
+    mediaFileId: loaded.mediaFileId!,
+    rangeTrimmedFile: null,
+    rangeTrimmedVideoUrl: null,
+    rangeWords: loaded.words,
+    words: loaded.words,
+    rangeStart: clipStart,
+    rangeEnd: clipEnd,
+    clipStart,
+    clipEnd,
+    autoPartsClips: [],
+    aiClips: [],
+    manualClips: [],
+    clipSourceMode: loaded.metadata.clipSourceMode ?? "auto-parts",
+    clips: [],
+    activeClipIndex: loaded.metadata.activeClipIndex ?? 0,
+    disabledCollageRegionIds: [],
+    faceCache: null,
+    captionGroupsCache: null,
+    faceRenderCache: null,
+  };
+}
+
 /** Handles project reload resume sequencing (StrictMode-safe). */
 export function useClipperResume({
   loaded,
@@ -102,6 +134,11 @@ export function useClipperResume({
     }
 
     if (plan.kind === "trimming") {
+      if (!sessionRef.current || resumeKeyChanged) {
+        sessionRef.current = normalizeClipperSession(
+          buildResumedSession(loaded, plan.clipStart, plan.clipEnd ?? 0),
+        );
+      }
       setState({ ...initialState, ...resumePlanStateFields(plan) });
       return;
     }
@@ -120,30 +157,7 @@ export function useClipperResume({
 
     let session = sessionRef.current;
     if (!session || resumeKeyChanged) {
-      session = {
-        sourceFile: loaded.sourceFile!,
-        sourceUrl: loaded.sourceUrl!,
-        sourceDuration: loaded.sourceDuration!,
-        mediaFileId: loaded.mediaFileId!,
-        rangeTrimmedFile: null,
-        rangeTrimmedVideoUrl: null,
-        rangeWords: loaded.words,
-        words: loaded.words,
-        rangeStart: plan.clipStart,
-        rangeEnd: plan.clipEnd,
-        clipStart: plan.clipStart,
-        clipEnd: plan.clipEnd,
-        autoPartsClips: [],
-        aiClips: [],
-        manualClips: [],
-        clipSourceMode: loaded.metadata.clipSourceMode ?? "auto-parts",
-        clips: [],
-        activeClipIndex: loaded.metadata.activeClipIndex ?? 0,
-        disabledCollageRegionIds: [],
-        faceCache: null,
-        captionGroupsCache: null,
-        faceRenderCache: null,
-      };
+      session = buildResumedSession(loaded, plan.clipStart, plan.clipEnd);
       sessionRef.current = session;
     }
 

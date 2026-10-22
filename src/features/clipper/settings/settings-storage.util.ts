@@ -4,6 +4,7 @@ import {
   type ClipperSettings,
   type ClipperTranscriptionEngine,
 } from "./settings.util";
+import type { GroqWhisperModel } from "../../../services/groq-whisper-models.util";
 import { parseStoredClipperSettings } from "../persistence/clipper-persistence-schemas.util";
 import { migrateEnabledFormatIds } from "../shared/formats.util";
 
@@ -50,6 +51,15 @@ export function saveTranscriptionEngine(engine: ClipperTranscriptionEngine): voi
   });
 }
 
+/** Persists only the Groq model choice, keeping the rest of the settings. */
+export function saveGroqModel(groqModel: GroqWhisperModel): void {
+  const current = loadClipperSettings();
+  saveClipperSettings({
+    ...current,
+    transcription: { ...current.transcription, groqModel },
+  });
+}
+
 /** Last render-queue format checklist — reused when opening a project with no saved queue. */
 export function loadLastRenderQueueFormatIds(): string[] | null {
   try {
@@ -71,5 +81,36 @@ export function saveLastRenderQueueFormatIds(ids: string[]): void {
     localStorage.setItem(LAST_RENDER_QUEUE_FORMATS_KEY, JSON.stringify(ids));
   } catch {
     // Storage unavailable — preference just won't persist.
+  }
+}
+
+const TRANSCRIPT_EDIT_HINTS_KEY = "clipper:transcript-edit-hints:v1";
+
+/** Onboarding state for transcript editing — what a first-time user has already seen or done. */
+export interface TranscriptEditHints {
+  /** The "Transcript not perfect?" callout was dismissed. */
+  coachSeen: boolean;
+  /** The user has edited a word at least once, so beginner hints can go away. */
+  used: boolean;
+}
+
+export function loadTranscriptEditHints(): TranscriptEditHints {
+  try {
+    const raw = localStorage.getItem(TRANSCRIPT_EDIT_HINTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return {
+      coachSeen: parsed?.coachSeen === true,
+      used: parsed?.used === true,
+    };
+  } catch {
+    return { coachSeen: false, used: false };
+  }
+}
+
+export function saveTranscriptEditHints(hints: TranscriptEditHints): void {
+  try {
+    localStorage.setItem(TRANSCRIPT_EDIT_HINTS_KEY, JSON.stringify(hints));
+  } catch {
+    // Storage unavailable — hints just show again next session.
   }
 }

@@ -1,5 +1,6 @@
 import type { WordCue } from "../../lib/media/transcription-export.util";
 import { groupCaptionWords } from "../transcript/cues.util";
+import { visibleWordsText } from "../transcript/transcript-edit.util";
 import {
   CLIPPER_SEGMENT_LENGTH_SEC,
   CLIPPER_SEGMENT_MIN_SEC,
@@ -17,7 +18,7 @@ function sliceWordsForSegment(
   return words
     .filter((word) => word.end > segmentStart && word.start < segmentEnd)
     .map((word) => ({
-      text: word.text,
+      ...word,
       start: Math.max(0, word.start - segmentStart),
       end: Math.min(segmentEnd - segmentStart, word.end - segmentStart),
     }));
@@ -45,7 +46,7 @@ export function buildClipsFromBoundaries(
       captionGroups: groupCaptionWords(segmentWords, wordsPerGroup),
       segments: [{ startSec, endSec }],
       segmentTranscripts: [
-        { startSec, endSec, text: segmentWords.map((w) => w.text).join(" ").trim() },
+        { startSec, endSec, text: visibleWordsText(segmentWords) },
       ],
     });
   }
@@ -269,7 +270,7 @@ export function rebuildClipsFromGeneratedMetadata(
         {
           startSec: gc.startSec,
           endSec: gc.endSec,
-          text: segmentWords.map((w) => w.text).join(" ").trim(),
+          text: visibleWordsText(segmentWords),
         },
       ],
     };

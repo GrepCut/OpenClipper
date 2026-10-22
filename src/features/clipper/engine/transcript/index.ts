@@ -8,3 +8,4 @@ export type {
   AiClipWordRange,
   WordMarginOptions,
 } from "../types/transcript.types";
+export * from "./transcript-edit.util";

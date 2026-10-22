@@ -7,10 +7,11 @@ import { useClipperBrandingLogo } from "../../hooks/use-clipper-branding-logo.ho
 import { activeClipPreviewsForMode } from "../../hooks/clipper-pipeline/clip-preview.util";
 import { CLIPPER_TRIMMED_SEGMENT_FILE } from "../../platform/native-source.util";
 import {
-  buildClipperStudioImportV1,
+  buildClipperStudioImport,
   openClipInStudio,
   type OpenInStudioProgress,
 } from "../../lib/studio-import/build-studio-import.util";
+import type { ClipperStudioImport } from "../../lib/studio-import/clipper-studio-import.types";
 import { readClipperSmartCropAnalysis } from "../../persistence/project-data-files.util";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
@@ -82,6 +83,40 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
     return vertical ?? previewFormats[0];
   }, [previewFormats]);
 
+  const secondaryFormats = useMemo(
+    () => previewFormats.filter((f) => f.id !== primaryFormat?.id),
+    [previewFormats, primaryFormat?.id],
+  );
+
+  const smartCropAnalysis = getFrameContext()?.smartCropAnalysis ?? null;
+  const collageRegions = useMemo(
+    () => deriveRegionsFromLayoutTracks(smartCropAnalysis),
+    [smartCropAnalysis],
+  );
+
+  const { epoch: brandingLogoEpoch } = useClipperBrandingLogo(
+    settings.branding.kind === "logo" ? settings.branding.imagePath : null,
+  );
+
+  const { videoRef, registerCanvas, previewRegionRef, togglePlay, seekToTranscriptTime } =
+    useClipperPreviewPlayback({
+      rangeTrimmedVideoUrl,
+      previewActive: settingsDrawerVisible,
+      activeClipIndex,
+      clipStartSec,
+      clipEndSec,
+      clipDuration,
+      clipSegments,
+      playbackStart,
+      playbackEnd,
+      previewFormats,
+      primaryFormat,
+      getFrameContext,
+      settings,
+      brandingLogoEpoch,
+      onSelectClip,
+    });
+
   const handleOpenInStudio = useCallback(
     (clipIndex: number) => {
       if (openingInStudioRef.current) return;
@@ -125,18 +160,25 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
             : null;
 
           const videoHint = CLIPPER_TRIMMED_SEGMENT_FILE;
-          const manifest = buildClipperStudioImportV1({
-            clip: preview.clip,
-            settings,
-            frameContext,
-            sourceVideoFileName: videoHint,
-            preferredFormatId: primaryFormat?.id,
-          });
-          if (manifest.cropTrack.length === 0) {
-            appToast.warning(
-              "No AutoFlip crop track",
-              "Subject analysis has no reframing samples. Studio will import without zoom keyframes.",
+          let manifest: ClipperStudioImport;
+          try {
+            manifest = buildClipperStudioImport({
+              clip: preview.clip,
+              settings,
+              frameContext,
+              sourceVideoFileName: videoHint,
+              sourceSize: {
+                width: videoRef.current?.videoWidth ?? 0,
+                height: videoRef.current?.videoHeight ?? 0,
+              },
+              preferredFormatId: primaryFormat?.id,
+            });
+          } catch (error) {
+            appToast.error(
+              "Could not open Studio",
+              error instanceof Error ? error.message : String(error),
             );
+            return;
           }
           await openClipInStudio(manifest, {
             projectId,
@@ -159,42 +201,9 @@ export const ClipperPreview: React.FC<ClipperPreviewProps> = (props) => {
       getFrameContext,
       settings,
       primaryFormat?.id,
+      videoRef,
     ],
   );
-
-  const secondaryFormats = useMemo(
-    () => previewFormats.filter((f) => f.id !== primaryFormat?.id),
-    [previewFormats, primaryFormat?.id],
-  );
-
-  const smartCropAnalysis = getFrameContext()?.smartCropAnalysis ?? null;
-  const collageRegions = useMemo(
-    () => deriveRegionsFromLayoutTracks(smartCropAnalysis),
-    [smartCropAnalysis],
-  );
-
-  const { epoch: brandingLogoEpoch } = useClipperBrandingLogo(
-    settings.branding.kind === "logo" ? settings.branding.imagePath : null,
-  );
-
-  const { videoRef, registerCanvas, previewRegionRef, togglePlay, seekToTranscriptTime } =
-    useClipperPreviewPlayback({
-      rangeTrimmedVideoUrl,
-      previewActive: settingsDrawerVisible,
-      activeClipIndex,
-      clipStartSec,
-      clipEndSec,
-      clipDuration,
-      clipSegments,
-      playbackStart,
-      playbackEnd,
-      previewFormats,
-      primaryFormat,
-      getFrameContext,
-      settings,
-      brandingLogoEpoch,
-      onSelectClip,
-    });
 
   const pausePreview = useCallback(() => {
     videoRef.current?.pause();
