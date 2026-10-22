@@ -2,6 +2,7 @@
 //! Host STFT → ORT spectrogram core → iSTFT (UVR / audio-separator convention).
 
 use crate::infra::model_cache::download_model_file_to_cache;
+use crate::infra::ort_runtime::ensure_ort_loaded;
 use crate::transcription::types::TranscriptionError;
 use ort::session::Session;
 use ort::value::Tensor;
@@ -37,7 +38,6 @@ const TRIM: usize = N_FFT / 2;
 const GEN_SIZE: usize = CHUNK_SIZE - 2 * TRIM;
 
 static DOWNLOAD_LOCK: Mutex<()> = Mutex::new(());
-static ORT_INIT: Mutex<bool> = Mutex::new(false);
 static SESSION_CACHE: Mutex<Option<CachedSession>> = Mutex::new(None);
 static HANN_WINDOW: OnceLock<Vec<f32>> = OnceLock::new();
 
@@ -160,48 +160,6 @@ pub fn delete_model(app: &AppHandle) -> Result<(), String> {
         .lock()
         .map_err(|_| "Session cache lock poisoned".to_string())?;
     *cache = None;
-    Ok(())
-}
-
-fn ensure_ort_loaded(exe_dir: &Path) -> Result<(), String> {
-    let mut initialized = ORT_INIT
-        .lock()
-        .map_err(|_| "ORT init lock poisoned".to_string())?;
-    if *initialized {
-        return Ok(());
-    }
-
-    // Sherpa stages ORT 1.14 as onnxruntime.dll next to the exe; ort 2.x needs
-    // >= 1.17. Prefer a distinctly named 1.23 build (or the third_party tree).
-    let mut candidates = Vec::new();
-    if let Ok(path) = std::env::var("OPEN_CLIPPER_ORT_DLL") {
-        candidates.push(PathBuf::from(path));
-    }
-    candidates.push(exe_dir.join("onnxruntime_ort.dll"));
-    candidates.push(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("third_party")
-            .join("onnxruntime-directml")
-            .join("1.23.0")
-            .join("runtimes")
-            .join("win-x64")
-            .join("native")
-            .join("onnxruntime.dll"),
-    );
-
-    let dll = candidates
-        .into_iter()
-        .find(|path| path.is_file())
-        .ok_or_else(|| {
-            "onnxruntime_ort.dll not found (third_party/onnxruntime-directml/1.23.0 or next to the exe)"
-                .to_string()
-        })?;
-    log::info!("Vocals ORT loaded from {}", dll.display());
-    ort::init_from(dll.to_string_lossy().as_ref())
-        .map_err(|error| format!("Failed to load ONNX Runtime: {error}"))?
-        .commit();
-    *initialized = true;
     Ok(())
 }
 
@@ -590,11 +548,7 @@ fn isolate_vocals_at_model(
 ) -> Result<String, String> {
     let onnx_path = model_path.join(ONNX_FILE);
 
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    ensure_ort_loaded(&exe_dir)?;
+    ensure_ort_loaded()?;
 
     check_cancelled(cancelled)?;
 
