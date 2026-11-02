@@ -40,6 +40,8 @@ import { applySeamFades, trimAudioSampleToWindow } from "../audio/windowed-sampl
 import { ensureCaptionFontsReady } from "../../lib/captions/caption-presets.util";
 import { ensureBrandingLogo } from "./branding-logo-cache.util";
 import { evenInt } from "../../lib/media/video-draw.util";
+import type { RenderDiagnostics } from "../../shared/render-failure-report.util";
+import { resolveClipperEncoderConfig } from "./encoder-config.util";
 
 const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
   draft: 0.55,
@@ -173,6 +175,7 @@ export async function renderClipperFormat(
     onProgress?: (ratio: number) => void;
     clipWindow?: ClipperClipWindow;
     outputSink?: WritableStream<StreamTargetChunk>;
+    onDiagnostics?: (diagnostics: RenderDiagnostics) => void;
   } = {},
 ): Promise<RenderClipperResult> {
   const { signal, onProgress, clipWindow, outputSink } = options;
@@ -197,6 +200,9 @@ export async function renderClipperFormat(
   try {
     const videoTrack = await input.getPrimaryVideoTrack();
     if (!videoTrack) throw new Error("No video track found.");
+    options.onDiagnostics?.({
+      source: { codec: videoTrack.codec, width: videoTrack.codedWidth, height: videoTrack.codedHeight },
+    });
     const audioTrack = (await input.getAudioTracks())[0] ?? null;
     const totalDuration = await input.computeDuration();
 
@@ -205,14 +211,15 @@ export async function renderClipperFormat(
       : Math.max(0.001, totalDuration);
 
     const outputSize = resolveClipperOutputSize(formatDef, render.settings.formats.resolutionCap);
+    const encoderConfig = await resolveClipperEncoderConfig(
+      outputSize.width, outputSize.height,
+      resolveEncodeBitrate(outputSize, render.settings.formats.quality), signal,
+    );
 
     const output = new Output({ format, target });
     const videoSource = new VideoSampleSource({
-      codec: "avc",
-      bitrate: resolveEncodeBitrate(outputSize, render.settings.formats.quality),
-      // Offline export: prefer quality (no frame drops) + hardware when available.
-      latencyMode: "quality",
-      hardwareAcceleration: "prefer-hardware",
+      ...encoderConfig,
+      onEncoderConfig: (encoder) => options.onDiagnostics?.({ encoder: { ...encoder } }),
     });
     output.addVideoTrack(videoSource);
 
@@ -222,7 +229,7 @@ export async function renderClipperFormat(
     if (audioSource) output.addAudioTrack(audioSource);
 
     const onAbort = () => {
-      void output.cancel();
+      void output.cancel().catch(() => {});
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 

@@ -20,12 +20,16 @@ export function metadataFieldsFromExportRecord(
   | "transcriptPlain"
   | "transcriptTimestamped"
   | "socialTitle"
+  | "socialShortDescription"
   | "socialDescription"
+  | "socialDescriptionTimestamped"
   | "socialHashtags"
 > {
   return {
     transcriptPlain: record.transcriptPlain,
     transcriptTimestamped: record.transcriptTimestamped,
+    socialShortDescription: record.socialShortDescription,
+    socialDescriptionTimestamped: record.socialDescriptionTimestamped,
     ...socialFieldsFromExportRecord(record),
   };
 }

@@ -44,7 +44,7 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
   return function SocialOAuthCallback() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { checkAuthStatus, completeDesktopLogin } = useAuth();
+    const { completeDesktopLogin } = useAuth();
     const { theme } = useTheme();
     const callbackStartedRef = useRef(false);
     const [status, setStatus] = useState<OAuthConnectionStatus>("connecting");
@@ -89,7 +89,7 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
         if (isTauri() && ticket) {
           await exchangeDesktopTicketIfNeeded(
             ticket,
-            { completeDesktopLogin, checkAuthStatus },
+            { completeDesktopLogin },
             () => setStatus("verifying"),
           );
         }
@@ -118,7 +118,6 @@ export function createSocialOAuthCallback(flow: SocialOAuthFlow) {
     }, [
       location.search,
       completeDesktopLogin,
-      checkAuthStatus,
       navigate,
       verifyConnection,
       label,

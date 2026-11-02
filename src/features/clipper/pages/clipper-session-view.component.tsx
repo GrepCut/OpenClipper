@@ -140,7 +140,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           onContinue={() =>
             renderQueue.startQueuedRender({ skipCompleted: true, skipExisting: true })
           }
-          onRestart={() => renderQueue.startQueuedRender()}
+          onRestart={() => renderQueue.startQueuedRender({ restart: true })}
         />
         </>
       )}

@@ -161,12 +161,9 @@ const DEFAULT_CLIPPER_LOCAL_HTTP_PORT = 12742;
 
 async function resolveClipperLocalHttpPort(): Promise<number> {
   if (!isTauri()) return DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
-  try {
-    const port = await invoke<number>("get_open_clipper_local_http_port");
-    return Number.isFinite(port) && port > 0 ? port : DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
-  } catch {
-    return DEFAULT_CLIPPER_LOCAL_HTTP_PORT;
-  }
+  const port = await invoke<number>("get_open_clipper_local_http_port");
+  if (!Number.isFinite(port) || port <= 0) throw new Error("Local HTTP server returned an invalid port.");
+  return port;
 }
 
 export function buildStudioImportUrl(

@@ -192,13 +192,19 @@ pub async fn clipper_exports_purge_missing(
 }
 
 #[tauri::command]
-pub fn get_open_clipper_mcp_http_url(mcp: State<'_, crate::mcp::McpHttpServer>) -> String {
-    mcp.base_url.clone()
+pub fn get_open_clipper_mcp_http_url(app: AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    app.try_state::<crate::mcp::McpHttpServer>()
+        .map(|mcp| mcp.base_url.clone())
+        .ok_or_else(|| "Local HTTP server is unavailable. Check whether another app is using the Clipper port, then restart Clipper.".to_owned())
 }
 
 #[tauri::command]
-pub fn get_open_clipper_local_http_port(mcp: State<'_, crate::mcp::McpHttpServer>) -> u16 {
-    mcp.port
+pub fn get_open_clipper_local_http_port(app: AppHandle) -> Result<u16, String> {
+    use tauri::Manager;
+    app.try_state::<crate::mcp::McpHttpServer>()
+        .map(|mcp| mcp.port)
+        .ok_or_else(|| "Local HTTP server is unavailable. Restart Clipper before opening Studio.".to_owned())
 }
 
 #[tauri::command]

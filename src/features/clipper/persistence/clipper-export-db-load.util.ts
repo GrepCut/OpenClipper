@@ -10,6 +10,8 @@ import {
   type ClipperExportRecord,
 } from "./clipper-export-db-api.util";
 import { metadataFieldsFromExportRecord } from "../hooks/clipper-pipeline/export-manifest-resolve.util";
+import { flushPendingClipperExports, getPendingClipperExportResults } from "./clipper-export-persist.util";
+import { reportClipperPersistenceError } from "./persistence-error.util";
 
 function recordToMissingResult(
   record: ClipperExportRecord,
@@ -81,16 +83,22 @@ async function resolveExportRecordMedia(
 /** Loads session exports from SQLite and resolves MP4 files on disk. */
 export async function loadClipperExportsFromDb(
   projectId: string,
+  options: { retryPending?: boolean } = {},
 ): Promise<ClipperFormatResult[]> {
+  if (options.retryPending !== false) {
+    await flushPendingClipperExports(projectId).catch(reportClipperPersistenceError);
+  }
   await purgeClipperExportsMissing(projectId).catch(() => undefined);
   const records = await fetchClipperExports(projectId).catch(() => [] as ClipperExportRecord[]);
-  if (!records.length) return [];
 
   const results = await Promise.all(
     records.map((record) => resolveExportRecordMedia(projectId, record)),
   );
+  const byId = new Map(results.map((result) => [result.id, result]));
+  for (const pending of getPendingClipperExportResults(projectId)) byId.set(pending.id, pending);
+  const restored = [...byId.values()];
 
-  results.sort((a, b) => new Date(b.exportedAt).getTime() - new Date(a.exportedAt).getTime());
-  clipperLog("export-db-load: restored exports from SQLite", { count: results.length });
-  return results;
+  restored.sort((a, b) => new Date(b.exportedAt).getTime() - new Date(a.exportedAt).getTime());
+  clipperLog("export-db-load: restored exports from SQLite", { count: restored.length });
+  return restored;
 }

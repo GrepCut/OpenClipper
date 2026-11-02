@@ -7,6 +7,9 @@ import {
 import { flushClipperProjectSettingsSave } from "./settings-autosave.util";
 import { flushRenderQueueSave } from "./render-queue-autosave.util";
 import { createDebouncedSaver } from "./create-debounced-saver.util";
+import { reportClipperPersistenceError } from "./persistence-error.util";
+import { flushPendingClipperExports } from "./clipper-export-persist.util";
+import { isClipperProjectDeleted } from "./project-write-lifecycle.util";
 
 interface MetadataSavePayload {
   projectId: string;
@@ -15,6 +18,8 @@ interface MetadataSavePayload {
 
 const metadataSaver = createDebouncedSaver<MetadataSavePayload>({
   debounceMs: 2000,
+  key: ({ projectId }) => projectId,
+  onError: reportClipperPersistenceError,
   flush: async ({ projectId, metadata }) => {
     await saveClipperProjectMetadata(projectId, metadata);
   },
@@ -39,6 +44,7 @@ export function scheduleClipperProjectMetadataSave(
   projectId: string,
   metadata: ClipperProjectMetadata,
 ): void {
+  if (isClipperProjectDeleted(projectId)) return;
   metadataSaver.schedule({ projectId, metadata });
 }
 
@@ -46,6 +52,7 @@ export function scheduleClipperProjectMetadataSaveImmediate(
   projectId: string,
   metadata: ClipperProjectMetadata,
 ): Promise<void> {
+  if (isClipperProjectDeleted(projectId)) return Promise.resolve();
   return metadataSaver.scheduleImmediate({ projectId, metadata });
 }
 
@@ -53,12 +60,19 @@ export async function flushClipperProjectMetadataSave(): Promise<void> {
   await metadataSaver.flush();
 }
 
+export const pauseClipperProjectMetadataSave = (projectId: string) => metadataSaver.pause(projectId);
+export const resumeClipperProjectMetadataSave = (projectId: string) => metadataSaver.resume(projectId);
+export const discardClipperProjectMetadataSave = (projectId: string) => metadataSaver.discard(projectId);
+
 export async function flushClipperPersistence(): Promise<void> {
-  await Promise.all([
+  const results = await Promise.allSettled([
     flushClipperProjectMetadataSave(),
     flushClipperProjectSettingsSave(),
     flushRenderQueueSave(),
+    flushPendingClipperExports(),
   ]);
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
 }
 
 let flushListenersRegistered = false;
@@ -71,13 +85,16 @@ async function registerTauriCloseFlush(): Promise<void> {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
     await win.onCloseRequested(async (event) => {
-      if (tauriCloseInProgress) return;
       event.preventDefault();
+      if (tauriCloseInProgress) return;
       tauriCloseInProgress = true;
       try {
         await flushClipperPersistence();
-      } finally {
         await win.destroy();
+      } catch (error) {
+        reportClipperPersistenceError(error);
+      } finally {
+        tauriCloseInProgress = false;
       }
     });
   } catch {
@@ -91,7 +108,7 @@ export function registerClipperPersistenceFlushListeners(): void {
   flushListenersRegistered = true;
 
   const flush = () => {
-    void flushClipperPersistence();
+    void flushClipperPersistence().catch(reportClipperPersistenceError);
   };
 
   window.addEventListener("beforeunload", flush);

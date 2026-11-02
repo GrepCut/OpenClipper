@@ -22,7 +22,6 @@ export interface DesktopLoginActions {
     refreshToken: string;
     user: User;
   }) => void;
-  checkAuthStatus: () => Promise<void>;
 }
 
 export function parseOAuthSearchParams(search: string): OAuthSearchParams {
@@ -51,7 +50,6 @@ export async function exchangeDesktopTicketIfNeeded(
     refreshToken: response.refreshToken,
     user: response.user,
   });
-  await actions.checkAuthStatus();
 }
 
 export function resolveOAuthReturnPath(

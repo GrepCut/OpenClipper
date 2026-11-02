@@ -1,5 +1,13 @@
 const JWT_EXPIRY_BUFFER_SECONDS = 30;
 
+export function authRetryDelayMs(retryAfter: unknown, now = Date.now()): number {
+  if (retryAfter == null || retryAfter === "") return 30_000;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds)) return Math.max(1000, seconds * 1000);
+  const date = Date.parse(String(retryAfter));
+  return Number.isFinite(date) ? Math.max(1000, date - now) : 30_000;
+}
+
 export function isJwtExpiredOrExpiringSoon(
   token: string,
   nowSec = Date.now() / 1000,

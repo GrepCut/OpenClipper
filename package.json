@@ -11,7 +11,7 @@
     "build:web": "vite build && node scripts/prune-web-models.mjs",
     "build:tauri": "cross-env VITE_APP_PLATFORM=tauri vite build && node scripts/prune-tauri-dist.mjs",
     "lint": "eslint src",
-    "test": "vitest run src/features/clipper/persistence/clipper-export-social.util.spec.ts",
+    "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "node scripts/run-tauri.mjs dev",

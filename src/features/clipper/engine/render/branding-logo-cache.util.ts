@@ -1,8 +1,10 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { isTauri } from "../../../../shared/utils/platform.util";
-
-const isAbsoluteNativePath = (path: string): boolean =>
-  /^[A-Za-z]:[/\\]/.test(path) || path.startsWith("/");
+import { fetchCompleteImage } from "../../lib/media/fetch-complete-image.util";
+import {
+  isAbsoluteNativePath,
+  resolvePlayableMediaUrl,
+} from "../../persistence/tauri-media.util";
 
 interface BrandingLogoCacheEntry {
   path: string;
@@ -14,21 +16,19 @@ let cache: BrandingLogoCacheEntry | null = null;
 let inflight: { path: string; promise: Promise<ImageBitmap | null> } | null = null;
 const listeners = new Set<() => void>();
 
-function resolveLogoUrl(path: string): string {
+async function resolveLogoUrl(path: string): Promise<string> {
   if (path.startsWith("blob:") || path.startsWith("data:") || path.startsWith("http")) {
     return path;
   }
   if (isTauri() && isAbsoluteNativePath(path)) {
-    return convertFileSrc(path);
+    return resolvePlayableMediaUrl(path, convertFileSrc(path));
   }
   return path;
 }
 
 async function loadBrandingLogo(path: string): Promise<ImageBitmap | null> {
   try {
-    const response = await fetch(resolveLogoUrl(path));
-    if (!response.ok) return null;
-    const blob = await response.blob();
+    const blob = await fetchCompleteImage(await resolveLogoUrl(path));
     return await createImageBitmap(blob);
   } catch {
     return null;

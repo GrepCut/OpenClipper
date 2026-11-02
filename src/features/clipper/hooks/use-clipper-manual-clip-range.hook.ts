@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { playPreviewVideo } from "../shared/play-preview-video.util";
 import type { WordCue } from "../lib/media/transcription-export.util";
 import type { AiClipSegmentRange } from "../engine/types/transcript.types";
 import {
@@ -154,7 +155,7 @@ export function useClipperManualClipRange({
           video.currentTime = selectedTimes.startSec;
         }
       }
-      void video.play();
+      void playPreviewVideo(video);
       return;
     }
     video.pause();
