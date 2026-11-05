@@ -5,10 +5,11 @@ import {
   Input,
   Mp3OutputFormat,
   Output,
-  UrlSource,
 } from "mediabunny";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { ensureMp3Encoder } from "../features/clipper/lib/convert/mp3-encoder.util";
+import { createMediabunnyUrlSource } from "../features/clipper/lib/media/mediabunny-file-source.util";
+import { resolvePlayableMediaUrl } from "../features/clipper/persistence/tauri-media.util";
 import { GROQ_MAX_UPLOAD_BYTES } from "./cloud-transcription.service";
 
 export const CLOUD_MP3_BITRATE = 64_000;
@@ -56,40 +57,45 @@ export async function encodeCloudAudioChunkMp3(
     throw new DOMException("Conversion aborted", "AbortError");
   }
   await ensureMp3Encoder();
+  const wavUrl = await resolvePlayableMediaUrl(wavPath, convertFileSrc(wavPath));
   const input = new Input({
-    source: new UrlSource(convertFileSrc(wavPath)),
+    source: createMediabunnyUrlSource(wavUrl),
     formats: ALL_FORMATS,
   });
-  const bufferTarget = new BufferTarget();
-  const output = new Output({
-    format: new Mp3OutputFormat(),
-    target: bufferTarget,
-  });
-  const conversion = await Conversion.init({
-    input,
-    output,
-    video: { discard: true },
-    audio: {
-      codec: "mp3",
-      bitrate: CLOUD_MP3_BITRATE,
-      numberOfChannels: 1,
-      sampleRate: 16_000,
-      forceTranscode: true,
-    },
-    trim: { start: startSec, end: endSec },
-  });
-  if (!conversion.isValid) {
-    throw new Error("Cloud audio compression failed to initialize.");
+  try {
+    const bufferTarget = new BufferTarget();
+    const output = new Output({
+      format: new Mp3OutputFormat(),
+      target: bufferTarget,
+    });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      video: { discard: true },
+      audio: {
+        codec: "mp3",
+        bitrate: CLOUD_MP3_BITRATE,
+        numberOfChannels: 1,
+        sampleRate: 16_000,
+        forceTranscode: true,
+      },
+      trim: { start: startSec, end: endSec },
+    });
+    if (!conversion.isValid) {
+      throw new Error("Cloud audio compression failed to initialize.");
+    }
+    await conversion.execute();
+    if (options?.signal?.aborted) {
+      throw new DOMException("Conversion aborted", "AbortError");
+    }
+    const buffer = bufferTarget.buffer;
+    if (!buffer) {
+      throw new Error("Cloud audio compression produced no output.");
+    }
+    return new Uint8Array(buffer);
+  } finally {
+    input.dispose();
   }
-  await conversion.execute();
-  if (options?.signal?.aborted) {
-    throw new DOMException("Conversion aborted", "AbortError");
-  }
-  const buffer = bufferTarget.buffer;
-  if (!buffer) {
-    throw new Error("Cloud audio compression produced no output.");
-  }
-  return new Uint8Array(buffer);
 }
 
 export async function prepareCloudAudioChunks(

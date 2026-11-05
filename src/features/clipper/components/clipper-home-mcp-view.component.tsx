@@ -159,15 +159,19 @@ export function ClipperHomeMcpView() {
       setLoading(true);
       setError(null);
       try {
-        const [catalogResult, url, path] = await Promise.all([
+        const [catalogResult, url, path] = await Promise.allSettled([
           fetchOpenClipperMcpToolsCatalog(),
           getOpenClipperMcpHttpUrl(),
           getOpenClipperMcpPath(),
         ]);
         if (cancelled) return;
-        setCatalog(catalogResult);
-        setHttpUrl(url);
-        setStdioPath(path);
+        if (catalogResult.status === "rejected") throw catalogResult.reason;
+        setCatalog(catalogResult.value);
+        setHttpUrl(url.status === "fulfilled" ? url.value : "");
+        setStdioPath(path.status === "fulfilled" ? path.value : "");
+        if (url.status === "rejected") {
+          appToast.warning("Local HTTP server unavailable", String(url.reason));
+        }
       } catch (loadError) {
         if (cancelled) return;
         setError(loadError instanceof Error ? loadError.message : "Failed to load MCP catalog");

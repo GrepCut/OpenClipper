@@ -20,25 +20,19 @@ export const resolvePlayableMediaUrl = async (
     return fallbackUrl ?? "";
   }
 
-  const cached = registeredMediaUrls.get(sourcePath);
-  if (cached) return cached;
-
-  const assetUrl = convertFileSrc(sourcePath);
-  if (assetUrl.startsWith("https:")) {
-    registeredMediaUrls.set(sourcePath, assetUrl);
-    return assetUrl;
-  }
-
   try {
     const result = await invoke<RegisteredMediaSource>("register_media_source", {
       path: sourcePath,
     });
     registeredMediaUrls.set(sourcePath, result.url);
     return result.url;
-  } catch {
-    const fallback = convertFileSrc(sourcePath);
-    registeredMediaUrls.set(sourcePath, fallback);
-    return fallback;
+  } catch (error) {
+    if (/Cannot resolve media path|Media path is not a file/i.test(String(error))) {
+      throw new Error("Source video is missing or inaccessible. Restore the file to its original location, then reopen the project. Your prepared clips and transcript are preserved.", { cause: error });
+    }
+    const cached = registeredMediaUrls.get(sourcePath);
+    if (cached) return cached;
+    return fallbackUrl ?? convertFileSrc(sourcePath);
   }
 };
 

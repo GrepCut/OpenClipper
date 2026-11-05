@@ -26,6 +26,8 @@ export interface ClipperFormatResult {
   clipIndex: number;
   exportedAt: string;
   isMissing?: boolean;
+  /** MP4 is complete; its database record still needs to be saved. */
+  registrationPending?: boolean;
   clipStartSec?: number;
   clipEndSec?: number;
   relativePath?: string;

@@ -41,6 +41,7 @@ async function createWebExportSink(
   const writable = await fileHandle.createWritable();
   const proxy = createFileSystemWriteProxy(writable);
   const relativePath = `${CLIPPER_EXPORTS_SUBDIR}/${fileName}`;
+  let finalized = false;
 
   return {
     writable: proxy,
@@ -48,6 +49,7 @@ async function createWebExportSink(
     fileName,
     async finalize(): Promise<ClipperDiskExport> {
       await writable.close();
+      finalized = true;
       const file = await fileHandle.getFile();
       const previewUrl = URL.createObjectURL(file);
       return {
@@ -60,6 +62,7 @@ async function createWebExportSink(
       };
     },
     async abort(): Promise<void> {
+      if (finalized) return;
       try {
         await writable.abort();
       } catch {
@@ -77,6 +80,7 @@ async function createWebExportSink(
 async function createTauriExportSink(projectId: string, fileName: string): Promise<ClipperExportSink> {
   await invoke<string>("ensure_clipper_project_exports_dir", { projectId });
   const relativePath = `${CLIPPER_EXPORTS_SUBDIR}/${fileName}`;
+  let finalized = false;
 
   return {
     writable: createTauriRawPositionalWritable("write_clipper_export_file_bytes_at", projectId, fileName),
@@ -85,6 +89,7 @@ async function createTauriExportSink(projectId: string, fileName: string): Promi
     async finalize(): Promise<ClipperDiskExport> {
       const filePath = await invoke<string>("get_clipper_export_file_path", { projectId, fileName });
       const fileSize = await invoke<number>("stat_clipper_export_file", { projectId, fileName });
+      finalized = true;
       const file = pathBackedClipperFile(filePath);
       const previewUrl = await resolveFilePlayableUrl(file);
       return {
@@ -97,6 +102,7 @@ async function createTauriExportSink(projectId: string, fileName: string): Promi
       };
     },
     async abort(): Promise<void> {
+      if (finalized) return;
       await invoke("remove_clipper_export_file", { projectId, fileName });
     },
   };

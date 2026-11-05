@@ -17,6 +17,7 @@ import { loadClipperExportsFromDb } from "../../persistence/clipper-export-db-lo
 import { clearActiveClipperSteps } from "../../persistence/pipeline-api.util";
 import type { ClipperProjectMetadata } from "../../persistence/project-metadata.util";
 import { releasePlayableMediaUrl } from "../../persistence/tauri-media.util";
+import { reportClipperPersistenceError } from "../../persistence/persistence-error.util";
 import { deriveInitialPipelineState } from "../../pipeline/resume.util";
 import { DEFAULT_CLIPPER_SETTINGS, type ClipperSettings } from "../../settings/settings.util";
 import { loadClipperSettings, saveClipperSettings } from "../../settings/settings-storage.util";
@@ -55,7 +56,7 @@ export interface UseClipperPipelineCoreResult {
   resetSettings: () => void;
   reset: () => void;
   setActiveClipIndex: (index: number) => void;
-  hydrateExportsFromDisk: () => Promise<ClipperFormatResult[]>;
+  hydrateExportsFromDisk: (options?: { retryPending?: boolean }) => Promise<ClipperFormatResult[]>;
   updateExportMetadata: (exportId: string, fields: ExportSocialFields) => void;
 }
 
@@ -84,8 +85,8 @@ export function useClipperPipelineCore(
     resumeStartedRef,
   } = refs;
 
-  const hydrateExportsFromDisk = useCallback(async (): Promise<ClipperFormatResult[]> => {
-    const restored = await loadClipperExportsFromDb(project.id);
+  const hydrateExportsFromDisk = useCallback(async (options?: { retryPending?: boolean }): Promise<ClipperFormatResult[]> => {
+    const restored = await loadClipperExportsFromDb(project.id, options);
     if (!restored.length) return [];
 
     for (const r of restored) {
@@ -97,6 +98,10 @@ export function useClipperPipelineCore(
     const metadataStage = metadataRef.current.stage;
     patchPipelineState(setState, (draft) => {
       draft.exportHistory = restored;
+      const byId = new Map(restored.map((result) => [result.id, result]));
+      for (const preview of draft.clipPreviews) {
+        preview.results = preview.results.map((result) => byId.get(result.id) ?? result);
+      }
       if (metadataStage === "rendering") {
         draft.stage = "preview";
       } else if (metadataStage === "done") {
@@ -109,7 +114,7 @@ export function useClipperPipelineCore(
   }, [metadataRef, previewUrlsRef, project.id]);
 
   const persistMetadata = useCallback(
-    async (patch: Partial<ClipperProjectMetadata>, stage?: ClipperStage) => {
+    (patch: Partial<ClipperProjectMetadata>, stage?: ClipperStage): Promise<void> => {
       metadataRef.current = {
         ...metadataRef.current,
         ...patch,
@@ -118,8 +123,9 @@ export function useClipperPipelineCore(
       const nextStage = metadataRef.current.stage;
       if (METADATA_DEBOUNCED_STAGES.includes(nextStage)) {
         scheduleClipperProjectMetadataSave(project.id, metadataRef.current);
+        return Promise.resolve();
       } else {
-        await scheduleClipperProjectMetadataSaveImmediate(project.id, metadataRef.current);
+        return scheduleClipperProjectMetadataSaveImmediate(project.id, metadataRef.current);
       }
     },
     [metadataRef, project.id],
@@ -243,7 +249,7 @@ export function useClipperPipelineCore(
       void (async () => {
         await clearActiveClipperSteps(projectId);
         await flushClipperPersistence();
-      })();
+      })().catch(reportClipperPersistenceError);
     };
   }, [abortRef, clearSession, project.id, revokePreviewUrls]);
 

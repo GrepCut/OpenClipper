@@ -136,6 +136,11 @@ export const ClipperExportFormatRow: React.FC<ClipperExportFormatRowProps> = ({
                 Exported {exportedAtLabel}
               </Text>
             ) : null}
+            {result.registrationPending ? (
+              <Text fontSize="xs" color={theme.status.danger}>
+                Video saved. Export record pending; retry saving before closing.
+              </Text>
+            ) : null}
           </VStack>
         </HStack>
       </VStack>

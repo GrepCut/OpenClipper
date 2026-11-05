@@ -13,9 +13,15 @@ import {
   createClipperExportId,
   createClipperExportSink,
 } from "../../persistence/export-files.util";
-import { persistClipperExport } from "../../persistence/clipper-export-persist.util";
-import type { ClipperExportRecord } from "../../persistence/clipper-export-db-api.util";
+import { ClipperExportRegistrationError, persistClipperExport } from "../../persistence/clipper-export-persist.util";
+import { metadataFieldsFromExportRecord } from "../../hooks/clipper-pipeline/export-manifest-resolve.util";
+import { withClipperProjectRender } from "../../persistence/project-write-lifecycle.util";
 import { renderProgressKey } from "../../shared/render-progress.util";
+import {
+  createRenderFailureReporter,
+  type RenderFailureDetails,
+  type RenderFailureReporter,
+} from "../../shared/render-failure-report.util";
 
 export interface RenderStageInput {
   projectId: string;
@@ -38,29 +44,6 @@ function trackPreviewUrl(previewUrl: string, previewUrls: string[]): void {
   }
 }
 
-function metadataFromRecord(
-  record: ClipperExportRecord,
-): Pick<
-  ClipperFormatResult,
-  | "transcriptPlain"
-  | "transcriptTimestamped"
-  | "socialTitle"
-  | "socialShortDescription"
-  | "socialDescription"
-  | "socialDescriptionTimestamped"
-  | "socialHashtags"
-> {
-  return {
-    transcriptPlain: record.transcriptPlain,
-    transcriptTimestamped: record.transcriptTimestamped,
-    socialTitle: record.socialTitle,
-    socialShortDescription: record.socialShortDescription,
-    socialDescription: record.socialDescription,
-    socialDescriptionTimestamped: record.socialDescriptionTimestamped,
-    socialHashtags: record.socialHashtags,
-  };
-}
-
 async function renderFormatToResult(
   rangeFile: File,
   formatDef: ClipperFormatDef,
@@ -76,52 +59,48 @@ async function renderFormatToResult(
     filenameTemplate: string;
     renderSignature?: string;
   },
-  options: { signal: AbortSignal; onProgress: (ratio: number) => void },
+  options: { signal: AbortSignal; onProgress: (ratio: number) => void; reportFailure: RenderFailureReporter },
   previewUrls: string[],
 ): Promise<ClipperFormatResult> {
-  const exportedAt = new Date();
-  const exportId = createClipperExportId();
-  const fileName = buildClipperExportFileName(
-    input.filenameTemplate,
-    input.filenameStem,
-    formatDef.id,
-    input.clipIndex,
-    exportedAt,
-  );
-  const sink = await createClipperExportSink(input.projectId, fileName);
+  const diagnostics: RenderFailureDetails = {
+    clipIndex: input.clipIndex,
+    formatId: formatDef.id,
+    quality: frameContext.settings.formats.quality,
+    resolutionCap: frameContext.settings.formats.resolutionCap,
+  };
+  let sink: Awaited<ReturnType<typeof createClipperExportSink>> = null;
 
   try {
+    const { width, height } = resolveClipperOutputSize(
+      formatDef,
+      frameContext.settings.formats.resolutionCap,
+    );
+    diagnostics.requestedWidth = width;
+    diagnostics.requestedHeight = height;
+    const exportedAt = new Date();
+    const exportId = createClipperExportId();
+    const fileName = buildClipperExportFileName(
+      input.filenameTemplate,
+      input.filenameStem,
+      formatDef.id,
+      input.clipIndex,
+      exportedAt,
+    );
+    sink = await createClipperExportSink(input.projectId, fileName);
+
     const encodeResult = await renderClipperFormat(rangeFile, formatDef, frameContext, {
       signal: options.signal,
       clipWindow,
       outputSink: sink?.writable,
       onProgress: options.onProgress,
+      onDiagnostics: (details) => Object.assign(diagnostics, details),
     });
-
-    const { width, height } = resolveClipperOutputSize(
-      formatDef,
-      frameContext.settings.formats.resolutionCap,
-    );
 
     if (encodeResult.kind === "disk-encoded" && sink) {
       const disk = await sink.finalize();
       trackPreviewUrl(disk.previewUrl, previewUrls);
       const exportedAtIso = exportedAt.toISOString();
-      const dbRecord = await persistClipperExport(input.projectId, clip, {
-        id: exportId,
-        clipIndex: input.clipIndex,
-        formatId: formatDef.id,
-        fileName: sink.fileName,
-        relativePath: disk.relativePath,
-        width,
-        height,
-        fileSize: disk.fileSize,
-        exportedAt: exportedAtIso,
-        clipStartSec: envelope.startSec,
-        clipEndSec: envelope.endSec,
-        renderSignature: input.renderSignature,
-      });
-      return {
+      const result: ClipperFormatResult = {
         id: exportId,
         formatId: formatDef.id,
         platform: formatDef.platform,
@@ -139,8 +118,22 @@ async function renderFormatToResult(
         displayPath: disk.displayPath,
         filePath: disk.filePath,
         file: disk.file,
-        ...metadataFromRecord(dbRecord),
       };
+      const dbRecord = await persistClipperExport(input.projectId, clip, {
+        id: exportId,
+        clipIndex: input.clipIndex,
+        formatId: formatDef.id,
+        fileName: sink.fileName,
+        relativePath: disk.relativePath,
+        width,
+        height,
+        fileSize: disk.fileSize,
+        exportedAt: exportedAtIso,
+        clipStartSec: envelope.startSec,
+        clipEndSec: envelope.endSec,
+        renderSignature: input.renderSignature,
+      }, result);
+      return { ...result, ...metadataFieldsFromExportRecord(dbRecord) };
     }
 
     if (encodeResult.kind !== "memory") {
@@ -173,6 +166,7 @@ async function renderFormatToResult(
       blob: encodeResult.blob,
     };
   } catch (error) {
+    options.reportFailure(error, diagnostics, options.signal);
     if (sink) {
       await sink.abort().catch(() => {});
     }
@@ -188,12 +182,12 @@ export interface RenderClipJobOutcome {
 }
 
 /** Renders all enabled export formats for one generated clip (windowed from range file). */
-export async function runRenderClipJob(
+async function renderClipJob(
   session: ClipperSession,
   frameContext: ClipperFrameContext,
   input: RenderClipJobInput,
   reporter: PipelineReporter,
-  options: { signal: AbortSignal; previewUrls?: string[] },
+  options: { signal: AbortSignal; previewUrls?: string[]; reportFailure?: RenderFailureReporter },
 ): Promise<RenderClipJobOutcome> {
   const clip = findClipByIndex(session.clips, input.clipIndex);
   if (!clip) throw new Error(`Clip ${input.clipIndex} not found.`);
@@ -209,6 +203,7 @@ export async function runRenderClipJob(
   const runId = `render-clip-${input.clipIndex}-${Date.now()}`;
   const endRun = clipperTimer(`pipeline[${runId}]: render clip ${input.clipIndex}`);
   const previewUrls = options.previewUrls ?? [];
+  const reportFailure = options.reportFailure ?? createRenderFailureReporter("batch");
 
   const clipWindow: ClipperClipWindow = { segments: clip.segments };
   const envelope = { startSec: clip.startSec, endSec: clip.endSec };
@@ -228,6 +223,7 @@ export async function runRenderClipJob(
         {
           signal: options.signal,
           onProgress: (ratio) => reporter.renderProgress(progressKey, ratio),
+          reportFailure,
         },
         previewUrls,
       );
@@ -241,11 +237,23 @@ export async function runRenderClipJob(
   for (const item of settled) {
     if (item.status === "fulfilled") {
       results.push(item.value);
-    } else if (!options.signal.aborted) {
-      error ??= item.reason;
+    } else {
+      if (item.reason instanceof ClipperExportRegistrationError) results.push(item.reason.result);
+      if (!options.signal.aborted) error ??= item.reason;
     }
   }
 
   endRun();
   return { results, error };
+}
+
+export function runRenderClipJob(
+  session: ClipperSession,
+  frameContext: ClipperFrameContext,
+  input: RenderClipJobInput,
+  reporter: PipelineReporter,
+  options: { signal: AbortSignal; previewUrls?: string[]; reportFailure?: RenderFailureReporter },
+): Promise<RenderClipJobOutcome> {
+  return withClipperProjectRender(input.projectId, options.signal, (signal) =>
+    renderClipJob(session, frameContext, input, reporter, { ...options, signal }));
 }

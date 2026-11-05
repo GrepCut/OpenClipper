@@ -3,6 +3,9 @@ import { useCallback, useMemo, useRef } from "react";
 import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { baseName } from "../../shared/filename-template.util";
 import { clipperError } from "../../shared/logger.util";
+import { createRenderFailureReporter } from "../../shared/render-failure-report.util";
+import { appendUniqueExportResults } from "../../shared/export-results.util";
+import { flushPendingClipperExports, getPendingClipperExportResults } from "../../persistence/clipper-export-persist.util";
 import {
   existingFormatIds,
   findExistingExports,
@@ -110,6 +113,34 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
         return "failed";
       }
 
+      const recovering = appendUniqueExportResults(
+        getPendingClipperExportResults(projectId),
+        state.exportHistory.filter((result) => result.registrationPending),
+      );
+      let exportHistory = state.exportHistory;
+      if (recovering.length) {
+        const previousController = abortRef.current;
+        const stillCurrent = () => sessionRef.current === session && abortRef.current === previousController;
+        try {
+          const registered = await flushPendingClipperExports(projectId);
+          if (!stillCurrent()) return "aborted";
+          const restored = await hydrateExportsFromDisk({ retryPending: false });
+          if (!stillCurrent()) return "aborted";
+          exportHistory = appendUniqueExportResults(exportHistory, [...restored, ...registered]);
+          patchPipelineState(setState, (draft) => {
+            draft.exportHistory = exportHistory;
+          });
+        } catch (error) {
+          if (!stillCurrent()) return "aborted";
+          await hydrateExportsFromDisk({ retryPending: false });
+          if (!stillCurrent()) return "aborted";
+          patchPipelineState(setState, (draft) => {
+            draft.error = error instanceof Error ? error.message : "Could not save export records.";
+          });
+          return "failed";
+        }
+      }
+
       const selectedByClip: Record<number, string[]> = {};
       const clipSignatures: Record<number, string> = {};
       for (const clip of activeClips) {
@@ -122,8 +153,10 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
       const completedProgress = skipCompleted
         ? withoutStaleRenderProgress(state.renderProgress, state.renderSignatures, clipSignatures)
         : {};
-      if (skipExisting) {
-        const existing = findExistingExports(activeClips, clipSignatures, state.exportHistory);
+      if (skipExisting || (recovering.length && !options?.restart)) {
+        const candidates = skipExisting ? exportHistory : exportHistory.filter((result) =>
+          recovering.some((pending) => pending.id === result.id));
+        const existing = findExistingExports(activeClips, clipSignatures, candidates);
         for (const clip of activeClips) {
           for (const formatId of existingFormatIds(existing, clip.index)) {
             if (selectedByClip[clip.index]?.includes(formatId)) {
@@ -136,9 +169,12 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
 
       const clipsToRender = activeClips.filter((clip) => pendingByClip[clip.index] !== undefined);
       if (clipsToRender.length === 0) {
-        if (skipCompleted || skipExisting) {
+        if (skipCompleted || skipExisting || (recovering.length && !options?.restart)) {
           persistMetadata({}, "done");
           patchPipelineState(setState, (draft) => {
+            applyRenderBatchStartState(draft, {
+              clipCount: 0, initialProgress: completedProgress, skipCompleted: true, selectedByClip,
+            });
             draft.stage = "done";
             draft.stageMessage = "Your clips are ready!";
             draft.error = null;
@@ -179,6 +215,10 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
       };
 
       let failedClipIndex: number | null = null;
+      const reportFailure = createRenderFailureReporter("batch", {
+        quality: settings.formats.quality,
+        resolutionCap: settings.formats.resolutionCap,
+      });
 
       try {
         for (const [queuePosition, clip] of clipsToRender.entries()) {
@@ -215,7 +255,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
               renderSignature: clipSignatures[clip.index],
             },
             progress.reporter,
-            { signal: controller.signal, previewUrls: previewUrlsRef.current },
+            { signal: controller.signal, previewUrls: previewUrlsRef.current, reportFailure },
           );
           progress.releaseKeys();
 
@@ -255,6 +295,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           return "aborted";
         }
         clipperError("pipeline: render failed", error);
+        reportFailure(error, { clipIndex: failedClipIndex }, controller.signal);
         persistMetadata({}, "preview");
         patchPipelineState(setState, (draft) => {
           applyRenderFailureState(
@@ -270,6 +311,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
     },
     [
       abortRef,
+      hydrateExportsFromDisk,
       persistMetadata,
       previewUrlsRef,
       projectId,

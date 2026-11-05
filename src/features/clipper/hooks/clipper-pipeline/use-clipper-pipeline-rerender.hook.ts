@@ -6,6 +6,8 @@ import type { ClipperFormatResult } from "../../shared/state.util";
 import { buildFrameContext } from "../../pipeline/frame-context.util";
 import { runRenderClipJob } from "../../pipeline/stages/render.util";
 import { getClipperFormatDef } from "../../shared/formats.util";
+import { createRenderFailureReporter } from "../../shared/render-failure-report.util";
+import { flushPendingClipperExports } from "../../persistence/clipper-export-persist.util";
 import { patchPipelineState } from "./clipper-pipeline-state.util";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
 
@@ -29,8 +31,17 @@ export function useClipperPipelineRerender(core: UseClipperPipelineCoreResult) {
       });
 
       const stem = baseName(state.sourceFileName ?? "clip");
+      const signal = abortRef.current?.signal ?? new AbortController().signal;
+      const reportFailure = createRenderFailureReporter("rerender", {
+        clipIndex,
+        quality: settings.formats.quality,
+        resolutionCap: settings.formats.resolutionCap,
+      });
       try {
-        const signal = abortRef.current?.signal ?? new AbortController().signal;
+        await flushPendingClipperExports(projectId);
+        if (signal.aborted || sessionRef.current !== session) return;
+        await core.hydrateExportsFromDisk({ retryPending: false });
+        if (signal.aborted || sessionRef.current !== session) return;
         const job = await runRenderClipJob(
           session,
           frameContext,
@@ -42,12 +53,11 @@ export function useClipperPipelineRerender(core: UseClipperPipelineCoreResult) {
             filenameTemplate: settings.formats.filenameTemplate,
           },
           reporterRef.current,
-          { signal, previewUrls: previewUrlsRef.current },
+          { signal, previewUrls: previewUrlsRef.current, reportFailure },
         );
         if (signal.aborted) return;
-        if (job.error) throw job.error;
         const result = job.results[0];
-        if (!result) throw new Error("Re-render did not produce an export.");
+        if (!result) throw job.error ?? new Error("Re-render did not produce an export.");
 
         patchPipelineState(setState, (draft) => {
           draft.renderProgress[progressKey] = 1;
@@ -57,7 +67,10 @@ export function useClipperPipelineRerender(core: UseClipperPipelineCoreResult) {
             preview.results = appendUniqueExportResults(preview.results, [result]);
           }
         });
+        if (job.error) throw job.error;
       } catch (error) {
+        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
+        reportFailure(error, { formatId }, signal);
         patchPipelineState(setState, (draft) => {
           draft.error = error instanceof Error ? error.message : "Re-render failed.";
         });
@@ -65,6 +78,7 @@ export function useClipperPipelineRerender(core: UseClipperPipelineCoreResult) {
     },
     [
       abortRef,
+      core.hydrateExportsFromDisk,
       previewUrlsRef,
       projectId,
       reporterRef,

@@ -63,7 +63,6 @@ export function OAuthSuccess() {
   const handleTauriLogin = async (authTicket: string) => {
     await exchangeDesktopTicketIfNeeded(authTicket, {
       completeDesktopLogin,
-      checkAuthStatus,
     });
   };
 

@@ -108,7 +108,21 @@ pub(crate) async fn extract_segment_to_project_data(
     tokio::task::spawn_blocking(move || {
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let output_path = dir.join(CLIPPER_TRIMMED_SEGMENT_FILE);
-        extract_clipper_segment_to_path_blocking(file_path, start_time, end_time, &output_path)?;
+        let partial_path = dir.join(format!(
+            "{}.{}.part.mp4",
+            CLIPPER_TRIMMED_SEGMENT_FILE,
+            uuid::Uuid::new_v4()
+        ));
+        if let Err(error) =
+            extract_clipper_segment_to_path_blocking(file_path, start_time, end_time, &partial_path)
+        {
+            let _ = fs::remove_file(&partial_path);
+            return Err(error);
+        }
+        if let Err(error) = fs::rename(&partial_path, &output_path) {
+            let _ = fs::remove_file(&partial_path);
+            return Err(format!("Cannot finalize trimmed segment: {error}"));
+        }
         let metadata = serde_json::json!({
             "clipStart": start_time,
             "clipEnd": end_time,

@@ -9,6 +9,7 @@ import type { UseClipperPreviewPlaybackParams } from "../components/preview/clip
 import { FrameCanvasCache } from "../lib/media/video-frame-effect.util";
 import { clipperError, clipperLog } from "../shared/logger.util";
 import { isEditableKeyboardTarget } from "../shared/keyboard-target.util";
+import { playPreviewVideo } from "../shared/play-preview-video.util";
 
 export type { UseClipperPreviewPlaybackParams } from "../components/preview/clipper-preview.types";
 
@@ -267,7 +268,7 @@ export function useClipperPreviewPlayback({
     video.currentTime = initial;
     if (playAfterClipSelectRef.current) {
       playAfterClipSelectRef.current = false;
-      void video.play();
+      void playPreviewVideo(video);
     } else {
       video.pause();
     }
@@ -286,7 +287,7 @@ export function useClipperPreviewPlayback({
       if (video.currentTime >= clipEndSec - 0.05 || video.currentTime < clipStartSec) {
         video.currentTime = clipStartSec;
       }
-      void video.play();
+      void playPreviewVideo(video);
     } else {
       video.pause();
     }

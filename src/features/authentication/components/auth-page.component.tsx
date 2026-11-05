@@ -15,6 +15,7 @@ import { peekAuthReturnPath } from "../../../shared/auth/auth-return-path.util";
 import { asset } from "../../../shared/utils/asset.util";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { ClipperLayout } from "../../clipper/components/clipper-layout.component";
+import { appToast } from "../../../shared/utils/toast.service";
 
 const MotionBox = motion.create(Box);
 
@@ -148,7 +149,10 @@ function AuthPageContent() {
   );
 
   const handleGoogleLogin = () => {
-    void authService.beginGoogleLogin(intentToken || undefined);
+    void authService.beginGoogleLogin(intentToken || undefined).catch((error: unknown) => {
+      if (/os error 1223|cancell?ed by the user/i.test(String(error))) return;
+      appToast.error("Could not open sign-in", "Try again or check your default browser settings.");
+    });
   };
 
   return (

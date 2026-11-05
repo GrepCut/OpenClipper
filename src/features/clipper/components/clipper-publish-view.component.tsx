@@ -100,11 +100,14 @@ export function ClipperPublishView() {
   useEffect(() => {
     let cancelled = false;
 
-    void Promise.all([getOpenClipperMcpHttpUrl(), getOpenClipperMcpPath()]).then(
+    void Promise.allSettled([getOpenClipperMcpHttpUrl(), getOpenClipperMcpPath()]).then(
       ([httpUrl, stdioPath]) => {
         if (cancelled) return;
-        setMcpHttpUrl(httpUrl);
-        setMcpStdioPath(stdioPath);
+        setMcpHttpUrl(httpUrl.status === "fulfilled" ? httpUrl.value : "");
+        setMcpStdioPath(stdioPath.status === "fulfilled" ? stdioPath.value : "");
+        if (httpUrl.status === "rejected") {
+          appToast.warning("Local HTTP server unavailable", String(httpUrl.reason));
+        }
       },
     );
 
