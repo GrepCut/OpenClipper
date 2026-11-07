@@ -8,12 +8,12 @@ import {
   setIsLoggingOut,
   setTokenRefreshCallback,
   setSessionExpiredCallback,
+  refreshAuthToken,
 } from "../utils/api-client.util";
 import { authService } from "../../services/auth.service";
 import {
   AUTH_SESSION_KEY,
   clearDesktopRefreshToken,
-  getDesktopRefreshToken,
   isDesktopAuthSessionAvailable,
   setDesktopRefreshToken,
 } from "../utils/desktop-auth.util";
@@ -23,6 +23,7 @@ import {
   clearActiveAuthProfile,
   getCachedAuthProfile,
 } from "../persistence/local-database.util";
+import { reportClipperPersistenceError } from "../../features/clipper/persistence/persistence-error.util";
 
 let authInitializationPromise: Promise<void> | null = null;
 
@@ -53,11 +54,18 @@ const safeServerLogout = async () => {
   }
 };
 
-const resolveUserHelper = async (_token: string): Promise<User | null> => {
-  setDefaultAuthHeader(_token);
-  const user = await authService.status();
-  await cacheAuthProfile(user);
-  return user;
+let profileRequest: { token: string; promise: Promise<User> } | null = null;
+const resolveUserHelper = (token: string): Promise<User> => {
+  if (profileRequest?.token === token) return profileRequest.promise;
+  setDefaultAuthHeader(token);
+  const promise = authService.status().then(async (user) => {
+    await cacheAuthProfile(user);
+    return user;
+  }).finally(() => {
+    if (profileRequest?.promise === promise) profileRequest = null;
+  });
+  profileRequest = { token, promise };
+  return promise;
 };
 
 // --- Subscriptions Logic ---
@@ -79,12 +87,12 @@ const handleStoreSubscription = (state: AuthState, prevState: AuthState) => {
   // Detect Inconsistent State
   const hasToken = !!token;
   const hadToken = !!prevToken;
-  const lostTokenUnexpectedly = !hasToken && hadToken;
+  const lostTokenUnexpectedly = sessionMode !== "offline" && !hasToken && hadToken;
   const isInconsistentState =
     sessionMode !== "offline" && !hasToken && (isAuthenticated || !!user);
 
   if (lostTokenUnexpectedly || isInconsistentState) {
-    useAuthStore.getState().logout();
+    void useAuthStore.getState().logout().catch(reportClipperPersistenceError);
   }
 };
 
@@ -145,15 +153,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
     refreshTokens: async () => {
       try {
-        const refreshResponse =
-          isTauri() && isDesktopAuthSessionAvailable()
-            ? await authService.refreshDesktop(getDesktopRefreshToken()!)
-            : await authService.refresh();
-
-        const { token, refreshToken } = refreshResponse;
-        if (isTauri()) {
-          setDesktopRefreshToken(refreshToken);
-        }
+        const token = await refreshAuthToken();
         set({ token, sessionMode: "online" });
         const user = await resolveUser(token);
         set({
@@ -165,7 +165,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         return token;
       } catch (error) {
         if (isAuthRejection(error)) {
-          get().logout();
+          await get().logout();
         }
         throw error;
       }
@@ -177,14 +177,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         set({ isLoading: true });
       }
       try {
-        const refreshResponse =
-          isTauri() && isDesktopAuthSessionAvailable()
-            ? await authService.refreshDesktop(getDesktopRefreshToken()!)
-            : await authService.refresh();
-        const { token, refreshToken } = refreshResponse;
-        if (isTauri()) {
-          setDesktopRefreshToken(refreshToken);
-        }
+        const token = await refreshAuthToken();
         const user = await resolveUser(token);
 
         set({
@@ -196,7 +189,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         syncSessionMarker(!!user);
       } catch (error) {
         if (isAuthRejection(error)) {
-          get().logout();
+          await get().logout();
           throw error;
         }
         const cachedUser = await getCachedAuthProfile();
@@ -289,7 +282,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       if (!user) return;
       const updated = { ...user, ...data };
       set({ user: updated });
-      void cacheAuthProfile(updated);
+      void cacheAuthProfile(updated).catch(reportClipperPersistenceError);
     },
 
     completeDesktopLogin: ({ token, refreshToken, user }) => {
@@ -305,7 +298,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         isLoggingOut: false,
         sessionMode: "online",
       });
-      void cacheAuthProfile(user);
+      void cacheAuthProfile(user).catch(reportClipperPersistenceError);
     },
   };
 });
@@ -314,25 +307,19 @@ export const useAuthStore = create<AuthState>((set, get) => {
 useAuthStore.subscribe(handleStoreSubscription);
 
 // --- Init Callback ---
-setTokenRefreshCallback(async (token: string) => {
-  if (useAuthStore.getState().isLoggingOut) {
-    return;
-  }
-  const user = await resolveUserHelper(token);
+setTokenRefreshCallback((token: string) => {
   if (useAuthStore.getState().isLoggingOut) {
     return;
   }
   useAuthStore.setState({
     token,
-    user,
-    isAuthenticated: !!user,
-    sessionMode: user ? "online" : null,
+    sessionMode: "online",
   });
 });
 
 // --- Session Expired Callback ---
 setSessionExpiredCallback(() => {
-  void useAuthStore.getState().logout();
+  void useAuthStore.getState().logout().catch(reportClipperPersistenceError);
 });
 
 setActiveSessionChecker(() => {

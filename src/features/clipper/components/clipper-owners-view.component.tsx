@@ -11,7 +11,7 @@ import { useYoutubeStore } from "../../../stores/use-youtube-store.store";
 import { useSocialStore } from "../../../stores/use-social-store.store";
 import { refreshAllIntegrations } from "../../../stores/refresh-all-integrations.util";
 import { useClipperOwners } from "../hooks/use-clipper-owners.hook";
-import type { ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
+import { fetchClipperOwnerProjects, type ClipperProjectSummary, type ClipperOwnerChannelRecord } from "../persistence/clipper-owner-db-api.util";
 import {
   buildAvailableOwnerChannels,
   diffOwnerChannelSelection,
@@ -52,6 +52,8 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
   const [screen, setScreen] = useState<OwnersScreen>("list");
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [channels, setChannels] = useState<ClipperOwnerChannelRecord[]>([]);
+  const [projects, setProjects] = useState<ClipperProjectSummary[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [newOwnerName, setNewOwnerName] = useState("");
 
@@ -114,8 +116,21 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
       setChannels([]);
       return;
     }
-    void refreshOwnerData(selectedOwnerId);
+    void refreshOwnerData(selectedOwnerId).catch(() => appToast.error("Could not load owner channels"));
   }, [selectedOwnerId, screen, refreshOwnerData, owners]);
+
+  useEffect(() => {
+    let active = true;
+    setProjectsLoading(true);
+    setProjects([]);
+    if (!selectedOwnerId) return;
+    void fetchClipperOwnerProjects(selectedOwnerId).then((next) => {
+      if (active) { setProjects(next); setProjectsLoading(false); }
+    }).catch(() => {
+      if (active) appToast.error("Could not check assigned projects", "Reopen this owner before trying to delete it.");
+    });
+    return () => { active = false; };
+  }, [selectedOwnerId, owners]);
 
   const handleCreateOwner = useCallback(async () => {
     const name = newOwnerName.trim();
@@ -214,6 +229,8 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
       <ClipperOwnerDetailPanel
         owner={selectedOwner}
         channels={resolvedChannels}
+        projects={projects}
+        projectsLoading={projectsLoading}
         onManageChannels={() => setScreen("channels")}
         onSave={async (name, notes) => {
           await saveOwner({ id: selectedOwner.id, name, notes });
@@ -299,9 +316,9 @@ export function ClipperOwnersView({ onOpenIntegrations, onHeaderBackChange }: Cl
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
         title="Add owner"
-        onFormSubmit={() => void handleCreateOwner()}
+        onFormSubmit={() => void handleCreateOwner().catch(() => appToast.error("Could not create owner"))}
         footer={
-          <OutlinedActionButton onClick={() => void handleCreateOwner()}>
+          <OutlinedActionButton onClick={() => void handleCreateOwner().catch(() => appToast.error("Could not create owner"))}>
             Create
           </OutlinedActionButton>
         }

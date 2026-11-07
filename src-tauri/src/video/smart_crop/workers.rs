@@ -17,7 +17,7 @@ use super::preprocess::{
     drain_face_batch, evaluate_yolox_batch, map_detection_from_tile, map_face_from_tile,
     prepare_movenet_into, prepare_scrfd_into, quality_face_tiles, quality_object_tiles, ModelFrame,
 };
-use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
+use super::vision::{NativeVisionDevice, NativeVisionError, NativeVisionModel, VisionModel};
 use super::vision_logic::{
     box_iou, decode_movenet, decode_scrfd, detect_motion_saliency, merge_subject_detections,
     weighted_face_nms, Letterbox, NormalizedBox, RecoveryPolicy, SubjectDetection,
@@ -102,7 +102,7 @@ pub(crate) fn spawn_face_worker(
                 SCRFD_INPUT_SIZE,
             ),
         );
-        let mut model: Option<WinMlModel> = None;
+        let mut model: Option<NativeVisionModel> = None;
         let frame_elems = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE * 3;
         let mut input = vec![-127.5 / 128.0; MAX_BATCH * frame_elems];
         let mut resize_scratch = vec![0u8; frame_elems];
@@ -198,7 +198,7 @@ pub(crate) fn spawn_face_worker(
                     .evaluate_into(&shape, input, &mut output)
                     .map(|()| current.device())
             } else {
-                WinMlModel::create_into(
+                NativeVisionModel::create_into(
                     VisionModel::Face,
                     &model_path,
                     Some(&fp16_model_path),
@@ -464,7 +464,7 @@ fn evaluate_object_detection_batch(
     batch: Vec<ObjectJob>,
     base_jobs: &crossbeam_channel::Receiver<ObjectJob>,
     yolox_evaluation_count: &mut usize,
-    yolox_model: &mut Option<WinMlModel>,
+    yolox_model: &mut Option<NativeVisionModel>,
     yolox_input: &mut Vec<f32>,
     yolox_letterboxes: &mut Vec<Letterbox>,
     yolox_output: &mut Vec<Vec<f32>>,
@@ -626,8 +626,8 @@ pub(crate) fn spawn_object_worker(
                 pose_model_path.display(),
             ),
         );
-        let mut yolox_model: Option<WinMlModel> = None;
-        let mut pose_model: Option<WinMlModel> = None;
+        let mut yolox_model: Option<NativeVisionModel> = None;
+        let mut pose_model: Option<NativeVisionModel> = None;
         let mut pose_sample_index = 0usize;
         let mut previous_motion_frame: Option<Arc<AnalysisFrame>> = None;
         let mut pending_control_job: Option<ObjectJob> = None;
@@ -649,7 +649,7 @@ pub(crate) fn spawn_object_worker(
         );
 
         let run_movenet = |frame: &AnalysisFrame,
-                           pose_model: &mut Option<WinMlModel>,
+                           pose_model: &mut Option<NativeVisionModel>,
                            pose_input: &mut Vec<f32>,
                            pose_output: &mut Vec<Vec<f32>>,
                            pose_preprocess_time_us: &AtomicU64| {
@@ -666,7 +666,7 @@ pub(crate) fn spawn_object_worker(
                     .evaluate_into(&pose_shape, pose_input, pose_output)
                     .map(|()| current.device())
             } else {
-                WinMlModel::create_into(
+                NativeVisionModel::create_into(
                     VisionModel::Pose,
                     &pose_model_path,
                     None,
@@ -898,7 +898,7 @@ pub(crate) fn spawn_object_worker(
                             Vec::new(),
                             pose_model
                                 .as_ref()
-                                .map(WinMlModel::device)
+                                .map(NativeVisionModel::device)
                                 .unwrap_or(NativeVisionDevice::Cpu),
                             0,
                         )

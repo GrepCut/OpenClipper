@@ -1,7 +1,7 @@
 {
   "name": "open-clipper",
   "private": true,
-  "version": "26.10.3",
+  "version": "26.11.2",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "build:web": "vite build && node scripts/prune-web-models.mjs",
     "build:tauri": "cross-env VITE_APP_PLATFORM=tauri vite build && node scripts/prune-tauri-dist.mjs",
     "lint": "eslint src",
-    "test": "vitest run src/features/clipper/persistence/clipper-export-social.util.spec.ts",
+    "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "node scripts/run-tauri.mjs dev",
@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@sentry/bundler-plugins": "^11.11.0",
     "@tauri-apps/cli": "^2.10.1",
     "@types/js-cookie": "^3.0.6",
     "@types/node": "^26.1.1",

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use super::internal::{AnalysisFrame, FaceJob, FrameRegion, MAX_BATCH};
-use super::vision::{NativeVisionDevice, NativeVisionError, VisionModel, WinMlModel};
+use super::vision::{NativeVisionDevice, NativeVisionError, NativeVisionModel, VisionModel};
 use super::vision_logic::{
     decode_yolox_fast, AutoFlipFaceDetection, Letterbox, SubjectDetection, MOVENET_INPUT_SIZE,
     SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
@@ -134,7 +134,7 @@ fn prepare_yolox_into(
 }
 
 pub(crate) fn evaluate_yolox_batch(
-    model: &mut Option<WinMlModel>,
+    model: &mut Option<NativeVisionModel>,
     batch: &[ModelFrame<'_>],
     input: &mut [f32],
     letterboxes: &mut Vec<Letterbox>,
@@ -164,7 +164,7 @@ pub(crate) fn evaluate_yolox_batch(
             .evaluate_into(&shape, input, output)
             .map(|()| current.device())
     } else {
-        WinMlModel::create_into(
+        NativeVisionModel::create_into(
             VisionModel::YoloX,
             model_path,
             Some(fp16_model_path),

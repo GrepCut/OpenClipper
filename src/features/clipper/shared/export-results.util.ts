@@ -21,12 +21,9 @@ export function appendUniqueExportResults(
   existing: ClipperFormatResult[],
   incoming: ClipperFormatResult[],
 ): ClipperFormatResult[] {
-  const seen = new Set(existing.map((result) => result.id));
-  const next = [...existing];
+  const byId = new Map(existing.map((result) => [result.id, result]));
   for (const result of incoming) {
-    if (seen.has(result.id)) continue;
-    seen.add(result.id);
-    next.push(result);
+    byId.set(result.id, result);
   }
-  return sortExportsByDate(next);
+  return sortExportsByDate([...byId.values()]);
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { VStack } from "@chakra-ui/react";
-import { removeClipperProjectDataDir } from "../persistence/project-data-files.util";
+import { deleteClipperProject } from "../persistence/delete-clipper-project.util";
 import { type Project, projectsService } from "../../../services/projects.service";
 import { appToast } from "../../../shared/utils/toast.service";
 import {
@@ -34,9 +34,10 @@ export function DeleteClipperProjectModal({
         await onBeforeDelete();
       }
       if (project.projectType === "clipper") {
-        await removeClipperProjectDataDir(project.id);
+        await deleteClipperProject(project.id);
+      } else {
+        await projectsService.delete(project.id);
       }
-      await projectsService.delete(project.id);
 
       appToast.success("Project deleted", `Project "${project.name}" was successfully deleted`);
 

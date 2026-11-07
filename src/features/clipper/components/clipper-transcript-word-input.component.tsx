@@ -38,7 +38,6 @@ export function ClipperTranscriptWordInput({
     selection?.removeAllRanges();
     selection?.addRange(range);
     // Mount-only: re-running would reset the text and caret while typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const readValue = () => (ref.current?.textContent ?? "").replace(/\s+/g, " ");

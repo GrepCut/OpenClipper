@@ -3,6 +3,8 @@ import {
   AudioSampleSource,
   EncodedAudioPacketSource,
   EncodedPacketSink,
+  canEncodeAudio,
+  type AudioEncodingConfig,
 } from "mediabunny";
 import {
   AAC_BITRATE,
@@ -10,6 +12,24 @@ import {
   type AudioTrackMode,
   type InputAudioTrack,
 } from "./video-frame-effect.types";
+
+export const EXPORT_AUDIO_SAMPLE_RATE = 48_000;
+
+export function exportAudioConfig(channels: number): AudioEncodingConfig {
+  return {
+    codec: "aac", bitrate: AAC_BITRATE,
+    transform: { sampleRate: EXPORT_AUDIO_SAMPLE_RATE, numberOfChannels: channels === 1 ? 1 : 2 },
+  };
+}
+
+export async function assertExportAudioSupported(channels: number): Promise<void> {
+  if (!await canEncodeAudio("aac", {
+    bitrate: AAC_BITRATE, sampleRate: EXPORT_AUDIO_SAMPLE_RATE,
+    numberOfChannels: channels === 1 ? 1 : 2,
+  })) {
+    throw new Error("This WebView2 cannot encode AAC at 48 kHz. Update WebView2 and retry. Your project is preserved.");
+  }
+}
 
 export async function processAudioTrack(
   audioTrack: InputAudioTrack | null,
@@ -41,16 +61,19 @@ export async function processAudioTrack(
     let timeOffset = 0;
     let sampleCount = 0;
     for await (const audioSample of sampleSink.samples()) {
-      sampleCount++;
-      throwIfAborted(signal);
-      if (sampleCount === 1 && audioSample.timestamp < 0) {
-        timeOffset = -audioSample.timestamp;
+      try {
+        sampleCount++;
+        throwIfAborted(signal);
+        if (sampleCount === 1 && audioSample.timestamp < 0) {
+          timeOffset = -audioSample.timestamp;
+        }
+        if (timeOffset > 0) {
+          audioSample.setTimestamp(audioSample.timestamp + timeOffset);
+        }
+        await src.add(audioSample);
+      } finally {
+        audioSample.close();
       }
-      if (timeOffset > 0) {
-        audioSample.setTimestamp(audioSample.timestamp + timeOffset);
-      }
-      await src.add(audioSample);
-      audioSample.close();
     }
   }
   audioSource.close();
@@ -65,7 +88,7 @@ export function createAudioSource(
     audioMode === "copy"
       ? new EncodedAudioPacketSource("aac")
       : audioMode === "transcode"
-        ? new AudioSampleSource({ codec: "aac", bitrate: AAC_BITRATE })
+        ? new AudioSampleSource(exportAudioConfig(audioTrack!.numberOfChannels))
         : null;
   return { audioSource, audioMode };
 }

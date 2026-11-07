@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "active": {
-    "windows-x86_64": "26.10.3"
+    "windows-x86_64": "26.11.2"
   },
   "releases": [
     {
@@ -392,6 +392,75 @@
           "name": "Open Clipper_26.10.3_x64-setup.exe.sig",
           "size": 428,
           "sha256": "05ceb516d009fbf91c3a453526b46ba6df94d9455fe4aa2e9608b0ea53aae976"
+        }
+      ]
+    },
+    {
+      "version": "26.10.4",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-10-22T18:05:54Z",
+      "pubDate": "2026-10-22T18:05:54Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": "26.10.3",
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.10.4",
+      "files": [
+        {
+          "name": "Open Clipper_26.10.4_x64-setup.exe",
+          "size": 164581153,
+          "sha256": "224c57bc8e126c4252b077b87d6df72e55522b2f5f6b67cc67415ef001659966"
+        },
+        {
+          "name": "Open Clipper_26.10.4_x64-setup.exe.sig",
+          "size": 428,
+          "sha256": "3c33c87a44a18d94e37ff7c6e2ece89170ac5b070fae083249486a96d5640036"
+        }
+      ]
+    },
+    {
+      "version": "26.11.1",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-11-02T11:48:12Z",
+      "pubDate": "2026-11-02T11:48:12Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": "26.10.4",
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.11.1",
+      "files": [
+        {
+          "name": "Open Clipper_26.11.1_x64-setup.exe",
+          "size": 164586551,
+          "sha256": "4ec0e93e5594506ca82a232d5ca05695b650a8278cc74760c137b16c1e98ecc7"
+        },
+        {
+          "name": "Open Clipper_26.11.1_x64-setup.exe.sig",
+          "size": 428,
+          "sha256": "35fb4c35dac8cfd3aa0a01ce68cf27b1f5c1ad1ee50a82e1f69488e5dd6c326d"
+        }
+      ]
+    },
+    {
+      "version": "26.11.2",
+      "platform": "windows-x86_64",
+      "promotedAt": "2026-11-07T18:55:42Z",
+      "pubDate": "2026-11-07T18:55:42Z",
+      "baseUrl": "https://updates.openclipper.grepcut.com",
+      "notes": "Open Clipper desktop release",
+      "previousActiveVersion": "26.11.1",
+      "manifestPath": "r2_mirror/windows/x86_64/latest.json",
+      "releasePath": "r2_mirror/windows/x86_64/releases/26.11.2",
+      "files": [
+        {
+          "name": "Open Clipper_26.11.2_x64-setup.exe",
+          "size": 164629391,
+          "sha256": "a8d0db6ce0fd75a4610b877c210806c9cd2153d31061897c48d2fe2dfffc68f0"
+        },
+        {
+          "name": "Open Clipper_26.11.2_x64-setup.exe.sig",
+          "size": 428,
+          "sha256": "0548579488de1e1cae8ebb044cc37d814d9fa0e7691f3b401afc8f64f6f57cf1"
         }
       ]
     }

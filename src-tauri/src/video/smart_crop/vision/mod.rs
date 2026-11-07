@@ -1,13 +1,15 @@
 //! Thin synchronous WinML session wrapper. Instances are created and used on
 //! one dedicated MTA worker thread by the native Clipper pipeline.
 
+mod backend;
 mod com;
 mod device_cache;
 mod error_util;
 mod model;
+mod ort_model;
 mod paths;
 mod session;
 mod types;
-pub use model::WinMlModel;
+pub use backend::NativeVisionModel;
 pub use paths::{fp16_variant_path, resource_paths};
 pub use types::*;

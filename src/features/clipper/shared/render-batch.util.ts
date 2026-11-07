@@ -8,6 +8,8 @@ export interface RenderExportsOptions {
   skipCompleted?: boolean;
   /** Leave out formats already exported from identical render inputs (persisted exports). */
   skipExisting?: boolean;
+  /** Explicitly encode fresh outputs, including those recovered from a failed registration. */
+  restart?: boolean;
 }
 
 type RenderStopDraft = Pick<

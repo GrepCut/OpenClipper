@@ -66,7 +66,7 @@ export function DesktopAuthBridge() {
       .__TAURI__?.deepLink as { onOpenUrl?: unknown } | undefined;
     if (typeof deepLinkApi?.onOpenUrl !== "function") {
       console.warn(
-        "[DesktopAuthBridge] deepLink.onOpenUrl unavailable — OAuth redirect may not work",
+        "[DesktopAuthBridge] deepLink.onOpenUrl unavailable: OAuth redirect may not work",
       );
       return;
     }

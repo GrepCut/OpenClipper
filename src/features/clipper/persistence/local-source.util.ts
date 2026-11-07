@@ -1,6 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { pathBackedFile } from "../platform/native-source.util";
+import { resolvePlayableMediaUrl } from "./tauri-media.util";
 
 type LocalMediaSourceRecord = {
   kind: "tauri-path";
@@ -70,8 +71,14 @@ export async function resolveOrPromptLocalMediaSourceAsFile(item: {
   name: string;
 }): Promise<File | null> {
   const cached = await getLocalMediaSource(item.id);
-  if (cached?.path) {
-    return pathBackedFile(cached.path, item.name);
+  if (cached?.path && isTauri()) {
+    try {
+      await resolvePlayableMediaUrl(cached.path);
+      return pathBackedFile(cached.path, item.name);
+    } catch (error) {
+      // Reuse the existing source picker when a remembered file was moved/deleted.
+      if (!/missing|inaccessible|Cannot resolve media path|Media path is not a file/i.test(String(error))) throw error;
+    }
   }
 
   if (!isTauri()) return null;

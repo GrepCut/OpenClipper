@@ -307,3 +307,31 @@ fn mime_for_path(path: &Path) -> &'static str {
         _ => "application/octet-stream",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn caps_large_media_reads_and_reports_the_actual_range() {
+        let path = std::env::temp_dir().join(format!("clipper-range-{}.mp4", uuid::Uuid::new_v4()));
+        let file = File::create(&path).unwrap();
+        let file_len = MAX_RANGE_CHUNK * 2 + 13;
+        file.set_len(file_len).unwrap();
+        drop(file);
+        let request = Request::builder().method(Method::GET).uri("https://grepcut-media.localhost/token")
+            .header(header::RANGE, "bytes=0-").body(Vec::new()).unwrap();
+        let response = serve_file(request, path.clone());
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.body().len(), MAX_RANGE_CHUNK as usize);
+        assert_eq!(response.headers()[header::CONTENT_RANGE], format!("bytes 0-{}/{}", MAX_RANGE_CHUNK - 1, file_len));
+        let request = Request::builder().method(Method::GET).uri("https://grepcut-media.localhost/token")
+            .header(header::RANGE, format!("bytes={}-", file_len - 13)).body(Vec::new()).unwrap();
+        let response = serve_file(request, path.clone());
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(response.body().len(), 13);
+        std::fs::remove_file(&path).unwrap();
+        let request = Request::builder().method(Method::GET).uri("https://grepcut-media.localhost/token").body(Vec::new()).unwrap();
+        assert_eq!(serve_file(request, path).status(), StatusCode::NOT_FOUND);
+    }
+}

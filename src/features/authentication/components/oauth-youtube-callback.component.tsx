@@ -19,7 +19,7 @@ import {
 export function OAuthYoutubeCallback() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { checkAuthStatus, completeDesktopLogin } = useAuth();
+  const { completeDesktopLogin } = useAuth();
   const { theme } = useTheme();
   const callbackStartedRef = useRef(false);
 
@@ -79,7 +79,7 @@ export function OAuthYoutubeCallback() {
         console.log("[YouTube Auth] Exchanging desktop ticket before verification");
         await exchangeDesktopTicketIfNeeded(
           ticket,
-          { completeDesktopLogin, checkAuthStatus },
+          { completeDesktopLogin },
           () => setStatus("verifying"),
         );
       }
@@ -108,7 +108,6 @@ export function OAuthYoutubeCallback() {
     location.pathname,
     location.search,
     completeDesktopLogin,
-    checkAuthStatus,
     navigate,
     verifyYoutubeConnection,
   ]);

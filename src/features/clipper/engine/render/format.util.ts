@@ -14,7 +14,6 @@ import {
 import { createMediabunnyInput } from "../../lib/media/mediabunny-file-source.util";
 import {
   createAudioSource,
-  AAC_BITRATE,
   FrameCanvasCache,
   highQualityVideoBitrate,
   processAudioTrack,
@@ -40,6 +39,9 @@ import { applySeamFades, trimAudioSampleToWindow } from "../audio/windowed-sampl
 import { ensureCaptionFontsReady } from "../../lib/captions/caption-presets.util";
 import { ensureBrandingLogo } from "./branding-logo-cache.util";
 import { evenInt } from "../../lib/media/video-draw.util";
+import type { RenderDiagnostics } from "../../shared/render-failure-report.util";
+import { resolveClipperEncoderConfig } from "./encoder-config.util";
+import { exportAudioConfig, assertExportAudioSupported } from "../../lib/media/video-frame-effect-audio.util";
 
 const QUALITY_BITRATE_MULTIPLIER: Record<ClipperQualityPreset, number> = {
   draft: 0.55,
@@ -76,6 +78,9 @@ function cropScaleVideoFrame(
   x = evenInt(x);
   y = evenInt(y);
   if (x + width > codedW || y + height > codedH) return null;
+  // displayWidth/Height only change pixel aspect ratio, not encoded sample size.
+  // A moving crop must be physically scaled through the fixed-size canvas.
+  if (width !== output.width || height !== output.height) return null;
   try {
     return new VideoFrame(frame, {
       timestamp,
@@ -114,49 +119,55 @@ async function processAudioTrackInWindow(
     const { startSec, endSec } = segment;
     let pending: AudioSample | null = null;
     let first = true;
-    for await (const audioSample of sampleSink.samples(startSec, endSec)) {
-      throwIfAborted(signal);
-      try {
-        const trim = trimAudioSampleToWindow(audioSample.timestamp, audioSample.duration, startSec, endSec);
-        if (!trim) continue;
-        const frameOffset = Math.max(0, Math.ceil(trim.offsetSec * audioSample.sampleRate - 1e-9));
-        const frameEnd = Math.min(
-          audioSample.numberOfFrames,
-          Math.floor((trim.offsetSec + trim.durationSec) * audioSample.sampleRate + 1e-9),
-        );
-        const frameCount = frameEnd - frameOffset;
-        if (frameCount <= 0) continue;
-        const pcm = new Float32Array(frameCount * audioSample.numberOfChannels);
-        audioSample.copyTo(pcm, { planeIndex: 0, format: "f32", frameOffset, frameCount });
-        if (first) {
-          applySeamFades(pcm, audioSample.numberOfChannels, audioSample.sampleRate, 0.006, 0);
-          first = false;
+    try {
+      for await (const audioSample of sampleSink.samples(startSec, endSec)) {
+        try {
+          throwIfAborted(signal);
+          const trim = trimAudioSampleToWindow(audioSample.timestamp, audioSample.duration, startSec, endSec);
+          if (!trim) continue;
+          const frameOffset = Math.max(0, Math.ceil(trim.offsetSec * audioSample.sampleRate - 1e-9));
+          const frameEnd = Math.min(
+            audioSample.numberOfFrames,
+            Math.floor((trim.offsetSec + trim.durationSec) * audioSample.sampleRate + 1e-9),
+          );
+          const frameCount = frameEnd - frameOffset;
+          if (frameCount <= 0) continue;
+          const pcm = new Float32Array(frameCount * audioSample.numberOfChannels);
+          audioSample.copyTo(pcm, { planeIndex: 0, format: "f32", frameOffset, frameCount });
+          if (first) {
+            applySeamFades(pcm, audioSample.numberOfChannels, audioSample.sampleRate, 0.006, 0);
+            first = false;
+          }
+          const processed = new AudioSample({
+            data: pcm,
+            format: "f32",
+            numberOfChannels: audioSample.numberOfChannels,
+            sampleRate: audioSample.sampleRate,
+            timestamp: cumulativeOutputSec + trim.outputTimestampSec,
+          });
+          const previous = pending;
+          pending = processed;
+          if (previous) {
+            try { await audioSource.add(previous); }
+            finally { previous.close(); }
+          }
+        } finally {
+          audioSample.close();
         }
-        const processed = new AudioSample({
-          data: pcm,
-          format: "f32",
-          numberOfChannels: audioSample.numberOfChannels,
-          sampleRate: audioSample.sampleRate,
-          timestamp: cumulativeOutputSec + trim.outputTimestampSec,
-        });
-        if (pending) {
-          await audioSource.add(pending);
-          pending.close();
-        }
-        pending = processed;
-      } finally {
-        audioSample.close();
       }
-    }
-    if (pending) {
-      const pcm = new Float32Array(pending.numberOfFrames * pending.numberOfChannels);
-      pending.copyTo(pcm, { planeIndex: 0, format: "f32" });
-      applySeamFades(pcm, pending.numberOfChannels, pending.sampleRate, 0, 0.006);
-      const faded = new AudioSample({ data: pcm, format: "f32", numberOfChannels: pending.numberOfChannels,
-        sampleRate: pending.sampleRate, timestamp: pending.timestamp });
-      pending.close();
-      await audioSource.add(faded);
-      faded.close();
+      if (pending) {
+        const pcm = new Float32Array(pending.numberOfFrames * pending.numberOfChannels);
+        pending.copyTo(pcm, { planeIndex: 0, format: "f32" });
+        applySeamFades(pcm, pending.numberOfChannels, pending.sampleRate, 0, 0.006);
+        const faded = new AudioSample({ data: pcm, format: "f32", numberOfChannels: pending.numberOfChannels,
+          sampleRate: pending.sampleRate, timestamp: pending.timestamp });
+        pending.close();
+        pending = null;
+        try { await audioSource.add(faded); }
+        finally { faded.close(); }
+      }
+    } finally {
+      pending?.close();
     }
     cumulativeOutputSec += Math.max(0, endSec - startSec);
   }
@@ -173,9 +184,12 @@ export async function renderClipperFormat(
     onProgress?: (ratio: number) => void;
     clipWindow?: ClipperClipWindow;
     outputSink?: WritableStream<StreamTargetChunk>;
+    onDiagnostics?: (diagnostics: RenderDiagnostics) => void;
   } = {},
 ): Promise<RenderClipperResult> {
-  const { signal, onProgress, clipWindow, outputSink } = options;
+  const { signal: parentSignal, onProgress, clipWindow, outputSink } = options;
+  const stop = new AbortController();
+  const signal = parentSignal ? AbortSignal.any([parentSignal, stop.signal]) : stop.signal;
   throwIfAborted(signal);
   await ensureCaptionFontsReady();
   const { branding } = render.settings;
@@ -197,7 +211,22 @@ export async function renderClipperFormat(
   try {
     const videoTrack = await input.getPrimaryVideoTrack();
     if (!videoTrack) throw new Error("No video track found.");
+    options.onDiagnostics?.({
+      source: { codec: videoTrack.codec, width: videoTrack.codedWidth, height: videoTrack.codedHeight },
+    });
     const audioTrack = (await input.getAudioTracks())[0] ?? null;
+    const transcodeAudio = audioTrack != null && (clipWindow != null || audioTrack.codec !== "aac");
+    if (audioTrack && transcodeAudio) await assertExportAudioSupported(audioTrack.numberOfChannels);
+    options.onDiagnostics?.({
+      stage: "configure",
+      sourceKind: trimmedFile.size === 0 ? "native-path" : "blob",
+      audio: audioTrack ? {
+        sourceSampleRate: audioTrack.sampleRate, sourceChannels: audioTrack.numberOfChannels,
+        outputSampleRate: transcodeAudio ? 48_000 : audioTrack.sampleRate,
+        outputChannels: transcodeAudio ? (audioTrack.numberOfChannels === 1 ? 1 : 2) : audioTrack.numberOfChannels,
+        mode: transcodeAudio ? "transcode" : "copy",
+      } : undefined,
+    });
     const totalDuration = await input.computeDuration();
 
     const windowDuration = clipWindow
@@ -205,24 +234,25 @@ export async function renderClipperFormat(
       : Math.max(0.001, totalDuration);
 
     const outputSize = resolveClipperOutputSize(formatDef, render.settings.formats.resolutionCap);
+    const encoderConfig = await resolveClipperEncoderConfig(
+      outputSize.width, outputSize.height,
+      resolveEncodeBitrate(outputSize, render.settings.formats.quality), signal,
+    );
 
     const output = new Output({ format, target });
     const videoSource = new VideoSampleSource({
-      codec: "avc",
-      bitrate: resolveEncodeBitrate(outputSize, render.settings.formats.quality),
-      // Offline export: prefer quality (no frame drops) + hardware when available.
-      latencyMode: "quality",
-      hardwareAcceleration: "prefer-hardware",
+      ...encoderConfig,
+      onEncoderConfig: (encoder) => options.onDiagnostics?.({ encoder: { ...encoder } }),
     });
     output.addVideoTrack(videoSource);
 
     const { audioSource, audioMode } = clipWindow && audioTrack
-      ? { audioSource: new AudioSampleSource({ codec: "aac", bitrate: AAC_BITRATE }), audioMode: "transcode" as const }
+      ? { audioSource: new AudioSampleSource(exportAudioConfig(audioTrack.numberOfChannels)), audioMode: "transcode" as const }
       : createAudioSource(audioTrack);
     if (audioSource) output.addAudioTrack(audioSource);
 
     const onAbort = () => {
-      void output.cancel();
+      void output.cancel().catch(() => {});
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -274,6 +304,7 @@ export async function renderClipperFormat(
             duration: outputDuration,
           });
           try {
+            options.onDiagnostics?.({ stage: "encode", sample: { width: outSample.codedWidth, height: outSample.codedHeight } });
             await encodeBackpressure.run(() => videoSource.add(outSample));
             encodedFrames++;
           } finally {
@@ -292,9 +323,9 @@ export async function renderClipperFormat(
 
       if (!clipWindow) {
         for await (const sample of sink.samples()) {
-          throwIfAborted(signal);
           const t = sample.timestamp;
           try {
+            throwIfAborted(signal);
             await encodeSample(sample, t, t, sample.duration);
           } finally {
             sample.close();
@@ -310,7 +341,7 @@ export async function renderClipperFormat(
         const { startSec: segStart, endSec: segEnd } = segment;
 
         for await (const sample of sink.samples(segStart, segEnd)) {
-          throwIfAborted(signal);
+          if (signal.aborted) { sample.close(); throwIfAborted(signal); }
 
           const t = sample.timestamp;
           const sampleEnd = t + sample.duration;
@@ -346,17 +377,28 @@ export async function renderClipperFormat(
     try {
       onProgress?.(0);
       const loopStartedAt = performance.now();
+      throwIfAborted(signal);
       await output.start();
-      const audioPromise = clipWindow
-        ? processAudioTrackInWindow(audioTrack, audioSource as AudioSampleSource | null, clipWindow, signal)
-        : processAudioTrack(audioTrack, audioSource, audioMode, signal);
-
-      const results = await Promise.allSettled([processVideo(), audioPromise]);
-      const failed = results.find((result) => result.status === "rejected");
-      if (failed) throw (failed as PromiseRejectedResult).reason;
+      let failure: { error: unknown } | undefined;
+      const guard = async (task: () => Promise<void>) => {
+        try { await task(); }
+        catch (error) {
+          failure ??= { error };
+          stop.abort();
+          throw error;
+        }
+      };
+      await Promise.allSettled([
+        guard(processVideo),
+        guard(() => clipWindow
+          ? processAudioTrackInWindow(audioTrack, audioSource as AudioSampleSource | null, clipWindow, signal)
+          : processAudioTrack(audioTrack, audioSource, audioMode, signal)),
+      ]);
+      if (failure) throw failure.error;
 
       throwIfAborted(signal);
       const finalizeStartedAt = performance.now();
+      options.onDiagnostics?.({ stage: "finalize" });
       await output.finalize();
       const loopSec = (finalizeStartedAt - loopStartedAt) / 1000;
       clipperLog(`render ${formatDef.id}: encoded`, {

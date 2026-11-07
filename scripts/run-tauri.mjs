@@ -156,6 +156,12 @@ const childEnv = {
     mergedEnv.VCPKG_DEFAULT_TRIPLET || "x64-windows-static",
 };
 
+// Upload only for packaged releases; local preview builds keep their own artifacts.
+if (mode === "build" && !skipsBundle && childEnv.SENTRY_AUTH_TOKEN?.trim()
+  && childEnv.OPEN_CLIPPER_SENTRY_UPLOAD !== "0") {
+  childEnv.OPEN_CLIPPER_SENTRY_UPLOAD = "1";
+}
+
 for (const key of Object.keys(childEnv)) {
   if (key.startsWith("VITE_")) {
     delete childEnv[key];

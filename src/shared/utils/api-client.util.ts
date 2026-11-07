@@ -13,6 +13,7 @@ import {
 } from "./desktop-auth.util";
 import {
   canAttemptAuthRefresh,
+  authRetryDelayMs,
   isJwtExpiredOrExpiringSoon,
   shouldForceLogoutOnUnauthorized,
   shouldRefreshOnUnauthorized,
@@ -66,6 +67,8 @@ interface ExtendedAxiosRequestConfig extends InternalAxiosRequestConfig {
 
 // --- State ---
 let isRefreshing = false;
+let refreshBlockedUntil = 0;
+let refreshBlockedError: unknown;
 let isLoggingOut = false;
 let failedQueue: RetryQueueItem[] = [];
 let lastNetworkErrorToastAt = 0;
@@ -221,6 +224,7 @@ export const setActiveSessionChecker = (cb: () => boolean) => {
 
 // --- Handlers ---
 export const refreshAuthToken = async (): Promise<string> => {
+  if (Date.now() < refreshBlockedUntil) throw refreshBlockedError;
   if (isRefreshing) {
     return addToQueue();
   }
@@ -271,10 +275,19 @@ export const refreshAuthToken = async (): Promise<string> => {
     return newToken;
   } catch (refreshError) {
     processQueue(refreshError as Error);
-    if (isNetworkError(refreshError)) {
-      showNetworkErrorToast();
-    } else {
+    const status = axios.isAxiosError(refreshError) ? refreshError.response?.status : undefined;
+    if (status === 429) {
+      refreshBlockedUntil = Date.now() + authRetryDelayMs(
+        axios.isAxiosError(refreshError) ? refreshError.response?.headers["retry-after"] : undefined,
+      );
+      refreshBlockedError = refreshError;
+      appToast.warning("Please wait before signing in again", "The server is busy. Your local projects and saved session are preserved.");
+    } else if (status === 401 || status === 403) {
       forceLogout();
+    } else {
+      refreshBlockedUntil = Date.now() + 5000;
+      refreshBlockedError = refreshError;
+      showNetworkErrorToast();
     }
     throw refreshError;
   } finally {

@@ -7,7 +7,10 @@ import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/theme
 import type {
   ClipperOwnerChannelRecord,
   ClipperOwnerRecord,
+  ClipperProjectSummary,
 } from "../persistence/clipper-owner-db-api.util";
+import { appToast } from "../../../shared/utils/toast.service";
+import { extractApiErrorMessage } from "../../../shared/utils/api-client.util";
 import { platformLabel, type ResolvedOwnerChannel } from "../shared/clipper-owner-channels.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { ClipperOwnerChannelPlatformIcon } from "./clipper-owner-channel-platform-icon.component";
@@ -16,6 +19,8 @@ import { ClipperOwnerChannelStatusBadge } from "./clipper-owner-channel-status-b
 interface ClipperOwnerDetailPanelProps {
   owner: ClipperOwnerRecord;
   channels: ResolvedOwnerChannel[];
+  projects: ClipperProjectSummary[];
+  projectsLoading: boolean;
   onManageChannels: () => void;
   onSave: (name: string, notes: string) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -24,6 +29,8 @@ interface ClipperOwnerDetailPanelProps {
 export function ClipperOwnerDetailPanel({
   owner,
   channels,
+  projects,
+  projectsLoading,
   onManageChannels,
   onSave,
   onDelete,
@@ -64,6 +71,7 @@ export function ClipperOwnerDetailPanel({
             tone="danger"
             startIcon={<Trash2 size={16} />}
             onClick={() => setDeleteConfirmOpen(true)}
+            disabled={projectsLoading || projects.length > 0}
           >
             Delete
           </OutlinedActionButton>
@@ -71,12 +79,20 @@ export function ClipperOwnerDetailPanel({
             loading={saving}
             onClick={() => {
               setSaving(true);
-              void onSave(name.trim(), notes.trim()).finally(() => setSaving(false));
+              void onSave(name.trim(), notes.trim())
+                .catch((error) => appToast.error("Could not save owner", extractApiErrorMessage(error)))
+                .finally(() => setSaving(false));
             }}
           >
             Save
           </OutlinedActionButton>
         </HStack>
+        {projectsLoading ? <Text fontSize="sm">Loading assigned projects…</Text> : projects.length > 0 ? (
+          <VStack align="start" gap={1}>
+            <Text fontSize="sm" color={theme.text.muted}>Unassign these projects before deleting this owner:</Text>
+            {projects.map((project) => <Text key={project.id} fontSize="sm">{project.name}</Text>)}
+          </VStack>
+        ) : null}
       </VStack>
 
       <VStack align="stretch" gap={3} flex="1" minW={{ base: "full", lg: "0" }}>
@@ -144,6 +160,10 @@ export function ClipperOwnerDetailPanel({
               setDeleting(true);
               void onDelete()
                 .then(() => setDeleteConfirmOpen(false))
+                .catch((error) => appToast.error("Could not delete owner",
+                  /Cannot delete owner while projects are still assigned/i.test(String(error))
+                    ? "Projects are still assigned to this owner. Unassign them and retry."
+                    : extractApiErrorMessage(error)))
                 .finally(() => setDeleting(false));
             }}
           />
