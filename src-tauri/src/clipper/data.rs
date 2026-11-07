@@ -11,7 +11,7 @@ use crate::video::ffmpeg::studio_thumbnails::{
 };
 use tauri::{AppHandle, Manager};
 
-const CLIPPER_TRIMMED_SEGMENT_FILE: &str = "clip-trimmed.mp4";
+pub(crate) const CLIPPER_TRIMMED_SEGMENT_FILE: &str = "clip-trimmed.mp4";
 const CLIPPER_TRIM_METADATA_FILE: &str = "trim_metadata.json";
 const CLIPPER_EXPORTS_SUBDIR: &str = "exports";
 

@@ -264,6 +264,7 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
           // Finished formats are already on disk / in the DB — record them even when the
           // batch was stopped or a sibling format failed.
           patchPipelineState(setState, (draft) => {
+            draft.rangeTrimmedVideoUrl = session.rangeTrimmedVideoUrl;
             applySuccessfulClipResults(
               draft,
               clip.index,

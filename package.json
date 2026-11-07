@@ -1,7 +1,7 @@
 {
   "name": "open-clipper",
   "private": true,
-  "version": "26.10.4",
+  "version": "26.11.2",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@sentry/bundler-plugins": "^11.11.0",
     "@tauri-apps/cli": "^2.10.1",
     "@types/js-cookie": "^3.0.6",
     "@types/node": "^26.1.1",

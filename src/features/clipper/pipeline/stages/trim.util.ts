@@ -1,15 +1,16 @@
 import { isTauri } from "../../../../shared/utils/platform.util";
+import { stageSourceFile } from "../../persistence/stage-source-file.util";
+import { prepareExportMedia } from "../../lib/media/media-preflight.util";
+import { rememberLocalMediaSource } from "../../persistence/local-source.util";
 import { resolveFilePlayableUrl } from "../../persistence/tauri-media.util";
 import {
   extractSegmentBuffer,
   getNativeFilePath,
-  isNativeBacked,
 } from "../../platform/native-source.util";
 import { clipperLog, clipperWarn } from "../../shared/logger.util";
 import {
   extractClipperSegmentToProjectData,
   readClipperTrimmedSegment,
-  writeClipperTrimmedSegment,
 } from "../../persistence/project-data-files.util";
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
@@ -50,9 +51,11 @@ export async function runTrimStage(
       trimmedVideoUrl =
         session.rangeTrimmedVideoUrl ?? (await resolveFilePlayableUrl(trimmedFile));
     } else {
-      const trimmedBuffer = await session.rangeTrimmedFile.arrayBuffer();
-      trimmedFile = new File([trimmedBuffer], "clip-trimmed.mp4", { type: "video/mp4" });
-      trimmedVideoUrl = URL.createObjectURL(trimmedFile);
+      trimmedFile = isTauri()
+        ? await stageSourceFile(session.rangeTrimmedFile, projectId, options.signal)
+        : session.rangeTrimmedFile;
+      session.rangeTrimmedFile = trimmedFile;
+      trimmedVideoUrl = await resolveFilePlayableUrl(trimmedFile);
     }
   } else if (skipTrim) {
     const restored = await readClipperTrimmedSegment(projectId, snappedStart, end);
@@ -73,6 +76,28 @@ export async function runTrimStage(
     trimmedVideoUrl = trimmed.trimmedVideoUrl;
   }
 
+  return prepareTrimmedSegment(session, { trimmedFile, trimmedVideoUrl }, projectId, reporter, options);
+}
+
+async function prepareTrimmedSegment(
+  session: ClipperSession,
+  result: TrimStageResult,
+  projectId: string,
+  reporter: PipelineReporter,
+  options: { signal: AbortSignal },
+): Promise<TrimStageResult> {
+  let { trimmedFile, trimmedVideoUrl } = result;
+  if (isTauri()) {
+    const prepared = await prepareExportMedia(trimmedFile, projectId, options.signal, (ratio) => {
+      reporter.stage("uploading", "Preparing a compatible video copy…");
+      reporter.stageProgress(ratio);
+    });
+    if (prepared !== trimmedFile) trimmedVideoUrl = await resolveFilePlayableUrl(prepared);
+    trimmedFile = prepared;
+  }
+  options.signal.throwIfAborted();
+  session.rangeTrimmedFile = trimmedFile;
+  session.rangeTrimmedVideoUrl = trimmedVideoUrl;
   return { trimmedFile, trimmedVideoUrl };
 }
 
@@ -84,6 +109,12 @@ async function trimClipSegment(
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
 ): Promise<TrimStageResult> {
+  if (isTauri() && !getNativeFilePath(session.sourceFile)) {
+    session.sourceFile = await stageSourceFile(session.sourceFile, projectId, options.signal,
+      (ratio) => reporter.stageProgress(ratio * 0.1));
+    await rememberLocalMediaSource(session.mediaFileId, session.sourceFile.name, getNativeFilePath(session.sourceFile)!);
+  }
+  options.signal.throwIfAborted();
   const nativePath = getNativeFilePath(session.sourceFile);
   if (nativePath && isTauri()) {
     clipperLog("trim: using native Tauri FFmpeg packet copy (disk)", {
@@ -106,18 +137,6 @@ async function trimClipSegment(
     signal: options.signal,
     onProgress: (ratio) => reporter.stageProgress(ratio),
   });
-  if (isTauri()) {
-    const persisted = await writeClipperTrimmedSegment(projectId, trimmedBuffer, {
-      clipStart: snappedStart,
-      clipEnd: end,
-    });
-    if (persisted) {
-      return {
-        trimmedFile: persisted.file,
-        trimmedVideoUrl: persisted.videoUrl,
-      };
-    }
-  }
   const trimmedFile = new File([trimmedBuffer], "clip-trimmed.mp4", { type: "video/mp4" });
   const trimmedVideoUrl = URL.createObjectURL(trimmedFile);
   return { trimmedFile, trimmedVideoUrl };
@@ -132,8 +151,7 @@ export async function trimNativeSourceEarly(
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
 ): Promise<void> {
-  if (!isNativeBacked(session.sourceFile)) return;
+  if (!isTauri()) return;
   const trimmed = await trimClipSegment(session, projectId, snappedStart, end, reporter, options);
-  session.rangeTrimmedFile = trimmed.trimmedFile;
-  session.rangeTrimmedVideoUrl = trimmed.trimmedVideoUrl;
+  await prepareTrimmedSegment(session, trimmed, projectId, reporter, options);
 }

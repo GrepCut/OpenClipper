@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv, type Plugin, type PreviewServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
+import { sentryVitePlugin } from "@sentry/bundler-plugins/vite";
+import type { PluginContext } from "rollup";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(rootDir, "public");
@@ -40,7 +42,7 @@ function crossOriginPolicyPlugin() {
 
 function tauriPublicAssetsPlugin(): Plugin {
   const emitDirectory = (
-    pluginContext: Parameters<NonNullable<Plugin["buildStart"]>>[0],
+    pluginContext: PluginContext,
     directory: string,
     relativePath = "",
   ) => {
@@ -86,6 +88,10 @@ export default defineConfig(({ mode, command }) => {
   const appPlatform = process.env.VITE_APP_PLATFORM ?? env.VITE_APP_PLATFORM;
   const isTauriBuild = appPlatform === "tauri";
   const omitModelsFromTauriBuild = command === "build" && isTauriBuild;
+  const uploadSourceMaps = command === "build" && env.OPEN_CLIPPER_SENTRY_UPLOAD === "1";
+  if (uploadSourceMaps && !env.SENTRY_AUTH_TOKEN?.trim()) {
+    throw new Error("SENTRY_AUTH_TOKEN is required when OPEN_CLIPPER_SENTRY_UPLOAD=1.");
+  }
   const modelsCdnBase = (
     env.OPEN_CLIPPER_MODELS_CDN_BASE
     || env.VITE_OPEN_CLIPPER_MODELS_CDN_BASE
@@ -97,6 +103,12 @@ export default defineConfig(({ mode, command }) => {
       react(),
       crossOriginPolicyPlugin(),
       ...(omitModelsFromTauriBuild ? [tauriPublicAssetsPlugin()] : []),
+      ...(uploadSourceMaps ? [sentryVitePlugin({
+        org: "01starling", project: "javascript-react-d0", authToken: env.SENTRY_AUTH_TOKEN,
+        telemetry: false,
+        release: { name: `open-clipper@${packageJson.version}` },
+        sourcemaps: { assets: "./dist/**", filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+      })] : []),
     ],
     base: isTauriBuild ? "./" : "/",
     define: {
@@ -108,6 +120,7 @@ export default defineConfig(({ mode, command }) => {
       entries: [join(rootDir, "index.html")],
     },
     build: {
+      sourcemap: uploadSourceMaps ? "hidden" : false,
       rollupOptions: {
         input: join(rootDir, "index.html"),
       },

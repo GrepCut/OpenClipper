@@ -43,6 +43,50 @@ pub fn ensure_clipper_project_data_dir(
 }
 
 #[tauri::command]
+pub fn commit_clipper_prepared_range(
+    app: AppHandle,
+    project_id: String,
+    prepared_file_name: String,
+    source_revision: String,
+) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let directory = clipper_project_data_dir(&app, &project_id)?;
+        crate::video::ffmpeg::compatible_media::commit_prepared_range(
+            &directory, &prepared_file_name, &source_revision,
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, project_id, prepared_file_name, source_revision);
+        Err("Media recovery requires Windows.".into())
+    }
+}
+
+#[tauri::command]
+pub fn finalize_clipper_project_data_file(app: AppHandle, project_id: String, temporary_name: String, file_name: String) -> Result<String, String> {
+    validate_export_file_name(&temporary_name)?;
+    validate_export_file_name(&file_name)?;
+    if !temporary_name.contains(".part.") { return Err("Expected a temporary project data file".into()); }
+    let directory = clipper_project_data_dir(&app, &project_id)?;
+    let destination = directory.join(file_name);
+    if destination.exists() { return Err("Project data destination already exists".into()); }
+    fs::rename(directory.join(temporary_name), &destination).map_err(|e| e.to_string())?;
+    Ok(destination.to_string_lossy().into())
+}
+
+#[tauri::command]
+pub fn remove_clipper_project_data_partial(app: AppHandle, project_id: String, file_name: String) -> Result<(), String> {
+    validate_export_file_name(&file_name)?;
+    if !file_name.contains(".part.") { return Err("Only temporary project data files can be discarded".into()); }
+    match fs::remove_file(clipper_project_data_dir(&app, &project_id)?.join(file_name)) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
 pub async fn remove_clipper_project_data_dir(
     app: AppHandle,
     db: tauri::State<'_, crate::storage::database::LocalDb>,
@@ -104,31 +148,6 @@ pub async fn write_clipper_project_data_bytes_at(
 ) -> Result<(), String> {
     let (project_id, file_name, position, contents) = raw_positional_write(&request)?;
     write_project_data_file_bytes_at(&app, &project_id, &file_name, position, contents)
-}
-
-#[tauri::command]
-pub fn write_clipper_project_data_raw(app: AppHandle, request: Request<'_>) -> Result<(), String> {
-    let project_id = request
-        .headers()
-        .get("x-clipper-project-id")
-        .ok_or_else(|| "Missing x-clipper-project-id header.".to_string())?
-        .to_str()
-        .map_err(|error| format!("Invalid project id header: {error}"))?;
-    let file_name = request
-        .headers()
-        .get("x-clipper-file-name")
-        .ok_or_else(|| "Missing x-clipper-file-name header.".to_string())?
-        .to_str()
-        .map_err(|error| format!("Invalid file name header: {error}"))?;
-    validate_export_file_name(file_name)?;
-
-    let InvokeBody::Raw(contents) = request.body() else {
-        return Err("Expected a raw binary request body.".to_string());
-    };
-
-    let dir = clipper_project_data_dir(&app, project_id)?;
-    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    fs::write(dir.join(file_name), contents).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

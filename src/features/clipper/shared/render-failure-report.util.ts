@@ -2,6 +2,10 @@ import * as Sentry from "@sentry/react";
 import type { ClipperQualityPreset, ClipperResolutionCap } from "../settings/settings.util";
 
 export interface RenderDiagnostics {
+  stage?: "preflight" | "configure" | "encode" | "finalize";
+  sourceKind?: "native-path" | "blob";
+  sample?: { width: number; height: number };
+  audio?: { sourceSampleRate: number; sourceChannels: number; outputSampleRate: number; outputChannels: number; mode: "copy" | "transcode" };
   source?: { codec: string | null; width: number; height: number };
   encoder?: VideoEncoderConfig;
 }

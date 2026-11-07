@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     sea_query::OnConflict, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder,
+    PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -24,6 +24,31 @@ pub struct ClipperOwnerRecord {
     pub updated_at: String,
     pub channel_count: i64,
     pub project_count: i64,
+}
+
+#[cfg(test)]
+mod owner_delete_tests {
+    use super::*;
+    use crate::storage::{database::connect_database_at_path, repository::ProjectRepository};
+
+    #[tokio::test]
+    async fn deletion_requires_unassigning_projects_and_keeps_owner_after_refusal() {
+        let path = std::env::temp_dir().join(format!("clipper-owner-delete-{}.sqlite3", Uuid::new_v4()));
+        let db = connect_database_at_path(path.clone()).await.unwrap();
+        let owner = OwnerRepository::upsert(&db.database, ClipperOwnerUpsertInput {
+            id: None, name: "Owner".into(), avatar_url: None, notes: None,
+        }).await.unwrap();
+        ProjectRepository::put(&db.database, "local", serde_json::json!({"id": "project", "name": "Project"})).await.unwrap();
+        OwnerRepository::set_project_owner(&db.database, "project", Some(&owner.id)).await.unwrap();
+        assert!(OwnerRepository::delete(&db.database, &owner.id).await.unwrap_err().to_string().contains("projects are still assigned"));
+        assert!(OwnerRepository::get_by_id(&db.database, &owner.id).await.unwrap().is_some());
+        OwnerRepository::set_project_owner(&db.database, "project", None).await.unwrap();
+        OwnerRepository::delete(&db.database, &owner.id).await.unwrap();
+        assert!(OwnerRepository::get_by_id(&db.database, &owner.id).await.unwrap().is_none());
+        assert!(OwnerRepository::set_project_owner(&db.database, "project", Some(&owner.id)).await.is_err());
+        db.database.close().await.unwrap();
+        std::fs::remove_file(path).unwrap();
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -106,9 +131,10 @@ impl OwnerRepository {
     }
 
     pub async fn delete(database: &DatabaseConnection, id: &str) -> DbResult<()> {
+        let transaction = database.begin().await?;
         let project_count = local_project::Entity::find()
             .filter(local_project::Column::ClipperOwnerId.eq(id))
-            .count(database)
+            .count(&transaction)
             .await?;
         if project_count > 0 {
             return Err(DbError::message(
@@ -118,12 +144,13 @@ impl OwnerRepository {
 
         clipper_owner_channel::Entity::delete_many()
             .filter(clipper_owner_channel::Column::OwnerId.eq(id))
-            .exec(database)
+            .exec(&transaction)
             .await?;
 
         Entity::delete_by_id(id.to_owned())
-            .exec(database)
+            .exec(&transaction)
             .await?;
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -132,22 +159,24 @@ impl OwnerRepository {
         project_id: &str,
         owner_id: Option<&str>,
     ) -> DbResult<()> {
+        let transaction = database.begin().await?;
         if let Some(owner_id) = owner_id {
             Entity::find_by_id(owner_id.to_owned())
-                .one(database)
+                .one(&transaction)
                 .await?
                 .ok_or_else(|| DbError::message("Owner not found"))?;
         }
 
         let row = local_project::Entity::find_by_id(project_id.to_owned())
-            .one(database)
+            .one(&transaction)
             .await?
             .ok_or_else(|| DbError::message("Project not found"))?;
 
         let mut active: local_project::ActiveModel = row.into();
         active.clipper_owner_id = sea_orm::Set(owner_id.map(str::to_owned));
         active.updated_at = sea_orm::Set(Utc::now().to_rfc3339());
-        active.update(database).await?;
+        active.update(&transaction).await?;
+        transaction.commit().await?;
         Ok(())
     }
 

@@ -14,6 +14,8 @@ import {
   createClipperExportSink,
 } from "../../persistence/export-files.util";
 import { ClipperExportRegistrationError, persistClipperExport } from "../../persistence/clipper-export-persist.util";
+import { prepareExportMedia } from "../../lib/media/media-preflight.util";
+import { resolveFilePlayableUrl } from "../../persistence/tauri-media.util";
 import { metadataFieldsFromExportRecord } from "../../hooks/clipper-pipeline/export-manifest-resolve.util";
 import { withClipperProjectRender } from "../../persistence/project-write-lifecycle.util";
 import { renderProgressKey } from "../../shared/render-progress.util";
@@ -192,12 +194,24 @@ async function renderClipJob(
   const clip = findClipByIndex(session.clips, input.clipIndex);
   if (!clip) throw new Error(`Clip ${input.clipIndex} not found.`);
 
-  const rangeFile = session.rangeTrimmedFile;
-  if (!rangeFile) throw new Error("Range video is not ready, cannot render.");
-
+  if (!session.rangeTrimmedFile) throw new Error("Range video is not ready, cannot render.");
   const formats = CLIPPER_FORMAT_DEFS.filter((f) => input.enabledFormatIds.includes(f.id));
-  if (formats.length === 0) {
-    throw new Error("Select at least one export format.");
+  if (formats.length === 0) throw new Error("Select at least one export format.");
+  let rangeFile: File;
+  try {
+    rangeFile = await prepareExportMedia(session.rangeTrimmedFile, input.projectId, options.signal, (ratio) => {
+      reporter.stage("rendering", "Preparing a compatible video copy…");
+      reporter.stageProgress(ratio);
+    });
+    if (rangeFile !== session.rangeTrimmedFile) {
+      const videoUrl = await resolveFilePlayableUrl(rangeFile);
+      options.signal.throwIfAborted();
+      session.rangeTrimmedFile = rangeFile;
+      session.rangeTrimmedVideoUrl = videoUrl;
+    }
+  } catch (error) {
+    options.reportFailure?.(error, { stage: "preflight" }, options.signal);
+    throw error;
   }
 
   const runId = `render-clip-${input.clipIndex}-${Date.now()}`;

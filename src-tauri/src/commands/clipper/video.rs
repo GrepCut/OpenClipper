@@ -3,6 +3,45 @@ use crate::video::jobs::registry::{NativeJobEmitter, NativeJobRegistry};
 use std::sync::atomic::Ordering;
 use tauri::{command, AppHandle, Manager, State, WebviewWindow};
 
+#[command]
+pub fn start_clipper_media_repair(
+    app: AppHandle, webview: WebviewWindow, jobs: State<'_, NativeJobRegistry>,
+    session_id: String, job_id: String, project_id: String, file_path: String,
+) -> Result<(), String> {
+    #[cfg(not(windows))]
+    { let _ = (app, webview, jobs, session_id, job_id, project_id, file_path); Err("Media recovery requires Windows.".into()) }
+    #[cfg(windows)]
+    {
+        let directory = crate::clipper::data::clipper_project_data_dir(&app, &project_id)?;
+        let cancelled = jobs.register(&session_id, &job_id)?;
+        let registry = jobs.inner().clone();
+        let emitter = NativeJobEmitter::new(webview, session_id.clone(), job_id.clone(), cancelled.clone());
+        tauri::async_runtime::spawn(async move {
+            let task_emitter = emitter.clone();
+            let result = tauri::async_runtime::spawn_blocking(move || {
+                let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+                crate::video::ffmpeg::compatible_media::prepare(
+                    std::path::Path::new(&file_path), &directory, &cancelled,
+                    |ratio| {
+                        if ratio == 1.0 || last.elapsed().as_millis() >= 250 {
+                            task_emitter.progress(&serde_json::json!({"ratio": ratio}))?;
+                            last = std::time::Instant::now();
+                        }
+                        Ok(())
+                    },
+                )
+            }).await;
+            match result {
+                Ok(Ok(media)) => { let _ = emitter.result(&media); },
+                Ok(Err(message)) => { let _ = emitter.error(&serde_json::json!({"code": "media_repair_failed", "message": message})); },
+                Err(error) => { let _ = emitter.error(&serde_json::json!({"code": "media_repair_failed", "message": error.to_string()})); },
+            }
+            registry.finish(&session_id, &job_id);
+        });
+        Ok(())
+    }
+}
+
 #[cfg(windows)]
 #[command]
 pub fn start_clipper_winml_analysis(

@@ -74,3 +74,4 @@ src-tauri/resources/win-runtime/*
 
 # Fast Cargo build cache (npm run tauri:build:fast sets CARGO_TARGET_DIR=target-fast)
 target-fast/
+.env.sentry-build-plugin
