@@ -68,7 +68,9 @@ try {
   const result = await cdp("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `(async () => {
     const { renderClipperFormat } = await import('/src/features/clipper/engine/render/format.util.ts');
     const { DEFAULT_CLIPPER_SETTINGS } = await import('/src/features/clipper/settings/settings.util.ts');
-    const { Input, BlobSource, ALL_FORMATS } = await import('/node_modules/.vite/deps/mediabunny.js');
+    const { exportAudioConfig } = await import('/src/features/clipper/lib/media/video-frame-effect-audio.util.ts');
+    const { Input, BlobSource, ALL_FORMATS, AudioSample, AudioSampleSource, BufferTarget, Mp4OutputFormat, Output } =
+      await import('/node_modules/.vite/deps/mediabunny.js');
     const bytes = Uint8Array.from(atob(${JSON.stringify(encoded)}), c => c.charCodeAt(0));
     const file = new File([bytes], 'source.mp4', { type: 'video/mp4' });
     const settings = structuredClone(DEFAULT_CLIPPER_SETTINGS);
@@ -107,8 +109,32 @@ try {
           onProgress: ratio => { if (ratio > 0) controller.abort(); },
         });
       } catch (error) { cancelled = error.name === 'AbortError'; }
+      // Cross the resampler's five-second buffer boundary and encode both stereo chunks and the final remainder.
+      const sampleRate = 48000;
+      const audioFrameCount = sampleRate * 5 + 1025;
+      let framesEncoded = 0;
+      let largestAudioInput = 0;
+      let largestAudioTimestampGap = 0;
+      const audioOutput = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() });
+      const audioSource = new AudioSampleSource({
+        ...exportAudioConfig(2),
+        onEncodedSample: sample => {
+          largestAudioTimestampGap = Math.max(largestAudioTimestampGap, Math.abs(sample.timestamp * sampleRate - framesEncoded));
+          framesEncoded += sample.numberOfFrames;
+          largestAudioInput = Math.max(largestAudioInput, sample.numberOfFrames);
+        },
+      });
+      audioOutput.addAudioTrack(audioSource);
+      await audioOutput.start();
+      const audioSample = new AudioSample({
+        data: new Float32Array(audioFrameCount * 2), format: 'f32', numberOfChannels: 2, sampleRate, timestamp: 0,
+      });
+      try { await audioSource.add(audioSample); } finally { audioSample.close(); }
+      audioSource.close();
+      await audioOutput.finalize();
       return { cancelled, width: video.codedWidth, height: video.codedHeight, sampleRate: audio.sampleRate,
         channels: audio.numberOfChannels, duration: await input.computeDuration(), bytes: result.blob.size,
+        framesEncoded, largestAudioInput, largestAudioTimestampGap,
         sampleSizes: [...new Set(diagnostics.filter(d => d.sample).map(d => d.sample.width + 'x' + d.sample.height))] };
     } finally { input.dispose(); }
   })()` });
@@ -118,6 +144,9 @@ try {
   assert.ok(Math.abs(value.duration - 0.8) < 0.08, `Incorrect stitched duration: ${value.duration}`);
   assert.deepEqual(value.sampleSizes, ["1280x720"]);
   assert.equal(value.cancelled, true, "Render did not cancel cleanly");
+  assert.equal(value.framesEncoded, 48_000 * 5 + 1025, "Audio samples were lost while splitting");
+  assert.equal(value.largestAudioInput, 1024, "AAC encoder received an oversized PCM block");
+  assert.ok(value.largestAudioTimestampGap < 0.5, "AAC input chunks introduced a gap in the audio timeline");
   console.log("WebCodecs render passed:", JSON.stringify(value));
   await cdp("Browser.close");
 } finally {

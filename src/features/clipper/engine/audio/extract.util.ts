@@ -132,7 +132,7 @@ export async function extractClipAudioForTranscription(
     }
     conversion.onProgress = (ratio) =>
       progress.report({ ratio, stage: convertConfig.stage });
-    const cancelConversion = () => void conversion.cancel();
+    const cancelConversion = () => void conversion.cancel().catch(() => {});
     options.signal?.addEventListener("abort", cancelConversion, { once: true });
     try {
       await conversion.execute();

@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://grepcut.com/en/open-clipper"><img src="https://img.shields.io/badge/website-open_clipper-111?logo=google-chrome&amp;logoColor=fff&amp;style=flat" alt="Open Clipper website" /></a>
   <a href="https://grepcut.com/"><img src="https://img.shields.io/badge/GrepCut-grepcut.com-111?style=flat" alt="GrepCut" /></a>
-  <a href="https://discord.gg/2uXgrUpe"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&amp;logoColor=fff&amp;style=flat" alt="Join Discord" /></a>
+  <a href="https://grepcut.com/discord"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&amp;logoColor=fff&amp;style=flat" alt="Join Discord" /></a>
   <a href="https://x.com/GrepCut"><img src="https://img.shields.io/badge/follow-%40GrepCut-000?logo=x&amp;logoColor=fff&amp;style=flat" alt="Follow GrepCut on X" /></a>
   <img src="https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&amp;logoColor=fff&amp;style=flat" alt="LinkedIn: Adam Ziolko" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat" alt="License: MIT" /></a>
@@ -330,7 +330,7 @@ You can point `OPEN_CLIPPER_ORT_DLL` at an existing compatible runtime DLL inste
 
 ## Contributing
 
-Questions, bug reports, and feature ideas are welcome. [Join the Discord](https://discord.gg/2uXgrUpe) or [open an issue](https://github.com/GrepCut/OpenClipper/issues). Please follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+Questions, bug reports, and feature ideas are welcome. [Join the Discord](https://grepcut.com/discord) or [open an issue](https://github.com/GrepCut/OpenClipper/issues). Please follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
 
 ## License
 

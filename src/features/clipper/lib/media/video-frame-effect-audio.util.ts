@@ -1,4 +1,5 @@
 import {
+  AudioSample,
   AudioSampleSink,
   AudioSampleSource,
   EncodedAudioPacketSource,
@@ -15,10 +16,42 @@ import {
 
 export const EXPORT_AUDIO_SAMPLE_RATE = 48_000;
 
+const AAC_FRAME_SAMPLES = 1024;
+
+/** Keep WebCodecs input small even when Mediabunny's resampler emits several seconds at once. */
+function splitAacInput(sample: AudioSample): AudioSample | AudioSample[] {
+  if (sample.numberOfFrames <= AAC_FRAME_SAMPLES) return sample;
+
+  const chunks: AudioSample[] = [];
+  const { numberOfFrames, numberOfChannels, sampleRate, timestamp } = sample;
+  let frameOffset = 0;
+  while (frameOffset < numberOfFrames) {
+    const remaining = numberOfFrames - frameOffset;
+    const frameCount = remaining === AAC_FRAME_SAMPLES + 1
+      ? AAC_FRAME_SAMPLES - 1
+      : Math.min(AAC_FRAME_SAMPLES, remaining);
+    const data = new Float32Array(frameCount * numberOfChannels);
+    sample.copyTo(data, { planeIndex: 0, format: "f32", frameOffset, frameCount });
+    chunks.push(new AudioSample({
+      data,
+      format: "f32",
+      numberOfChannels,
+      sampleRate,
+      timestamp: timestamp + frameOffset / sampleRate,
+    }));
+    frameOffset += frameCount;
+  }
+  return chunks;
+}
+
 export function exportAudioConfig(channels: number): AudioEncodingConfig {
   return {
     codec: "aac", bitrate: AAC_BITRATE,
-    transform: { sampleRate: EXPORT_AUDIO_SAMPLE_RATE, numberOfChannels: channels === 1 ? 1 : 2 },
+    transform: {
+      sampleRate: EXPORT_AUDIO_SAMPLE_RATE,
+      numberOfChannels: channels === 1 ? 1 : 2,
+      process: splitAacInput,
+    },
   };
 }
 

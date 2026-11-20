@@ -94,7 +94,7 @@ async function executeMediabunnyConversion(
 
     const stage = config.stage ?? "converting";
     conversion.onProgress = (ratio) => progress.report({ ratio, stage });
-    const cancelConversion = () => void conversion.cancel();
+    const cancelConversion = () => void conversion.cancel().catch(() => {});
     signal?.addEventListener("abort", cancelConversion, { once: true });
 
     try {

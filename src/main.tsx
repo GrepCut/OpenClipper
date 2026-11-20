@@ -31,6 +31,15 @@ import { ensureCaptionFontsReady } from "./features/clipper/lib/captions/caption
 
 const WEBVIEW_CRASH_STORAGE_KEY = "oc_webview_crash";
 
+/**
+ * Local media protocols serve 8 MiB range reads of the user's own video files. Tracing them only
+ * produces "Large HTTP payload" performance issues, and their breadcrumbs crowd out error context.
+ */
+const LOCAL_MEDIA_URL = /^https?:\/\/(grepcut-media|asset)\.localhost\//i;
+function isLocalMediaUrl(url: string): boolean {
+  return LOCAL_MEDIA_URL.test(url);
+}
+
 function flushWebViewCrashReport(): void {
   try {
     const raw = sessionStorage.getItem(WEBVIEW_CRASH_STORAGE_KEY);
@@ -56,7 +65,20 @@ if (import.meta.env.PROD) {
     if (!import.meta.env.VITE_SENTRY_DSN) return;
     Sentry.init({
       dsn: import.meta.env.VITE_SENTRY_DSN,
-      integrations: [Sentry.browserTracingIntegration()],
+      integrations: [
+        Sentry.browserTracingIntegration({
+          shouldCreateSpanForRequest: (url) => !isLocalMediaUrl(url),
+        }),
+      ],
+      beforeBreadcrumb: (breadcrumb) => {
+        const url = breadcrumb.data?.url;
+        const status = breadcrumb.data?.status_code;
+        const succeeded = typeof status !== "number" || status < 400;
+        if (breadcrumb.category === "fetch" && typeof url === "string" && isLocalMediaUrl(url) && succeeded) {
+          return null;
+        }
+        return breadcrumb;
+      },
       tracesSampleRate: 1.0,
       replaysSessionSampleRate: 0.1,
       replaysOnErrorSampleRate: 1.0,

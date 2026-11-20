@@ -1,4 +1,7 @@
+import { DISK_FULL_MESSAGE, isDiskFullError } from "../../shared/disk-full-error.util";
+
 export function describeClipperError(error: unknown): string {
+  if (isDiskFullError(error)) return DISK_FULL_MESSAGE;
   let message =
     error instanceof Error
       ? error.message

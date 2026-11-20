@@ -86,6 +86,33 @@ pub fn remove_clipper_project_data_partial(app: AppHandle, project_id: String, f
     }
 }
 
+/// Best-effort cleanup of transcription WAVs from earlier runs (each run writes a unique name so
+/// an externally locked old file never blocks a new extraction). Locked files are left behind.
+#[tauri::command]
+pub fn remove_stale_clipper_transcription_audio(
+    app: AppHandle,
+    project_id: String,
+    keep_file_name: String,
+) -> Result<(), String> {
+    validate_export_file_name(&keep_file_name)?;
+    let directory = clipper_project_data_dir(&app, &project_id)?;
+    let entries = match fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.to_string()),
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let is_transcription_audio = name.starts_with("transcribe-audio")
+            && name.ends_with(".wav")
+            && name != "transcribe-audio-vocals.wav";
+        if is_transcription_audio && name != keep_file_name {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn remove_clipper_project_data_dir(
     app: AppHandle,

@@ -9,6 +9,7 @@ import { loadClipperSettings } from "../../settings/settings-storage.util";
 import { clipperError } from "../../shared/logger.util";
 import { preparePreviewFromRange } from "./clipper-pipeline-preview-range.util";
 import { describeClipperError } from "./pipeline-error.util";
+import { reportClipperPersistenceError } from "../../persistence/persistence-error.util";
 import { useClipperPipelineSessionActions } from "./use-clipper-pipeline-session-actions.hook";
 import {
   clearActiveClipperSteps,
@@ -96,9 +97,8 @@ export function useClipperPipelineWorkflow(
     async (stepKey: ClipperPipelineStepKey, error: unknown, runId: string) => {
       clipperError(`pipeline[${runId}]: failed`, error);
       const message = describeClipperError(error);
-      await markClipperStepFailed(projectId, stepKey, message);
-      await clearActiveClipperSteps(projectId);
-      await persistMetadata({}, "error");
+      // Surface the failure before persisting it: on a full disk the writes below fail too,
+      // and the UI must not stay stuck on the running stage.
       setState((prev) => ({
         ...prev,
         stage: "error",
@@ -109,6 +109,13 @@ export function useClipperPipelineWorkflow(
         aiClipPreviews: [],
         manualClipPreviews: [],
       }));
+      try {
+        await markClipperStepFailed(projectId, stepKey, message);
+        await clearActiveClipperSteps(projectId);
+        await persistMetadata({}, "error");
+      } catch (persistError) {
+        reportClipperPersistenceError(persistError);
+      }
     },
     [persistMetadata, projectId, setState],
   );

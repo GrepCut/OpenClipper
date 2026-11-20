@@ -7,6 +7,7 @@ import { buildFrameContext } from "../../pipeline/frame-context.util";
 import { runRenderClipJob } from "../../pipeline/stages/render.util";
 import { getClipperFormatDef } from "../../shared/formats.util";
 import { createRenderFailureReporter } from "../../shared/render-failure-report.util";
+import { DISK_FULL_MESSAGE, isDiskFullError } from "../../shared/disk-full-error.util";
 import { flushPendingClipperExports } from "../../persistence/clipper-export-persist.util";
 import { patchPipelineState } from "./clipper-pipeline-state.util";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
@@ -72,7 +73,9 @@ export function useClipperPipelineRerender(core: UseClipperPipelineCoreResult) {
         if (signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
         reportFailure(error, { formatId }, signal);
         patchPipelineState(setState, (draft) => {
-          draft.error = error instanceof Error ? error.message : "Re-render failed.";
+          draft.error = isDiskFullError(error)
+            ? DISK_FULL_MESSAGE
+            : error instanceof Error ? error.message : "Re-render failed.";
         });
       }
     },
