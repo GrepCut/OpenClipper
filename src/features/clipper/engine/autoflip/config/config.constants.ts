@@ -1,7 +1,7 @@
 // v43: snap single-primary layout viewport on hard cuts; keep within-scene ease.
 export const AUTOFLIP_ANALYZER_VERSION = "autoflip-v43-snap-layout-on-cut";
 /** The graph-compatible object model identity. */
-export const AUTOFLIP_MODEL_ID = "clipper-vision-v5-yolox-s-scrfd10g-tiled";
+export const AUTOFLIP_MODEL_ID = "clipper-vision-v7-yolox-s-yunet-multiscale";
 export const AUTOFLIP_FIELD_OF_VIEW_DEG = 60;
 export const AUTOFLIP_MAX_SCENE_FRAMES = 600;
 export const AUTOFLIP_KEYFRAME_INTERVAL_SEC = 0.2;

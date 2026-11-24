@@ -3,7 +3,9 @@ use super::super::vision::NativeVisionError;
 use super::super::vision_logic::Rotation;
 use super::decode_session::{DecodeSession, DecodeStats};
 use super::merge::MergeOutput;
-use super::types::{NativeVisionMetrics, NativeVisionProgress, NativeVisionSummary, RgbColor};
+use super::types::{
+    NativeVisionMetrics, NativeVisionProgress, NativeVisionSummary, RgbColor, VISION_MODEL_VERSION,
+};
 use crate::video::tracking::winml::stable_content_rect;
 
 pub(crate) fn build_summary(
@@ -68,7 +70,7 @@ pub(crate) fn build_summary(
                 meta.sample_raw_height
             },
         ),
-        model_version: "clipper-vision-v5-yolox-s-scrfd10g-tiled",
+        model_version: VISION_MODEL_VERSION,
         tracker_version: tracking_enabled.then_some("bytetrack-v2"),
         metrics: NativeVisionMetrics {
             decode_duration_ms: decode_stats.decode_duration_ms,
@@ -91,10 +93,7 @@ pub(crate) fn build_summary(
             recovery_object_inference_ms: worker_metrics.object_recovery_inference_ms,
             base_pose_inference_ms: worker_metrics.pose_base_inference_ms,
             face_inference_calls: worker_metrics.face_inference_calls,
-            face_multiframe_inference_calls: worker_metrics.face_multiframe_inference_calls,
-            face_full_batch_count: worker_metrics.face_full_batch_count,
             face_inference_frames: worker_metrics.face_inference_frames,
-            face_batch_collect_wait_ms: worker_metrics.face_batch_collect_wait_ms,
             object_preprocess_ms: worker_metrics.object_preprocess_time_us / 1_000,
             object_decode_ms: worker_metrics.object_decode_time_us / 1_000,
             zero_copy_tile_count: worker_metrics.zero_copy_tile_count,

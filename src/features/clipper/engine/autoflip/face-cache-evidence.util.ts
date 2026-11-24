@@ -80,7 +80,7 @@ function nearestFaceSample(
 }
 
 /**
- * The WinML pass returns two views of the same SCRFD result: landmark-rich
+ * The native pass returns two views of the same face detection: landmark-rich
  * subject samples and a persisted, full-range face cache.  A sparse subject
  * sample may lose its face payload while the cache still has the observation.
  * Restore only that local evidence; never interpolate or hold it across a cut.
@@ -109,7 +109,7 @@ export function attachFaceCacheEvidence(
       }
       const native = merged[nativeIndex]!;
       // The native landmark payload supplies identity and precise focus; the
-      // persisted SCRFD rectangle supplies the complete visible face extent.
+      // persisted face rectangle supplies the complete visible face extent.
       // Enrich the same observation instead of dropping the larger rectangle
       // as a duplicate.
       merged[nativeIndex] = { ...native, box: unionBoxes(native.box, cachedFace.box) };

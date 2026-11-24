@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
 pub struct VisionResourcePaths {
-    pub face: PathBuf,
+    /// Bundled clipper-vision directory; face view files resolve against it.
+    pub models: PathBuf,
     pub pose: PathBuf,
     pub yolox: PathBuf,
     pub yolox_labels: PathBuf,
@@ -10,10 +11,10 @@ pub struct VisionResourcePaths {
 pub fn resource_paths(resource_dir: &Path) -> VisionResourcePaths {
     let root = resource_dir.join("resources/models/clipper-vision");
     VisionResourcePaths {
-        face: root.join("scrfd_10g_bnkps.onnx"),
         pose: root.join("movenet_multipose_lightning.onnx"),
         yolox: root.join("yolox_s.onnx"),
         yolox_labels: root.join("coco80.txt"),
+        models: root,
     }
 }
 

@@ -52,10 +52,7 @@ pub(crate) struct WorkerMetrics {
     pub pose_base_inference_ms: AtomicU64,
     pub base_pose_passes: AtomicUsize,
     pub face_inference_calls: AtomicUsize,
-    pub face_multiframe_inference_calls: AtomicUsize,
-    pub face_full_batch_count: AtomicUsize,
     pub face_inference_frames: AtomicUsize,
-    pub face_batch_collect_wait_ms: AtomicU64,
     pub object_preprocess_time_us: AtomicU64,
     pub object_decode_time_us: AtomicU64,
     pub zero_copy_tile_count: AtomicUsize,
@@ -72,10 +69,7 @@ pub(crate) struct WorkerMetricSnapshot {
     pub pose_base_inference_ms: u64,
     pub base_pose_passes: usize,
     pub face_inference_calls: usize,
-    pub face_multiframe_inference_calls: usize,
-    pub face_full_batch_count: usize,
     pub face_inference_frames: usize,
-    pub face_batch_collect_wait_ms: u64,
     pub object_preprocess_time_us: u64,
     pub object_decode_time_us: u64,
     pub zero_copy_tile_count: usize,
@@ -93,12 +87,7 @@ impl WorkerMetrics {
             pose_base_inference_ms: self.pose_base_inference_ms.load(Ordering::Relaxed),
             base_pose_passes: self.base_pose_passes.load(Ordering::Relaxed),
             face_inference_calls: self.face_inference_calls.load(Ordering::Relaxed),
-            face_multiframe_inference_calls: self
-                .face_multiframe_inference_calls
-                .load(Ordering::Relaxed),
-            face_full_batch_count: self.face_full_batch_count.load(Ordering::Relaxed),
             face_inference_frames: self.face_inference_frames.load(Ordering::Relaxed),
-            face_batch_collect_wait_ms: self.face_batch_collect_wait_ms.load(Ordering::Relaxed),
             object_preprocess_time_us: self.object_preprocess_time_us.load(Ordering::Relaxed),
             object_decode_time_us: self.object_decode_time_us.load(Ordering::Relaxed),
             zero_copy_tile_count: self.zero_copy_tile_count.load(Ordering::Relaxed),
@@ -348,14 +337,7 @@ mod tests {
     fn worker_metric_snapshot_includes_face_batch_metrics() {
         let metrics = WorkerMetrics::default();
         metrics.face_inference_calls.store(5, Ordering::Relaxed);
-        metrics
-            .face_multiframe_inference_calls
-            .store(3, Ordering::Relaxed);
-        metrics.face_full_batch_count.store(2, Ordering::Relaxed);
         metrics.face_inference_frames.store(17, Ordering::Relaxed);
-        metrics
-            .face_batch_collect_wait_ms
-            .store(250, Ordering::Relaxed);
         metrics
             .object_preprocess_time_us
             .store(12_345, Ordering::Relaxed);
@@ -372,10 +354,7 @@ mod tests {
 
         let snapshot = metrics.snapshot();
         assert_eq!(snapshot.face_inference_calls, 5);
-        assert_eq!(snapshot.face_multiframe_inference_calls, 3);
-        assert_eq!(snapshot.face_full_batch_count, 2);
         assert_eq!(snapshot.face_inference_frames, 17);
-        assert_eq!(snapshot.face_batch_collect_wait_ms, 250);
         assert_eq!(snapshot.object_preprocess_time_us, 12_345);
         assert_eq!(snapshot.object_decode_time_us, 6_789);
         assert_eq!(snapshot.zero_copy_tile_count, 7);

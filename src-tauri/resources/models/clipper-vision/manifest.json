@@ -6,30 +6,59 @@
     "tensorflow": "2.15.1",
     "tf2onnx": "1.16.1"
   },
-  "modelVersion": "clipper-vision-v5-yolox-s-scrfd10g-tiled",
+  "modelVersion": "clipper-vision-v7-yolox-s-yunet-multiscale",
   "models": {
     "yolox_s": {
-      "batchParity": { "batchSize": 2, "maxAbsErrorVsSingle": 0.0 },
+      "batchParity": {
+        "batchSize": 2,
+        "maxAbsErrorVsSingle": 0.0
+      },
       "decoder": {
         "classCount": 80,
         "inputSize": 640,
         "nmsIouThreshold": 0.45,
         "predictionCount": 8400,
         "scoreThreshold": 0.1,
-        "strides": [8, 16, 32]
+        "strides": [
+          8,
+          16,
+          32
+        ]
       },
       "dynamicBatch": true,
-      "input": { "dtype": "float32", "name": "images", "shape": ["batch", 3, 640, 640] },
+      "input": {
+        "dtype": "float32",
+        "name": "images",
+        "shape": [
+          "batch",
+          3,
+          640,
+          640
+        ]
+      },
       "labelFile": "coco80.txt",
       "labelSha256": "bd17f1ee35d5f3c862a4894605855abbb9dda4b0621fdb0ac4c2c8c7bb7e730a",
       "onnxFile": "yolox_s.onnx",
       "onnxSha256": "afcc56a126d485a7f2ac7a5cb61971339872227aeece6d2d531e723615f26a49",
-      "outputs": [{ "dtype": "float32", "name": "output", "shape": ["batch", 8400, 85] }],
+      "outputs": [
+        {
+          "dtype": "float32",
+          "name": "output",
+          "shape": [
+            "batch",
+            8400,
+            85
+          ]
+        }
+      ],
       "preprocessing": {
         "colorOrder": "bgr",
         "layout": "nchw",
         "resize": "bilinear-letterbox-top-left",
-        "valueRange": [0.0, 255.0]
+        "valueRange": [
+          0.0,
+          255.0
+        ]
       },
       "sourcePath": "public/models/yolox_s/yolox_s.onnx",
       "sourceSha256": "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063"
@@ -40,51 +69,10 @@
       "keepIoTypes": true,
       "onnxFile": "yolox_s.fp16.onnx",
       "onnxSha256": "341cfc33a729a3b89508bb36e79de215215b7410338d37482985bcbbf46c1f8d",
-      "parity": { "maxAbsErrorVsFp32": 0.092398, "meanAbsErrorVsFp32": 0.0000989462 },
-      "precision": "float16"
-    },
-    "scrfd_10g_bnkps": {
-      "batchParity": { "batchSize": 2, "maxAbsErrorVsSingle": 0.0 },
-      "decoder": {
-        "anchorsPerCell": 2,
-        "inputSize": 640,
-        "keypointCount": 5,
-        "nmsIouThreshold": 0.4,
-        "scoreThreshold": 0.5,
-        "strides": [8, 16, 32],
-        "tiling": { "edge": 640, "overlap": 0.2, "sampleLongEdgeCap": 1920 }
+      "parity": {
+        "maxAbsErrorVsFp32": 0.092398,
+        "meanAbsErrorVsFp32": 9.89462e-05
       },
-      "dynamicBatch": true,
-      "input": { "dtype": "float32", "name": "input.1", "shape": ["batch", 3, 640, 640] },
-      "onnxFile": "scrfd_10g_bnkps.onnx",
-      "onnxSha256": "7aa52fd0d1bf8c24dc36fa2942a6cd9b41793e962f45a13dfc3f28ee07411053",
-      "outputs": [
-        { "dtype": "float32", "name": "448", "shape": ["batch*12800", 1] },
-        { "dtype": "float32", "name": "471", "shape": ["batch*3200", 1] },
-        { "dtype": "float32", "name": "494", "shape": ["batch*800", 1] },
-        { "dtype": "float32", "name": "451", "shape": ["batch*12800", 4] },
-        { "dtype": "float32", "name": "474", "shape": ["batch*3200", 4] },
-        { "dtype": "float32", "name": "497", "shape": ["batch*800", 4] },
-        { "dtype": "float32", "name": "454", "shape": ["batch*12800", 10] },
-        { "dtype": "float32", "name": "477", "shape": ["batch*3200", 10] },
-        { "dtype": "float32", "name": "500", "shape": ["batch*800", 10] }
-      ],
-      "preprocessing": {
-        "colorOrder": "rgb",
-        "layout": "nchw",
-        "normalize": "(pixel-127.5)/128",
-        "resize": "bilinear-letterbox-top-left"
-      },
-      "sourcePath": "public/models/scrfd_10g/scrfd_10g_bnkps.onnx",
-      "sourceSha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
-    },
-    "scrfd_10g_bnkps_fp16": {
-      "derivedFrom": "scrfd_10g_bnkps",
-      "dynamicBatch": true,
-      "keepIoTypes": true,
-      "onnxFile": "scrfd_10g_bnkps.fp16.onnx",
-      "onnxSha256": "670d517dcb18bf4298e39ff82db627d5cb96d5236ed5aaf63c6e881a2f79447c",
-      "parity": { "maxAbsErrorVsFp32": 0.0119808, "meanAbsErrorVsFp32": 0.000877947 },
       "precision": "float16"
     },
     "movenet_multipose_lightning": {
@@ -100,7 +88,12 @@
       "input": {
         "dtype": "float32",
         "name": "input",
-        "shape": [1, 512, 512, 3]
+        "shape": [
+          1,
+          512,
+          512,
+          3
+        ]
       },
       "onnxFile": "movenet_multipose_lightning.onnx",
       "onnxSha256": "85f82747638a7d9e8f6a1694ecc0fefebdb8a6103c153f3cbff051c0720c9b2c",
@@ -108,12 +101,16 @@
         {
           "dtype": "float32",
           "name": "output_0",
-          "shape": [1, 6, 56]
+          "shape": [
+            1,
+            6,
+            56
+          ]
         }
       ],
       "parity": {
-        "maxAbsError": 1.3262033462524414e-6,
-        "meanAbsError": 7.922616873656807e-8
+        "maxAbsError": 1.3262033462524414e-06,
+        "meanAbsError": 7.922616873656807e-08
       },
       "parityTolerance": {
         "absolute": 0.002
@@ -122,10 +119,218 @@
         "colorOrder": "rgb",
         "layout": "nhwc",
         "resize": "bilinear-letterbox-square",
-        "valueRange": [0.0, 255.0]
+        "valueRange": [
+          0.0,
+          255.0
+        ]
       },
       "sourceArchiveSha256": "f01b9e5e8c3bc31f82e9ca7fa4a2876f25d7a54b65c83da5df2eca3e1632cec8",
       "sourceUrl": "https://www.kaggle.com/models/google/movenet/tensorFlow2/multipose-lightning/1"
+    },
+    "yunet_384": {
+      "onnxFile": "yunet_384.onnx",
+      "onnxSha256": "15b3dc6001aae9d2bdf7fc0614b0c4a2ceb41bd3f0516155073bc892eb6cf7b8",
+      "input": {
+        "name": "input",
+        "dtype": "float32",
+        "shape": [
+          1,
+          3,
+          384,
+          384
+        ]
+      },
+      "preparedBy": "scripts/models/prepare_yunet_multiscale.py",
+      "sourcePath": "public/models/yunet/face_detection_yunet_2026may.onnx",
+      "sourceSha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+      "decoder": {
+        "viewLongSide": 384,
+        "strides": [
+          8,
+          16,
+          32
+        ],
+        "keypointCount": 5,
+        "score": "sqrt(cls*obj)",
+        "use": "640 px recovery tiles"
+      },
+      "preprocessing": {
+        "colorOrder": "bgr",
+        "layout": "nchw",
+        "normalize": "none (0..255)",
+        "resize": "bilinear-letterbox-top-left"
+      },
+      "precision": "float16",
+      "parity": {
+        "maxHeadErrorVsFp32": 0.000401914119720459
+      }
+    },
+    "yunet_960": {
+      "onnxFile": "yunet_960.onnx",
+      "onnxSha256": "03e0229aef357af1615c63d06e27cfd031dc98bacd6d611e23b29896e09c4cbc",
+      "input": {
+        "name": "input",
+        "dtype": "float32",
+        "shape": [
+          1,
+          3,
+          960,
+          960
+        ]
+      },
+      "preparedBy": "scripts/models/prepare_yunet_multiscale.py",
+      "sourcePath": "public/models/yunet/face_detection_yunet_2026may.onnx",
+      "sourceSha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+      "decoder": {
+        "viewLongSide": 960,
+        "strides": [
+          8,
+          16,
+          32
+        ],
+        "keypointCount": 5,
+        "score": "sqrt(cls*obj)",
+        "use": "640 px recovery tiles"
+      },
+      "preprocessing": {
+        "colorOrder": "bgr",
+        "layout": "nchw",
+        "normalize": "none (0..255)",
+        "resize": "bilinear-letterbox-top-left"
+      },
+      "precision": "float16",
+      "parity": {
+        "maxHeadErrorVsFp32": 0.0007489323616027832
+      }
+    },
+    "yunet_fused_1536": {
+      "onnxFile": "yunet_fused_1536.onnx",
+      "onnxSha256": "f131a8d7336f05b3efe90647db0e91958254e370d86777672f815a138ca824d6",
+      "input": {
+        "name": "image",
+        "dtype": "uint8",
+        "shape": [
+          1,
+          1536,
+          1536,
+          3
+        ]
+      },
+      "preparedBy": "scripts/models/prepare_yunet_multiscale.py",
+      "sourcePath": "public/models/yunet/face_detection_yunet_2026may.onnx",
+      "sourceSha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+      "multiscale": {
+        "views": [
+          384,
+          960,
+          1536
+        ],
+        "mirroredViews": [
+          960
+        ],
+        "viewScoreFloor": 0.05,
+        "suppressionIou": 0.4,
+        "memberIou": 0.5,
+        "agreement": 0.35,
+        "scoreThreshold": 0.5,
+        "calibration": "fused score mapped to the SCRFD-10G precision scale on the WIDER FACE holdout (0.745/0.815/0.855/0.91 -> 0.5/0.6/0.7/0.8)"
+      },
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nhwc",
+        "dtype": "uint8",
+        "resize": "bilinear-letterbox-top-left (1536 view box); smaller views in graph"
+      },
+      "precision": "float16",
+      "parity": {
+        "maxHeadErrorVsFp32": 0.0012711584568023682
+      }
+    },
+    "yunet_fused_1536_landscape": {
+      "onnxFile": "yunet_fused_1536_landscape.onnx",
+      "onnxSha256": "7b494b11bc4c79631d7695e663cca3f153613dc19c670bdef9a4ae18901a4128",
+      "input": {
+        "name": "image",
+        "dtype": "uint8",
+        "shape": [
+          1,
+          864,
+          1536,
+          3
+        ]
+      },
+      "preparedBy": "scripts/models/prepare_yunet_multiscale.py",
+      "sourcePath": "public/models/yunet/face_detection_yunet_2026may.onnx",
+      "sourceSha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+      "multiscale": {
+        "views": [
+          384,
+          960,
+          1536
+        ],
+        "mirroredViews": [
+          960
+        ],
+        "viewScoreFloor": 0.05,
+        "suppressionIou": 0.4,
+        "memberIou": 0.5,
+        "agreement": 0.35,
+        "scoreThreshold": 0.5,
+        "calibration": "fused score mapped to the SCRFD-10G precision scale on the WIDER FACE holdout (0.745/0.815/0.855/0.91 -> 0.5/0.6/0.7/0.8)"
+      },
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nhwc",
+        "dtype": "uint8",
+        "resize": "bilinear-letterbox-top-left (1536 view box); smaller views in graph"
+      },
+      "precision": "float16",
+      "parity": {
+        "maxHeadErrorVsFp32": 0.0012021660804748535
+      }
+    },
+    "yunet_fused_1536_portrait": {
+      "onnxFile": "yunet_fused_1536_portrait.onnx",
+      "onnxSha256": "0b008cb9c1c0c6842bd0959391552ffd53a7cf217ef57f0c8640a0a4c348b831",
+      "input": {
+        "name": "image",
+        "dtype": "uint8",
+        "shape": [
+          1,
+          1536,
+          864,
+          3
+        ]
+      },
+      "preparedBy": "scripts/models/prepare_yunet_multiscale.py",
+      "sourcePath": "public/models/yunet/face_detection_yunet_2026may.onnx",
+      "sourceSha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+      "multiscale": {
+        "views": [
+          384,
+          960,
+          1536
+        ],
+        "mirroredViews": [
+          960
+        ],
+        "viewScoreFloor": 0.05,
+        "suppressionIou": 0.4,
+        "memberIou": 0.5,
+        "agreement": 0.35,
+        "scoreThreshold": 0.5,
+        "calibration": "fused score mapped to the SCRFD-10G precision scale on the WIDER FACE holdout (0.745/0.815/0.855/0.91 -> 0.5/0.6/0.7/0.8)"
+      },
+      "preprocessing": {
+        "colorOrder": "rgb",
+        "layout": "nhwc",
+        "dtype": "uint8",
+        "resize": "bilinear-letterbox-top-left (1536 view box); smaller views in graph"
+      },
+      "precision": "float16",
+      "parity": {
+        "maxHeadErrorVsFp32": 0.0011127591133117676
+      }
     }
   },
   "onnxOpset": 15,

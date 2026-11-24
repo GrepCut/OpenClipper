@@ -1,5 +1,16 @@
 use super::types::{Keypoint, Letterbox, NormalizedBox};
 
+/// Maps a point of a top-left letterboxed model input (input pixels) back to
+/// normalized source coordinates.
+pub(crate) fn source_point(x: f32, y: f32, letterbox: Letterbox) -> Keypoint {
+    Keypoint {
+        x: ((x - letterbox.pad_x) / letterbox.scale / letterbox.source_width as f32)
+            .clamp(0.0, 1.0),
+        y: ((y - letterbox.pad_y) / letterbox.scale / letterbox.source_height as f32)
+            .clamp(0.0, 1.0),
+    }
+}
+
 pub(crate) fn inverse_letterbox_point(
     x: f32,
     y: f32,
@@ -7,12 +18,7 @@ pub(crate) fn inverse_letterbox_point(
     input_size: usize,
 ) -> Keypoint {
     let size = input_size as f32;
-    Keypoint {
-        x: ((x * size - letterbox.pad_x) / letterbox.scale / letterbox.source_width as f32)
-            .clamp(0.0, 1.0),
-        y: ((y * size - letterbox.pad_y) / letterbox.scale / letterbox.source_height as f32)
-            .clamp(0.0, 1.0),
-    }
+    source_point(x * size, y * size, letterbox)
 }
 
 pub(crate) fn box_around_points(

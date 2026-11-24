@@ -86,6 +86,32 @@ impl NativeVisionModel {
         }
     }
 
+    /// ORT DirectML session that skips WinML (the face detector graphs).
+    pub fn create_ort(
+        path: &Path,
+        input_name: &str,
+        output_names: &[&str],
+    ) -> Result<Self, NativeVisionError> {
+        OrtVisionModel::create(path, input_name, output_names).map(Self::Ort)
+    }
+
+    /// Evaluates a uint8-input graph created by `create_ort`.
+    pub fn evaluate_u8_into(
+        &mut self,
+        shape: &[i64],
+        input: &[u8],
+        output: &mut Vec<Vec<f32>>,
+    ) -> Result<(), NativeVisionError> {
+        match self {
+            Self::Ort(model) => model.evaluate_u8_into(shape, input, output),
+            Self::WinMl(_) => Err(NativeVisionError::new(
+                "tensor_contract_mismatch",
+                "uint8 input requires the ORT backend",
+                true,
+            )),
+        }
+    }
+
     pub fn evaluate_into(
         &mut self,
         shape: &[i64],

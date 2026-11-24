@@ -6,6 +6,10 @@ use super::super::vision_logic::{
     AutoFlipFaceDetection, NormalizedBox, PoseSubject, SubjectDetection,
 };
 
+/// Vision bundle identity reported on every sample and in the summary. Keep in
+/// sync with `AUTOFLIP_MODEL_ID` and the clipper-vision manifest.
+pub(crate) const VISION_MODEL_VERSION: &str = "clipper-vision-v7-yolox-s-yunet-multiscale";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeFaceSample {
@@ -81,10 +85,7 @@ pub struct NativeVisionMetrics {
     pub(crate) recovery_object_inference_ms: u64,
     pub(crate) base_pose_inference_ms: u64,
     pub(crate) face_inference_calls: usize,
-    pub(crate) face_multiframe_inference_calls: usize,
-    pub(crate) face_full_batch_count: usize,
     pub(crate) face_inference_frames: usize,
-    pub(crate) face_batch_collect_wait_ms: u64,
     pub(crate) object_preprocess_ms: u64,
     pub(crate) object_decode_ms: u64,
     pub(crate) zero_copy_tile_count: usize,
