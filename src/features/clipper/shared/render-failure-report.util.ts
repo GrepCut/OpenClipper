@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react";
 import type { ClipperQualityPreset, ClipperResolutionCap } from "../settings/settings.util";
+import { errorMessageOf, isDiskFullError } from "./disk-full-error.util";
 
 export interface RenderDiagnostics {
   stage?: "preflight" | "configure" | "encode" | "finalize";
@@ -42,6 +43,16 @@ export function createRenderFailureReporter(
     reported.set(error, (formats ?? new Set()).add(context.formatId));
 
     try {
+      if (isDiskFullError(error)) {
+        // Environment condition, not a bug: keep one grouped warning to track how often it happens.
+        Sentry.captureMessage("Disk full", {
+          level: "warning",
+          fingerprint: ["disk-full", "clipper-render"],
+          tags: { feature: "clipper-render", operation, disk_full: "true" },
+          extra: { message: errorMessageOf(error) },
+        });
+        return;
+      }
       Sentry.captureException(error instanceof Error ? error : new Error(String(error)), {
         // Distinguish identical encoder failures from simultaneous output formats.
         fingerprint: ["{{ default }}", "clipper-render", operation, context.formatId ?? "setup"],

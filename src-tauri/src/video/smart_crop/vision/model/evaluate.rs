@@ -455,56 +455,6 @@ mod windows_soak_tests {
 
     #[test]
     #[ignore = "requires bundled models and performs a long DirectML soak"]
-    fn directml_face_outputs_and_private_commit_reach_a_plateau() {
-        let model_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources/models/clipper-vision/scrfd_10g_bnkps.onnx");
-        let fp16_path = model_path.with_extension("fp16.onnx");
-        let shape = [1, 3, 640, 640];
-        let input = vec![-127.5 / 128.0; 3 * 640 * 640];
-        let mut output = Vec::with_capacity(9);
-        let mut model = WinMlModel::create_into(
-            VisionModel::Face,
-            &model_path,
-            Some(&fp16_path),
-            "input.1",
-            &[
-                "448", "471", "494", "451", "474", "497", "454", "477", "500",
-            ],
-            &shape,
-            &input,
-            &mut output,
-        )
-        .expect("create SCRFD model");
-        if model.device() != NativeVisionDevice::DirectXHighPerformance {
-            return;
-        }
-        for _ in 0..16 {
-            model
-                .evaluate_into(&shape, &input, &mut output)
-                .expect("warm DirectML evaluation");
-        }
-        let baseline = diagnostics::resource_counters().expect("Windows resource counters");
-        let pointers = output.iter().map(Vec::as_ptr).collect::<Vec<_>>();
-        let expected_output = output.clone();
-        for _ in 0..1_000 {
-            model
-                .evaluate_into(&shape, &input, &mut output)
-                .expect("DirectML soak evaluation");
-        }
-        let final_snapshot = diagnostics::resource_counters().expect("Windows resource counters");
-        assert_eq!(model.device(), NativeVisionDevice::DirectXHighPerformance);
-        assert_eq!(pointers, output.iter().map(Vec::as_ptr).collect::<Vec<_>>());
-        assert_outputs_stable(&expected_output, &output);
-        assert!(
-            final_snapshot.private_commit_mib <= baseline.private_commit_mib + 512,
-            "private commit did not plateau: baseline={} final={}",
-            baseline.private_commit_mib,
-            final_snapshot.private_commit_mib
-        );
-    }
-
-    #[test]
-    #[ignore = "requires bundled models and performs a long DirectML soak"]
     fn directml_yolox_batch_outputs_and_private_commit_reach_a_plateau() {
         let model_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources/models/clipper-vision/yolox_s.onnx");
@@ -604,27 +554,6 @@ mod windows_soak_tests {
         let models_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources/models/clipper-vision");
 
-        let face_path = models_root.join("scrfd_10g_bnkps.onnx");
-        let face_fp16_path = face_path.with_extension("fp16.onnx");
-        let face_batch_shape = [8, 3, 640, 640];
-        let face_single_shape = [1, 3, 640, 640];
-        let face_batch_input = vec![-127.5 / 128.0; 8 * 3 * 640 * 640];
-        let face_single_input = vec![-127.5 / 128.0; 3 * 640 * 640];
-        let mut face_output = Vec::with_capacity(9);
-        let mut face = WinMlModel::create_into(
-            VisionModel::Face,
-            &face_path,
-            Some(&face_fp16_path),
-            "input.1",
-            &[
-                "448", "471", "494", "451", "474", "497", "454", "477", "500",
-            ],
-            &face_batch_shape,
-            &face_batch_input,
-            &mut face_output,
-        )
-        .expect("create SCRFD model");
-
         let yolox_path = models_root.join("yolox_s.onnx");
         let yolox_fp16_path = yolox_path.with_extension("fp16.onnx");
         let yolox_batch_shape = [8, 3, 640, 640];
@@ -660,7 +589,7 @@ mod windows_soak_tests {
         )
         .expect("create MoveNet model");
 
-        if [&face, &yolox, &pose]
+        if [&yolox, &pose]
             .into_iter()
             .any(|model| model.device() != NativeVisionDevice::DirectXHighPerformance)
         {
@@ -668,48 +597,34 @@ mod windows_soak_tests {
         }
 
         for _ in 0..64 {
-            face.evaluate_into(&face_batch_shape, &face_batch_input, &mut face_output)
-                .expect("warm SCRFD batch evaluation");
             yolox
                 .evaluate_into(&yolox_batch_shape, &yolox_batch_input, &mut yolox_output)
                 .expect("warm YOLOX batch evaluation");
             pose.evaluate_into(&pose_shape, &pose_input, &mut pose_output)
                 .expect("warm MoveNet evaluation");
-            face.evaluate_into(&face_single_shape, &face_single_input, &mut face_output)
-                .expect("warm SCRFD single evaluation");
             yolox
                 .evaluate_into(&yolox_single_shape, &yolox_single_input, &mut yolox_output)
                 .expect("warm YOLOX single evaluation");
         }
 
         let baseline = diagnostics::resource_counters().expect("Windows resource counters");
-        let face_pointers = face_output.iter().map(Vec::as_ptr).collect::<Vec<_>>();
         let yolox_pointer = yolox_output[0].as_ptr();
         let pose_pointer = pose_output[0].as_ptr();
 
         for _ in 0..256 {
-            face.evaluate_into(&face_batch_shape, &face_batch_input, &mut face_output)
-                .expect("mixed SCRFD batch evaluation");
             yolox
                 .evaluate_into(&yolox_batch_shape, &yolox_batch_input, &mut yolox_output)
                 .expect("mixed YOLOX batch evaluation");
             pose.evaluate_into(&pose_shape, &pose_input, &mut pose_output)
                 .expect("mixed MoveNet evaluation");
-            face.evaluate_into(&face_single_shape, &face_single_input, &mut face_output)
-                .expect("mixed SCRFD single evaluation");
             yolox
                 .evaluate_into(&yolox_single_shape, &yolox_single_input, &mut yolox_output)
                 .expect("mixed YOLOX single evaluation");
         }
 
         let final_snapshot = diagnostics::resource_counters().expect("Windows resource counters");
-        assert_eq!(face.device(), NativeVisionDevice::DirectXHighPerformance);
         assert_eq!(yolox.device(), NativeVisionDevice::DirectXHighPerformance);
         assert_eq!(pose.device(), NativeVisionDevice::DirectXHighPerformance);
-        assert_eq!(
-            face_pointers,
-            face_output.iter().map(Vec::as_ptr).collect::<Vec<_>>()
-        );
         assert_eq!(yolox_pointer, yolox_output[0].as_ptr());
         assert_eq!(pose_pointer, pose_output[0].as_ptr());
         assert!(

@@ -51,11 +51,7 @@ pub fn analyze(
             "decode",
             &format!("session opened total_duration={total_duration:.3}s"),
         );
-        let decode_stats = session.run(
-            &mut setup,
-            cancelled.clone(),
-            &mut progress,
-        )?;
+        let decode_stats = session.run(&mut setup, cancelled.clone(), &mut progress)?;
         diagnostics::append(
             "decode",
             &format!(
@@ -136,6 +132,67 @@ mod windows_pipeline_soak_tests {
     use super::*;
     use crate::video::smart_crop::diagnostics;
     use crate::video::smart_crop::vision::NativeVisionDevice;
+
+    #[test]
+    #[ignore = "runs one native face benchmark case from OPEN_CLIPPER_FACE_BENCHMARK_DIR"]
+    fn benchmark_face_detection() {
+        use std::fs::{self, File};
+        use std::io::BufWriter;
+
+        #[derive(serde::Deserialize)]
+        struct Video {
+            id: String,
+            path: String,
+            ranges: [[f64; 2]; 1],
+        }
+
+        let output = std::path::PathBuf::from(
+            std::env::var_os("OPEN_CLIPPER_FACE_BENCHMARK_DIR").expect("benchmark directory"),
+        );
+        let [video]: [Video; 1] = serde_json::from_slice(
+            &fs::read(output.join("videos.json")).expect("benchmark videos"),
+        )
+        .expect("one video range per benchmark process");
+        let resource_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let [[start, end]] = video.ranges;
+        println!("running {} {start:.1}–{end:.1}", video.id);
+        let mut faces = Vec::new();
+        let mut subjects = Vec::new();
+        let summary = analyze(
+            video.path,
+            start,
+            end,
+            resource_dir,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            VisionAblationConfig::default(),
+            |update| {
+                faces.extend(update.face_samples.into_iter().flatten());
+                subjects.extend(update.subject_samples.into_iter().flatten());
+                Ok(())
+            },
+        )
+        .unwrap_or_else(|error| panic!("{}: {error}", video.id));
+        assert_eq!(faces.len(), summary.face_sample_count);
+        assert_eq!(subjects.len(), summary.subject_sample_count);
+        println!(
+            "{} {}",
+            video.id,
+            serde_json::to_string(&summary.metrics).unwrap()
+        );
+        let file = File::create(output.join(format!("{}-0.json", video.id)))
+            .expect("benchmark result file");
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer(
+            &mut writer,
+            &serde_json::json!({
+                "range": [start, end], "summary": summary,
+                "faces": faces, "subjects": subjects,
+            }),
+        )
+        .expect("serialize benchmark results");
+        std::io::Write::flush(&mut writer).expect("write benchmark results");
+    }
 
     #[test]
     #[ignore = "requires OPEN_CLIPPER_PIPELINE_SOAK_VIDEO and performs a real pipeline soak"]

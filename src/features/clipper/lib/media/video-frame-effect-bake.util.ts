@@ -55,7 +55,7 @@ export async function bakeVideoFrameEffect(
     }
 
     const onAbort = () => {
-      void ctx.output.cancel();
+      void ctx.output.cancel().catch(() => {});
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -167,7 +167,7 @@ export async function bakeVideoSizedFrameEffect(
     }
 
     const onAbort = () => {
-      void ctx.output.cancel();
+      void ctx.output.cancel().catch(() => {});
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 

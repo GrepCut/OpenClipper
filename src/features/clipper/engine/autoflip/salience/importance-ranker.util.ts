@@ -323,7 +323,7 @@ function clusterRegion(cluster: CandidateCluster): Omit<ImportanceRegion, "id" |
   // Raw frame difference is context for an observed subject, never a subject.
   if (!semantic.length) throw new Error("motion-only importance cluster");
   // A face landmark may beat a larger pose head only when it overlaps that
-  // subject — weak SCRFD hits elsewhere in the frame stay secondary.
+  // subject — weak face hits elsewhere in the frame stay secondary.
   const topSemantic = semantic[0]!;
   const faceFocus = semantic.find((candidate) => candidate.kind === "face" || candidate.kind === "speaker");
   const focus = faceFocus

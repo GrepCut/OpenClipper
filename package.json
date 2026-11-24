@@ -1,10 +1,11 @@
 {
   "name": "open-clipper",
   "private": true,
-  "version": "26.11.2",
+  "version": "26.11.5",
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "vite",
     "dev:tauri": "cross-env VITE_APP_PLATFORM=tauri vite",
     "build": "npm run build:web",
@@ -81,6 +82,7 @@
     "cross-env": "^7.0.3",
     "eslint": "^10.7.0",
     "eslint-plugin-unicorn": "^72.0.0",
+    "patch-package": "8.0.1",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^7.0.4",

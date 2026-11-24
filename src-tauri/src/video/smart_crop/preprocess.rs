@@ -3,11 +3,11 @@
 use std::path::Path;
 use std::time::Instant;
 
-use super::internal::{AnalysisFrame, FaceJob, FrameRegion, MAX_BATCH};
+use super::internal::{AnalysisFrame, FrameRegion, MAX_BATCH};
 use super::vision::{NativeVisionDevice, NativeVisionError, NativeVisionModel, VisionModel};
 use super::vision_logic::{
-    decode_yolox_fast, AutoFlipFaceDetection, Letterbox, SubjectDetection, MOVENET_INPUT_SIZE,
-    SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
+    decode_yolox_fast, AutoFlipFaceDetection, Letterbox, SubjectDetection, FACE_TILE_SIZE,
+    MOVENET_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
 use crate::video::ffmpeg::resize::{resize_rgb_u8, resize_rgb_u8_into};
 #[cfg(test)]
@@ -37,17 +37,61 @@ fn source_dimensions(frame: &AnalysisFrame, region: Option<FrameRegion>) -> (u32
 }
 
 fn copy_region_rgb(frame: &AnalysisFrame, region: FrameRegion) -> Vec<u8> {
+    let mut rgb = Vec::new();
+    copy_region_rgb_into(frame, region, &mut rgb);
+    rgb
+}
+
+/// Copies `region` into `rgb` as contiguous rows, reusing its allocation.
+fn copy_region_rgb_into(frame: &AnalysisFrame, region: FrameRegion, rgb: &mut Vec<u8>) {
     debug_assert!(region.x + region.width <= frame.width);
     debug_assert!(region.y + region.height <= frame.height);
     let row_bytes = region.width as usize * 3;
-    let mut rgb = vec![0u8; row_bytes * region.height as usize];
+    rgb.clear();
     for row in 0..region.height as usize {
         let source_start =
             ((region.y as usize + row) * frame.width as usize + region.x as usize) * 3;
-        rgb[row * row_bytes..(row + 1) * row_bytes]
-            .copy_from_slice(&frame.rgb[source_start..source_start + row_bytes]);
+        rgb.extend_from_slice(&frame.rgb[source_start..source_start + row_bytes]);
     }
-    rgb
+}
+
+/// Contiguous RGB pixels read by the face preprocessing.
+#[derive(Clone, Copy)]
+pub(crate) struct RgbImage<'a> {
+    pub rgb: &'a [u8],
+    pub width: u32,
+    pub height: u32,
+}
+
+impl<'a> RgbImage<'a> {
+    /// The whole frame, without copying.
+    pub(crate) fn of(frame: &'a AnalysisFrame) -> Self {
+        Self {
+            rgb: &frame.rgb,
+            width: frame.width,
+            height: frame.height,
+        }
+    }
+
+    /// The frame, or its `region` copied once into `scratch` so every view
+    /// of a recovery tile resizes from the same contiguous pixels.
+    pub(crate) fn of_region(
+        frame: &'a AnalysisFrame,
+        region: Option<FrameRegion>,
+        scratch: &'a mut Vec<u8>,
+    ) -> Self {
+        match region {
+            None => Self::of(frame),
+            Some(region) => {
+                copy_region_rgb_into(frame, region, scratch);
+                Self {
+                    rgb: scratch,
+                    width: region.width,
+                    height: region.height,
+                }
+            }
+        }
+    }
 }
 
 fn pack_yolox_rgb(
@@ -253,61 +297,125 @@ fn prepare_yolox_batch_into<'a>(
     Ok((bound, input))
 }
 
-/// InsightFace SCRFD preprocessing: RGB NCHW, top-left letterbox, and
-/// `(pixel - 127.5) / 128` normalization.
-pub(crate) fn prepare_scrfd_into(
-    frame: &AnalysisFrame,
-    region: Option<FrameRegion>,
+/// Writes one RGB row as raw 0..255 BGR into the leading pixels of three
+/// NCHW plane rows (mirrored when `flip`) and zero-fills the rest of each row.
+fn write_bgr_row(pixels: &[u8], flip: bool, planes: [&mut [f32]; 3]) {
+    let width = pixels.len() / 3;
+    let [blue, green, red] = planes.map(|row| {
+        let (content, padding) = row.split_at_mut(width);
+        padding.fill(0.0);
+        content
+    });
+    let store = |(((blue, green), red), pixel): (((&mut f32, &mut f32), &mut f32), &[u8])| {
+        *blue = pixel[2] as f32;
+        *green = pixel[1] as f32;
+        *red = pixel[0] as f32;
+    };
+    let destinations = blue.iter_mut().zip(green.iter_mut()).zip(red.iter_mut());
+    if flip {
+        destinations
+            .zip(pixels.chunks_exact(3).rev())
+            .for_each(store);
+    } else {
+        destinations.zip(pixels.chunks_exact(3)).for_each(store);
+    }
+}
+
+/// YuNet single-view input: raw 0..255 BGR NCHW, top-left letterbox, zero
+/// padding. `flip` mirrors the letterboxed content horizontally.
+pub(crate) fn prepare_face_input_into(
+    image: RgbImage,
+    (box_width, box_height): (usize, usize),
+    flip: bool,
     output: &mut [f32],
     resize_scratch: &mut [u8],
 ) -> Letterbox {
-    let size = SCRFD_INPUT_SIZE as u32;
-    let (source_width, source_height) = source_dimensions(frame, region);
-    let scale = (size as f32 / source_width as f32).min(size as f32 / source_height as f32);
+    let plane = box_width * box_height;
+    debug_assert_eq!(output.len(), plane * 3);
+    letterbox_rows(
+        image,
+        (box_width, box_height),
+        resize_scratch,
+        |pixels, stride, width, height| {
+            let (blue, rest) = output.split_at_mut(plane);
+            let (green, red) = rest.split_at_mut(plane);
+            let rows = blue
+                .chunks_exact_mut(box_width)
+                .zip(green.chunks_exact_mut(box_width))
+                .zip(red.chunks_exact_mut(box_width));
+            for (y, ((blue, green), red)) in rows.enumerate() {
+                if y < height {
+                    let start = y * stride;
+                    write_bgr_row(&pixels[start..start + width * 3], flip, [blue, green, red]);
+                } else {
+                    for channel in [blue, green, red] {
+                        channel.fill(0.0);
+                    }
+                }
+            }
+        },
+    )
+}
+
+/// Top-left letterboxed RGB uint8 NHWC canvas with zero padding, for graphs
+/// that convert and rescale on the GPU.
+pub(crate) fn prepare_face_canvas_u8(
+    image: RgbImage,
+    (box_width, box_height): (usize, usize),
+    output: &mut [u8],
+    resize_scratch: &mut [u8],
+) -> Letterbox {
+    debug_assert_eq!(output.len(), box_width * box_height * 3);
+    letterbox_rows(
+        image,
+        (box_width, box_height),
+        resize_scratch,
+        |pixels, stride, width, height| {
+            for (y, row) in output.chunks_exact_mut(box_width * 3).enumerate() {
+                if y < height {
+                    let start = y * stride;
+                    row[..width * 3].copy_from_slice(&pixels[start..start + width * 3]);
+                    row[width * 3..].fill(0);
+                } else {
+                    row.fill(0);
+                }
+            }
+        },
+    )
+}
+
+/// Scales `image` to fit `box` (top-left aligned) and passes its rows to
+/// `write` as `(pixels, stride, width, height)`.
+fn letterbox_rows(
+    image: RgbImage,
+    (box_width, box_height): (usize, usize),
+    resize_scratch: &mut [u8],
+    write: impl FnOnce(&[u8], usize, usize, usize),
+) -> Letterbox {
+    let (source_width, source_height) = (image.width, image.height);
+    let scale =
+        (box_width as f32 / source_width as f32).min(box_height as f32 / source_height as f32);
     let width = (source_width as f32 * scale)
         .round()
-        .clamp(1.0, size as f32) as u32;
+        .clamp(1.0, box_width as f32) as usize;
     let height = (source_height as f32 * scale)
         .round()
-        .clamp(1.0, size as f32) as u32;
-    let plane = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE;
-    debug_assert_eq!(output.len(), plane * 3);
-    output.fill(-127.5 / 128.0);
-
-    if source_width == width && source_height == height {
-        let (origin_x, origin_y) = region
-            .map(|value| (value.x as usize, value.y as usize))
-            .unwrap_or((0, 0));
-        for y in 0..height as usize {
-            for x in 0..width as usize {
-                let source = ((origin_y + y) * frame.width as usize + origin_x + x) * 3;
-                let destination = y * SCRFD_INPUT_SIZE + x;
-                output[destination] = (frame.rgb[source] as f32 - 127.5) / 128.0;
-                output[plane + destination] = (frame.rgb[source + 1] as f32 - 127.5) / 128.0;
-                output[plane * 2 + destination] = (frame.rgb[source + 2] as f32 - 127.5) / 128.0;
-            }
-        }
+        .clamp(1.0, box_height as f32) as usize;
+    let pixels: &[u8] = if source_width as usize == width && source_height as usize == height {
+        image.rgb
     } else {
-        let source_region;
-        let source = if let Some(region) = region {
-            source_region = copy_region_rgb(frame, region);
-            source_region.as_slice()
-        } else {
-            frame.rgb.as_slice()
-        };
-        let resized_len = width as usize * height as usize * 3;
-        let scratch = &mut resize_scratch[..resized_len];
-        resize_rgb_u8_into(source, source_width, source_height, width, height, scratch);
-        for y in 0..height as usize {
-            for x in 0..width as usize {
-                let source = (y * width as usize + x) * 3;
-                let destination = y * SCRFD_INPUT_SIZE + x;
-                output[destination] = (scratch[source] as f32 - 127.5) / 128.0;
-                output[plane + destination] = (scratch[source + 1] as f32 - 127.5) / 128.0;
-                output[plane * 2 + destination] = (scratch[source + 2] as f32 - 127.5) / 128.0;
-            }
-        }
-    }
+        let scratch = &mut resize_scratch[..width * height * 3];
+        resize_rgb_u8_into(
+            image.rgb,
+            source_width,
+            source_height,
+            width as u32,
+            height as u32,
+            scratch,
+        );
+        &*scratch
+    };
+    write(pixels, width * 3, width, height);
     Letterbox {
         scale,
         pad_x: 0.0,
@@ -413,10 +521,10 @@ pub(crate) fn materialize_tile(frame: &AnalysisFrame, spec: TileSpec) -> Analysi
     }
 }
 
-/// Splits a sampled frame into overlapping square SCRFD-sized crops. A face
+/// Splits a sampled frame into overlapping square face-tile crops. A face
 /// close to a seam remains fully visible in at least one neighbouring tile.
 pub(crate) fn quality_face_tiles(frame: &AnalysisFrame) -> Vec<TileSpec> {
-    quality_tiles(frame, SCRFD_INPUT_SIZE as u32, TILE_OVERLAP)
+    quality_tiles(frame, FACE_TILE_SIZE as u32, TILE_OVERLAP)
 }
 
 pub(crate) fn quality_object_tiles(frame: &AnalysisFrame) -> Vec<TileSpec> {
@@ -455,25 +563,6 @@ pub(crate) fn map_face_from_tile(
     face
 }
 
-/// Drain SCRFD work that is already available without delaying a single
-/// frame. The batch-8 session is not numerically equivalent to the
-/// single-frame session, so production preserves this immediate behavior and
-/// only batches naturally accumulated work under backpressure.
-pub(crate) fn drain_face_batch(
-    jobs: &crossbeam_channel::Receiver<FaceJob>,
-    first: FaceJob,
-) -> (Vec<FaceJob>, u64) {
-    let mut batch = Vec::with_capacity(MAX_BATCH);
-    batch.push(first);
-    while batch.len() < MAX_BATCH {
-        match jobs.try_recv() {
-            Ok(job) => batch.push(job),
-            Err(_) => break,
-        }
-    }
-    (batch, 0)
-}
-
 /// Per-element output stride of a batched evaluation, or a contract error.
 pub(crate) fn batch_stride(
     len: usize,
@@ -492,7 +581,6 @@ pub(crate) fn batch_stride(
 
 #[cfg(test)]
 mod tile_tests {
-    use super::super::internal::FaceJobKind;
     use super::*;
 
     fn tiny_frame(index: usize, rgb: [u8; 3]) -> Arc<AnalysisFrame> {
@@ -526,23 +614,23 @@ mod tile_tests {
         }
     }
 
-    fn prepare_scrfd_reference(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {
-        let size = SCRFD_INPUT_SIZE as u32;
+    fn prepare_face_reference(frame: &AnalysisFrame, output: &mut [f32]) -> Letterbox {
+        let size = FACE_TILE_SIZE as u32;
         let scale = (size as f32 / frame.width as f32).min(size as f32 / frame.height as f32);
         let width = (frame.width as f32 * scale).round().clamp(1.0, size as f32) as u32;
         let height = (frame.height as f32 * scale)
             .round()
             .clamp(1.0, size as f32) as u32;
         let resized = resize_rgb(frame, width, height);
-        let plane = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE;
-        output.fill(-127.5 / 128.0);
+        let plane = FACE_TILE_SIZE * FACE_TILE_SIZE;
+        output.fill(0.0);
         for y in 0..height as usize {
             for x in 0..width as usize {
                 let source = (y * width as usize + x) * 3;
-                let destination = y * SCRFD_INPUT_SIZE + x;
-                output[destination] = (resized[source] as f32 - 127.5) / 128.0;
-                output[plane + destination] = (resized[source + 1] as f32 - 127.5) / 128.0;
-                output[plane * 2 + destination] = (resized[source + 2] as f32 - 127.5) / 128.0;
+                let destination = y * FACE_TILE_SIZE + x;
+                output[destination] = resized[source + 2] as f32;
+                output[plane + destination] = resized[source + 1] as f32;
+                output[plane * 2 + destination] = resized[source] as f32;
             }
         }
         Letterbox {
@@ -554,92 +642,98 @@ mod tile_tests {
         }
     }
 
-    fn base_job(index: usize) -> FaceJob {
-        FaceJob {
-            frame: tiny_frame(index, [0, 0, 0]),
-            region: None,
-            kind: FaceJobKind::Base,
+    #[test]
+    fn flipped_face_view_mirrors_letterboxed_content() {
+        let size = 384;
+        let plane = size * size;
+        let mut scratch = vec![0; plane * 3];
+        let frame = patterned_frame(1280, 720, 7);
+        let mut plain = vec![f32::NAN; plane * 3];
+        let mut flipped = vec![f32::NAN; plane * 3];
+        let letterbox = prepare_face_input_into(
+            RgbImage::of(&frame),
+            (size, size),
+            false,
+            &mut plain,
+            &mut scratch,
+        );
+        let mirrored = prepare_face_input_into(
+            RgbImage::of(&frame),
+            (size, size),
+            true,
+            &mut flipped,
+            &mut scratch,
+        );
+        assert_eq!(letterbox, mirrored);
+        let width = (1280.0 * letterbox.scale).round() as usize;
+        let height = (720.0 * letterbox.scale).round() as usize;
+        for channel in 0..3 {
+            for y in 0..size {
+                for x in 0..size {
+                    let index = channel * plane + y * size + x;
+                    let expected = if x < width && y < height {
+                        plain[channel * plane + y * size + width - 1 - x]
+                    } else {
+                        0.0
+                    };
+                    assert_eq!(flipped[index].to_bits(), expected.to_bits());
+                }
+            }
         }
     }
 
-    fn tile_job(index: usize) -> FaceJob {
-        FaceJob {
-            frame: tiny_frame(index, [0, 0, 0]),
-            region: None,
-            kind: FaceJobKind::Tile {
-                base_index: index,
-                offset_x: 0.0,
-                offset_y: 0.0,
-                span_x: 1.0,
-                span_y: 1.0,
-            },
-        }
-    }
-
     #[test]
-    fn face_batch_collects_a_prebuffered_full_batch() {
-        let (sender, receiver) = crossbeam_channel::bounded(MAX_BATCH);
-        for index in 0..MAX_BATCH {
-            sender.send(base_job(index)).unwrap();
-        }
-        let first = receiver.recv().unwrap();
-
-        let (batch, _) = drain_face_batch(&receiver, first);
-
-        assert_eq!(batch.len(), MAX_BATCH);
-        assert!(batch
-            .iter()
-            .all(|job| matches!(&job.kind, FaceJobKind::Base)));
-    }
-
-    #[test]
-    fn face_tile_batch_does_not_add_a_collection_delay() {
-        let (_sender, receiver) = crossbeam_channel::bounded(1);
-        let (batch, wait_ms) = drain_face_batch(&receiver, tile_job(0));
-
-        assert_eq!(batch.len(), 1);
-        assert_eq!(wait_ms, 0);
-    }
-
-    #[test]
-    fn face_tile_already_queued_after_base_is_drained_in_fifo_order() {
-        let (sender, receiver) = crossbeam_channel::bounded(2);
-        sender.send(base_job(1)).unwrap();
-        sender.send(tile_job(2)).unwrap();
-        let first = receiver.recv().unwrap();
-
-        let (batch, _) = drain_face_batch(&receiver, first);
-
-        assert_eq!(batch.len(), 2);
-        assert!(matches!(&batch[0].kind, FaceJobKind::Base));
-        assert!(matches!(&batch[1].kind, FaceJobKind::Tile { .. }));
-    }
-
-    #[test]
-    fn face_batch_returns_single_frame_when_queue_is_empty() {
-        let (_sender, receiver) = crossbeam_channel::bounded(1);
-        let (batch, _) = drain_face_batch(&receiver, base_job(0));
-
-        assert_eq!(batch.len(), 1);
-    }
-
-    #[test]
-    fn scrfd_scratch_preprocessing_matches_reference_for_all_frame_shapes() {
-        let plane = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE * 3;
+    fn face_scratch_preprocessing_matches_reference_for_all_frame_shapes() {
+        let plane = FACE_TILE_SIZE * FACE_TILE_SIZE * 3;
         let mut scratch = vec![0xA5; plane];
         for (seed, width, height) in [(1, 640, 640), (2, 1280, 720), (3, 720, 1280), (4, 17, 11)] {
             let frame = patterned_frame(width, height, seed);
             let mut expected = vec![f32::NAN; plane];
             let mut actual = vec![f32::NAN; plane];
 
-            let expected_letterbox = prepare_scrfd_reference(&frame, &mut expected);
-            let actual_letterbox = prepare_scrfd_into(&frame, None, &mut actual, &mut scratch);
+            let expected_letterbox = prepare_face_reference(&frame, &mut expected);
+            let actual_letterbox = prepare_face_input_into(
+                RgbImage::of(&frame),
+                (FACE_TILE_SIZE, FACE_TILE_SIZE),
+                false,
+                &mut actual,
+                &mut scratch,
+            );
 
             assert_eq!(actual_letterbox, expected_letterbox);
             assert!(actual
                 .iter()
                 .zip(&expected)
                 .all(|(actual, expected)| actual.to_bits() == expected.to_bits()));
+        }
+    }
+
+    #[test]
+    fn face_canvas_rows_match_the_planar_input() {
+        let (width, height) = (1536, 864);
+        let frame = patterned_frame(1920, 1080, 5);
+        let mut canvas = vec![0x77; width * height * 3];
+        let mut planes = vec![f32::NAN; width * height * 3];
+        let mut scratch = vec![0; width * height * 3];
+        let canvas_letterbox = prepare_face_canvas_u8(
+            RgbImage::of(&frame),
+            (width, height),
+            &mut canvas,
+            &mut scratch,
+        );
+        let planar_letterbox = prepare_face_input_into(
+            RgbImage::of(&frame),
+            (width, height),
+            false,
+            &mut planes,
+            &mut scratch,
+        );
+        assert_eq!(canvas_letterbox, planar_letterbox);
+        let plane = width * height;
+        for (index, pixel) in canvas.chunks_exact(3).enumerate() {
+            assert_eq!(planes[index], pixel[2] as f32);
+            assert_eq!(planes[plane + index], pixel[1] as f32);
+            assert_eq!(planes[plane * 2 + index], pixel[0] as f32);
         }
     }
 
@@ -704,15 +798,18 @@ mod tile_tests {
         let mut actual_face = vec![f32::NAN; frame_elements];
         let mut expected_scratch = vec![0xA5; frame_elements];
         let mut actual_scratch = vec![0x5A; frame_elements];
-        let expected_face_letterbox = prepare_scrfd_into(
-            &materialized,
-            None,
+        let expected_face_letterbox = prepare_face_input_into(
+            RgbImage::of(&materialized),
+            (FACE_TILE_SIZE, FACE_TILE_SIZE),
+            false,
             &mut expected_face,
             &mut expected_scratch,
         );
-        let actual_face_letterbox = prepare_scrfd_into(
-            &frame,
-            Some(tile.region),
+        let mut region_rgb = Vec::new();
+        let actual_face_letterbox = prepare_face_input_into(
+            RgbImage::of_region(&frame, Some(tile.region), &mut region_rgb),
+            (FACE_TILE_SIZE, FACE_TILE_SIZE),
+            false,
             &mut actual_face,
             &mut actual_scratch,
         );

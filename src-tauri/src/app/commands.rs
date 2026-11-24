@@ -19,6 +19,7 @@ macro_rules! invoke_handler {
             crate::commands::clipper::data::commit_clipper_prepared_range,
             crate::commands::clipper::data::finalize_clipper_project_data_file,
             crate::commands::clipper::data::remove_clipper_project_data_partial,
+            crate::commands::clipper::data::remove_stale_clipper_transcription_audio,
             crate::commands::clipper::data::remove_clipper_project_data_dir,
             crate::commands::clipper::data::read_clipper_project_data_file,
             crate::commands::clipper::data::write_clipper_project_data_file,

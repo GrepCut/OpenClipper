@@ -1,4 +1,4 @@
-/** Pixel-space face bounding box from native WinML SCRFD. */
+/** Pixel-space face bounding box from the native face detector. */
 export interface FaceBox {
   x: number;
   y: number;

@@ -70,10 +70,7 @@ export interface NativeVisionMetrics {
   recoveryObjectInferenceMs: number;
   basePoseInferenceMs: number;
   faceInferenceCalls: number;
-  faceMultiframeInferenceCalls: number;
-  faceFullBatchCount: number;
   faceInferenceFrames: number;
-  faceBatchCollectWaitMs: number;
   objectPreprocessMs: number;
   objectDecodeMs: number;
   zeroCopyTileCount: number;

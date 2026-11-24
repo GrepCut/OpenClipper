@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -9,6 +9,7 @@ use super::super::internal::{
     FACE_WORKERS, OBJECT_FRAME_CAPACITY, OBJECT_WORKERS, QUEUE_CAPACITY,
 };
 use super::super::vision::{fp16_variant_path, resource_paths, NativeVisionError};
+use super::super::vision_logic::{FACE_CANVAS, FACE_SINGLE_VIEWS};
 use super::super::workers::{
     spawn_face_policy, spawn_face_worker, spawn_object_policy, spawn_object_worker,
 };
@@ -41,7 +42,12 @@ impl PipelineSetup {
         progress: &mut impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
     ) -> Result<PipelineSetup, NativeVisionError> {
         let resources = resource_paths(resource_dir);
-        let face_model_path = resources.face;
+        let face_root = resources.models.clone();
+        let face_view_paths: Vec<PathBuf> = std::iter::once(FACE_CANVAS)
+            .chain(FACE_SINGLE_VIEWS)
+            .flat_map(|view| view.shapes().iter().map(move |&shape| view.file(shape)))
+            .map(|file| face_root.join(file))
+            .collect();
         let pose_model_path = resources.pose;
         let yolox_model_path = resources.yolox;
         let yolox_fp16_path = fp16_variant_path(&yolox_model_path);
@@ -49,21 +55,18 @@ impl PipelineSetup {
         diagnostics::append(
             "setup",
             &format!(
-                "models face={} face_fp16={} yolox={} yolox_fp16={} pose={} labels={}",
-                face_model_path.display(),
-                fp16_variant_path(&face_model_path).display(),
+                "models face_views={face_view_paths:?} yolox={} yolox_fp16={} pose={} labels={}",
                 yolox_model_path.display(),
                 yolox_fp16_path.display(),
                 pose_model_path.display(),
                 yolox_labels_path.display(),
             ),
         );
-        for path in [
-            &face_model_path,
-            &pose_model_path,
-            &yolox_model_path,
-            &yolox_labels_path,
-        ] {
+        for path in
+            face_view_paths
+                .iter()
+                .chain([&pose_model_path, &yolox_model_path, &yolox_labels_path])
+        {
             if !path.is_file() {
                 diagnostics::append(
                     "setup",
@@ -101,7 +104,6 @@ impl PipelineSetup {
             queued_detections: 0,
         })?;
 
-        let face_fp16_path = fp16_variant_path(&face_model_path);
         let face_preprocess_time_us = Arc::new(AtomicU64::new(0));
         let pose_preprocess_time_us = Arc::new(AtomicU64::new(0));
         let worker_metrics = Arc::new(WorkerMetrics::default());
@@ -131,8 +133,7 @@ impl PipelineSetup {
                     face_job_receiver.clone(),
                     face_msg_sender.clone(),
                     cancelled.clone(),
-                    face_model_path.clone(),
-                    face_fp16_path.clone(),
+                    face_root.clone(),
                     face_preprocess_time_us.clone(),
                     worker_metrics.clone(),
                 )

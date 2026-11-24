@@ -9,6 +9,7 @@ use super::super::vision_logic::{box_iou, SubjectDetection};
 use super::spool::{decode_face_record, decode_object_record, SpoolOutput};
 use super::types::{
     NativeFaceSample, NativeImportanceSignalRegion, NativeSubjectSample, NativeVisionProgress,
+    VISION_MODEL_VERSION,
 };
 use crate::video::tracking::bytetrack::ByteTracker;
 use crate::video::tracking::winml::{
@@ -189,7 +190,7 @@ pub(crate) fn merge_samples(
             autoflip_faces,
             pose_subjects,
             importance_signals,
-            model_id: "clipper-vision-v5-yolox-s-scrfd10g-tiled",
+            model_id: VISION_MODEL_VERSION,
             scene_cut: face.scene_cut.then_some(true),
             camera_motion_residual,
         };

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-pub const SCRFD_INPUT_SIZE: usize = 640;
-pub const SCRFD_ANCHORS_PER_CELL: usize = 2;
+/// Edge of the square recovery tiles the face detector re-scans.
+pub const FACE_TILE_SIZE: usize = 640;
 pub const MOVENET_INPUT_SIZE: usize = 512;
 pub const MOVENET_POSE_COUNT: usize = 6;
 pub const MOVENET_KEYPOINT_COUNT: usize = 17;

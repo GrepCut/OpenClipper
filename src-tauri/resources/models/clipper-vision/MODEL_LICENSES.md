@@ -7,16 +7,38 @@ WinML derivatives of the supplied YOLOX-S 640 ONNX export. Learned weights are
 unchanged. YOLOX is distributed under the Apache License 2.0. See
 <https://github.com/Megvii-BaseDetection/YOLOX>.
 
-## SCRFD-10G-KPS
+## YuNet (multiscale)
 
-The bundled `scrfd_10g_bnkps.onnx` and `scrfd_10g_bnkps.fp16.onnx` files are
-dynamic-batch WinML derivatives of the supplied InsightFace SCRFD-10G-KPS
-ONNX export. The model detects faces and five facial landmarks.
+The bundled `yunet_fused_1536.onnx` (with `_landscape` and `_portrait`
+siblings), `yunet_384.onnx` and `yunet_960.onnx` files are derivatives of
+`face_detection_yunet_2026may.onnx` from the OpenCV Zoo
+(<https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet>),
+redistributed unmodified in `public/models/yunet/`. The derivatives fix the
+input size per view, compute in float16, and the fused graphs combine three
+copies of the network with in-graph resizing and mirroring. Learned weights
+are unchanged. The derivatives are reproduced by
+`scripts/models/prepare_yunet_multiscale.py`. YuNet is licensed under the
+MIT License.
 
-InsightFace's pretrained model notice restricts its model-zoo weights to
-non-commercial research use. Commercial distribution requires separately
-licensed or independently trained weights. See
-<https://github.com/deepinsight/insightface/tree/master/model_zoo>.
+Copyright (c) 2020 Shiqi Yu <shiqi.yu@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## MoveNet MultiPose Lightning
 

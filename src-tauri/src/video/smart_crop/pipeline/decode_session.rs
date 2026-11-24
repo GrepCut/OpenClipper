@@ -137,9 +137,9 @@ impl DecodeSession {
         } else {
             (source_width, source_height)
         };
-        // Keep source detail through 1080p. SCRFD's full-frame pass still
-        // letterboxes to 640, while its tiled passes consume native 640px
-        // crops and therefore retain small-face detail.
+        // Keep source detail through 1080p. The face detector's largest view
+        // letterboxes to 1536 and its tiled passes consume native 640px crops,
+        // so both retain small-face detail.
         let (sample_raw_width, sample_raw_height) =
             scaler_dimensions_for_long_edge(source_width, source_height, 1920);
         let histogram_scale = (192.0 / source_width.max(source_height).max(1) as f64).min(1.0);

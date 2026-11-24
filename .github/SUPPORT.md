@@ -11,12 +11,12 @@ Thanks for using Open Clipper! If you need help, here are your options:
 
 - **Bug reports**: Use the bug report template
 - **Feature requests**: Use the feature request template
-- **Questions**: Open a GitHub issue or ask on [Discord](https://discord.gg/2uXgrUpe)
+- **Questions**: Open a GitHub issue or ask on [Discord](https://grepcut.com/discord)
 
 ## Community
 
 - Follow us on [X](https://x.com/GrepCut)
-- Join our [Discord](https://discord.gg/2uXgrUpe)
+- Join our [Discord](https://grepcut.com/discord)
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## Response Times

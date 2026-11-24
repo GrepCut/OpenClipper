@@ -10,7 +10,6 @@ pub const BATCH_BOUND: usize = 8;
 /// ONNX vision models used by the smart-crop pipeline.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum VisionModel {
-    Face,
     YoloX,
     Pose,
 }

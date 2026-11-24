@@ -1,6 +1,8 @@
 //! WinML model worker threads (face and object detection).
 
-use std::collections::BTreeMap;
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -14,14 +16,17 @@ use super::internal::{
     MAX_BATCH, POSE_PERSON_CONFIDENCE, POSE_PERSON_SAMPLE_STRIDE, POSE_RECOVERY_SAMPLE_STRIDE,
 };
 use super::preprocess::{
-    drain_face_batch, evaluate_yolox_batch, map_detection_from_tile, map_face_from_tile,
-    prepare_movenet_into, prepare_scrfd_into, quality_face_tiles, quality_object_tiles, ModelFrame,
+    evaluate_yolox_batch, map_detection_from_tile, map_face_from_tile, prepare_face_canvas_u8,
+    prepare_face_input_into, prepare_movenet_into, quality_face_tiles, quality_object_tiles,
+    ModelFrame, RgbImage,
 };
 use super::vision::{NativeVisionDevice, NativeVisionError, NativeVisionModel, VisionModel};
 use super::vision_logic::{
-    box_iou, decode_movenet, decode_scrfd, detect_motion_saliency, merge_subject_detections,
-    weighted_face_nms, Letterbox, NormalizedBox, RecoveryPolicy, SubjectDetection,
-    MOVENET_INPUT_SIZE, SCRFD_INPUT_SIZE, YOLOX_INPUT_SIZE,
+    box_iou, decode_canvas_view, decode_movenet, decode_single_view, detect_motion_saliency,
+    fuse_views, merge_subject_detections, weighted_face_nms, AutoFlipFaceDetection, FaceViewShape,
+    Letterbox, NormalizedBox, RecoveryPolicy, SubjectDetection, FACE_CANVAS, FACE_CANVAS_INPUT,
+    FACE_CANVAS_OUTPUTS, FACE_CANVAS_VIEWS, FACE_SINGLE_VIEWS, FACE_VIEW_INPUT, FACE_VIEW_OUTPUTS,
+    MOVENET_INPUT_SIZE, YOLOX_INPUT_SIZE,
 };
 
 const RECOVERY_PERSON_SCORE: f32 = 0.7;
@@ -80,202 +85,197 @@ fn face_result_from(outcome: BaseFaceOutcome, recovery_passes: usize, extra_ms: 
     }
 }
 
-/// Stateless SCRFD evaluator. Frames arrive out of order across the pool;
-/// the sequential recovery policy lives in `spawn_face_policy`.
+/// Returns the retained face session for `key`, creating it on first use.
+/// Face graphs run on the bundled ORT DirectML build: YuNet's thin depthwise
+/// layers are about twice as fast there as on the OS WinML.
+fn face_session<'a, K: std::hash::Hash + Eq>(
+    models: &'a mut HashMap<K, NativeVisionModel>,
+    key: K,
+    path: &Path,
+    input_name: &str,
+    output_names: &[&str],
+) -> Result<&'a mut NativeVisionModel, NativeVisionError> {
+    Ok(match models.entry(key) {
+        Entry::Occupied(entry) => entry.into_mut(),
+        Entry::Vacant(entry) => entry.insert(NativeVisionModel::create_ort(
+            path,
+            input_name,
+            output_names,
+        )?),
+    })
+}
+
+fn face_contract_error(message: String) -> NativeVisionError {
+    NativeVisionError::new("tensor_contract_mismatch", message, true)
+}
+
+/// Per-view faces of one frame from the fused canvas graph: one uint8 upload
+/// and one evaluation compute all three scales.
+fn evaluate_face_canvas(
+    models: &mut HashMap<FaceViewShape, NativeVisionModel>,
+    model_root: &Path,
+    image: RgbImage,
+    input: &mut [u8],
+    scratch: &mut [u8],
+    output: &mut Vec<Vec<f32>>,
+    preprocess_us: &mut u64,
+) -> Result<(Vec<Vec<AutoFlipFaceDetection>>, NativeVisionDevice), NativeVisionError> {
+    let started = Instant::now();
+    let shape = FACE_CANVAS.shape_for(image.width, image.height);
+    let (width, height) = FACE_CANVAS.dimensions(shape);
+    let input = &mut input[..width * height * 3];
+    let letterbox = prepare_face_canvas_u8(image, (width, height), input, scratch);
+    *preprocess_us += started.elapsed().as_micros() as u64;
+    let model = face_session(
+        models,
+        shape,
+        &model_root.join(FACE_CANVAS.file(shape)),
+        FACE_CANVAS_INPUT,
+        &FACE_CANVAS_OUTPUTS,
+    )?;
+    model.evaluate_u8_into(&[1, height as i64, width as i64, 3], input, output)?;
+    let views = FACE_CANVAS_VIEWS
+        .iter()
+        .enumerate()
+        .map(|(index, view)| {
+            let branch = Letterbox {
+                scale: letterbox.scale * view.size as f32 / FACE_CANVAS.size as f32,
+                ..letterbox
+            };
+            decode_canvas_view(index, shape, output, branch).map_err(face_contract_error)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((views, model.device()))
+}
+
+/// Per-view faces of a recovery tile, or of a source too small for the
+/// validated 1536 upscale, from the square single-view graphs. Both views
+/// always run, even past the validated upscale: fusion discounts a face seen
+/// by a single view below the score threshold, so one view alone could
+/// never report a face.
+fn evaluate_face_single_views(
+    models: &mut HashMap<usize, NativeVisionModel>,
+    model_root: &Path,
+    image: RgbImage,
+    inputs: &mut [Vec<f32>],
+    scratch: &mut [u8],
+    output: &mut Vec<Vec<f32>>,
+    preprocess_us: &mut u64,
+) -> Result<(Vec<Vec<AutoFlipFaceDetection>>, NativeVisionDevice), NativeVisionError> {
+    let mut views = Vec::with_capacity(FACE_SINGLE_VIEWS.len());
+    let mut device = NativeVisionDevice::Cpu;
+    for (index, (view, input)) in FACE_SINGLE_VIEWS.iter().zip(inputs.iter_mut()).enumerate() {
+        let started = Instant::now();
+        let (width, height) = view.dimensions(FaceViewShape::Square);
+        let letterbox = prepare_face_input_into(image, (width, height), view.flip, input, scratch);
+        *preprocess_us += started.elapsed().as_micros() as u64;
+        let model = face_session(
+            models,
+            index,
+            &model_root.join(view.file(FaceViewShape::Square)),
+            FACE_VIEW_INPUT,
+            FACE_VIEW_OUTPUTS,
+        )?;
+        model.evaluate_into(&[1, 3, height as i64, width as i64], input, output)?;
+        device = model.device();
+        views.push(decode_single_view(*view, output, letterbox).map_err(face_contract_error)?);
+    }
+    Ok((views, device))
+}
+
+/// Stateless face evaluator. Frames arrive out of order across the pool;
+/// the sequential recovery policy lives in `spawn_face_policy`. Base frames
+/// run through the fused canvas graph, recovery tiles through the square
+/// single-view graphs, and the per-view faces are fused by agreement.
 pub(crate) fn spawn_face_worker(
     jobs: crossbeam_channel::Receiver<FaceJob>,
     results: mpsc::Sender<FaceWorkerMsg>,
     cancelled: Arc<AtomicBool>,
-    model_path: std::path::PathBuf,
-    fp16_model_path: std::path::PathBuf,
+    model_root: PathBuf,
     preprocess_time_us: Arc<AtomicU64>,
     worker_metrics: Arc<WorkerMetrics>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         diagnostics::append(
             "face-worker",
-            &format!(
-                "started model={} fp16={} input={}x{} max_batch={MAX_BATCH}",
-                model_path.display(),
-                fp16_model_path.display(),
-                SCRFD_INPUT_SIZE,
-                SCRFD_INPUT_SIZE,
-            ),
+            &format!("started root={}", model_root.display()),
         );
-        let mut model: Option<NativeVisionModel> = None;
-        let frame_elems = SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE * 3;
-        let mut input = vec![-127.5 / 128.0; MAX_BATCH * frame_elems];
-        let mut resize_scratch = vec![0u8; frame_elems];
-        let mut output = Vec::with_capacity(9);
-        let mut letterboxes = Vec::with_capacity(MAX_BATCH);
-        'jobs: while let Ok(first) = jobs.recv() {
+        let canvas_elements = FACE_CANVAS.size * FACE_CANVAS.size * 3;
+        let mut canvas_models = HashMap::new();
+        let mut view_models = HashMap::new();
+        let mut canvas_input = vec![0u8; canvas_elements];
+        let mut resize_scratch = vec![0u8; canvas_elements];
+        let mut region_rgb = Vec::new();
+        let mut view_inputs: Vec<Vec<f32>> = FACE_SINGLE_VIEWS
+            .iter()
+            .map(|view| vec![0.0; view.size * view.size * 3])
+            .collect();
+        let mut output = Vec::with_capacity(FACE_CANVAS_OUTPUTS.len());
+        while let Ok(job) = jobs.recv() {
             if cancelled.load(Ordering::Relaxed) {
                 break;
             }
-            let (batch, batch_collect_wait_ms) = drain_face_batch(&jobs, first);
-            let count = batch.len();
             worker_metrics
                 .face_inference_calls
                 .fetch_add(1, Ordering::Relaxed);
             worker_metrics
                 .face_inference_frames
-                .fetch_add(count, Ordering::Relaxed);
-            worker_metrics
-                .face_batch_collect_wait_ms
-                .fetch_add(batch_collect_wait_ms, Ordering::Relaxed);
-            if count > 1 {
-                worker_metrics
-                    .face_multiframe_inference_calls
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            if count == MAX_BATCH {
-                worker_metrics
-                    .face_full_batch_count
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-            // Sessions are compiled for batch sizes 1 and MAX_BATCH only;
-            // multi-frame batches are padded up to the bound. Padding
-            // elements keep the letterbox fill value (-1.0) and their
-            // outputs are ignored below.
-            let bound = if count == 1 { 1 } else { MAX_BATCH };
-            diagnostics::append(
-                "face-worker",
-                &format!(
-                    "batch received real_count={count} bound={bound} first_index={} queue_remaining={}",
-                    batch[0].frame.index,
-                    jobs.len(),
-                ),
-            );
-            let preprocess_started = Instant::now();
-            let input = &mut input[..bound * frame_elems];
-            input.fill(-127.5 / 128.0);
-            letterboxes.clear();
-            for (index, job) in batch.iter().enumerate() {
-                if let Some(region) = job.region {
-                    worker_metrics
-                        .zero_copy_tile_count
-                        .fetch_add(1, Ordering::Relaxed);
-                    worker_metrics.zero_copy_tile_bytes_avoided.fetch_add(
-                        region.width as u64 * region.height as u64 * 3,
-                        Ordering::Relaxed,
-                    );
-                }
-                let letterbox = prepare_scrfd_into(
-                    &job.frame,
-                    job.region,
-                    &mut input[index * frame_elems..(index + 1) * frame_elems],
-                    &mut resize_scratch,
-                );
-                letterboxes.push(letterbox);
-            }
-            preprocess_time_us.fetch_add(
-                preprocess_started.elapsed().as_micros() as u64,
-                Ordering::Relaxed,
-            );
-            diagnostics::append(
-                "face-worker",
-                &format!(
-                    "preprocess complete real_count={count} elapsed_ms={}",
-                    preprocess_started.elapsed().as_millis()
-                ),
-            );
-            let shape = [
-                bound as i64,
-                3,
-                SCRFD_INPUT_SIZE as i64,
-                SCRFD_INPUT_SIZE as i64,
-            ];
+                .fetch_add(1, Ordering::Relaxed);
             let started = Instant::now();
-            diagnostics::append(
-                "face-worker",
-                &format!(
-                    "evaluate start bound={bound} model_cached={}",
-                    model.is_some()
-                ),
-            );
-            let evaluated = if let Some(current) = model.as_mut() {
-                current
-                    .evaluate_into(&shape, input, &mut output)
-                    .map(|()| current.device())
-            } else {
-                NativeVisionModel::create_into(
-                    VisionModel::Face,
-                    &model_path,
-                    Some(&fp16_model_path),
-                    "input.1",
-                    &[
-                        "448", "471", "494", "451", "474", "497", "454", "477", "500",
-                    ],
-                    &shape,
-                    input,
+            // Recovery tiles always resize, so their region is copied once
+            // here and shared by both single views.
+            let image = RgbImage::of_region(&job.frame, job.region, &mut region_rgb);
+            let mut preprocess_us = started.elapsed().as_micros() as u64;
+            let evaluated = if FACE_CANVAS.within_validated_upscale(image.width, image.height) {
+                evaluate_face_canvas(
+                    &mut canvas_models,
+                    &model_root,
+                    image,
+                    &mut canvas_input,
+                    &mut resize_scratch,
                     &mut output,
+                    &mut preprocess_us,
                 )
-                .map(|created| {
-                    let device = created.device();
-                    model = Some(created);
-                    device
-                })
+            } else {
+                evaluate_face_single_views(
+                    &mut view_models,
+                    &model_root,
+                    image,
+                    &mut view_inputs,
+                    &mut resize_scratch,
+                    &mut output,
+                    &mut preprocess_us,
+                )
             };
-            match evaluated.and_then(|device| {
-                diagnostics::append(
-                    "face-worker",
-                    &format!(
-                        "evaluate complete device={device:?} elapsed_ms={} output_lengths={:?}",
-                        started.elapsed().as_millis(),
-                        output.iter().map(Vec::len).collect::<Vec<_>>()
-                    ),
-                );
-                if output.len() != 9 {
-                    return Err(NativeVisionError::new(
-                        "tensor_contract_mismatch",
-                        "SCRFD output count changed",
-                        true,
-                    ));
-                }
-                let mut outcomes = Vec::with_capacity(count);
-                for index in 0..count {
-                    let faces = decode_scrfd(&output, index, bound, letterboxes[index], 0.5)
-                        .map_err(|message| {
-                            NativeVisionError::new("tensor_contract_mismatch", message, true)
-                        })?;
-                    outcomes.push(faces);
-                }
-                diagnostics::append(
-                    "face-worker",
-                    &format!(
-                        "decode complete faces_per_frame={:?}",
-                        outcomes.iter().map(Vec::len).collect::<Vec<_>>()
-                    ),
-                );
-                Ok((outcomes, device))
-            }) {
-                Ok((outcomes, device)) => {
-                    let duration_ms = started.elapsed().as_millis() as u64 / count as u64;
-                    let base_count = batch
-                        .iter()
-                        .filter(|job| matches!(&job.kind, FaceJobKind::Base))
-                        .count() as u64;
-                    worker_metrics
-                        .face_base_inference_ms
-                        .fetch_add(duration_ms * base_count, Ordering::Relaxed);
-                    worker_metrics
-                        .face_recovery_inference_ms
-                        .fetch_add(duration_ms * (count as u64 - base_count), Ordering::Relaxed);
-                    for (job, faces) in batch.into_iter().zip(outcomes) {
-                        let message = match job.kind {
-                            FaceJobKind::Base => FaceWorkerMsg::Base(BaseFaceOutcome {
+            preprocess_time_us.fetch_add(preprocess_us, Ordering::Relaxed);
+            let duration_ms =
+                (started.elapsed().as_micros() as u64).saturating_sub(preprocess_us) / 1000;
+            match evaluated {
+                Ok((views, device)) => {
+                    let faces = fuse_views(views);
+                    let message = match job.kind {
+                        FaceJobKind::Base => {
+                            worker_metrics
+                                .face_base_inference_ms
+                                .fetch_add(duration_ms, Ordering::Relaxed);
+                            FaceWorkerMsg::Base(BaseFaceOutcome {
                                 frame: job.frame,
                                 faces,
                                 device,
                                 duration_ms,
-                            }),
-                            FaceJobKind::Tile {
-                                base_index,
-                                offset_x,
-                                offset_y,
-                                span_x,
-                                span_y,
-                            } => FaceWorkerMsg::Tile {
+                            })
+                        }
+                        FaceJobKind::Tile {
+                            base_index,
+                            offset_x,
+                            offset_y,
+                            span_x,
+                            span_y,
+                        } => {
+                            worker_metrics
+                                .face_recovery_inference_ms
+                                .fetch_add(duration_ms, Ordering::Relaxed);
+                            FaceWorkerMsg::Tile {
                                 base_index,
                                 faces: faces
                                     .into_iter()
@@ -284,11 +284,11 @@ pub(crate) fn spawn_face_worker(
                                     })
                                     .collect(),
                                 duration_ms,
-                            },
-                        };
-                        if results.send(message).is_err() {
-                            break 'jobs;
+                            }
                         }
+                    };
+                    if results.send(message).is_err() {
+                        break;
                     }
                 }
                 Err(error) => {

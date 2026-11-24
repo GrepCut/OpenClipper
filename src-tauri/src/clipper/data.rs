@@ -170,6 +170,32 @@ pub(crate) async fn extract_studio_thumbnails_for_project(
     .map_err(|e| format!("Task join error: {e}"))?
 }
 
+/// Windows `ERROR_SHARING_VIOLATION` / `ERROR_LOCK_VIOLATION`: another process (antivirus,
+/// indexer, backup) briefly holds the file with a deny-write share mode while we stream chunks.
+const TRANSIENT_LOCK_OS_ERRORS: [i32; 2] = [32, 33];
+const POSITIONAL_WRITE_RETRY_DELAYS_MS: [u64; 6] = [25, 50, 100, 200, 400, 800];
+
+/// Every positional chunk write reopens the file, so a transient external lock must not fail
+/// the whole stream (mediabunny cannot recover from a rejected chunk write).
+fn open_for_positional_write(path: &Path) -> Result<fs::File, String> {
+    let open = || OpenOptions::new().create(true).read(true).write(true).open(path);
+    let mut result = open();
+    for delay_ms in POSITIONAL_WRITE_RETRY_DELAYS_MS {
+        match &result {
+            Err(error)
+                if error
+                    .raw_os_error()
+                    .is_some_and(|code| TRANSIENT_LOCK_OS_ERRORS.contains(&code)) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                result = open();
+            }
+            _ => break,
+        }
+    }
+    result.map_err(|e| e.to_string())
+}
+
 pub(crate) fn write_export_file_bytes_at(
     app: &AppHandle,
     project_id: &str,
@@ -180,12 +206,7 @@ pub(crate) fn write_export_file_bytes_at(
     let dir = clipper_project_exports_dir(app, project_id)?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = clipper_export_file_path(app, project_id, file_name)?;
-    let mut file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
+    let mut file = open_for_positional_write(&path)?;
     file.seek(SeekFrom::Start(position))
         .map_err(|e| e.to_string())?;
     file.write_all(contents).map_err(|e| e.to_string())?;
@@ -203,12 +224,7 @@ pub(crate) fn write_project_data_file_bytes_at(
     let dir = clipper_project_data_dir(app, project_id)?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(file_name);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
+    let mut file = open_for_positional_write(&path)?;
     if position == 0 {
         file.set_len(0).map_err(|e| e.to_string())?;
     }

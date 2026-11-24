@@ -4,6 +4,7 @@ import { CLIPPER_FORMAT_DEFS } from "../../shared/formats.util";
 import { baseName } from "../../shared/filename-template.util";
 import { clipperError } from "../../shared/logger.util";
 import { createRenderFailureReporter } from "../../shared/render-failure-report.util";
+import { DISK_FULL_MESSAGE, isDiskFullError } from "../../shared/disk-full-error.util";
 import { appendUniqueExportResults } from "../../shared/export-results.util";
 import { flushPendingClipperExports, getPendingClipperExportResults } from "../../persistence/clipper-export-persist.util";
 import {
@@ -301,7 +302,9 @@ export function useClipperPipelineRender(core: UseClipperPipelineCoreResult) {
         patchPipelineState(setState, (draft) => {
           applyRenderFailureState(
             draft,
-            error instanceof Error ? error.message : "Render failed.",
+            isDiskFullError(error)
+              ? DISK_FULL_MESSAGE
+              : error instanceof Error ? error.message : "Render failed.",
             failedClipIndex,
           );
         });

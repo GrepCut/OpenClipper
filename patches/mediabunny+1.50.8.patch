@@ -1,0 +1,58 @@
+diff --git a/node_modules/mediabunny/dist/modules/src/conversion.js b/node_modules/mediabunny/dist/modules/src/conversion.js
+index 4769cd1..31e89db 100644
+--- a/node_modules/mediabunny/dist/modules/src/conversion.js
++++ b/node_modules/mediabunny/dist/modules/src/conversion.js
+@@ -605,7 +605,7 @@ export class Conversion {
+         catch (error) {
+             if (!this._canceled) {
+                 // Make sure to cancel to stop other encoding processes and clean up resources
+-                void this.cancel();
++                void this.cancel().catch(() => { });
+             }
+             throw error;
+         }
+diff --git a/node_modules/mediabunny/dist/modules/src/target.js b/node_modules/mediabunny/dist/modules/src/target.js
+index e388782..8e8f9e5 100644
+--- a/node_modules/mediabunny/dist/modules/src/target.js
++++ b/node_modules/mediabunny/dist/modules/src/target.js
+@@ -391,7 +391,10 @@ export class StreamTarget extends Target {
+     }
+     /** @internal */
+     async _close() {
+-        return this._streamWriter?.close();
++        // Backport of mediabunny 1.66 `_release()`: closing an errored/closed stream throws.
++        if (this._streamWriter && this._streamWriter.desiredSize !== null) {
++            await this._streamWriter.close();
++        }
+     }
+ }
+ /**
+diff --git a/node_modules/mediabunny/src/conversion.ts b/node_modules/mediabunny/src/conversion.ts
+index bd15ba7..a5de34b 100644
+--- a/node_modules/mediabunny/src/conversion.ts
++++ b/node_modules/mediabunny/src/conversion.ts
+@@ -1096,7 +1096,7 @@ export class Conversion {
+ 		} catch (error) {
+ 			if (!this._canceled) {
+ 				// Make sure to cancel to stop other encoding processes and clean up resources
+-				void this.cancel();
++				void this.cancel().catch(() => {});
+ 			}
+ 
+ 			throw error;
+diff --git a/node_modules/mediabunny/src/target.ts b/node_modules/mediabunny/src/target.ts
+index df961a9..75b8942 100644
+--- a/node_modules/mediabunny/src/target.ts
++++ b/node_modules/mediabunny/src/target.ts
+@@ -577,7 +577,10 @@ export class StreamTarget extends Target {
+ 
+ 	/** @internal */
+ 	async _close() {
+-		return this._streamWriter?.close();
++		// Backport of mediabunny 1.66 `_release()`: closing an errored/closed stream throws.
++		if (this._streamWriter && this._streamWriter.desiredSize !== null) {
++			await this._streamWriter.close();
++		}
+ 	}
+ }
+ 

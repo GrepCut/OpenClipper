@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Box,
+  Button,
   Center,
   HStack,
+  Image,
   Text,
   VStack,
   useDisclosure,
 } from "@chakra-ui/react";
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, Github, Plus } from "lucide-react";
+import { asset } from "../../../shared/utils/asset.util";
+import { isTauri } from "../../../shared/utils/platform.util";
 import { appToast } from "../../../shared/utils/toast.service";
 import { AppLoader } from "../../../shared/components/app-loader.component";
 import { projectsService, type Project } from "../../../services/projects.service";
@@ -34,6 +38,18 @@ import { OutlinedActionButton } from "../../../shared/components/buttons/outline
 import { SecondaryMainTitle } from "../../../shared/fonts/secondary-main-title.font";
 
 const ITEMS_PER_PAGE = 10;
+const COMMUNITY_LINKS = [
+  {
+    label: "Discord",
+    href: "https://grepcut.com/discord",
+    icon: <Image src={asset("/clipper/discord.svg")} boxSize="16px" alt="" />,
+  },
+  {
+    label: "GitHub",
+    href: "https://github.com/GrepCut/OpenClipper",
+    icon: <Github size={16} aria-hidden="true" />,
+  },
+];
 
 export function ClipperHomePage() {
   const { theme } = useTheme();
@@ -143,15 +159,45 @@ export function ClipperHomePage() {
         ) : (
           <VStack align="stretch" gap={8} flex="1" minH={0}>
             <HStack justify="space-between" align="start" flexWrap="wrap" gap={4} flexShrink={0}>
-              <VStack align="start" gap={2} maxW="640px">
-                <SecondaryMainTitle
-                  fontSize={{ base: "2xl", md: "3xl" }}
-                  fontWeight="bold"
-                  color={theme.text.primary}
-                >
-                  Turn long videos into platform-ready clips
-                </SecondaryMainTitle>
-                <Text color={theme.text.muted}>
+              <VStack align="start" gap={2} flex="1" minW={0}>
+                <HStack flexWrap="wrap" columnGap={6} rowGap={2}>
+                  <SecondaryMainTitle
+                    fontSize={{ base: "2xl", md: "3xl" }}
+                    fontWeight="bold"
+                    color={theme.text.primary}
+                  >
+                    Turn long videos into platform-ready clips
+                  </SecondaryMainTitle>
+                  <HStack
+                    as="nav"
+                    aria-label="Community links"
+                    gap={0.5}
+                    p={0.5}
+                    flexShrink={0}
+                    borderRadius="full"
+                    bg={theme.surface.subtle}
+                    border="1px solid"
+                    borderColor={theme.border.primary}
+                  >
+                    {COMMUNITY_LINKS.map(({ label, href, icon }) => (
+                      <Button
+                        key={label}
+                        asChild
+                        variant="ghost"
+                        size="xs"
+                        borderRadius="full"
+                        color={theme.text.muted}
+                        _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
+                      >
+                        <a href={href} target={isTauri() ? undefined : "_blank"} rel="noopener noreferrer">
+                          {icon}
+                          {label}
+                        </a>
+                      </Button>
+                    ))}
+                  </HStack>
+                </HStack>
+                <Text color={theme.text.muted} maxW="640px">
                   Create a Clipper project in the desktop app, upload your source video, and resume
                   trimming, captions, and exports anytime.
                 </Text>

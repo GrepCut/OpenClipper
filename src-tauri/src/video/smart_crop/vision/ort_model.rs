@@ -7,9 +7,10 @@ use ort::value::TensorRef;
 use super::types::{NativeVisionDevice, NativeVisionError};
 use crate::infra::ort_runtime::ensure_ort_loaded;
 
-/// Vision session on the bundled ONNX Runtime 1.23 + DirectML. Used only when
-/// the OS WinML cannot load a model: Windows 10 (build 19041) ships WinML that
-/// accepts ONNX IR <= 5 / opset <= 9, older than every bundled vision model.
+/// Vision session on the bundled ONNX Runtime 1.23 + DirectML. The face
+/// detector always runs here; other models only when the OS WinML cannot load
+/// them: Windows 10 (build 19041) ships WinML that accepts ONNX IR <= 5 /
+/// opset <= 9, older than every bundled vision model.
 pub struct OrtVisionModel {
     session: Session,
     input_name: String,
@@ -49,7 +50,13 @@ impl OrtVisionModel {
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|error| session_error(error.to_string()))?;
         let mut builder = if directml {
+            // DirectML computes on the GPU; a spinning all-core intra-op pool
+            // would only steal CPU from frame decoding and the other workers.
             builder
+                .with_intra_threads(1)
+                .map_err(|error| session_error(error.to_string()))?
+                .with_intra_op_spinning(false)
+                .map_err(|error| session_error(error.to_string()))?
                 .with_execution_providers([ort::ep::DirectML::default().build().error_on_failure()])
                 .map_err(|error| session_error(error.to_string()))?
         } else {
@@ -64,6 +71,27 @@ impl OrtVisionModel {
         &mut self,
         shape: &[i64],
         input: &[f32],
+        output: &mut Vec<Vec<f32>>,
+    ) -> Result<(), NativeVisionError> {
+        self.evaluate_typed_into(shape, input, output)
+    }
+
+    /// Same as `evaluate_into` for graphs whose input is raw uint8 pixels.
+    pub fn evaluate_u8_into(
+        &mut self,
+        shape: &[i64],
+        input: &[u8],
+        output: &mut Vec<Vec<f32>>,
+    ) -> Result<(), NativeVisionError> {
+        self.evaluate_typed_into(shape, input, output)
+    }
+
+    fn evaluate_typed_into<
+        T: ort::value::PrimitiveTensorElementType + std::fmt::Debug + Clone + 'static,
+    >(
+        &mut self,
+        shape: &[i64],
+        input: &[T],
         output: &mut Vec<Vec<f32>>,
     ) -> Result<(), NativeVisionError> {
         let evaluation_error = |error: ort::Error| {

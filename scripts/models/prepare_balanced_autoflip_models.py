@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare user-supplied YOLOX-S and SCRFD-10G models for WinML.
+"""Prepare the user-supplied YOLOX-S model for WinML.
 
 The source exports are kept unchanged. This script creates dynamic-batch fp32
 and mixed-fp16 derivatives, validates batch parity with ONNX Runtime, and
@@ -28,10 +28,6 @@ YOLOX_SOURCE = ROOT / "public/models/yolox_s/yolox_s.onnx"
 YOLOX_BUNDLE_FP32 = BUNDLE / "yolox_s.onnx"
 YOLOX_BUNDLE_FP16 = BUNDLE / "yolox_s.fp16.onnx"
 
-SCRFD_SOURCE = ROOT / "public/models/scrfd_10g/scrfd_10g_bnkps.onnx"
-SCRFD_BUNDLE_FP32 = BUNDLE / "scrfd_10g_bnkps.onnx"
-SCRFD_BUNDLE_FP16 = BUNDLE / "scrfd_10g_bnkps.fp16.onnx"
-
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -59,22 +55,12 @@ def clear_dimension(dimension: onnx.TensorShapeProto.Dimension, name: str) -> No
     dimension.dim_param = name
 
 
-def validate_contracts(yolox: onnx.ModelProto, scrfd: onnx.ModelProto) -> None:
+def validate_contract(yolox: onnx.ModelProto) -> None:
     y_input = yolox.graph.input[0]
     y_shape = [dimension.dim_value for dimension in y_input.type.tensor_type.shape.dim]
     y_outputs = [(item.name, [d.dim_value for d in item.type.tensor_type.shape.dim]) for item in yolox.graph.output]
     if y_input.name != "images" or y_shape != [1, 3, 640, 640] or y_outputs != [("output", [1, 8400, 85])]:
         raise RuntimeError(f"Unexpected YOLOX-S contract: input={y_input.name, y_shape}, outputs={y_outputs}")
-
-    s_input = scrfd.graph.input[0]
-    output_shapes = [[d.dim_value for d in item.type.tensor_type.shape.dim] for item in scrfd.graph.output]
-    expected = [
-        [12800, 1], [3200, 1], [800, 1],
-        [12800, 4], [3200, 4], [800, 4],
-        [12800, 10], [3200, 10], [800, 10],
-    ]
-    if s_input.name != "input.1" or len(scrfd.graph.output) != 9 or output_shapes != expected:
-        raise RuntimeError(f"Unexpected SCRFD-10G-KPS contract: input={s_input.name}, outputs={output_shapes}")
 
 
 def make_yolox_dynamic(source: onnx.ModelProto) -> onnx.ModelProto:
@@ -102,26 +88,11 @@ def make_yolox_dynamic(source: onnx.ModelProto) -> onnx.ModelProto:
     return model
 
 
-def make_scrfd_dynamic(source: onnx.ModelProto) -> onnx.ModelProto:
-    model = onnx.ModelProto()
-    model.CopyFrom(source)
-    clear_dimension(model.graph.input[0].type.tensor_type.shape.dim[0], "batch")
-    # SCRFD flattens batch and anchors into output dim0. Do not call that
-    # dimension "batch", otherwise WinML's named-dimension override would
-    # incorrectly bind it to 8 instead of 8 * anchor_count.
-    for index, output in enumerate(model.graph.output):
-        clear_dimension(output.type.tensor_type.shape.dim[0], f"batch_anchors_{index}")
-    del model.graph.value_info[:]
-    onnx.checker.check_model(model, full_check=True)
-    return model
-
-
 def assert_batch_parity(
     reference_model: onnx.ModelProto,
     dynamic_model: onnx.ModelProto,
     input_shape: tuple[int, ...],
     label: str,
-    interleaved_anchors: int | None = None,
 ) -> float:
     reference = session(reference_model)
     dynamic = session(dynamic_model)
@@ -133,22 +104,10 @@ def assert_batch_parity(
         expected_outputs = reference.run(None, {input_name: frame})
         for output_index, expected in enumerate(expected_outputs):
             actual = actual_outputs[output_index]
-            if interleaved_anchors is not None:
-                # SCRFD transposes NCHW to HWNC before flattening. Rows are
-                # therefore grouped as [spatial, batch, anchor, values], not
-                # as one contiguous block per batch element.
-                spatial = expected.shape[0] // interleaved_anchors
-                selected = actual.reshape(
-                    spatial,
-                    BATCH_PARITY_SIZE,
-                    interleaved_anchors,
-                    expected.shape[1],
-                )[:, batch_index, :, :].reshape(expected.shape)
-            else:
-                rows_per_batch = actual.shape[0] // BATCH_PARITY_SIZE
-                selected = actual[batch_index * rows_per_batch:(batch_index + 1) * rows_per_batch]
-                if expected.ndim == actual.ndim and expected.shape[0] == 1:
-                    selected = selected[np.newaxis, ...]
+            rows_per_batch = actual.shape[0] // BATCH_PARITY_SIZE
+            selected = actual[batch_index * rows_per_batch:(batch_index + 1) * rows_per_batch]
+            if expected.ndim == actual.ndim and expected.shape[0] == 1:
+                selected = selected[np.newaxis, ...]
             difference = float(np.max(np.abs(selected - expected), initial=0.0))
             max_error = max(max_error, difference)
     if max_error > 1e-4:
@@ -205,8 +164,7 @@ def report(label: str, paths: tuple[Path, Path], batch_error: float, fp16_error:
 
 def main() -> None:
     yolox_source = onnx.load(YOLOX_SOURCE)
-    scrfd_source = onnx.load(SCRFD_SOURCE)
-    validate_contracts(yolox_source, scrfd_source)
+    validate_contract(yolox_source)
 
     yolox_dynamic = make_yolox_dynamic(yolox_source)
     yolox_batch_error = assert_batch_parity(
@@ -221,34 +179,11 @@ def main() -> None:
         YOLOX_BUNDLE_FP32, YOLOX_BUNDLE_FP16,
     )
 
-    scrfd_dynamic = make_scrfd_dynamic(scrfd_source)
-    scrfd_batch_error = assert_batch_parity(
-        scrfd_source,
-        scrfd_dynamic,
-        (3, 640, 640),
-        "SCRFD-10G-KPS",
-        interleaved_anchors=2,
-    )
-    scrfd_fp16 = make_fp16(scrfd_dynamic)
-    scrfd_fp16_error = assert_fp16_parity(
-        scrfd_dynamic, scrfd_fp16, (3, 640, 640), "SCRFD-10G-KPS"
-    )
-    save_pair(
-        scrfd_dynamic, scrfd_fp16,
-        SCRFD_BUNDLE_FP32, SCRFD_BUNDLE_FP16,
-    )
-
     report(
         "YOLOX-S",
         (YOLOX_BUNDLE_FP32, YOLOX_BUNDLE_FP16),
         yolox_batch_error,
         yolox_fp16_error,
-    )
-    report(
-        "SCRFD-10G-KPS",
-        (SCRFD_BUNDLE_FP32, SCRFD_BUNDLE_FP16),
-        scrfd_batch_error,
-        scrfd_fp16_error,
     )
 
 

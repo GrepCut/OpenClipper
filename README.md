@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://grepcut.com/en/open-clipper"><img src="https://img.shields.io/badge/website-open_clipper-111?logo=google-chrome&amp;logoColor=fff&amp;style=flat" alt="Open Clipper website" /></a>
   <a href="https://grepcut.com/"><img src="https://img.shields.io/badge/GrepCut-grepcut.com-111?style=flat" alt="GrepCut" /></a>
-  <a href="https://discord.gg/2uXgrUpe"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&amp;logoColor=fff&amp;style=flat" alt="Join Discord" /></a>
+  <a href="https://grepcut.com/discord"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&amp;logoColor=fff&amp;style=flat" alt="Join Discord" /></a>
   <a href="https://x.com/GrepCut"><img src="https://img.shields.io/badge/follow-%40GrepCut-000?logo=x&amp;logoColor=fff&amp;style=flat" alt="Follow GrepCut on X" /></a>
   <img src="https://img.shields.io/badge/LinkedIn-Adam%20Zi%C3%B3%C5%82ko-0A66C2?logo=linkedin&amp;logoColor=fff&amp;style=flat" alt="LinkedIn: Adam Ziolko" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat" alt="License: MIT" /></a>
@@ -195,14 +195,14 @@ Bundle identifier: `com.openclipper.app`
 
 The reframe engine creates a smart crop for each target format, such as 9:16. It adapts Google [AutoFlip](https://github.com/google/mediapipe/tree/master/mediapipe/examples/desktop/autoflip) to detect scene cuts, identify important subjects, and plan a camera path that follows them.
 
-Analyzer version: `autoflip-v43-snap-layout-on-cut`. Vision bundle: `clipper-vision-v5-yolox-s-scrfd10g-tiled`.
+Analyzer version: `autoflip-v43-snap-layout-on-cut`. Vision bundle: `clipper-vision-v7-yolox-s-yunet-multiscale`.
 
 ### Two-tier pipeline
 
 **Native (Windows):** FFmpeg decode and WinML/DirectML inference in [src-tauri/src/video/smart_crop/](src-tauri/src/video/smart_crop/), started via `start_clipper_winml_analysis`:
 
 - Shot boundaries on every decoded frame (histogram + frame-diff)
-- SCRFD face and YOLOX object detection at **5 FPS** (every 200 ms), with MoveNet pose detection as a conditional fallback
+- YuNet face and YOLOX object detection at **5 FPS** (every 200 ms), with MoveNet pose detection as a conditional fallback
 - **ByteTrack v2** on three streams (person / face / pose); trackers reset on scene cuts
 - Motion measured across a grid on every detection sample to help locate important regions (no extra model)
 
@@ -229,7 +229,7 @@ Vision model files ship in [src-tauri/resources/models/clipper-vision/](src-taur
 | Model             | Role                                                  |
 | ----------------- | ----------------------------------------------------- |
 | YOLOX-S           | Person/object boxes; tiled recovery on long edge      |
-| SCRFD-10G         | Face boxes + 5 keypoints; tiled recovery              |
+| YuNet multiscale  | Face boxes + 5 keypoints; 384/960/1536 views in one fused fp16 graph on ONNX Runtime DirectML; tiled recovery |
 | MoveNet MultiPose | Pose fallback; injects person boxes when YOLOX misses |
 
 ByteTrack v2 is the tracking algorithm, not a downloaded model. It assigns a `trackId` within each person, face, or pose stream and resets on scene cuts. Motion measured across a grid also helps identify important regions without an extra model.
@@ -330,7 +330,7 @@ You can point `OPEN_CLIPPER_ORT_DLL` at an existing compatible runtime DLL inste
 
 ## Contributing
 
-Questions, bug reports, and feature ideas are welcome. [Join the Discord](https://discord.gg/2uXgrUpe) or [open an issue](https://github.com/GrepCut/OpenClipper/issues). Please follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+Questions, bug reports, and feature ideas are welcome. [Join the Discord](https://grepcut.com/discord) or [open an issue](https://github.com/GrepCut/OpenClipper/issues). Please follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
 
 ## License
 

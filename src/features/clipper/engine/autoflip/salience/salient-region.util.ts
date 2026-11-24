@@ -164,7 +164,7 @@ function poseRegions(poses: PoseSubject[], faces: AutoFlipFaceDetection[], prefe
     // A predicted pose is useful for track continuity, but its extrapolated
     // torso must not steer the camera after a cut or detector dropout.
     if (pose.predicted) continue;
-    // SCRFD is more precise for talking-head material. When it already
+    // The face detector is more precise for talking-head material. When it already
     // covers this pose's head, do not emit a second torso signal for the same
     // person—the duplicate shifts the aggregate focus down and sideways.
     if (pose.headBox && faces.some((face) => boxesIntersect(pose.headBox!, face.box))) continue;
