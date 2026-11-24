@@ -4,8 +4,11 @@ use tauri::{ipc::Channel, AppHandle, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
 
+use crate::app::distribution;
+
 const FALLBACK_UPDATER_ENDPOINT: &str =
     "https://api.grepcut.com/api/app-updates/check/{{target}}/{{arch}}/{{current_version}}?channel=stable&product=open-clipper";
+const STORE_UPDATE_MESSAGE: &str = "Updates for this installation are managed by Microsoft Store.";
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,10 +46,19 @@ pub fn get_app_name() -> String {
 }
 
 #[tauri::command]
+pub fn is_app_updater_enabled() -> bool {
+    !distribution::is_packaged()
+}
+
+#[tauri::command]
 pub async fn check_for_app_update(
     app: AppHandle,
     pending_update: State<'_, PendingUpdate>,
 ) -> Result<Option<UpdateMetadata>, String> {
+    if !is_app_updater_enabled() {
+        return Err(STORE_UPDATE_MESSAGE.to_owned());
+    }
+
     let update = app
         .updater_builder()
         .endpoints(vec![updater_endpoint()?])
@@ -76,6 +88,10 @@ pub async fn install_app_update(
     pending_update: State<'_, PendingUpdate>,
     on_event: Channel<DownloadEvent>,
 ) -> Result<(), String> {
+    if !is_app_updater_enabled() {
+        return Err(STORE_UPDATE_MESSAGE.to_owned());
+    }
+
     #[cfg(target_os = "windows")]
     let _ = &app;
 

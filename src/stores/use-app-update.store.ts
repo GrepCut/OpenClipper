@@ -45,6 +45,7 @@ type DownloadEvent =
 interface AppUpdateState {
   appName: string | null;
   currentVersion: string | null;
+  appUpdaterEnabled: boolean;
   availableUpdate: UpdateMetadata | null;
   status: AppUpdateStatus;
   error: string | null;
@@ -66,6 +67,7 @@ type AppUpdateStore = AppUpdateState & AppUpdateActions;
 const INITIAL_STATE: AppUpdateState = {
   appName: null,
   currentVersion: null,
+  appUpdaterEnabled: false,
   availableUpdate: null,
   status: "idle",
   error: null,
@@ -80,15 +82,17 @@ let initializePromise: Promise<void> | null = null;
 const getAppMetadata = async (): Promise<{
   appName: string;
   currentVersion: string;
+  appUpdaterEnabled: boolean;
 }> => {
   const { invoke } = await import("@tauri-apps/api/core");
 
-  const [appName, currentVersion] = await Promise.all([
+  const [appName, currentVersion, appUpdaterEnabled] = await Promise.all([
     invoke<string>("get_app_name"),
     invoke<string>("get_app_version"),
+    invoke<boolean>("is_app_updater_enabled"),
   ]);
 
-  return { appName, currentVersion };
+  return { appName, currentVersion, appUpdaterEnabled };
 };
 
 const getUpdateErrorMessage = (error: unknown): string => {
@@ -121,13 +125,14 @@ export const useAppUpdateStore = create<AppUpdateStore>((set, get) => ({
     if (!initializePromise) {
       initializePromise = (async () => {
         try {
-          const { appName, currentVersion } = await getAppMetadata();
+          const appMetadata = await getAppMetadata();
           set({
-            appName,
-            currentVersion,
+            ...appMetadata,
             hasInitialized: true,
           });
-          await get().checkForUpdates(false);
+          if (appMetadata.appUpdaterEnabled) {
+            await get().checkForUpdates(false);
+          }
         } catch (error) {
           const message = getUpdateErrorMessage(error);
           set({
@@ -153,7 +158,8 @@ export const useAppUpdateStore = create<AppUpdateStore>((set, get) => ({
       return;
     }
 
-    if (get().status === "checking") {
+    const { hasInitialized, appUpdaterEnabled, status } = get();
+    if ((hasInitialized && !appUpdaterEnabled) || status === "checking") {
       return;
     }
 
@@ -171,10 +177,11 @@ export const useAppUpdateStore = create<AppUpdateStore>((set, get) => ({
       ]);
 
       if (appMetadata) {
-        set({
-          appName: appMetadata.appName,
-          currentVersion: appMetadata.currentVersion,
-        });
+        set(appMetadata);
+        if (!appMetadata.appUpdaterEnabled) {
+          set({ status: "idle" });
+          return;
+        }
       }
 
       const update = await invoke<UpdateMetadata | null>("check_for_app_update");
@@ -236,7 +243,11 @@ export const useAppUpdateStore = create<AppUpdateStore>((set, get) => ({
   },
 
   installUpdate: async () => {
-    const { availableUpdate } = get();
+    const { appUpdaterEnabled, availableUpdate } = get();
+
+    if (!appUpdaterEnabled) {
+      return;
+    }
 
     if (!availableUpdate) {
       toaster.create({

@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join, isAbsolute } from "node:path";
+import { join, isAbsolute, resolve } from "node:path";
 
 const EXCLUDED_DLLS = new Set([
   "directml.debug.dll",
@@ -21,7 +21,9 @@ const targetRoot = isAbsolute(targetDirName)
   ? targetDirName
   : join(tauriDir, targetDirName);
 const profileDir = join(targetRoot, profile);
-const destDir = join(tauriDir, "resources", "win-runtime");
+const destDir = process.argv[2]
+  ? resolve(process.argv[2])
+  : join(tauriDir, "resources", "win-runtime");
 
 function fail(message) {
   console.error(message);

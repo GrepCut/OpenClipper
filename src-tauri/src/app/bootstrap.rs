@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::app::{protocols, window};
+use crate::app::{distribution, protocols, window};
 use crate::invoke_handler;
 use crate::storage::database;
 use crate::transcription::ParakeetService;
@@ -22,7 +22,11 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_deep_link::init());
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = if distribution::is_packaged() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    };
     protocols::register(builder)
         .manage(NativeJobRegistry::default())
         .manage(crate::commands::app_updates::PendingUpdate(Mutex::new(None)))
@@ -74,7 +78,10 @@ pub fn run() {
                 log::error!("Open Clipper MCP HTTP server failed to start on port {mcp_port}");
             }
             #[cfg(any(windows, target_os = "linux"))]
-            { use tauri_plugin_deep_link::DeepLinkExt; app.deep_link().register_all()?; }
+            if !distribution::is_packaged() {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                app.deep_link().register_all()?;
+            }
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 window::apply_webview_background(&window);

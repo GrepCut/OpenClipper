@@ -168,7 +168,7 @@ for (const key of Object.keys(childEnv)) {
   }
 }
 
-if (!childEnv.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
+if (!skipsBundle && !childEnv.TAURI_SIGNING_PRIVATE_KEY?.trim()) {
   const privateKeyPath = childEnv.TAURI_SIGNING_PRIVATE_KEY_PATH?.trim();
   if (privateKeyPath) {
     if (!existsSync(privateKeyPath)) {
