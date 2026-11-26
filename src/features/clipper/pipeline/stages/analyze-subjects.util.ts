@@ -143,6 +143,11 @@ export async function runAnalyzeSubjectsStage(
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
 ): Promise<void> {
+  if (session.skipAutoReframing) {
+    await markClipperStepCompleted(input.projectId, "preview_ready");
+    return;
+  }
+
   reporter.stage("analyzing-subjects", "Restoring smart crop analysis…");
   reporter.subjectProgress(0);
   if (input.skipSubjectAnalysis) {

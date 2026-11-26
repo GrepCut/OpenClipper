@@ -72,6 +72,7 @@ function buildResumedSession(
     sourceUrl: loaded.sourceUrl!,
     sourceDuration: loaded.sourceDuration!,
     mediaFileId: loaded.mediaFileId!,
+    skipAutoReframing: loaded.metadata.skipAutoReframing,
     rangeTrimmedFile: null,
     rangeTrimmedVideoUrl: null,
     rangeWords: loaded.words,

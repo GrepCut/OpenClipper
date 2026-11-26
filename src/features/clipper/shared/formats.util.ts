@@ -24,7 +24,7 @@ export interface ClipperFormatDef {
   publishTargets?: SocialPublishablePlatform[];
   label: string;
   aspectId: ClipperAspectPresetId;
-  /** Every format is cover-filled; Smart Follow supplies the source crop. */
+  /** Default framing for this format. */
   mode: "crop";
   description: string;
   isDefaultEnabled: boolean;
@@ -42,7 +42,7 @@ export const CLIPPER_FORMAT_DEFS: ClipperFormatDef[] = [
     label: "YouTube",
     aspectId: "16-9",
     mode: "crop",
-    description: "Landscape 16:9 (cropped)",
+    description: "Landscape 16:9",
     isDefaultEnabled: false,
   },
   {

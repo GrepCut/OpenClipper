@@ -258,7 +258,8 @@ export async function renderClipperFormat(
 
     const canvasCache = new FrameCanvasCache();
     const encodeBackpressure = new EncodeBackpressure();
-    const skipCanvas = !render.settings.captions.enabled && !hasBranding;
+    const hasPartBadge = render.settings.partsOverlay.enabled && render.partNumber != null;
+    const skipCanvas = !render.skipAutoReframing && !render.settings.captions.enabled && !hasBranding && !hasPartBadge;
     let encodedFrames = 0;
 
     const encodeSample = async (

@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Box, Text, VStack } from "@chakra-ui/react";
+import React, { useCallback, useId, useMemo, useRef, useState } from "react";
+import { Box, chakra, Text, VStack } from "@chakra-ui/react";
 import { UploadCloud } from "lucide-react";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
@@ -26,6 +26,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
   fill = false,
 }) => {
   const { theme } = useClipperUi();
+  const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const pickingRef = useRef(false);
@@ -86,10 +87,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
 
   return (
     <Box
-      as="label"
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-busy={picking}
+      position="relative"
       opacity={disabled || picking ? 0.6 : 1}
       pointerEvents={disabled ? "none" : "auto"}
       onDragOver={(e: React.DragEvent) => {
@@ -115,23 +113,24 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
       backgroundImage={borderImage}
       backgroundSize="100% 100%"
       backgroundRepeat="no-repeat"
-      cursor={picking ? "progress" : "pointer"}
-      onClick={(event: React.MouseEvent) => {
-        if (!isTauri()) return;
-        event.preventDefault();
-        void chooseNativeFile();
-      }}
-      onKeyDown={(e) => {
-        if (disabled || (e.key !== "Enter" && e.key !== " ")) return;
-        e.preventDefault();
-        chooseFile();
-      }}
       transition="background-color 0.2s ease, opacity 0.2s ease"
       _hover={{
         bgColor: hoverBg,
         backgroundImage: dashedBorderImage(clipperTheme.accentGlow, radiusPx),
       }}
     >
+      <chakra.button
+        type="button"
+        position="absolute"
+        inset={0}
+        borderRadius="inherit"
+        cursor={picking ? "progress" : "pointer"}
+        disabled={disabled || picking}
+        aria-busy={picking}
+        aria-labelledby={titleId}
+        onClick={chooseFile}
+        focusVisibleRing="outside"
+      />
       <input
         ref={inputRef}
         type="file"
@@ -144,7 +143,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
           <UploadCloud size={84} />
         </Box>
         <VStack gap={1.5}>
-          <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="semibold" color={theme.text.primary} letterSpacing="-0.01em">
+          <Text id={titleId} fontSize={{ base: "lg", md: "xl" }} fontWeight="semibold" color={theme.text.primary} letterSpacing="-0.01em">
             Drop your video here
           </Text>
           <Text fontSize="sm" color={theme.text.muted}>

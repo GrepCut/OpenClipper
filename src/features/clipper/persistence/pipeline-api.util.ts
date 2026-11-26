@@ -103,7 +103,7 @@ export function resolvePersistedClipRange(
 
 export function computeResumePlan(
   steps: ClipperPipelineStepRecord[],
-  options?: { requiredAnalyzerVersion?: string; hasClipRange?: boolean },
+  options?: { requiredAnalyzerVersion?: string; hasClipRange?: boolean; skipAutoReframing?: boolean },
 ): ClipperResumePlan {
   const completed = (key: ClipperPipelineStepKey) =>
     steps.find((step) => step.stepKey === key)?.status === "completed";
@@ -123,13 +123,14 @@ export function computeResumePlan(
     : undefined;
   const subjectAnalysisCurrent = options?.requiredAnalyzerVersion == null
     || savedAnalyzerVersion === options.requiredAnalyzerVersion;
+  const skipAutoReframing = options?.skipAutoReframing === true;
   return {
     target: "restoring",
     skipTranscribe: completed("transcribe"),
-    skipFaceDetect: completed("analyze_faces"),
+    skipFaceDetect: skipAutoReframing || completed("analyze_faces"),
     // Face detections can be restored, but a changed layout/identity policy
     // must rebuild the AutoFlip track from fresh subject extraction.
-    skipSubjectAnalysis: completed("analyze_subjects") && subjectAnalysisCurrent,
+    skipSubjectAnalysis: skipAutoReframing || (completed("analyze_subjects") && subjectAnalysisCurrent),
     skipToPreview: completed("preview_ready"),
   };
 }

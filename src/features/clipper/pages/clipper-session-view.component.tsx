@@ -27,6 +27,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     refreshExportHistory,
     reset,
     sourceUrl,
+    skipAutoReframing,
     rangeLocked,
     retryResume,
     handleFile,
@@ -56,10 +57,9 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           sourceDuration={state.sourceDuration ?? 60}
           initialStartSec={state.clipStart > 0 ? state.clipStart : undefined}
           initialEndSec={state.clipEnd ?? state.sourceDuration ?? undefined}
+          initialSkipAutoReframing={skipAutoReframing}
           sourceFileName={state.sourceFileName}
-          onConfirm={(start, end) => {
-            void confirmRange(start, end);
-          }}
+          onConfirm={confirmRange}
           onCancel={reset}
         />
       )}

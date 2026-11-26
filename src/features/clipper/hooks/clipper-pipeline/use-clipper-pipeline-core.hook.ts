@@ -179,6 +179,7 @@ export function useClipperPipelineCore(
       {
         stage: "idle",
         sourceMediaFileId: null,
+        skipAutoReframing: false,
         clipStart: 0,
         clipEnd: null,
         transcribedClipStart: undefined,

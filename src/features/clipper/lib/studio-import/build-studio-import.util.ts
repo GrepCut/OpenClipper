@@ -76,6 +76,7 @@ export function buildClipperStudioImport(
     source: input.sourceSize,
     output: dims,
     analysis: input.frameContext?.smartCropAnalysis ?? null,
+    skipAutoReframing: input.frameContext?.skipAutoReframing,
     disabledCollageRegionIds: input.frameContext?.disabledCollageRegionIds ?? [],
     segments,
   });

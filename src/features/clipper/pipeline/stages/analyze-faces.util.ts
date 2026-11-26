@@ -59,6 +59,8 @@ export async function runAnalyzeFacesStage(
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
 ): Promise<{ faceDetectSkipped: boolean }> {
+  if (session.skipAutoReframing) return { faceDetectSkipped: true };
+
   const { projectId, mediaFileId, snappedStart, end, skipFaceDetect, skipSubjectAnalysis, runId } = input;
   let faceDetectSkipped = false;
 

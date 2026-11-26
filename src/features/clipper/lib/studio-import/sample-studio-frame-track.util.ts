@@ -31,6 +31,7 @@ export interface SampleStudioFrameTrackInput {
   source: FrameEffectSize;
   output: FrameEffectSize;
   analysis: ClipperFrameAnalysis | null;
+  skipAutoReframing?: boolean;
   disabledCollageRegionIds: string[];
   segments: ClipperClipSegmentWindow[];
 }
@@ -124,14 +125,14 @@ function toStudioPanels(
  * disabled collage regions, same content-rect clamp and the same cut timing.
  */
 export function sampleStudioFrameTrack(input: SampleStudioFrameTrackInput): ClipperStudioFrameSample[] {
-  const { formatDef, source, output, analysis, disabledCollageRegionIds, segments } = input;
+  const { formatDef, source, output, analysis, skipAutoReframing, disabledCollageRegionIds, segments } = input;
   if (!(source.width > 0 && source.height > 0)) {
     throw new Error("Source video dimensions are unknown; wait for the preview to load.");
   }
-  const tracks = rawTracks(analysis, formatDef);
+  const tracks = rawTracks(skipAutoReframing ? null : analysis, formatDef);
   const cuts = switchTimes(tracks);
   const isCutTime = (t: number) => cuts.some((cut) => Math.abs(cut - t) <= STUDIO_TIME_EPSILON_SEC);
-  const render = { smartCropAnalysis: analysis, disabledCollageRegionIds };
+  const render = { smartCropAnalysis: analysis, skipAutoReframing, disabledCollageRegionIds };
 
   const samples: ClipperStudioFrameSample[] = [];
   for (const t of sampleTimes(tracks, cuts, segments)) {

@@ -107,6 +107,7 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     },
     getRangeFrameContext,
     sourceUrl: sessionRef.current?.sourceUrl ?? null,
+    skipAutoReframing: sessionRef.current?.skipAutoReframing ?? false,
     rangeLocked,
     disabledCollageRegionIds: clips.disabledCollageRegionIds,
     toggleCollageRegion: clips.toggleCollageRegion,

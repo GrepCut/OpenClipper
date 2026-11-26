@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CLIPPER_BRANDING_KINDS } from "../settings/branding-settings.util";
+import { CLIPPER_PARTS_OVERLAY_PRESETS, CLIPPER_PARTS_OVERLAY_SIZES } from "../settings/parts-overlay-settings.util";
 import type { ClipperSmartCropBlob } from "../shared/smart-crop.util";
 import { CLIPPER_EXPORT_MANIFEST_VERSION } from "./export-files.types";
 
@@ -61,6 +62,15 @@ const clipperSettingsSchema = z
         opacity: z.number(),
         logoWidthRatio: z.number(),
         text: z.string(),
+      })
+      .partial()
+      .optional(),
+    partsOverlay: z
+      .object({
+        enabled: z.boolean(),
+        label: z.string(),
+        size: z.enum(CLIPPER_PARTS_OVERLAY_SIZES),
+        preset: z.enum(CLIPPER_PARTS_OVERLAY_PRESETS),
       })
       .partial()
       .optional(),

@@ -144,6 +144,7 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
         const resumePlan = computeResumePlan(steps, {
           requiredAnalyzerVersion: AUTOFLIP_ANALYZER_VERSION,
           hasClipRange: range.clipEnd != null,
+          skipAutoReframing: metadata.skipAutoReframing,
         });
         isRestoreFlow = isRestoreBootFlow(resumePlan, metadata.stage);
 

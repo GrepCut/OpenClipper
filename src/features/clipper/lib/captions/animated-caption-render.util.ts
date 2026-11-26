@@ -13,6 +13,44 @@ type CaptionContextWithTypography = CaptionContext & {
   filter?: string;
 };
 
+export interface CaptionBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface PaintBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function includePaintBounds(
+  bounds: PaintBounds,
+  ctx: CaptionContext,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  paddingX = 0,
+  paddingY = 0,
+): void {
+  if (ctx.globalAlpha <= 0 || width <= 0 || height <= 0) return;
+  const { a, b, c, d, e, f } = ctx.getTransform();
+  const originX = a * x + c * y + e;
+  const originY = b * x + d * y + f;
+  const widthX = a * width;
+  const widthY = b * width;
+  const heightX = c * height;
+  const heightY = d * height;
+  bounds.left = Math.min(bounds.left, originX + Math.min(0, widthX) + Math.min(0, heightX) - paddingX);
+  bounds.right = Math.max(bounds.right, originX + Math.max(0, widthX) + Math.max(0, heightX) + paddingX);
+  bounds.top = Math.min(bounds.top, originY + Math.min(0, widthY) + Math.min(0, heightY) - paddingY);
+  bounds.bottom = Math.max(bounds.bottom, originY + Math.max(0, widthY) + Math.max(0, heightY) + paddingY);
+}
+
 interface CaptionWordPlacement {
   index: number;
   text: string;
@@ -405,6 +443,7 @@ function drawCaptionPlate(
   layout: CaptionLayout,
   canvasWidth: number,
   preset: CaptionPresetDefinition,
+  bounds?: PaintBounds,
 ): void {
   if (preset.plateStyle === "none") return;
   const padX = layout.fontPx * preset.platePaddingXEm;
@@ -412,18 +451,14 @@ function drawCaptionPlate(
   const radius = layout.fontPx * preset.plateRadiusEm;
   const plateWidth = layout.maxLineWidth + padX * 2;
   const plateHeight = layout.bottom - layout.top + padY * 2;
+  const x = (canvasWidth - plateWidth) / 2;
+  const y = layout.top - padY;
 
   ctx.save();
   ctx.globalAlpha *= preset.plateOpacity;
   ctx.fillStyle = preset.plateColor;
-  roundedRect(
-    ctx,
-    canvasWidth / 2 - plateWidth / 2,
-    layout.top - padY,
-    plateWidth,
-    plateHeight,
-    radius,
-  );
+  if (bounds) includePaintBounds(bounds, ctx, x, y, plateWidth, plateHeight);
+  roundedRect(ctx, x, y, plateWidth, plateHeight, radius);
   ctx.fill();
   ctx.restore();
 }
@@ -435,6 +470,7 @@ function drawActiveGradientPill(
   fontPx: number,
   preset: CaptionPresetDefinition,
   alpha: number,
+  bounds?: PaintBounds,
 ): void {
   if (!preset.activeGradient || alpha <= 0) return;
   const padX = fontPx * preset.activePaddingXEm;
@@ -450,6 +486,7 @@ function drawActiveGradientPill(
   ctx.save();
   ctx.globalAlpha *= alpha;
   ctx.fillStyle = gradient;
+  if (bounds) includePaintBounds(bounds, ctx, x, y, width, height);
   roundedRect(ctx, x, y, width, height, fontPx * preset.activeRadiusEm);
   ctx.fill();
   ctx.restore();
@@ -494,6 +531,7 @@ function paintText(
     translateYEm?: number;
     fillCompositeOperation?: GlobalCompositeOperation;
   } = {},
+  bounds?: PaintBounds,
 ): void {
   const {
     alpha = 1,
@@ -509,8 +547,8 @@ function paintText(
   } = options;
   if (alpha <= 0) return;
 
-  const measuredWidth = ctx.measureText(text).width;
-  const centerX = x + measuredWidth / 2;
+  const metrics = ctx.measureText(text);
+  const centerX = x + metrics.width / 2;
   const centerY = baseline - fontPx * 0.42;
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -526,8 +564,26 @@ function paintText(
   ctx.translate(-centerX, -centerY);
 
   if (includeShadow) applyTextShadow(ctx, preset, fontPx, glowColor);
-  if (includeOutline && outlineWidthEm > 0) {
-    ctx.lineWidth = Math.max(1, fontPx * outlineWidthEm * 2);
+  const outlineWidth = includeOutline && outlineWidthEm > 0 ? Math.max(1, fontPx * outlineWidthEm * 2) : 0;
+  if (bounds) {
+    const left = metrics.actualBoundingBoxLeft ?? 0;
+    const right = metrics.actualBoundingBoxRight ?? metrics.width;
+    const ascent = metrics.actualBoundingBoxAscent ?? fontPx;
+    const descent = metrics.actualBoundingBoxDescent ?? fontPx * 0.25;
+    const effectPadding = fontPx * blurEm * 3 + ctx.shadowBlur * 2;
+    includePaintBounds(
+      bounds,
+      ctx,
+      x - left - outlineWidth / 2,
+      baseline - ascent - outlineWidth / 2,
+      left + right + outlineWidth,
+      ascent + descent + outlineWidth,
+      effectPadding + Math.abs(ctx.shadowOffsetX),
+      effectPadding + Math.abs(ctx.shadowOffsetY),
+    );
+  }
+  if (outlineWidth > 0) {
+    ctx.lineWidth = outlineWidth;
     ctx.strokeStyle = preset.outlineColor;
     ctx.strokeText(text, x, baseline);
     clearTextShadow(ctx);
@@ -548,6 +604,7 @@ function drawKaraokeWord(
   preset: CaptionPresetDefinition,
   word: WordCue,
   timestamp: number,
+  bounds?: PaintBounds,
 ): void {
   paintText(
     ctx,
@@ -557,6 +614,8 @@ function drawKaraokeWord(
     preset.textColor,
     preset,
     fontPx,
+    undefined,
+    bounds,
   );
   const progress = captionProgress(timestamp, word.start, word.end);
   if (progress <= 0) return;
@@ -592,6 +651,7 @@ function drawPhraseWord(
   word: WordCue,
   active: boolean,
   timestamp: number,
+  bounds?: PaintBounds,
 ): void {
   const motion = wordMotion(preset, word, timestamp);
   if (motion.opacity <= 0) return;
@@ -621,6 +681,7 @@ function drawPhraseWord(
         blurEm: motion.blurEm,
         translateYEm: motion.translateYEm,
       },
+      bounds,
     );
     return;
   }
@@ -649,6 +710,7 @@ function drawPhraseWord(
         blurEm: motion.blurEm,
         translateYEm: motion.translateYEm,
       },
+      bounds,
     );
     return;
   }
@@ -671,6 +733,7 @@ function drawPhraseWord(
           ? (preset.activeOutlineWidthEm ?? preset.outlineWidthEm)
           : preset.outlineWidthEm,
       },
+      bounds,
     );
     return;
   }
@@ -691,6 +754,7 @@ function drawPhraseWord(
         glowColor: active ? preset.activeColor : undefined,
         translateYEm: motion.translateYEm,
       },
+      bounds,
     );
     return;
   }
@@ -709,6 +773,7 @@ function drawPhraseWord(
       blurEm: motion.blurEm,
       translateYEm: motion.translateYEm,
     },
+    bounds,
   );
 
   if (
@@ -733,6 +798,7 @@ function drawPhraseWord(
         includeOutline: false,
         includeShadow: false,
       },
+      bounds,
     );
   }
 }
@@ -745,6 +811,7 @@ function drawKineticCaption(
   width: number,
   height: number,
   preset: CaptionPresetDefinition,
+  bounds?: PaintBounds,
 ): void {
   const mainWordIndex = group.words.reduce((bestIndex, word, index, words) => {
     const length = word.text.replace(/[^\p{L}\p{N}]/gu, "").length;
@@ -884,6 +951,7 @@ function drawKineticCaption(
             ? "difference"
             : undefined,
         },
+        bounds,
       );
     }
   } finally {
@@ -898,6 +966,7 @@ function drawPodcastCaption(
   width: number,
   height: number,
   preset: CaptionPresetDefinition,
+  bounds?: PaintBounds,
 ): void {
   let fontPx = Math.max(12, Math.round(height * preset.fontSizeRatio));
   const splitAt = Math.ceil(group.words.length / 2);
@@ -990,6 +1059,7 @@ function drawPodcastCaption(
               preset.entranceScaleFrom +
               (1 - preset.entranceScaleFrom) * progress,
           },
+          bounds,
         );
         x += widths[wordIndex]! + wordGap;
       });
@@ -1007,6 +1077,7 @@ function drawCaptionWordBlock(
   width: number,
   height: number,
   preset: CaptionPresetDefinition,
+  bounds?: PaintBounds,
 ): void {
   if (group.words.length === 0) return;
   if (preset.renderer === "kinetic") {
@@ -1018,11 +1089,12 @@ function drawCaptionWordBlock(
       width,
       height,
       preset,
+      bounds,
     );
     return;
   }
   if (preset.renderer === "podcast") {
-    drawPodcastCaption(ctx, group, timestamp, width, height, preset);
+    drawPodcastCaption(ctx, group, timestamp, width, height, preset, bounds);
     return;
   }
   ctx.save();
@@ -1043,7 +1115,7 @@ function drawCaptionWordBlock(
       ctx.scale(scale, scale);
       ctx.translate(-width / 2, -height * preset.anchorY);
     }
-    drawCaptionPlate(ctx, layout, width, preset);
+    drawCaptionPlate(ctx, layout, width, preset, bounds);
 
     const emphasizedWordIndex =
       preset.activeEffect === "longest-color"
@@ -1070,6 +1142,7 @@ function drawCaptionWordBlock(
             layout.fontPx,
             preset,
             activeOverlayAlpha(preset, word, active, timestamp),
+            bounds,
           );
         }
       }
@@ -1094,6 +1167,7 @@ function drawCaptionWordBlock(
           preset,
           word,
           timestamp,
+          bounds,
         );
         return;
       }
@@ -1106,6 +1180,7 @@ function drawCaptionWordBlock(
         word,
         isEmphasizedWord(placement.index),
         timestamp,
+        bounds,
       );
     };
 
@@ -1142,11 +1217,15 @@ export function drawPhraseAnimatedCaption(
   height: number,
   presetId: ClipperCaptionPresetId,
   presetOverride?: CaptionPresetDefinition,
-): void {
+  measureBounds = false,
+): CaptionBounds | null {
   const active = findActiveCaptionGroup(groups, timestamp);
-  if (!active) return;
+  if (!active) return null;
   const preset = presetOverride ?? resolveCaptionPreset(presetId);
-  if (preset.renderer === "one-word" && active.activeWordIndex < 0) return;
+  if (preset.renderer === "one-word" && active.activeWordIndex < 0) return null;
+  const bounds = measureBounds
+    ? { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }
+    : undefined;
   drawCaptionWordBlock(
     ctx,
     active.group,
@@ -1155,7 +1234,15 @@ export function drawPhraseAnimatedCaption(
     width,
     height,
     preset,
+    bounds,
   );
+  if (!bounds || bounds.right <= bounds.left || bounds.bottom <= bounds.top) return null;
+  return {
+    x: bounds.left,
+    y: bounds.top,
+    width: bounds.right - bounds.left,
+    height: bounds.bottom - bounds.top,
+  };
 }
 
 export function drawAnimatedCaption(

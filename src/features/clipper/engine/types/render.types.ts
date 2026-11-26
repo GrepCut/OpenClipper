@@ -40,6 +40,8 @@ export interface ResolvedClipperLayout {
 /** Everything needed to render one frame's crop + captions for a given settings snapshot. */
 export interface ClipperFrameContext {
   settings: ClipperSettings;
+  skipAutoReframing?: boolean;
+  partNumber?: number;
   captionGroups: CaptionGroup[];
   faceCache: FaceSampleCache | null;
   faceRender?: {

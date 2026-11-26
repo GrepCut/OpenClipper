@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box } from '@chakra-ui/react';
+import { chakra } from '@chakra-ui/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../../../theme';
 
@@ -13,21 +13,26 @@ interface ModernSwitchProps {
     onCheckedChange: (checked: boolean) => void;
     label?: string;
     disabled?: boolean;
+    "aria-describedby"?: string;
 }
 
 export const ModernSwitch: React.FC<ModernSwitchProps> = ({
     checked,
     onCheckedChange,
+    label,
+    "aria-describedby": describedBy,
     disabled = false
 }) => {
     const { theme } = useTheme();
 
     return (
-        <Box
-            as="button"
+        <chakra.button
+            type="button"
             role="switch"
             aria-checked={checked}
-            {...({ disabled } as any)}
+            aria-label={label}
+            aria-describedby={describedBy}
+            disabled={disabled}
             onClick={() => !disabled && onCheckedChange(!checked)}
             position="relative"
             width="42px"
@@ -51,7 +56,7 @@ export const ModernSwitch: React.FC<ModernSwitchProps> = ({
                 boxShadow: `0 0 0 2px ${theme.border.focus}`
             }}
         >
-            <motion.div
+            <motion.span
                 initial={false}
                 animate={{
                     x: checked ? 20 : 0,
@@ -77,7 +82,7 @@ export const ModernSwitch: React.FC<ModernSwitchProps> = ({
 
             <AnimatePresence>
                 {checked && (
-                    <motion.div
+                    <motion.span
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -94,6 +99,6 @@ export const ModernSwitch: React.FC<ModernSwitchProps> = ({
                     />
                 )}
             </AnimatePresence>
-        </Box>
+        </chakra.button>
     );
 };

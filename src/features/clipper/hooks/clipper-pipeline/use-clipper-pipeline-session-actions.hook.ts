@@ -65,6 +65,7 @@ export function useClipperPipelineSessionActions(
         await persistMetadata(
           {
             sourceMediaFileId: mediaFileId,
+            skipAutoReframing: false,
             clipStart: 0,
             clipEnd: null,
             transcribedClipStart: undefined,
@@ -74,6 +75,8 @@ export function useClipperPipelineSessionActions(
           "trimming",
         );
 
+        if (controller.signal.aborted) return;
+        setRangeLocked(false);
         setState((prev) => ({
           ...prev,
           stage: "trimming",
@@ -103,6 +106,7 @@ export function useClipperPipelineSessionActions(
       reporterRef,
       revokePreviewUrls,
       sessionRef,
+      setRangeLocked,
       setState,
       token,
     ],

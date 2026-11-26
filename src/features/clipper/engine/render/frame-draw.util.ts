@@ -11,6 +11,7 @@ import type { ClipperFrameContext } from "../types/render.types";
 import { drawClipperBranding } from "./branding-draw.util";
 import { drawClipperCaptions } from "./canvas-draw.util";
 import { resolveClipperFrameGeometry } from "./frame-geometry.util";
+import { drawClipperPartBadge } from "./parts-overlay-draw.util";
 
 function applyResolutionCap(
   dims: FrameEffectSize,
@@ -54,8 +55,12 @@ export function drawClipperFrame(
     ctx.drawImage(frame, crop.sx, crop.sy, crop.sw, crop.sh, destination.x, destination.y, destination.width, destination.height);
   }
 
-  drawClipperCaptions(ctx, output, t, render);
-  drawClipperBranding(ctx, output, render.settings.branding);
+  const partNumber = render.settings.partsOverlay.enabled ? render.partNumber : undefined;
+  const captionBounds = drawClipperCaptions(ctx, output, t, render, partNumber != null);
+  const brandingBounds = drawClipperBranding(ctx, output, render.settings.branding);
+  if (partNumber != null) {
+    drawClipperPartBadge(ctx, output, render.settings.partsOverlay, partNumber, brandingBounds, captionBounds);
+  }
 }
 
 /** Draws one preview frame onto a display canvas at a fixed height. */

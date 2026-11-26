@@ -2,6 +2,7 @@ import { evenInt } from "../../lib/media/video-draw.util";
 import type { FrameEffectSize } from "../../lib/media/video-frame-effect.util";
 import type { NormalizedBox } from "../../shared/smart-crop.util";
 import type { ClipperFormatDef } from "../../shared/formats.util";
+import type { ClipperFrameContext } from "../types/render.types";
 import { cropRectForCentroid } from "../reframe";
 import { deriveRegionsFromLayoutTracks, findActiveRegion } from "../reframe/collage";
 import type { ClipperCropRect } from "../types/reframe.types";
@@ -75,7 +76,26 @@ function splitDestinations(count: number, output: FrameEffectSize): ClipperFrame
 }
 
 /** Exact crop/panel geometry consumed by the canvas renderer, without captions. */
-export function resolveClipperFrameGeometry(formatDef: ClipperFormatDef, source: FrameEffectSize, output: FrameEffectSize, t: number, render: { smartCropAnalysis?: ClipperFrameAnalysis | null; disabledCollageRegionIds: string[] }): ClipperFrameGeometry {
+export function resolveClipperFrameGeometry(
+  formatDef: ClipperFormatDef,
+  source: FrameEffectSize,
+  output: FrameEffectSize,
+  t: number,
+  render: Pick<ClipperFrameContext, "skipAutoReframing" | "smartCropAnalysis" | "disabledCollageRegionIds">,
+): ClipperFrameGeometry {
+  if (render.skipAutoReframing) {
+    const scale = Math.min(output.width / source.width, output.height / source.height);
+    const width = source.width * scale;
+    const height = source.height * scale;
+    return {
+      mode: "contain",
+      panels: [{
+        source: { sx: 0, sy: 0, sw: source.width, sh: source.height },
+        destination: { x: (output.width - width) / 2, y: (output.height - height) / 2, width, height },
+      }],
+    };
+  }
+
   const resolved = formatDef.mode === "crop" ? resolveClipperLayoutRender(render.smartCropAnalysis, formatDef.id, source, t) : undefined;
   const regions = formatDef.mode === "crop" ? cachedLayoutRegions(render.smartCropAnalysis) : [];
   const { plannedLayout } = resolveFrameLayoutBranch(resolved, findActiveRegion(regions, t), render.disabledCollageRegionIds);

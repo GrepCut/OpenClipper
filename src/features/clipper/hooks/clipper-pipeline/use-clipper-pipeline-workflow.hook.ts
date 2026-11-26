@@ -144,7 +144,7 @@ export function useClipperPipelineWorkflow(
           { signal: controller.signal },
         );
         setRangeLocked(true);
-        phase = "analyze_faces";
+        phase = session.skipAutoReframing ? "preview_ready" : "analyze_faces";
 
         await persistMetadata(
           {
@@ -153,7 +153,7 @@ export function useClipperPipelineWorkflow(
             transcribedClipStart: snappedStart,
             transcribedClipEnd: end,
           },
-          "analyzing-faces",
+          session.skipAutoReframing ? "uploading" : "analyzing-faces",
         );
 
         await preparePreviewFromRangeCallback(
@@ -182,7 +182,7 @@ export function useClipperPipelineWorkflow(
   );
 
   const confirmRange = useCallback(
-    async (start: number, end: number) => {
+    async (start: number, end: number, skipAutoReframing: boolean) => {
       const session = sessionRef.current;
       if (!session) return;
 
@@ -225,13 +225,17 @@ export function useClipperPipelineWorkflow(
             start,
             end,
             persistRange: async (rangeStart, rangeEndInner) => {
+              controller.signal.throwIfAborted();
+              session.skipAutoReframing = skipAutoReframing;
               await persistMetadata(
                 {
                   clipStart: rangeStart,
                   clipEnd: rangeEndInner,
+                  skipAutoReframing,
                 },
                 "uploading",
               );
+              controller.signal.throwIfAborted();
             },
           },
           reporterRef.current,
@@ -242,6 +246,7 @@ export function useClipperPipelineWorkflow(
         return;
       }
 
+      if (controller.signal.aborted) return;
       await resumeFromTranscribe(session, snappedStart, end, controller, runId, {
         projectId,
         mediaFileId: session.mediaFileId,

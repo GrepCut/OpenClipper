@@ -70,32 +70,6 @@ export function drawFrameCover(
   ctx.drawImage(frame, sx, sy, sw, sh, dx, dy, dw, dh);
 }
 
-export function drawFrameContain(
-  ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
-  frame: CanvasImageSource,
-  boxX: number,
-  boxY: number,
-  boxW: number,
-  boxH: number,
-  imgW: number,
-  imgH: number,
-): void {
-  const imgRatio = imgW / imgH;
-  const boxRatio = boxW / boxH;
-
-  let dw = boxW;
-  let dh = boxH;
-  if (imgRatio > boxRatio) {
-    dh = boxW / imgRatio;
-  } else {
-    dw = boxH * imgRatio;
-  }
-
-  const dx = boxX + (boxW - dw) / 2;
-  const dy = boxY + (boxH - dh) / 2;
-  ctx.drawImage(frame, dx, dy, dw, dh);
-}
-
 export function roundRectPath(
   ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D,
   x: number,

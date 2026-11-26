@@ -89,6 +89,7 @@ export function buildLoadedResumeKey(loaded: ResumeLoadedInput, projectId: strin
     metadata.clipEnd,
     loaded.words.length,
     loaded.mediaFileId,
+    metadata.skipAutoReframing === true,
     resumePlan.target,
     resumePlan.skipTranscribe,
     resumePlan.skipFaceDetect,
