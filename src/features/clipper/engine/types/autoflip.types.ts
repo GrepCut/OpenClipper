@@ -196,12 +196,31 @@ export interface BuildSalientKeyframesInput {
 }
 
 export interface ActiveSpeakerPolicy {
-  threshold: number;
-  runnerUpMargin: number;
-  stableMultiFaceSamples: number;
+  /** Scored samples further apart than this start a new segmentation span. */
   maximumSampleGapSec: number;
-  minimumMultiFaceDurationSec: number;
-  minimumHoldSec: number;
+  /** Viterbi cost of changing state, in logit-seconds of evidence. */
+  switchPenalty: number;
+  /** Speaker turns shorter than this are absorbed by the neighbouring speaker. */
+  minimumTurnSec: number;
+  /** Probabilities are clamped to [clamp, 1 - clamp] before the logit. */
+  probabilityClamp: number;
+  /** Percentile of a face's own logits taken as its "not speaking" level. */
+  silentPercentile: number;
+}
+
+/** One offline speaker turn; `trackId` is the canonical person id. */
+export interface ActiveSpeakerSegment {
+  start: number;
+  end: number;
+  trackId: number;
+  /** The speaker differs from the previous speaker of the same span. */
+  turnStart: boolean;
+}
+
+export interface ActiveSpeakerTurns {
+  segments: ActiveSpeakerSegment[];
+  /** Clip-wide speaking time per canonical track, after turn smoothing. */
+  speakingSecondsByTrack: ReadonlyMap<number, number>;
 }
 
 export interface CanonicalFusionResult {

@@ -331,6 +331,13 @@
       "parity": {
         "maxHeadErrorVsFp32": 0.0011127591133117676
       }
+    },
+    "light_asd": {
+      "sourceRevision": "ed38c232de5efe0261dbd68627c0ade7cdfe14eb",
+      "sourceWeights": "pretrain_AVA_CVPR.model",
+      "sourceSha256": "d44bc3ea7baa8e0946fa3921311714a630ed8b90a1928fab0dbe30d918909317",
+      "onnxFile": "light_asd_ava_25.onnx",
+      "onnxSha256": "362adf48af9515932cdee4cfe44651e6d9d0349aa5ef49227b443427cdd07e5b"
     }
   },
   "onnxOpset": 15,

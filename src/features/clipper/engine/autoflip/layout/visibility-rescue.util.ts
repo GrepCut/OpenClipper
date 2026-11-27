@@ -10,7 +10,7 @@ import type {
   VisibilityControllerState,
   VisibilityVariant,
 } from "../../types/autoflip-layout.types";
-import { LEGACY_VISIBILITY_PARAMS } from "./visibility-controller.constants";
+import { CAMERA_MAX_SPEED_PER_SEC, LEGACY_VISIBILITY_PARAMS } from "./visibility-controller.constants";
 import { buildEmergencyPrimaryCrop, primaryCoverageOf } from "./emergency-primary-crop.util";
 import {
   buildVisibilityEnvelopes,
@@ -29,6 +29,7 @@ import {
   stablePair,
   stableTriple,
   variant,
+  viewportsStillShowPeople,
   VISIBILITY_EPSILON,
 } from "./visibility-rescue-helpers.util";
 
@@ -36,7 +37,7 @@ const EPSILON = VISIBILITY_EPSILON;
 const EMERGENCY_PRIMARY_COVERAGE = 0.8;
 const SINGLE_TARGET_HOLD_SEC = 0.6;
 const SINGLE_CAMERA_DEAD_ZONE = 0.03;
-const SINGLE_CAMERA_MAX_SPEED_PER_SEC = 0.16;
+const SINGLE_CAMERA_MAX_SPEED_PER_SEC = CAMERA_MAX_SPEED_PER_SEC;
 const SINGLE_CAMERA_MAX_ACCELERATION_PER_SEC2 = 0.4;
 /** Faster than normal, still blocks layout teleports (~2.5/s). */
 const EMERGENCY_CAMERA_MAX_SPEED_PER_SEC = 0.40;
@@ -274,13 +275,16 @@ export function planVisibilityRescue(input: {
     && envelopes[0]?.role === "primary"
     && (hasIndependentEvidence(envelopes[0]) || trackedPrediction);
   if (!singlePrimary) resetSingleTargetState(input.state);
+  const singleShowsNobody = input.state.singleViewport != null
+    && !viewportsStillShowPeople([input.state.singleViewport], sample.regions);
   if (!params.enabled || !envelopes.length || (sample.cut && !singlePrimary)
     || envelopes.some((region) => region.identityAmbiguous)
     || (envelopes.some((region) => region.predicted) && !trackedPrediction)) {
     // A detector dropout is not evidence that the editorial split ended.
     // Keep the previously confirmed layout until the same exit confirmation
     // window used by the state machine has elapsed.
-    if (!sample.cut && activeSplitBeforeEvidence) {
+    if (!sample.cut && activeSplitBeforeEvidence
+      && viewportsStillShowPeople(activeSplitBeforeEvidence.viewports, sample.regions)) {
       input.state.identityLostAt ??= time;
       if (time - input.state.identityLostAt < params.splitExitStableSec) {
         return {
@@ -339,7 +343,7 @@ export function planVisibilityRescue(input: {
       input.baselineViewport,
       time,
       emergency,
-      sample.cut === true,
+      sample.cut === true || singleShowsNobody,
     )
     : null;
   const centeredSingle = stabilizedSingleViewport
@@ -449,7 +453,8 @@ export function planVisibilityRescue(input: {
   let holdingActiveSplit = false;
   if (input.state.activeMode === "split" && !pairStable) {
     input.state.identityLostAt ??= time;
-    if (heldSplit && time - input.state.identityLostAt < params.splitExitStableSec) {
+    if (heldSplit && time - input.state.identityLostAt < params.splitExitStableSec
+      && viewportsStillShowPeople(heldSplit.viewports, sample.regions)) {
       selected = heldSplit;
       holdingActiveSplit = true;
     }
@@ -483,7 +488,10 @@ export function planVisibilityRescue(input: {
   }
 
   const selectedAfterPendingKey = layoutKey(selected.mode, selected.viewports.length);
-  const activeSplit = currentVariant(input.state, envelopes);
+  const activeSplitCandidate = currentVariant(input.state, envelopes);
+  const activeSplit = activeSplitCandidate && viewportsStillShowPeople(activeSplitCandidate.viewports, sample.regions)
+    ? activeSplitCandidate
+    : null;
   if (!emergency && currentKey !== selectedAfterPendingKey && activeFor < params.splitMinDurationSec && activeSplit) {
     selected = activeSplit;
   } else if (!emergency && input.state.activeMode === "split" && baselineSafe) {
@@ -570,7 +578,7 @@ export function planVisibilityRescue(input: {
     time,
     emergency,
     splitSeed,
-    snap: sample.cut === true,
+    snap: sample.cut === true || singleShowsNobody,
   });
   input.state.previousViewport = selected.viewports[0] ?? input.baselineViewport;
 

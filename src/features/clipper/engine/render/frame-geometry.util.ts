@@ -102,7 +102,15 @@ export function resolveClipperFrameGeometry(
   if (plannedLayout?.mode === "split" && plannedLayout.viewports.length >= 2) {
     const viewports = plannedLayout.viewports.slice(0, 3);
     const destinations = splitDestinations(viewports.length, output);
-    return { mode: "split", panels: viewports.map((sourceRect, index) => ({ source: sourceRect, destination: destinations[index]! })) };
+    // Like the single crop below: a panel never shows letterbox bars or a
+    // burned-in title band, and fills its slot without stretching.
+    return {
+      mode: "split",
+      panels: viewports.map((sourceRect, index) => ({
+        source: coverCrop(clampToContent(sourceRect, render.smartCropAnalysis?.contentRect, source), destinations[index]!),
+        destination: destinations[index]!,
+      })),
+    };
   }
   const crop = plannedLayout?.viewports[0]
     ?? (!isClipperRuntimeSmartCropBlob(render.smartCropAnalysis)

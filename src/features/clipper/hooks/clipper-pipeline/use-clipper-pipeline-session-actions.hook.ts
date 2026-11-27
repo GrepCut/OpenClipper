@@ -4,23 +4,13 @@ import { projectStateService } from "../../../../services/project-state.service"
 import type { Project } from "../../../../services/projects.service";
 import { isMediabunnyConvertSupported } from "../../lib/convert/mediabunny-convert.util";
 import { cacheClipperSourceVideo } from "../../persistence/bootstrap.util";
-import { discardPendingClipperExports, settlePendingClipperExports } from "../../persistence/clipper-export-persist.util";
 import { saveClipperRangeWords } from "../../persistence/clipper-range-words-api.util";
-import {
-  discardClipperProjectMetadataSave,
-  pauseClipperProjectMetadataSave,
-  resumeClipperProjectMetadataSave,
-  scheduleClipperProjectMetadataSaveImmediate,
-} from "../../persistence/metadata-autosave.util";
-import { resetClipperProjectData } from "../../persistence/project-data-files.util";
+import { scheduleClipperProjectMetadataSaveImmediate } from "../../persistence/metadata-autosave.util";
 import type { ClipperProjectMetadata } from "../../persistence/project-metadata.util";
-import { pauseClipperProjectWrites, resumeClipperProjectWrites } from "../../persistence/project-write-lifecycle.util";
 import { releasePlayableMediaUrl } from "../../persistence/tauri-media.util";
-import { getNativeFilePath } from "../../platform/native-source.util";
 import { runIngestStage } from "../../pipeline/stages/ingest.util";
 import type { ClipperSession } from "../../pipeline/session.util";
 import { clipperError } from "../../shared/logger.util";
-import { INITIAL_PIPELINE_STATE } from "./clipper-pipeline.types";
 import type { UseClipperPipelineCoreResult } from "./use-clipper-pipeline-core.hook";
 
 export function useClipperPipelineSessionActions(
@@ -32,8 +22,6 @@ export function useClipperPipelineSessionActions(
     | "revokePreviewUrls"
     | "clearSession"
     | "setRangeLocked"
-    | "setDisabledCollageRegionIds"
-    | "invalidateExportHydration"
   >,
   project: Project,
   token: string | null,
@@ -46,11 +34,9 @@ export function useClipperPipelineSessionActions(
     revokePreviewUrls,
     clearSession,
     setRangeLocked,
-    setDisabledCollageRegionIds,
-    invalidateExportHydration,
   } = core;
   const {
-    abortRef, sessionRef, activeClipIndexRef, resumeStartedRef, reporterRef, metadataRef,
+    abortRef, sessionRef, reporterRef, metadataRef,
     aiClipsMetaRef, manualClipsMetaRef,
   } = refs;
   const ingestInFlight = useRef(false);
@@ -108,6 +94,7 @@ export function useClipperPipelineSessionActions(
           {
             sourceMediaFileId: mediaFileId,
             skipAutoReframing: false,
+            detectActiveSpeaker: false,
             clipStart: 0,
             clipEnd: null,
             transcribedClipStart: undefined,
@@ -211,68 +198,6 @@ export function useClipperPipelineSessionActions(
     manualClipsMetaRef.current = [];
   }, [aiClipsMetaRef, manualClipsMetaRef, revokePreviewUrls]);
 
-  const clipAgain = useCallback(async () => {
-    const session = sessionRef.current;
-    if (!session) return;
-    await pauseClipperProjectWrites(projectId);
-    try {
-      await Promise.all([
-        pauseClipperProjectMetadataSave(projectId),
-        settlePendingClipperExports(projectId),
-      ]);
-      const metadata: ClipperProjectMetadata = {
-        ...metadataRef.current,
-        stage: "trimming",
-        sourceMediaFileId: session.mediaFileId,
-        clipStart: 0,
-        clipEnd: null,
-        transcribedClipStart: undefined,
-        transcribedClipEnd: undefined,
-        activeClipIndex: undefined,
-        generatedClips: undefined,
-        aiGeneratedClips: undefined,
-      };
-      await resetClipperProjectData(projectId, getNativeFilePath(session.sourceFile), metadata);
-      await discardClipperProjectMetadataSave(projectId);
-      discardPendingClipperExports(projectId);
-      metadataRef.current = metadata;
-      invalidateExportHydration();
-      if (sessionRef.current !== session) return;
-
-      clearRangeSession(session);
-      session.disabledCollageRegionIds = [];
-      setDisabledCollageRegionIds([]);
-      setRangeLocked(false);
-      resumeStartedRef.current = false;
-      activeClipIndexRef.current = 0;
-      setState((prev) => ({
-        ...INITIAL_PIPELINE_STATE,
-        stage: "trimming",
-        stageMessage: "Choose your source range",
-        clipSourceMode: session.clipSourceMode,
-        sourceFileName: prev.sourceFileName,
-        sourceDuration: prev.sourceDuration,
-      }));
-    } catch (error) {
-      clipperError("pipeline: could not reset range", error);
-      throw error;
-    } finally {
-      resumeClipperProjectMetadataSave(projectId);
-      resumeClipperProjectWrites(projectId);
-    }
-  }, [
-    activeClipIndexRef,
-    clearRangeSession,
-    invalidateExportHydration,
-    metadataRef,
-    projectId,
-    resumeStartedRef,
-    sessionRef,
-    setDisabledCollageRegionIds,
-    setRangeLocked,
-    setState,
-  ]);
-
   const resetSessionForNewRange = useCallback(() => {
     const session = sessionRef.current;
     if (!session) return;
@@ -282,5 +207,5 @@ export function useClipperPipelineSessionActions(
     );
   }, [clearRangeSession, projectId, sessionRef]);
 
-  return { selectFile, clipAgain, resetSessionForNewRange };
+  return { selectFile, resetSessionForNewRange };
 }

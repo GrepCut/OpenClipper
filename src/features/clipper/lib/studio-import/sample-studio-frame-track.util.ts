@@ -15,6 +15,7 @@ import type {
   ClipperStudioFramePanel,
   ClipperStudioFrameSample,
 } from "./clipper-studio-import.types";
+import { simplifyStudioFrameTrack } from "./simplify-studio-frame-track.util";
 
 const STUDIO_FRAME_GRID_SEC = 0.1;
 const STUDIO_CUT_LEAD_SEC = 0.001;
@@ -23,6 +24,8 @@ const STUDIO_TIME_EPSILON_SEC = 0.0001;
 interface RawTrackSample {
   t: number;
   cut?: boolean;
+  /** A switch to a new active speaker: a hard edit, never a slide. */
+  speakerCut?: boolean;
   mode?: string;
 }
 
@@ -63,7 +66,7 @@ function rawTracks(
 
 /** Whether `sample` is a hard cut or a layout-mode switch after `previous` on the same track. */
 function isSwitch(previous: RawTrackSample | undefined, sample: RawTrackSample): boolean {
-  return Boolean(sample.cut) || (previous?.mode != null && previous.mode !== sample.mode);
+  return Boolean(sample.cut) || Boolean(sample.speakerCut) || (previous?.mode != null && previous.mode !== sample.mode);
 }
 
 /** Times of persisted hard cuts and layout-mode switches. */
@@ -145,5 +148,5 @@ export function sampleStudioFrameTrack(input: SampleStudioFrameTrackInput): Clip
     }
     samples.push(sample);
   }
-  return samples;
+  return simplifyStudioFrameTrack(samples, { source, output, segments });
 }

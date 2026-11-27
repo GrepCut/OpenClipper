@@ -7,6 +7,7 @@ import { attachImportanceSignals, buildImportanceTimeline } from "./salience/imp
 import { buildLayoutTracks } from "./layout";
 import { kinematicOptionsForSmooth } from "./config/kinematic-options.util";
 import { applyActiveSpeakerPolicy } from "./identity/active-speaker.util";
+import { detectConversationSpans } from "./layout/conversation-layout.util";
 import { buildCanonicalPersonTracks } from "./identity/canonical-person.util";
 import { buildProjectCompositionMemory, compositionScoreByIdentity } from "./identity/project-composition-memory.util";
 import { attachFaceCacheEvidence } from "./face-cache-evidence.util";
@@ -289,6 +290,17 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     };
   }
 
+  // Speaker turns never touch the per-frame path: they only order the panels
+  // of detected conversations, so all other footage frames exactly as before.
+  const conversationSpans = input.enhancedIdentityFusion
+    ? detectConversationSpans({
+      samples: canonicalFusion.samples,
+      turns: activeSpeaker.turns,
+      clipStart: input.clipStart,
+      clipEnd: input.clipEnd,
+      sceneCuts: input.sceneCuts,
+    })
+    : [];
   const primaryTrack = aspectTracks[Object.keys(aspectTracks)[0]!]!;
   const layoutTracks = buildLayoutTracks({
     aspectTracks,
@@ -302,6 +314,8 @@ export function buildAutoFlipTrack(input: BuildAutoFlipTrackInput): ClipperSmart
     visibilityControllerParams: input.enhancedIdentityFusion
       ? { ...DEFAULT_VISIBILITY_PARAMS }
       : undefined,
+    conversationSpans,
+    contentRect,
   });
 
   return {

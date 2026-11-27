@@ -8,7 +8,6 @@ import { useClipperPipelineTranscript } from "./use-clipper-pipeline-transcript.
 import { useClipperPipelineWorkflow } from "./use-clipper-pipeline-workflow.hook";
 import { useClipperResume } from "../use-clipper-resume.hook";
 import { buildFrameContext, buildRangeFrameContext } from "../../pipeline/frame-context.util";
-import { getNativeFilePath } from "../../platform/native-source.util";
 import type { RangeFrameContextGetter } from "../../engine/types/render.types";
 import { INITIAL_PIPELINE_STATE } from "./clipper-pipeline.types";
 import type { UseClipperPipelineOptions } from "./clipper-pipeline.types";
@@ -81,7 +80,6 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     selectFile: workflow.selectFile,
     confirmRange: workflow.confirmRange,
     retryResume,
-    clipAgain: workflow.clipAgain,
     renderExports: render.renderExports,
     existingExports: render.existingExports,
     stopRender: render.stopRender,
@@ -108,8 +106,8 @@ export function useClipperPipeline({ project, token, loaded }: UseClipperPipelin
     },
     getRangeFrameContext,
     sourceUrl: sessionRef.current?.sourceUrl ?? null,
-    sourcePath: sessionRef.current ? getNativeFilePath(sessionRef.current.sourceFile) : null,
     skipAutoReframing: sessionRef.current?.skipAutoReframing ?? false,
+    detectActiveSpeaker: sessionRef.current?.detectActiveSpeaker ?? false,
     rangeLocked,
     disabledCollageRegionIds: clips.disabledCollageRegionIds,
     toggleCollageRegion: clips.toggleCollageRegion,

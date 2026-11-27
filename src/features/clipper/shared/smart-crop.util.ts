@@ -286,6 +286,12 @@ export interface ClipperLayoutSample {
   /** Required boxes used to validate intermediate interpolation frames. */
   coverageBoxes?: NormalizedBox[];
   cut?: boolean;
+  /**
+   * Editorial hard switch inside a shot (new speaker on top, entering or
+   * leaving a conversation layout). Never blend across it, but it is not a
+   * shot boundary.
+   */
+  speakerCut?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
 }
 
@@ -378,6 +384,7 @@ export interface ClipperRuntimeLayoutSample {
   viewports: NormalizedBox[];
   panelSubjects?: Array<{ id: string; focusBox: NormalizedBox }>;
   cut?: boolean;
+  speakerCut?: boolean;
   solidBackgroundColor?: { r: number; g: number; b: number };
 }
 

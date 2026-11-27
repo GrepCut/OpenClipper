@@ -1,5 +1,8 @@
 import type { VisibilityControllerParams, VisibilityControllerState } from "../../types/autoflip-layout.types";
 
+/** Top speed of the following single crop, in frame widths per second. */
+export const CAMERA_MAX_SPEED_PER_SEC = 0.16;
+
 export const LEGACY_VISIBILITY_PARAMS: Readonly<VisibilityControllerParams> = Object.freeze({
   enabled: true,
   lookaheadSec: 0.8,

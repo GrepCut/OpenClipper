@@ -32,7 +32,7 @@ fn check_cancel(cancel: &AtomicBool) -> Result<(), String> {
     }
 }
 
-fn graph(source: &str, args: &str, sink: &str, spec: &str) -> Result<filter::Graph, ffmpeg::Error> {
+pub(crate) fn graph(source: &str, args: &str, sink: &str, spec: &str) -> Result<filter::Graph, ffmpeg::Error> {
     let mut graph = filter::Graph::new();
     graph.add(
         &filter::find(source).ok_or(ffmpeg::Error::FilterNotFound)?,

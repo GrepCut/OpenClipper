@@ -36,7 +36,7 @@ fn pixel(data: &[u8], stride: usize, x: usize, y: usize) -> Rgb {
     (data[offset], data[offset + 1], data[offset + 2])
 }
 
-fn dominant_color(
+pub(crate) fn dominant_color(
     data: &[u8],
     stride: usize,
     width: usize,

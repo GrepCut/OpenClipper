@@ -44,7 +44,7 @@ export function useClipperPipelineWorkflow(
     reporterRef,
   } = refs;
 
-  const { selectFile, clipAgain, resetSessionForNewRange } = useClipperPipelineSessionActions(
+  const { selectFile, resetSessionForNewRange } = useClipperPipelineSessionActions(
     core,
     project,
     token,
@@ -227,11 +227,14 @@ export function useClipperPipelineWorkflow(
             persistRange: async (rangeStart, rangeEndInner) => {
               controller.signal.throwIfAborted();
               session.skipAutoReframing = skipAutoReframing;
+              // Speaker detection is always part of auto-reframing.
+              session.detectActiveSpeaker = !skipAutoReframing;
               await persistMetadata(
                 {
                   clipStart: rangeStart,
                   clipEnd: rangeEndInner,
                   skipAutoReframing,
+                  detectActiveSpeaker: session.detectActiveSpeaker,
                 },
                 "uploading",
               );
@@ -271,6 +274,5 @@ export function useClipperPipelineWorkflow(
     resumeFromTranscribe,
     failPhase,
     selectFile,
-    clipAgain,
   };
 }

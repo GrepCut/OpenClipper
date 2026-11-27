@@ -1,6 +1,5 @@
 import React from "react";
-import { Box, Center, HStack, Text } from "@chakra-ui/react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { Box, Center, Text } from "@chakra-ui/react";
 import { ClipperLayout } from "../components/clipper-layout.component";
 import { ClipperExportsView } from "../components/clipper-exports-view.component";
 import { ClipperRenderQueue } from "../components/clipper-render-queue.component";
@@ -10,10 +9,7 @@ import { ClipperProjectLoadingPanel } from "../components/clipper-project-loadin
 import { ClipperTrimSelect } from "../components/clipper-trim-select.component";
 import { ClipperSourcePicker } from "../components/clipper-source-picker.component";
 import type { YouTubeImportProgress } from "../persistence/youtube-import.util";
-import { ClipperSourceRevealButton } from "../components/clipper-source-reveal-button.component";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
-import { isTauri } from "../../../shared/utils/platform.util";
-import { appToast } from "../../../shared/utils/toast.service";
 import { ClipperSessionPreviewPanel } from "../components/session/clipper-session-preview-panel.component";
 import { useClipperSessionView } from "../hooks/use-clipper-session-view.hook";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
@@ -22,8 +18,6 @@ import type { ClipperSessionViewProps } from "../shared/clipper-session-view.typ
 export type { ClipperSessionViewProps } from "../shared/clipper-session-view.types";
 
 export function ClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
-  const resetInFlight = React.useRef(false);
-  const [resetting, setResetting] = React.useState(false);
   const [sourceMode, setSourceMode] = React.useState<"file" | "youtube">("file");
   const [importProgress, setImportProgress] = React.useState<YouTubeImportProgress | null>(null);
   const youtubeOpen = sourceMode === "youtube";
@@ -37,13 +31,11 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     refreshExportHistory,
     reset,
     sourceUrl,
-    sourcePath,
     skipAutoReframing,
     rangeLocked,
     retryResume,
     handleFile,
     handleYouTubeFile,
-    clipAgain,
     handleOpenExportsFolder,
     step,
     visibility,
@@ -56,23 +48,6 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     goToExports,
     stopRender,
   } = session;
-  const changeRange = async () => {
-    if (resetInFlight.current) return;
-    resetInFlight.current = true;
-    setResetting(true);
-    try {
-      const message = "Choosing a new range clears this project’s clips and exports. The full source video stays available.";
-      const accepted = isTauri()
-        ? await confirm(message, { title: "Choose a new source range", kind: "warning" })
-        : window.confirm(message);
-      if (accepted) await clipAgain();
-    } catch {
-      appToast.error("Could not change source range", "Try again from the project preview.");
-    } finally {
-      resetInFlight.current = false;
-      setResetting(false);
-    }
-  };
 
   return (
     <ClipperLayout
@@ -80,15 +55,6 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
       backLink={youtubeOpen
         ? { label: "Back to upload", onClick: () => setSourceMode("file"), disabled: importProgress !== null }
         : visibility.layoutBackLink}
-      headerActions={visibility.showPreview && sourceUrl && rangeLocked && !isRendering
-        && (state.stage === "preview" || state.stage === "done") ? (
-          <HStack gap={2}>
-            {sourcePath ? <ClipperSourceRevealButton path={sourcePath} /> : null}
-            <OutlinedActionButton disabled={resetting} onClick={() => void changeRange()}>
-              Change source range
-            </OutlinedActionButton>
-          </HStack>
-        ) : undefined}
     >
       {visibility.showUpload && (
         <ClipperSourcePicker
@@ -126,7 +92,7 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
       )}
 
       {visibility.previewKeepAlive && (
-        <Box display={visibility.showPreview ? undefined : "none"} w="full" h="full" inert={resetting}>
+        <Box display={visibility.showPreview ? undefined : "none"} w="full" h="full">
           <ClipperSessionPreviewPanel
             session={session}
             settingsDrawerVisible={visibility.showPreview}

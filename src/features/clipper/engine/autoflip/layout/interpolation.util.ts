@@ -8,18 +8,10 @@ import {
   interpolateBox,
 } from "./arbiter.util";
 import { interpolateCameraBox } from "../camera/trajectory-interpolation.util";
-import { splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
+import { splitPanelsPreserveSubjects } from "./viewport-geometry.util";
+import { samePanelPeople } from "./panel-continuity.util";
 
 const EPSILON = 1e-9;
-
-function samePanelOwners(a: ClipperLayoutSample, b: ClipperLayoutSample): boolean {
-  if (a.mode !== "split") return true;
-  const aOwners = a.panelSubjects;
-  const bOwners = b.panelSubjects;
-  if (!aOwners || !bOwners) return !aOwners && !bOwners;
-  return aOwners.length === bOwners.length
-    && aOwners.every((owner, index) => owner.id === bOwners[index]?.id);
-}
 
 export function resolveLayoutTrack(
   tracks: Record<string, ClipperLayoutTrack> | undefined,
@@ -56,7 +48,7 @@ export function interpolateLayoutSample(
   const index = precedingLayoutSampleIndex(track.samples, time);
   const previous = track.samples[index]!;
   const next = track.samples[index + 1];
-  if (!next || next.cut || next.mode !== previous.mode || next.viewports.length !== previous.viewports.length || !samePanelOwners(previous, next)) {
+  if (!next || next.cut || next.speakerCut || next.mode !== previous.mode || next.viewports.length !== previous.viewports.length || !samePanelPeople(previous, next)) {
     return { ...previous, t: time };
   }
   const factor = clamp((time - previous.t) / Math.max(EPSILON, next.t - previous.t), 0, 1);
@@ -73,11 +65,25 @@ export function interpolateLayoutSample(
     : previous.coverageBoxes;
   const interpolationSafe = !interpolatedCoverageBoxes?.length || interpolatedCoverageBoxes.every((box) =>
     interpolatedViewports.some((viewport) => coveredFraction(viewport, box) >= 1 - EPSILON));
-  if (previous.mode === "split" && (
-    !splitViewportsAreDistinct(interpolatedViewports)
-    || !splitPanelsPreserveSubjects(interpolatedViewports, previous.panelSubjects)
-  )) {
-    return { ...previous, t: time, reasonCodes: [...(previous.reasonCodes ?? []), "interpolation-panel-owner-risk"] };
+  // Between two valid split samples the panels only need to keep their own
+  // person and nobody else's face, judged at this instant: the panel at `t`
+  // against where the person is at `t`, not where they were at the previous
+  // sample. The 10% gap between panels is a rule for choosing a split, not
+  // for drawing it.
+  if (previous.mode === "split") {
+    const nextSubjects = next.panelSubjects;
+    const subjectsNow = previous.panelSubjects?.map((subject, panel) => {
+      const following = nextSubjects?.length === previous.panelSubjects!.length ? nextSubjects[panel] : undefined;
+      return following
+        ? { id: subject.id, focusBox: interpolateBox(subject.focusBox, following.focusBox, factor) }
+        : subject;
+    });
+    if (!splitPanelsPreserveSubjects(interpolatedViewports, subjectsNow)) {
+      // Show the nearer real sample rather than always the earlier one, so a
+      // rejected blend can never move the panel backwards in time.
+      const nearer = factor < 0.5 ? previous : next;
+      return { ...nearer, t: time, reasonCodes: [...(nearer.reasonCodes ?? []), "interpolation-panel-owner-risk"] };
+    }
   }
   return {
     ...previous,

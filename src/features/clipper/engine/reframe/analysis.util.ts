@@ -50,6 +50,7 @@ async function detectWinMlMedia(
   onEta?: (etaSeconds: number | null) => void,
   onNativePhase?: (phase: string) => void,
   visionAblation?: PrefillFaceSampleCacheOptions["visionAblation"],
+  detectActiveSpeaker = false,
 ): Promise<NativeVisionAnalysisSummary> {
   if (signal?.aborted)
     throw new DOMException("Conversion aborted", "AbortError");
@@ -94,6 +95,7 @@ async function detectWinMlMedia(
       startTime: source.startTime,
       endTime: source.endTime,
       trackingMode: clipperByteTrackTrackingMode(),
+      detectSpeaker: detectActiveSpeaker,
       visionAblation,
     },
     signal,
@@ -108,6 +110,17 @@ async function detectWinMlMedia(
     throw new Error(
       `Native vision returned an incomplete atomic result (${faceSamples.length}/${summary.faceSampleCount} face, ${subjectSamples.length}/${summary.subjectSampleCount} subject).`,
     );
+  }
+  const speaker = summary.activeSpeaker;
+  if (speaker) {
+    for (const row of speaker.samples) {
+      const sample = subjectSamples[row.index];
+      if (!sample) throw new Error("Speaker evidence references a missing detection sample.");
+      sample.activeSpeakerScores = row.scores;
+    }
+    if (speaker.disabledReason && subjectSamples.length) {
+      subjectSamples[0].activeSpeakerDisabledReason = speaker.disabledReason;
+    }
   }
   cache.analysisEngine = "winml";
   cache.analysisModelVersion = summary.modelVersion;
@@ -166,5 +179,6 @@ export async function prefillFaceSampleCache(
     onEta,
     onNativePhase,
     visionAblation,
+    options.detectActiveSpeaker,
   );
 }

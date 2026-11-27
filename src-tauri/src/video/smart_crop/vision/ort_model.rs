@@ -41,7 +41,7 @@ impl OrtVisionModel {
         })
     }
 
-    fn build(path: &Path, directml: bool) -> Result<Session, NativeVisionError> {
+    pub(super) fn build(path: &Path, directml: bool) -> Result<Session, NativeVisionError> {
         let session_error = |error: String| {
             NativeVisionError::new("cpu_session_failed", format!("ORT session: {error}"), true)
         };

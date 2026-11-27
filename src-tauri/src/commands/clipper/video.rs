@@ -51,6 +51,7 @@ pub fn start_clipper_winml_analysis(
     start_time: f64,
     end_time: f64,
     tracking_mode: Option<String>,
+    detect_speaker: Option<bool>,
     vision_ablation: Option<crate::video::smart_crop::pipeline::VisionAblationConfig>,
     app_handle: AppHandle,
     webview: WebviewWindow,
@@ -85,6 +86,7 @@ pub fn start_clipper_winml_analysis(
                 &resource_dir,
                 task_cancelled,
                 tracking_enabled,
+                detect_speaker.unwrap_or(false),
                 vision_ablation,
                 |progress| {
                     task_emitter.progress(&progress).map_err(|error| {

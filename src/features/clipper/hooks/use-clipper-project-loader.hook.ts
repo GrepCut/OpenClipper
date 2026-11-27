@@ -35,7 +35,7 @@ import {
   type ClipperPipelineStepRecord,
   type ClipperResumePlan,
 } from "../persistence/pipeline-api.util";
-import { AUTOFLIP_ANALYZER_VERSION } from "../engine/autoflip/config/config.constants";
+import { activeSpeakerAnalyzerVersion } from "../engine/autoflip/config/config.constants";
 
 export type ClipperLoaderPhase = "loading" | "ready" | "error";
 
@@ -143,7 +143,7 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
           metadata = { ...metadata, clipStart: range.clipStart, clipEnd: range.clipEnd };
         }
         const resumePlan = computeResumePlan(steps, {
-          requiredAnalyzerVersion: AUTOFLIP_ANALYZER_VERSION,
+          requiredAnalyzerVersion: activeSpeakerAnalyzerVersion(metadata.detectActiveSpeaker),
           hasClipRange: range.clipEnd != null,
           skipAutoReframing: metadata.skipAutoReframing,
         });

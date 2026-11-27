@@ -28,6 +28,7 @@ export interface ClipperProjectMetadata {
   stage: ClipperStage;
   sourceMediaFileId: string | null;
   skipAutoReframing?: boolean;
+  detectActiveSpeaker?: boolean;
   clipStart: number;
   clipEnd: number | null;
   /** Legacy jsonb field — project settings are stored in DB; parsed only for migration. */
@@ -78,6 +79,7 @@ export function parseClipperProjectMetadata(
           ? null
           : defaults.sourceMediaFileId,
     skipAutoReframing: raw.skipAutoReframing === true,
+    detectActiveSpeaker: raw.detectActiveSpeaker === true,
     clipStart: typeof raw.clipStart === "number" ? raw.clipStart : defaults.clipStart,
     clipEnd:
       typeof raw.clipEnd === "number"

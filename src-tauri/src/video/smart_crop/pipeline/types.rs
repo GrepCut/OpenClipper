@@ -133,6 +133,8 @@ pub struct NativeVisionSummary {
     pub(crate) model_version: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tracker_version: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) active_speaker: Option<super::speaker::Report>,
     pub(crate) metrics: NativeVisionMetrics,
 }
 

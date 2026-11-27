@@ -98,34 +98,6 @@ export async function localRecordDelete(
   await invoke("local_record_delete", { namespace, key });
 }
 
-/** Updates web project metadata and removes its derived records in one synchronous operation. */
-export function resetWebProjectRecords(
-  projectId: string,
-  metadata: Record<string, unknown>,
-  records: ReadonlyArray<readonly [namespace: string, key: string]>,
-): void {
-  migrateWebProjectsToSharedWorkspace();
-  const key = webKey("project", projectId);
-  const previous = localStorage.getItem(key);
-  if (!previous) throw new Error("The Clipper project is unavailable.");
-  const project = JSON.parse(previous);
-  if (project.projectType !== "clipper") throw new Error("The Clipper project is unavailable.");
-
-  const derived = records.map(([namespace, recordKey]) => {
-    const storageKey = webKey(namespace, recordKey);
-    return [storageKey, localStorage.getItem(storageKey)] as const;
-  });
-  try {
-    for (const [storageKey] of derived) localStorage.removeItem(storageKey);
-    localStorage.setItem(key, JSON.stringify({ ...project, metadata, updatedAt: new Date().toISOString() }));
-  } catch (error) {
-    for (const [storageKey, value] of derived) {
-      if (value !== null) localStorage.setItem(storageKey, value);
-    }
-    throw error;
-  }
-}
-
 export async function localProjectPut<T extends { id: string }>(
   ownerId: string,
   project: T,

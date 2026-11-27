@@ -133,26 +133,6 @@ pub async fn remove_clipper_project_data_dir(
 }
 
 #[tauri::command]
-pub async fn reset_clipper_project_data(
-    app: AppHandle,
-    db: tauri::State<'_, crate::storage::database::LocalDb>,
-    jobs: tauri::State<'_, crate::video::jobs::registry::NativeJobRegistry>,
-    project_id: String,
-    active_source: Option<String>,
-    metadata: serde_json::Value,
-) -> Result<(), String> {
-    clipper_project_root(&app, &project_id)?;
-    let _block = jobs.block_project(&project_id, false).await?;
-    crate::clipper::range_reset::reset(
-        &db.database,
-        &clipper_projects_root(&app)?,
-        &project_id,
-        active_source.as_deref().map(std::path::Path::new),
-        metadata,
-    ).await
-}
-
-#[tauri::command]
 pub async fn read_clipper_project_data_file(
     app: AppHandle,
     project_id: String,

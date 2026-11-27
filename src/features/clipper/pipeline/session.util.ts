@@ -45,6 +45,7 @@ export interface ClipperSession {
   sourceDuration: number;
   mediaFileId: string;
   skipAutoReframing?: boolean;
+  detectActiveSpeaker?: boolean;
   /** Trimmed file for the full selected source range (used for preview + sub-trim at render). */
   rangeTrimmedFile: File | null;
   rangeTrimmedVideoUrl: string | null;

@@ -4,7 +4,7 @@ import type {
   ImportanceRegionSample,
   NormalizedBox,
 } from "../../../shared/smart-crop.util";
-import { requiredRegions } from "./arbiter.util";
+import { coveredFraction, requiredRegions } from "./arbiter.util";
 import type { VisibilityControllerState, VisibilityVariant } from "../../types/autoflip-layout.types";
 import { coverage } from "./visibility-envelope.util";
 
@@ -177,6 +177,25 @@ export function variant(
       ? panelSubjects.map((region) => ({ id: region.id, focusBox: { ...region.box } }))
       : undefined,
   };
+}
+
+const HUMAN_KINDS = new Set<ImportanceRegion["kind"]>(["face", "head", "speaker", "person", "action"]);
+/** A viewport "shows" a person when at least this share of their box is inside it. */
+const MIN_SHOWN_FRACTION = 0.25;
+
+/**
+ * Holding a previous layout (dropout tolerance, minimum split duration, exit
+ * confirmation) is only right while that layout still shows somebody. When
+ * people are observed in this sample but a held viewport shows none of them,
+ * the picture itself changed (typically a camera cut the shot detector
+ * missed), and holding would show an empty panel. With nobody observed at all
+ * it is a detector dropout, and the hold stays.
+ */
+export function viewportsStillShowPeople(viewports: NormalizedBox[], regions: ImportanceRegion[]): boolean {
+  const observed = regions.filter((region) => !region.predicted && HUMAN_KINDS.has(region.kind));
+  if (!observed.length) return true;
+  return viewports.every((viewport) =>
+    observed.some((region) => coveredFraction(viewport, region.box) >= MIN_SHOWN_FRACTION));
 }
 
 export function minimumCoverage(values: number[]): number {

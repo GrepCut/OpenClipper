@@ -1,4 +1,4 @@
-import { AUTOFLIP_ANALYZER_VERSION } from "../../engine/autoflip/config/config.constants";
+import { activeSpeakerAnalyzerVersion } from "../../engine/autoflip/config/config.constants";
 import {
   buildAutoFlipTrack,
   primaryAspectTrackSampleCount,
@@ -11,9 +11,11 @@ import { yieldToMain } from "../../shared/yield-to-main.util";
 import {
   clipperSmartCropDataRelativePath,
   readClipperSmartCropAnalysis,
+  writeClipperAutoFlipInput,
   writeClipperFaceActionBenchmark,
   writeClipperSmartCropAnalysis,
 } from "../../persistence/project-data-files.util";
+import { clipperLog } from "../../shared/logger.util";
 import { markClipperStepActive, markClipperStepCompleted } from "../../persistence/pipeline-api.util";
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
@@ -38,12 +40,13 @@ function isValidRestoredBlob(
   blob: Awaited<ReturnType<typeof readClipperSmartCropAnalysis>>,
   start: number,
   end: number,
+  detectActiveSpeaker: boolean,
 ): boolean {
   if (blob?.engine === "wasm") return false;
   return isRestoredSmartCropAnalysisValid(blob, {
     start,
     end,
-    version: AUTOFLIP_ANALYZER_VERSION,
+    version: activeSpeakerAnalyzerVersion(detectActiveSpeaker),
     blobVersion: blob?.analyzerVersion,
     smoothing: "smooth",
   });
@@ -153,7 +156,7 @@ export async function runAnalyzeSubjectsStage(
   if (input.skipSubjectAnalysis) {
     reporter.stageDetail("Restoring smart crop analysis", null);
     const restored = await readClipperSmartCropAnalysis(input.projectId);
-    if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd)) {
+    if (isValidRestoredBlob(restored, input.clipStart, input.clipEnd, !!session.detectActiveSpeaker)) {
       session.smartCropAnalysis = restored;
       const faceCacheSamples = session.faceCache?.sortedSamples() ?? [];
       if (faceCacheSamples.length > 0) {
@@ -196,7 +199,7 @@ export async function runAnalyzeSubjectsStage(
   if (detections.length === 0) {
     session.smartCropAnalysis = null;
     await markClipperStepCompleted(input.projectId, "analyze_subjects", {
-      analyzerVersion: AUTOFLIP_ANALYZER_VERSION,
+      analyzerVersion: activeSpeakerAnalyzerVersion(session.detectActiveSpeaker),
       modelId: null,
       sampleCount: 0,
       localDataPath: null,
@@ -218,7 +221,7 @@ export async function runAnalyzeSubjectsStage(
   benchmark?.enterPhase("autoflip-track-build");
 
   const { frameWidth, frameHeight } = frameDimensions(session);
-  const blob = buildAutoFlipTrack({
+  const autoFlipInput: Parameters<typeof buildAutoFlipTrack>[0] = {
     clipStart: input.clipStart,
     clipEnd: input.clipEnd,
     detections,
@@ -236,8 +239,27 @@ export async function runAnalyzeSubjectsStage(
     frameHeight,
     degradedReason,
     enhancedIdentityFusion: true,
-  });
+  };
+  if (import.meta.env.DEV || import.meta.env.VITE_CLIPPER_REPLAY_DUMP === "1") {
+    // Lets scripts/replay-autoflip.ts re-run framing offline without a new
+    // multi-minute native analysis. Dev builds and the fast preview build
+    // (`tauri:build:fast`, OPEN_CLIPPER_REPLAY_DUMP=1 via vite.config define)
+    // write it; release builds never do.
+    await writeClipperAutoFlipInput(input.projectId, autoFlipInput).catch((error) =>
+      clipperLog("autoflip replay input not written", { error: String(error) }));
+  }
+  const blob = buildAutoFlipTrack(autoFlipInput);
   blob.engine = "winml";
+  blob.analyzerVersion = activeSpeakerAnalyzerVersion(session.detectActiveSpeaker);
+  if (blob.activeSpeakerTelemetry) {
+    const telemetry = blob.activeSpeakerTelemetry;
+    benchmark?.setMeta("activeSpeakerPolicyEnabled", telemetry.enabled);
+    benchmark?.setMeta("activeSpeakerPolicyEvaluatedWindows", telemetry.evaluatedWindows);
+    benchmark?.setMeta("activeSpeakerPolicySwitches", telemetry.speakerSwitches);
+    benchmark?.setMeta("activeSpeakerPolicyAmbiguousWindows", telemetry.ambiguousWindows);
+    benchmark?.setMeta("activeSpeakerPolicyDutyCycle", Number(telemetry.asdDutyCycle.toFixed(4)));
+    benchmark?.setMeta("activeSpeakerPolicyDisabledReason", telemetry.disabledReason ?? null);
+  }
   const runtimeAnalysis = compactSmartCropForRuntime(blob);
   session.smartCropAnalysis = runtimeAnalysis;
   session.collageFaceSamples = augmentFaceSamplesWithDetectedHeads(
