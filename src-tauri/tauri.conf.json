@@ -71,6 +71,7 @@
     ],
     "resources": {
       "resources/models/clipper-vision/*": "resources/models/clipper-vision/",
+      "resources/youtube-import/*": "resources/youtube-import/",
       "resources/win-runtime/*.dll": ""
     },
     "icon": [

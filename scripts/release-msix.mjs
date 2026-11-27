@@ -105,6 +105,11 @@ function buildMsix() {
       join(payload, "resources", "models", "clipper-vision"),
       { recursive: true },
     );
+    cpSync(
+      join(tauriDir, "resources", "youtube-import"),
+      join(payload, "resources", "youtube-import"),
+      { recursive: true },
+    );
     for (const name of ["StoreLogo.png", "Square44x44Logo.png", "Square150x150Logo.png"]) {
       copyFileSync(join(tauriDir, "icons", name), join(assets, name));
     }

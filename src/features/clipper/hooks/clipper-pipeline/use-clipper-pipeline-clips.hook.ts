@@ -12,6 +12,7 @@ import {
   saveClipperClips,
   saveDisabledCollageRegions,
 } from "../../persistence/clipper-clips-api.util";
+import { withClipperProjectWrite } from "../../persistence/project-write-lifecycle.util";
 import { syncSessionActiveClips } from "../../pipeline/session.util";
 import { clipperError } from "../../shared/logger.util";
 import type { ClipSourceMode } from "../../shared/state.util";
@@ -107,25 +108,32 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
           session.keyframeTimestamps = undefined;
         }
 
-        const clips = await segmentRangeFromTrimmedFile(
-          trimmedFile,
-          rangeDuration,
-          session.rangeWords,
-          wordsPerGroup,
-          {
-            targetLengthSec: segmentLengthSec,
-            onKeyframes: (keyframes) => {
-              session.keyframeTimestamps = keyframes;
+        const clips = await withClipperProjectWrite(projectId, undefined, async (signal) => {
+          const generated = await segmentRangeFromTrimmedFile(
+            trimmedFile,
+            rangeDuration,
+            session.rangeWords,
+            wordsPerGroup,
+            {
+              signal,
+              targetLengthSec: segmentLengthSec,
+              onKeyframes: (keyframes) => {
+                session.keyframeTimestamps = keyframes;
+              },
             },
-          },
-        );
+          );
+          signal.throwIfAborted();
+          const payload = clipsToPayload(generated, session.rangeWords, rangeDuration);
+          await saveClipperClips(projectId, "auto-parts", payload);
+          signal.throwIfAborted();
+          return generated;
+        });
+        if (sessionRef.current !== session || session.rangeTrimmedFile !== trimmedFile) return;
 
         session.autoPartsClips = clips;
         syncSessionActiveClips(session);
         session.captionGroupsCache = null;
 
-        const payload = clipsToPayload(clips, session.rangeWords, rangeDuration);
-        await saveClipperClips(projectId, "auto-parts", payload);
         persistMetadata({ autoPartsSegmentLengthSec: segmentLengthSec });
         setAutoPartsSegmentLengthSec(segmentLengthSec);
 
@@ -147,6 +155,7 @@ export function useClipperPipelineClips(core: UseClipperPipelineCoreResult) {
           };
         });
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         clipperError("pipeline: resegment auto-parts failed", error);
         setState((prev) => ({
           ...prev,

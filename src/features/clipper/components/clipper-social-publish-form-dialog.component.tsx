@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Box, Button, HStack, Input, Text, Textarea, VStack } from "@chakra-ui/react";
+import { Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
 import {
   StyledModal,
   StyledModalFooter,
@@ -14,6 +14,7 @@ import { ClipperSocialPublishTikTokForm } from "./clipper-social-publish-tiktok-
 import { ClipperSocialPublishYoutubeForm } from "./clipper-social-publish-youtube-form.component";
 import type { ClipperSocialPublishController } from "./use-clipper-social-publish.hook";
 import { TIKTOK_COMMERCIAL_REQUIRE_HINT } from "../shared/clipper-tiktok-publish.util";
+import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/themed-input.component";
 
 export function ClipperSocialPublishFormDialog({
   isOpen,
@@ -174,7 +175,7 @@ export function ClipperSocialPublishFormDialog({
               <Text fontSize="sm" mb={2} color={theme.text.distinct}>
                 Title
               </Text>
-              <Input
+              <ThemedInput
                 value={publish.title}
                 onChange={(e) => publish.setTitle(e.target.value)}
                 borderRadius="xl"
@@ -188,7 +189,7 @@ export function ClipperSocialPublishFormDialog({
               <Text fontSize="sm" mb={2} color={theme.text.distinct}>
                 Description
               </Text>
-              <Textarea
+              <ThemedTextarea
                 value={publish.description}
                 onChange={(e) => publish.setDescription(e.target.value)}
                 rows={4}

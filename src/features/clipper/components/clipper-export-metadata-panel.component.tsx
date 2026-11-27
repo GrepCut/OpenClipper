@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Box, HStack, Input, Text, Textarea, VStack } from "@chakra-ui/react";
+import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { Copy } from "lucide-react";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { appToast } from "../../../shared/utils/toast.service";
@@ -12,6 +12,7 @@ import {
 import { groupTimestampedTranscriptForInlineDisplay } from "../persistence/export-transcript.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import type { ClipperFormatResult } from "../shared/state.util";
+import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/themed-input.component";
 
 interface ClipperExportMetadataPanelProps {
   result: ClipperFormatResult;
@@ -60,9 +61,9 @@ function SocialField({
     <Box w="full">
       <MetadataFieldLabel>{label}</MetadataFieldLabel>
       {multiline ? (
-        <Textarea {...sharedProps} rows={3} resize="vertical" />
+        <ThemedTextarea {...sharedProps} rows={3} resize="vertical" />
       ) : (
-        <Input {...sharedProps} />
+        <ThemedInput {...sharedProps} />
       )}
     </Box>
   );

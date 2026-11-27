@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { resetWebProjectRecords } from "../../../shared/persistence/local-database.util";
 import { isTauri } from "../../../shared/utils/platform.util";
 import { resolveFilePlayableUrl } from '../persistence/tauri-media.util';
 import type { ClipperFaceSamplesBlob } from "../shared/face-samples.util";
@@ -14,6 +15,7 @@ import { clipperLog, clipperMeasureSync, clipperWarn, formatBytes } from "../sha
 import { CLIPPER_FACE_ACTION_BENCHMARK_FILE } from "../shared/face-action-benchmark.util";
 import { yieldToMain } from "../shared/yield-to-main.util";
 import { CLIPPER_TRIMMED_SEGMENT_FILE, pathBackedClipperFile } from "../platform/native-source.util";
+import { clipperMetadataToRecord, type ClipperProjectMetadata } from "./project-metadata.util";
 
 export const CLIPPER_FACE_DETECTIONS_FILE = "face_detections.json";
 export const CLIPPER_TRIM_METADATA_FILE = "trim_metadata.json";
@@ -98,6 +100,27 @@ export async function ensureClipperProjectDataDir(projectId: string): Promise<st
 export async function removeClipperProjectDataDir(projectId: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("remove_clipper_project_data_dir", { projectId });
+}
+
+export async function resetClipperProjectData(
+  projectId: string,
+  activeSource: string | null,
+  metadata: ClipperProjectMetadata,
+): Promise<void> {
+  const record = clipperMetadataToRecord(metadata);
+  if (isTauri()) {
+    await invoke("reset_clipper_project_data", { projectId, activeSource, metadata: record });
+    return;
+  }
+  resetWebProjectRecords(projectId, record, [
+    ["clipper-pipeline-steps", projectId],
+    ["clipper-face-analysis", projectId],
+    ["clipper-range-words", projectId],
+    ["clipper-collage-regions", projectId],
+    ["clipper-clips", `${projectId}:auto-parts`],
+    ["clipper-clips", `${projectId}:ai`],
+    ["clipper-clips", `${projectId}:manual`],
+  ]);
 }
 
 export async function writeClipperFaceDetections(

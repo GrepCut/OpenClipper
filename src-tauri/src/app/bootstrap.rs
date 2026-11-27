@@ -36,6 +36,12 @@ pub fn run() {
         .setup(|app| {
             app.manage(ParakeetService::new(app.handle().clone()));
             let local_db = tauri::async_runtime::block_on(database::initialize_database(app.handle())).map_err(std::io::Error::other)?;
+            let recovery = crate::clipper::data::clipper_projects_root(app.handle()).and_then(|root| {
+                tauri::async_runtime::block_on(crate::clipper::range_reset::recover_all(&local_db.database, &root))
+            });
+            if let Err(error) = recovery {
+                log::warn!("Some staged range files could not be recovered: {error}");
+            }
             let db_for_mcp = Arc::new(local_db.database.clone());
             let db_for_cleanup = local_db.database.clone();
             let app_for_cleanup = app.handle().clone();

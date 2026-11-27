@@ -17,7 +17,7 @@ import { ClipperExportRegistrationError, persistClipperExport } from "../../pers
 import { prepareExportMedia } from "../../lib/media/media-preflight.util";
 import { resolveFilePlayableUrl } from "../../persistence/tauri-media.util";
 import { metadataFieldsFromExportRecord } from "../../hooks/clipper-pipeline/export-manifest-resolve.util";
-import { withClipperProjectRender } from "../../persistence/project-write-lifecycle.util";
+import { withClipperProjectWrite } from "../../persistence/project-write-lifecycle.util";
 import { renderProgressKey } from "../../shared/render-progress.util";
 import {
   createRenderFailureReporter,
@@ -268,6 +268,6 @@ export function runRenderClipJob(
   reporter: PipelineReporter,
   options: { signal: AbortSignal; previewUrls?: string[]; reportFailure?: RenderFailureReporter },
 ): Promise<RenderClipJobOutcome> {
-  return withClipperProjectRender(input.projectId, options.signal, (signal) =>
+  return withClipperProjectWrite(input.projectId, options.signal, (signal) =>
     renderClipJob(session, frameContext, input, reporter, { ...options, signal }));
 }

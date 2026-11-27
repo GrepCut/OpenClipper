@@ -13,10 +13,11 @@ export const getThemedInputProps = (theme: Theme) => ({
   fontSize: "sm",
   _placeholder: { color: theme.text.muted },
   _hover: { borderColor: theme.border.primary },
+  // Neutral grey focus ring instead of the theme's accent green.
   _focusVisible: {
     outline: "none",
-    borderColor: theme.border.focus,
-    boxShadow: `0 0 0 1px ${theme.border.focus}`,
+    borderColor: theme.text.muted,
+    boxShadow: `0 0 0 1px ${theme.text.muted}`,
   },
 });
 

@@ -6,6 +6,7 @@ import { useTheme } from "../../theme";
 export type BackLinkOnClickProps = {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 };
 
 export type BackLinkToProps = {
@@ -54,9 +55,10 @@ export function BackLink(props: BackLinkProps) {
       bg="transparent"
       border="none"
       p={0}
+      _disabled={{ cursor: "not-allowed", opacity: 0.55 }}
       data-no-drag
     >
-      <button type="button" onClick={props.onClick}>
+      <button type="button" onClick={props.onClick} disabled={props.disabled}>
         <ArrowLeft size={16} />
         <Text whiteSpace="nowrap">{props.label}</Text>
       </button>

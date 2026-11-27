@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { normalizeAutoPartsSegmentLengthSec, type AutoPartsSegmentLengthSec } from "../../engine/segmentation";
 import {
@@ -43,6 +43,7 @@ export interface UseClipperPipelineCoreResult {
   refs: ClipperPipelineRefs;
   persistedExportCount: number;
   setPersistedExportCount: React.Dispatch<React.SetStateAction<number>>;
+  invalidateExportHydration: () => void;
   rangeLocked: boolean;
   setRangeLocked: React.Dispatch<React.SetStateAction<boolean>>;
   disabledCollageRegionIds: string[];
@@ -69,6 +70,7 @@ export function useClipperPipelineCore(
     () => loaded?.settings ?? DEFAULT_CLIPPER_SETTINGS,
   );
   const [persistedExportCount, setPersistedExportCount] = useState(0);
+  const exportLoadGeneration = useRef(0);
   const [rangeLocked, setRangeLocked] = useState(() => deriveRangeLocked(loaded));
   const [disabledCollageRegionIds, setDisabledCollageRegionIds] = useState<string[]>([]);
   const [autoPartsSegmentLengthSec, setAutoPartsSegmentLengthSec] = useState<AutoPartsSegmentLengthSec>(
@@ -85,8 +87,18 @@ export function useClipperPipelineCore(
     resumeStartedRef,
   } = refs;
 
+  const invalidateExportHydration = useCallback(() => {
+    exportLoadGeneration.current++;
+    setPersistedExportCount(0);
+  }, []);
+
   const hydrateExportsFromDisk = useCallback(async (options?: { retryPending?: boolean }): Promise<ClipperFormatResult[]> => {
+    const generation = exportLoadGeneration.current;
     const restored = await loadClipperExportsFromDb(project.id, options);
+    if (generation !== exportLoadGeneration.current) {
+      for (const result of restored) releasePlayableMediaUrl(result.previewUrl);
+      return [];
+    }
     if (!restored.length) return [];
 
     for (const r of restored) {
@@ -232,9 +244,13 @@ export function useClipperPipelineCore(
 
   useEffect(() => {
     if (!loaded) return;
+    const generation = exportLoadGeneration.current;
+    const updateCount = (count: number) => {
+      if (generation === exportLoadGeneration.current) setPersistedExportCount(count);
+    };
     void fetchClipperExportRecords(project.id)
-      .then((exports) => setPersistedExportCount(exports.length))
-      .catch(() => setPersistedExportCount(0));
+      .then((exports) => updateCount(exports.length))
+      .catch(() => updateCount(0));
   }, [loaded, project.id]);
 
   useEffect(() => {
@@ -263,6 +279,7 @@ export function useClipperPipelineCore(
     refs,
     persistedExportCount,
     setPersistedExportCount,
+    invalidateExportHydration,
     rangeLocked,
     setRangeLocked,
     disabledCollageRegionIds,

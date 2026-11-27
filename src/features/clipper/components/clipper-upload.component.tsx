@@ -12,6 +12,8 @@ interface ClipperUploadProps {
   disabled?: boolean;
   /** Fill remaining viewport and center content (main idle state). */
   fill?: boolean;
+  /** Extra actions shown under the hint, clickable above the drop target. */
+  children?: React.ReactNode;
 }
 
 /** Longer dashes than CSS `border: dashed` — stroke-dasharray controls length. */
@@ -24,6 +26,7 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
   onFile,
   disabled,
   fill = false,
+  children,
 }) => {
   const { theme } = useClipperUi();
   const titleId = useId();
@@ -150,6 +153,11 @@ export const ClipperUpload: React.FC<ClipperUploadProps> = ({
             {picking ? "Opening file picker…" : "Click or drag to start clipping"}
           </Text>
         </VStack>
+        {children && (
+          <Box position="relative" zIndex={1}>
+            {children}
+          </Box>
+        )}
       </VStack>
     </Box>
   );

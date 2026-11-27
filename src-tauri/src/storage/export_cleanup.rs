@@ -1,12 +1,12 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tauri::AppHandle;
 
-use crate::clipper::data::clipper_export_file_exists;
+use crate::clipper::{data::{clipper_export_file_exists, clipper_project_root}, range_reset};
 use crate::infra::error::DbResult;
 use crate::storage::repository::{ExportPublishRepository, ExportRepository};
 
 pub async fn delete_project_exports(
-    database: &DatabaseConnection,
+    database: &impl ConnectionTrait,
     project_id: &str,
 ) -> DbResult<u64> {
     let exports = ExportRepository::list_by_project(database, project_id).await?;
@@ -27,7 +27,11 @@ pub async fn purge_missing_on_disk(
     let exports = ExportRepository::list_all(database, project_id).await?;
     let missing_ids: Vec<String> = exports
         .into_iter()
-        .filter(|row| !clipper_export_file_exists(app, &row.project_id, &row.file_name))
+        .filter(|row| {
+            !clipper_export_file_exists(app, &row.project_id, &row.file_name)
+                && clipper_project_root(app, &row.project_id)
+                    .is_ok_and(|project| !range_reset::has_staged_files(&project))
+        })
         .map(|row| row.id)
         .collect();
 

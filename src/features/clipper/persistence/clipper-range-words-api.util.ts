@@ -3,6 +3,7 @@ import {
   localRecordPut,
 } from "../../../shared/persistence/local-database.util";
 import type { WordCue } from "../lib/media/transcription-export.util";
+import { withClipperProjectWrite } from "./project-write-lifecycle.util";
 
 const NAMESPACE = "clipper-range-words";
 
@@ -11,7 +12,7 @@ export async function saveClipperRangeWords(
   projectId: string,
   words: WordCue[],
 ): Promise<WordCue[]> {
-  return localRecordPut(NAMESPACE, projectId, projectId, words);
+  return withClipperProjectWrite(projectId, undefined, () => localRecordPut(NAMESPACE, projectId, projectId, words));
 }
 
 /** Loads the range transcript saved for this project. Missing/invalid → []. */

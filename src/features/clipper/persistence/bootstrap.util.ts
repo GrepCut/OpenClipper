@@ -6,7 +6,6 @@ import { readVideoDisplayDimensions } from "../lib/media/video-display-dims.util
 import { getPreciseVideoDuration } from "../lib/media/get-precise-video-duration.util";
 import {
   isAbsoluteNativePath,
-  resolveFilePlayableUrl,
   resolvePlayableMediaUrl,
 } from "./tauri-media.util";
 import {
@@ -42,14 +41,12 @@ export interface CreateClipperProjectInput {
   token: string;
 }
 
-export interface SyncClipperSourceVideoResult {
-  mediaFileId: string;
-  duration: number;
-  mediaFile: ClipperMediaFile;
-}
-
 export interface SyncClipperSourceVideoOptions {
+  mediaFileId: string;
+  playableUrl: string;
+  onRegister: () => void;
   onProgress?: (ratio: number) => void;
+  signal: AbortSignal;
 }
 
 export async function createClipperProject(
@@ -87,8 +84,8 @@ export async function syncClipperSourceVideo(
   project: Project,
   file: File,
   token: string,
-  options: SyncClipperSourceVideoOptions = {},
-): Promise<SyncClipperSourceVideoResult> {
+  options: SyncClipperSourceVideoOptions,
+): Promise<ClipperMediaFile> {
   const report = (ratio: number) => {
     options.onProgress?.(Math.max(0, Math.min(1, ratio)));
   };
@@ -104,7 +101,8 @@ export async function syncClipperSourceVideo(
   report(0.15);
 
   const nativePath = getNativeFilePath(file);
-  const playableUrl = nativePath ? await resolveFilePlayableUrl(file) : undefined;
+  const useNativeReference = isTauri() && !!nativePath && isAbsoluteNativePath(nativePath);
+  const { playableUrl, mediaFileId } = options;
 
   const endDurationProbe = clipperTimer("sync source: probe duration");
   const durationPromise = getPreciseVideoDuration(file, playableUrl).then((duration) => {
@@ -113,7 +111,7 @@ export async function syncClipperSourceVideo(
   });
 
   const endDimsProbe = clipperTimer("sync source: probe dimensions");
-  const dimensionsPromise = (playableUrl
+  const dimensionsPromise = (useNativeReference
     ? new Promise<{ width: number; height: number }>((resolve, reject) => {
         const video = document.createElement("video");
         video.preload = "metadata";
@@ -129,11 +127,8 @@ export async function syncClipperSourceVideo(
   });
 
   const [duration, dimensions] = await Promise.all([durationPromise, dimensionsPromise]);
+  options.signal.throwIfAborted();
   report(0.25);
-
-  const mediaFileId = uuidv4();
-  const useNativeReference =
-    isTauri() && !!nativePath && isAbsoluteNativePath(nativePath);
 
   const mediaFile = createClipperMediaFile({
     id: mediaFileId,
@@ -145,25 +140,21 @@ export async function syncClipperSourceVideo(
   });
 
   const endBackendRegister = clipperTimer("sync source: register on backend");
+  options.onRegister();
   await registerClipperSourceMediaOnBackend(project.id, token, mediaFile, file);
   endBackendRegister();
-  report(0.95);
-
-  if (useNativeReference && nativePath) {
-    await rememberLocalMediaSource(mediaFileId, file.name, nativePath);
-    report(1);
-    clipperLog("sync source: complete (native reference)", {
-      mediaFileId,
-      sourceNativePath: nativePath,
-      durationSec: duration,
-    });
-    return { mediaFileId, duration, mediaFile };
-  }
-
-  registerInMemorySourceFile(mediaFileId, file);
   report(1);
-  clipperLog("sync source: complete", { mediaFileId, durationSec: duration });
-  return { mediaFileId, duration, mediaFile };
+  return mediaFile;
+}
+
+export function cacheClipperSourceVideo(mediaFile: ClipperMediaFile, file: File): void {
+  if (mediaFile.sourcePath) {
+    void rememberLocalMediaSource(mediaFile.id, file.name, mediaFile.sourcePath).catch((error) =>
+      clipperLog("sync source: could not cache native source", { error }),
+    );
+  } else {
+    registerInMemorySourceFile(mediaFile.id, file);
+  }
 }
 
 async function resolveClipperSourceFile(

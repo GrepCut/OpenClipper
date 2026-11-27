@@ -1,8 +1,8 @@
 import {
-  localRecordDelete,
   localRecordGet,
   localRecordPut,
 } from "../../../shared/persistence/local-database.util";
+import { withClipperProjectWrite } from "./project-write-lifecycle.util";
 
 export type ClipperPipelineStepKey =
   | "confirm_range"
@@ -71,7 +71,11 @@ const writeQueues = new Map<string, Promise<unknown>>();
 
 function queueProjectWrite<T>(projectId: string, task: () => Promise<T>): Promise<T> {
   const previous = writeQueues.get(projectId) ?? Promise.resolve();
-  const next = previous.then(task, task);
+  const next = withClipperProjectWrite(projectId, undefined, async (signal) => {
+    await previous;
+    signal.throwIfAborted();
+    return task();
+  });
   writeQueues.set(
     projectId,
     next.catch(() => undefined),
@@ -203,14 +207,6 @@ export const clipperPipelineService = {
     updates: ClipperStepUpdate[],
   ): Promise<ClipperPipelineStepRecord[]> =>
     queueProjectWrite(projectId, () => applyStepUpdates(projectId, updates)),
-
-  resetPipeline: (projectId: string): Promise<void> =>
-    queueProjectWrite(projectId, async () => {
-      await Promise.all([
-        localRecordDelete(STEPS, projectId),
-        localRecordDelete(FACE, projectId),
-      ]);
-    }),
 
   upsertFaceAnalysis: (
     projectId: string,

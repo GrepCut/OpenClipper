@@ -117,8 +117,10 @@ pub fn remove_stale_clipper_transcription_audio(
 pub async fn remove_clipper_project_data_dir(
     app: AppHandle,
     db: tauri::State<'_, crate::storage::database::LocalDb>,
+    jobs: tauri::State<'_, crate::video::jobs::registry::NativeJobRegistry>,
     project_id: String,
 ) -> Result<(), String> {
+    let _block = jobs.block_project(&project_id, true).await?;
     crate::storage::export_cleanup::delete_project_exports(&db.database, &project_id)
         .await
         .map_err(|error| error.to_string())?;
@@ -128,6 +130,26 @@ pub async fn remove_clipper_project_data_dir(
         fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_clipper_project_data(
+    app: AppHandle,
+    db: tauri::State<'_, crate::storage::database::LocalDb>,
+    jobs: tauri::State<'_, crate::video::jobs::registry::NativeJobRegistry>,
+    project_id: String,
+    active_source: Option<String>,
+    metadata: serde_json::Value,
+) -> Result<(), String> {
+    clipper_project_root(&app, &project_id)?;
+    let _block = jobs.block_project(&project_id, false).await?;
+    crate::clipper::range_reset::reset(
+        &db.database,
+        &clipper_projects_root(&app)?,
+        &project_id,
+        active_source.as_deref().map(std::path::Path::new),
+        metadata,
+    ).await
 }
 
 #[tauri::command]

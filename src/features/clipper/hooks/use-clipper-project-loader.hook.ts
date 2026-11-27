@@ -7,6 +7,7 @@ import {
   loadClipperSourceMediaFile,
 } from "../persistence/bootstrap.util";
 import { getClipperMetadataFromProject } from "../persistence/metadata-autosave.util";
+import { cleanYouTubeSources } from "../persistence/youtube-import.util";
 import type { ClipperProjectMetadata } from "../persistence/project-metadata.util";
 import { canRestoreTranscriptionFromMetadata } from "../persistence/project-metadata.util";
 import {
@@ -185,6 +186,10 @@ export function useClipperProjectLoader(project: Project, token: string | null) 
             },
           },
         );
+
+        if (!isStale()) {
+          await cleanYouTubeSources(project.id).catch(() => {});
+        }
 
         if (!source) {
           if (!isStale()) {
