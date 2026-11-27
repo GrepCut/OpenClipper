@@ -150,7 +150,7 @@ export function drawClipperCaptions(
     bottom: 0.78,
   }[captions.position];
   const fontSizeScale = {
-    "extra-small": 0.55,
+    "extra-small": 0.5,
     small: 0.8,
     medium: 1,
     large: 1.24,
