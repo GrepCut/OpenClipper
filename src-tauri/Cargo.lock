@@ -3913,7 +3913,7 @@ dependencies = [
 
 [[package]]
 name = "open-clipper"
-version = "26.11.6"
+version = "26.11.7"
 dependencies = [
  "anyhow",
  "axum",
