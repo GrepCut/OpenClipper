@@ -14,11 +14,27 @@ pub struct NativeJobRegistry {
 struct RegistryState {
     active_session: Option<String>,
     jobs: HashMap<String, ActiveJob>,
+    blocked_projects: HashSet<String>,
 }
 
 struct ActiveJob {
     session_id: String,
     cancelled: Arc<AtomicBool>,
+    project_id: Option<String>,
+    completion: tokio::sync::watch::Sender<()>,
+}
+
+pub(crate) struct ProjectJobBlock {
+    registry: NativeJobRegistry,
+    project_id: String,
+}
+
+impl Drop for ProjectJobBlock {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.registry.inner.lock() {
+            state.blocked_projects.remove(&self.project_id);
+        }
+    }
 }
 
 fn message_can_be_sent(cancelled: bool, allow_cancelled: bool) -> bool {
@@ -70,6 +86,25 @@ impl NativeJobRegistry {
     }
 
     pub fn register(&self, session_id: &str, job_id: &str) -> Result<Arc<AtomicBool>, String> {
+        self.register_job(session_id, job_id, None)
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn register_project_job(
+        &self,
+        session_id: &str,
+        job_id: &str,
+        project_id: &str,
+    ) -> Result<Arc<AtomicBool>, String> {
+        self.register_job(session_id, job_id, Some(project_id))
+    }
+
+    fn register_job(
+        &self,
+        session_id: &str,
+        job_id: &str,
+        project_id: Option<&str>,
+    ) -> Result<Arc<AtomicBool>, String> {
         if !valid_identifier(session_id) || !valid_identifier(job_id) {
             return Err("Invalid native job identifier".into());
         }
@@ -83,15 +118,52 @@ impl NativeJobRegistry {
         if state.jobs.contains_key(job_id) {
             return Err("Native job id is already active".into());
         }
+        if let Some(id) = project_id {
+            if state.blocked_projects.contains(id)
+                || state.jobs.values().any(|job| job.project_id.as_deref() == Some(id))
+            {
+                return Err("A project operation is already in progress".into());
+            }
+        }
         let cancelled = Arc::new(AtomicBool::new(false));
         state.jobs.insert(
             job_id.to_string(),
             ActiveJob {
                 session_id: session_id.to_string(),
                 cancelled: cancelled.clone(),
+                project_id: project_id.map(str::to_owned),
+                completion: tokio::sync::watch::channel(()).0,
             },
         );
         Ok(cancelled)
+    }
+
+    pub(crate) async fn block_project(
+        &self,
+        project_id: &str,
+        cancel: bool,
+    ) -> Result<ProjectJobBlock, String> {
+        let pending = {
+            let mut state = self.inner.lock().map_err(|_| "Native job registry is poisoned")?;
+            let job = state.jobs.values().find(|job| job.project_id.as_deref() == Some(project_id));
+            let pending = match job {
+                Some(job) if cancel => {
+                    job.cancelled.store(true, Ordering::Release);
+                    Some(job.completion.subscribe())
+                }
+                Some(_) => return Err("A project operation is already in progress".into()),
+                None => None,
+            };
+            if !state.blocked_projects.insert(project_id.to_owned()) {
+                return Err("A project operation is already in progress".into());
+            }
+            pending
+        };
+        let guard = ProjectJobBlock { registry: self.clone(), project_id: project_id.to_owned() };
+        if let Some(mut done) = pending {
+            let _ = done.changed().await;
+        }
+        Ok(guard)
     }
 
     pub fn cancel(&self, session_id: &str, job_id: &str) -> bool {
@@ -217,6 +289,29 @@ impl NativeJobEmitter {
 #[cfg(test)]
 mod tests {
     use super::message_can_be_sent;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn project_deletion_cancels_and_waits_for_the_import_writer() {
+        use super::{NativeJobRegistry, Ordering};
+        use std::{future::{poll_fn, Future}, task::Poll};
+
+        let jobs = NativeJobRegistry::default();
+        jobs.activate_session("test-session").unwrap();
+        let cancelled = jobs.register_project_job("test-session", "job", "project").unwrap();
+        assert!(jobs.register_project_job("test-session", "other", "project").is_err());
+        let mut deletion = std::pin::pin!(jobs.block_project("project", true));
+        poll_fn(|context| {
+            assert!(deletion.as_mut().poll(context).is_pending());
+            Poll::Ready(())
+        }).await;
+        assert!(cancelled.load(Ordering::Acquire));
+        jobs.finish("test-session", "job");
+        let deletion_guard = deletion.await.unwrap();
+        assert!(jobs.register_project_job("test-session", "other", "project").is_err());
+        drop(deletion_guard);
+        assert!(jobs.register_project_job("test-session", "other", "project").is_ok());
+    }
 
     #[test]
     fn terminal_errors_can_be_sent_after_internal_cancellation() {

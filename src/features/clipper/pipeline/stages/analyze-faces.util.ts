@@ -44,6 +44,8 @@ function stageDetailForNativePhase(
       return { label: "Decoding video", progress: ratio };
     case "draining":
       return { label: "Finishing detections", progress: ratio };
+    case "speaker":
+      return { label: "Detecting active speaker", progress: ratio };
     case "inferencing":
     case "complete":
       return { label: "Detecting faces & tracking action", progress: ratio };
@@ -59,6 +61,8 @@ export async function runAnalyzeFacesStage(
   reporter: PipelineReporter,
   options: { signal: AbortSignal },
 ): Promise<{ faceDetectSkipped: boolean }> {
+  if (session.skipAutoReframing) return { faceDetectSkipped: true };
+
   const { projectId, mediaFileId, snappedStart, end, skipFaceDetect, skipSubjectAnalysis, runId } = input;
   let faceDetectSkipped = false;
 
@@ -132,6 +136,7 @@ export async function runAnalyzeFacesStage(
       signal: options.signal,
       nativeSource: { filePath: nativePath, startTime: snappedStart, endTime: end },
       ingestFaces: !faceDetectSkipped,
+      detectActiveSpeaker: !!session.detectActiveSpeaker && !skipSubjectAnalysis,
       onPhase: (message) => reporter.stage("analyzing-faces", message),
       onNativePhase: (phase) => {
         benchmark.enterPhase(phase);
@@ -150,6 +155,19 @@ export async function runAnalyzeFacesStage(
     });
     endFaceAnalysis();
 
+    if (summary.activeSpeaker) {
+      const speaker = summary.activeSpeaker;
+      benchmark.setMeta("activeSpeakerElapsedMs", speaker.elapsedMs);
+      benchmark.setMeta("activeSpeakerDecodeMs", speaker.decodeMs);
+      benchmark.setMeta("activeSpeakerFeaturesMs", speaker.featuresMs);
+      benchmark.setMeta("activeSpeakerInferenceMs", speaker.inferenceMs);
+      benchmark.setMeta("activeSpeakerAnalyzedSeconds", Number(speaker.analyzedSeconds.toFixed(3)));
+      benchmark.setMeta("activeSpeakerWindows", speaker.windows);
+      benchmark.setMeta("activeSpeakerSkippedBlocks", speaker.skippedBlocks);
+      benchmark.setMeta("activeSpeakerPeakWorkingSetMib", speaker.peakWorkingSetMib);
+      benchmark.setMeta("activeSpeakerScoredSamples", speaker.samples.length);
+      benchmark.setMeta("activeSpeakerDisabledReason", speaker.disabledReason ?? null);
+    }
     benchmark.setMeta("engine", "winml");
     benchmark.setMeta("faceDevice", summary.faceDevice);
     benchmark.setMeta("objectDevice", summary.objectDevice);

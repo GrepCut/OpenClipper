@@ -15,6 +15,7 @@ import type {
   ClipperStudioFramePanel,
   ClipperStudioFrameSample,
 } from "./clipper-studio-import.types";
+import { simplifyStudioFrameTrack } from "./simplify-studio-frame-track.util";
 
 const STUDIO_FRAME_GRID_SEC = 0.1;
 const STUDIO_CUT_LEAD_SEC = 0.001;
@@ -23,6 +24,8 @@ const STUDIO_TIME_EPSILON_SEC = 0.0001;
 interface RawTrackSample {
   t: number;
   cut?: boolean;
+  /** A switch to a new active speaker: a hard edit, never a slide. */
+  speakerCut?: boolean;
   mode?: string;
 }
 
@@ -31,6 +34,7 @@ export interface SampleStudioFrameTrackInput {
   source: FrameEffectSize;
   output: FrameEffectSize;
   analysis: ClipperFrameAnalysis | null;
+  skipAutoReframing?: boolean;
   disabledCollageRegionIds: string[];
   segments: ClipperClipSegmentWindow[];
 }
@@ -62,7 +66,7 @@ function rawTracks(
 
 /** Whether `sample` is a hard cut or a layout-mode switch after `previous` on the same track. */
 function isSwitch(previous: RawTrackSample | undefined, sample: RawTrackSample): boolean {
-  return Boolean(sample.cut) || (previous?.mode != null && previous.mode !== sample.mode);
+  return Boolean(sample.cut) || Boolean(sample.speakerCut) || (previous?.mode != null && previous.mode !== sample.mode);
 }
 
 /** Times of persisted hard cuts and layout-mode switches. */
@@ -124,14 +128,14 @@ function toStudioPanels(
  * disabled collage regions, same content-rect clamp and the same cut timing.
  */
 export function sampleStudioFrameTrack(input: SampleStudioFrameTrackInput): ClipperStudioFrameSample[] {
-  const { formatDef, source, output, analysis, disabledCollageRegionIds, segments } = input;
+  const { formatDef, source, output, analysis, skipAutoReframing, disabledCollageRegionIds, segments } = input;
   if (!(source.width > 0 && source.height > 0)) {
     throw new Error("Source video dimensions are unknown; wait for the preview to load.");
   }
-  const tracks = rawTracks(analysis, formatDef);
+  const tracks = rawTracks(skipAutoReframing ? null : analysis, formatDef);
   const cuts = switchTimes(tracks);
   const isCutTime = (t: number) => cuts.some((cut) => Math.abs(cut - t) <= STUDIO_TIME_EPSILON_SEC);
-  const render = { smartCropAnalysis: analysis, disabledCollageRegionIds };
+  const render = { smartCropAnalysis: analysis, skipAutoReframing, disabledCollageRegionIds };
 
   const samples: ClipperStudioFrameSample[] = [];
   for (const t of sampleTimes(tracks, cuts, segments)) {
@@ -144,5 +148,5 @@ export function sampleStudioFrameTrack(input: SampleStudioFrameTrackInput): Clip
     }
     samples.push(sample);
   }
-  return samples;
+  return simplifyStudioFrameTrack(samples, { source, output, segments });
 }

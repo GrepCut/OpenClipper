@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     sea_query::{Expr, OnConflict},
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect,
 };
 use serde_json::Value;
@@ -39,7 +39,7 @@ pub struct ProjectRepository;
 
 impl ProjectRepository {
     pub async fn put(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         owner_id: &str,
         project: Value,
     ) -> DbResult<Value> {
@@ -88,7 +88,7 @@ impl ProjectRepository {
     }
 
     pub async fn get(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         id: &str,
         owner_id: &str,
     ) -> DbResult<Option<Value>> {

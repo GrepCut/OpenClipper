@@ -139,6 +139,11 @@ pub(crate) fn process_decoded_frame(
     state
         .border_observations
         .push((border.top_border_px, border.bottom_border_px));
+    let started = Instant::now();
+    state
+        .static_bands
+        .observe(&rgb, width as usize * 3, width as usize, height as usize);
+    state.t_border += started.elapsed().as_micros();
     if border.has_solid_background {
         state.solid_background_frames += 1;
         if let Some((r, g, b)) = border.solid_background_rgb {

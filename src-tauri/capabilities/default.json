@@ -22,6 +22,7 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:default",
+    "opener:allow-reveal-item-in-dir",
     "updater:default",
     "deep-link:default",
     {

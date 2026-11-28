@@ -89,6 +89,7 @@ export function buildLoadedResumeKey(loaded: ResumeLoadedInput, projectId: strin
     metadata.clipEnd,
     loaded.words.length,
     loaded.mediaFileId,
+    metadata.skipAutoReframing === true,
     resumePlan.target,
     resumePlan.skipTranscribe,
     resumePlan.skipFaceDetect,
@@ -148,9 +149,12 @@ export function planResumeExecution(
     return { kind: "idle" };
   }
 
-  const range = resolvePersistedClipRange(metadata, loaded.steps ?? []);
+  // The session can return to trimming while its original loaded steps still describe the old range.
+  const range = metadata.stage === "trimming"
+    ? { clipStart: metadata.clipStart, clipEnd: metadata.clipEnd }
+    : resolvePersistedClipRange(metadata, loaded.steps ?? []);
 
-  if (resumePlan.target === "trimming" || range.clipEnd == null) {
+  if (metadata.stage === "trimming" || resumePlan.target === "trimming" || range.clipEnd == null) {
     return {
       kind: "trimming",
       sourceFileName: loaded.sourceFileName,

@@ -9,6 +9,7 @@ use super::super::vision::NativeVisionError;
 use super::super::vision_logic::Rotation;
 use super::types::StaticFeatureSample;
 use crate::video::ffmpeg::border::BorderFeatures;
+use crate::video::ffmpeg::static_band::StaticBandDetector;
 use crate::video::ffmpeg::frames::{ensure_ffmpeg_init, AutoFlipShotBoundaryDetector};
 
 pub(crate) struct DecodeStats {
@@ -53,6 +54,7 @@ pub(crate) struct DecodeFrameState {
     pub frame_timestamps: Vec<f64>,
     pub static_feature_samples: Vec<StaticFeatureSample>,
     pub border_observations: Vec<(u32, u32)>,
+    pub static_bands: StaticBandDetector,
     pub solid_background_frames: usize,
     pub solid_rgb_sum: (u64, u64, u64),
     pub sample_count: usize,
@@ -207,12 +209,14 @@ impl DecodeSession {
                 next_face_bucket: start_time,
                 shot_detector: AutoFlipShotBoundaryDetector::for_sample_rate(
                     source_frame_rate.max(1.0),
-                ),
+                )
+                .with_frame_size(histogram_width as usize, histogram_height as usize),
                 pending_scene_cut: false,
                 scene_cut_timestamps: Vec::new(),
                 frame_timestamps: Vec::new(),
                 static_feature_samples: Vec::new(),
                 border_observations: Vec::new(),
+                static_bands: StaticBandDetector::default(),
                 solid_background_frames: 0,
                 solid_rgb_sum: (0, 0, 0),
                 sample_count: 0,

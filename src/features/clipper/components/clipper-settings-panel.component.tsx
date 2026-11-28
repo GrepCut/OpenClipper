@@ -5,6 +5,7 @@ import type { WordCue } from "../lib/media/transcription-export.util";
 import type { ClipperSettingsDrawerPanel } from "./clipper-settings-drawer.types";
 import { BrandingSection } from "./settings/branding-section.component";
 import { CaptionsSection } from "./settings/captions-section.component";
+import { PartsOverlaySection } from "./settings/parts-overlay-section.component";
 import { TranscriptSection } from "./settings/transcript-section.component";
 
 interface ClipperSettingsPanelProps {
@@ -39,17 +40,28 @@ export const ClipperSettingsPanel: React.FC<ClipperSettingsPanelProps> = ({
             }
           />
         );
-      case "branding":
+      case "overlays":
         return (
-          <BrandingSection
-            branding={settings.branding}
-            onChange={(patch) =>
-              onUpdateSettings((prev) => ({
-                ...prev,
-                branding: { ...prev.branding, ...patch },
-              }))
-            }
-          />
+          <VStack align="stretch" gap={6}>
+            <BrandingSection
+              branding={settings.branding}
+              onChange={(patch) =>
+                onUpdateSettings((prev) => ({
+                  ...prev,
+                  branding: { ...prev.branding, ...patch },
+                }))
+              }
+            />
+            <PartsOverlaySection
+              partsOverlay={settings.partsOverlay}
+              onChange={(patch) =>
+                onUpdateSettings((prev) => ({
+                  ...prev,
+                  partsOverlay: { ...prev.partsOverlay, ...patch },
+                }))
+              }
+            />
+          </VStack>
         );
     }
   };

@@ -1,5 +1,7 @@
-import React, { useCallback, useRef, useState } from "react";
-import { Box, Button, HStack, Slider, Text, VStack } from "@chakra-ui/react";
+import React, { useCallback, useId, useRef, useState } from "react";
+import { Box, Button, HStack, IconButton, Portal, Slider, Text, Tooltip, VStack } from "@chakra-ui/react";
+import { Info } from "lucide-react";
+import { ModernSwitch } from "../../../shared/components/ui/modern-switch.component";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { CLIPPER_MIN_CLIP_SECONDS } from "../settings/settings.util";
@@ -10,8 +12,9 @@ interface ClipperTrimSelectProps {
   sourceDuration: number;
   initialStartSec?: number;
   initialEndSec?: number;
+  initialSkipAutoReframing: boolean;
   sourceFileName: string | null;
-  onConfirm: (start: number, end: number) => void;
+  onConfirm: (start: number, end: number, skipAutoReframing: boolean) => void;
   onCancel: () => void;
 }
 
@@ -19,17 +22,24 @@ function formatTime(seconds: number): string {
   return formatDurationMmSs(seconds);
 }
 
+const SKIP_AUTO_REFRAMING_LABEL = "Skip auto reframing";
+const SKIP_AUTO_REFRAMING_DESCRIPTION =
+  "Ideal for tutorials and gameplay. Keeps the entire frame visible and adds black bars at the top and bottom when fitting a wide video into a vertical clip.";
+
 export const ClipperTrimSelect: React.FC<ClipperTrimSelectProps> = ({
   sourceUrl,
   sourceDuration,
   initialStartSec,
   initialEndSec,
+  initialSkipAutoReframing,
   sourceFileName,
   onConfirm,
   onCancel,
 }) => {
   const { theme, panelShadow } = useClipperUi();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const reframingDescriptionId = useId();
+  const [skipAutoReframing, setSkipAutoReframing] = useState(initialSkipAutoReframing);
   const [range, setRange] = useState<[number, number]>(() => {
     if (initialEndSec != null && initialEndSec > (initialStartSec ?? 0)) {
       return [
@@ -139,19 +149,7 @@ export const ClipperTrimSelect: React.FC<ClipperTrimSelectProps> = ({
         </Slider.Control>
       </Slider.Root>
 
-      <HStack justify="center" gap={4} flexWrap="wrap" pt={2}>
-        <Button
-          size="lg"
-          borderRadius="2xl"
-          bg={clipperTheme.accent}
-          color={theme.text.onBrand}
-          px={8}
-          _hover={{ bg: clipperTheme.accentHover }}
-          onClick={() => onConfirm(range[0], range[1])}
-          disabled={rangeLength < CLIPPER_MIN_CLIP_SECONDS}
-        >
-          Continue with this range
-        </Button>
+      <HStack justify="space-between" align="flex-start" gap={4} flexWrap="wrap" pt={2}>
         <Button
           size="lg"
           variant="outline"
@@ -166,6 +164,71 @@ export const ClipperTrimSelect: React.FC<ClipperTrimSelectProps> = ({
         >
           Choose another video
         </Button>
+
+        <VStack align="flex-start" gap={5}>
+          <Button
+            size="lg"
+            borderRadius="2xl"
+            bg={clipperTheme.accent}
+            color={theme.text.onBrand}
+            px={8}
+            _hover={{ bg: clipperTheme.accentHover }}
+            onClick={() => onConfirm(range[0], range[1], skipAutoReframing)}
+            disabled={rangeLength < CLIPPER_MIN_CLIP_SECONDS}
+          >
+            Continue with this range
+          </Button>
+
+          <HStack gap={1}>
+            <HStack as="label" gap={2} cursor="pointer">
+              <ModernSwitch
+                checked={skipAutoReframing}
+                label={SKIP_AUTO_REFRAMING_LABEL}
+                aria-describedby={reframingDescriptionId}
+                onCheckedChange={setSkipAutoReframing}
+              />
+              <Text as="span" fontSize="sm" color={theme.text.muted} whiteSpace="nowrap">
+                {SKIP_AUTO_REFRAMING_LABEL}
+              </Text>
+            </HStack>
+            <span id={reframingDescriptionId} hidden>{SKIP_AUTO_REFRAMING_DESCRIPTION}</span>
+            <Tooltip.Root openDelay={200} closeDelay={100} positioning={{ placement: "bottom" }}>
+              <Tooltip.Trigger asChild>
+                <IconButton
+                  type="button"
+                  aria-label="About skip auto reframing"
+                  size="2xs"
+                  variant="plain"
+                  borderRadius="full"
+                  bg="transparent"
+                  color={theme.text.muted}
+                  focusVisibleRing="outside"
+                  _hover={{ bg: theme.surface.hover, color: theme.text.primary }}
+                >
+                  <Info size={16} aria-hidden="true" />
+                </IconButton>
+              </Tooltip.Trigger>
+              <Portal>
+                <Tooltip.Positioner>
+                  <Tooltip.Content
+                    maxW="min(280px, calc(100vw - 24px))"
+                    px={3}
+                    py={2}
+                    bg={theme.background.secondary}
+                    color={theme.text.primary}
+                    borderWidth="1px"
+                    borderColor={theme.border.primary}
+                    borderRadius="lg"
+                    boxShadow={theme.shadow.dropdown}
+                    fontSize="sm"
+                  >
+                    {SKIP_AUTO_REFRAMING_DESCRIPTION}
+                  </Tooltip.Content>
+                </Tooltip.Positioner>
+              </Portal>
+            </Tooltip.Root>
+          </HStack>
+        </VStack>
       </HStack>
     </VStack>
   );

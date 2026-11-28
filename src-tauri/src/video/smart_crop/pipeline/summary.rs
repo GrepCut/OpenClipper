@@ -64,6 +64,7 @@ pub(crate) fn build_summary(
         static_feature_samples: state.static_feature_samples.clone(),
         content_rect: stable_content_rect(
             &state.border_observations,
+            state.static_bands.finish(),
             if matches!(meta.rotation, Rotation::R90 | Rotation::R270) {
                 meta.sample_raw_width
             } else {
@@ -72,6 +73,7 @@ pub(crate) fn build_summary(
         ),
         model_version: VISION_MODEL_VERSION,
         tracker_version: tracking_enabled.then_some("bytetrack-v2"),
+        active_speaker: None,
         metrics: NativeVisionMetrics {
             decode_duration_ms: decode_stats.decode_duration_ms,
             inference_duration_ms: merged.inference_duration_ms,

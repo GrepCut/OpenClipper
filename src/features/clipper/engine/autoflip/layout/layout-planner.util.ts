@@ -22,6 +22,8 @@ import { rawMode } from "./layout-mode.util";
 import { createVisibilityFramingState } from "./visibility-framing.util";
 import { buildViewports } from "./viewport-builder.util";
 import { smoothLayoutTrackSamples } from "./trajectory-smoothing.util";
+import { conversationLayoutSample, planConversationLayout } from "./conversation-layout.util";
+import { FULL_FRAME } from "../content-rect.util";
 import { bridgeTransientSplitGaps } from "./offline-split-confirmation.util";
 import {
   isShortSelectedSplitRun,
@@ -56,6 +58,13 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
   return Object.fromEntries(Object.entries(input.aspectTracks).map(([formatId, aspectTrack]) => {
     const visibilityState = createVisibilityFramingState();
     const visibilityControllerState = createVisibilityControllerState();
+    // Conversations get one fixed layout per stretch (see conversation-layout);
+    // the regular path below still runs so its controller state stays continuous.
+    const conversations = (input.conversationSpans ?? []).flatMap((span) => {
+      const layout = planConversationLayout(span, sourceAspect, aspectTrack.targetAspectRatio, input.contentRect ?? FULL_FRAME);
+      return layout ? [{ span, layout }] : [];
+    });
+    let previousConversationKey: string | null | undefined;
     const samples: ClipperLayoutSample[] = aspectTrack.samples.map((cropSample) => {
       const importance = importanceAtTime(input.importanceSamples, cropSample.t);
       const required = requiredRegions(importance);
@@ -123,7 +132,7 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         controllerReasonCodes: visibilityDecision?.reasonCodes,
         baselineCoverage,
       }, arbiterParams);
-      return {
+      const regular: ClipperLayoutSample = {
         t: cropSample.t,
         mode: decision.selectSemantic ? desiredMode : baselineMode,
         strategy: decision.strategy,
@@ -161,6 +170,16 @@ export function buildLayoutTracks(input: BuildLayoutTracksInput): Record<string,
         cut: cropSample.cut,
         solidBackgroundColor: cropSample.solidBackgroundColor,
       };
+      const conversation = conversations.find(({ span }) =>
+        cropSample.t >= span.start - EPSILON && cropSample.t < span.end - EPSILON);
+      const planned = conversation ? conversationLayoutSample(regular, conversation.span, conversation.layout) : null;
+      const key = planned?.key ?? null;
+      // A new lead, or entering/leaving a conversation, is a hard edit: never
+      // let interpolation or smoothing slide between the two pictures.
+      const editCut = previousConversationKey !== undefined && key !== previousConversationKey && !cropSample.cut;
+      previousConversationKey = key;
+      const sample = planned?.sample ?? regular;
+      return editCut ? { ...sample, speakerCut: true } : sample;
     });
     const denoisedSamples = bridgeTransientSplitGaps(
       samples,

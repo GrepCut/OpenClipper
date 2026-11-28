@@ -51,6 +51,7 @@ function compactTrack(track: ClipperLayoutTrack): ClipperRuntimeLayoutSample[] {
       viewports: sample.viewports,
       panelSubjects: sample.panelSubjects,
       cut: sample.cut,
+      speakerCut: sample.speakerCut,
       solidBackgroundColor: sample.solidBackgroundColor,
     };
   });

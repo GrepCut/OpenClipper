@@ -1,14 +1,14 @@
 import type { Project } from "../../../../services/projects.service";
-import { syncClipperSourceVideo } from "../../persistence/bootstrap.util";
-import { resolveFilePlayableUrl } from "../../persistence/tauri-media.util";
+import { syncClipperSourceVideo, type SyncClipperSourceVideoOptions } from "../../persistence/bootstrap.util";
+import type { ClipperMediaFile } from "../../persistence/persistence.types";
+import { releasePlayableMediaUrl, resolveFilePlayableUrl } from "../../persistence/tauri-media.util";
 import { clipperLog, formatBytes } from "../../shared/logger.util";
 import type { PipelineReporter } from "../reporter.util";
 import type { ClipperSession } from "../session.util";
 
 export interface IngestStageResult {
   session: ClipperSession;
-  mediaFileId: string;
-  duration: number;
+  mediaFile: ClipperMediaFile;
 }
 
 /** Syncs source video to the project after validation passed in the hook. */
@@ -16,8 +16,8 @@ export async function runIngestStage(
   project: Project,
   file: File,
   token: string,
-  reporter: PipelineReporter,
-  options: { signal: AbortSignal },
+  reporter: PipelineReporter | undefined,
+  options: Pick<SyncClipperSourceVideoOptions, "signal" | "mediaFileId" | "onRegister">,
 ): Promise<IngestStageResult> {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   clipperLog(`pipeline[${runId}]: file selected`, {
@@ -26,20 +26,25 @@ export async function runIngestStage(
     fileType: file.type,
   });
 
-  reporter.stage("uploading", "Saving video to your project…");
-  reporter.stageProgress(0);
+  reporter?.stage("uploading", "Saving video to your project…");
+  reporter?.stageProgress(0);
 
-  const synced = await syncClipperSourceVideo(project, file, token, {
-    onProgress: (ratio) => reporter.stageProgress(ratio),
-  });
-  if (options.signal.aborted) throw new DOMException("Conversion aborted", "AbortError");
-
+  // Resolved before anything is saved, so an unreadable file registers nothing.
   const sourceUrl = await resolveFilePlayableUrl(file);
+  const mediaFile = await syncClipperSourceVideo(project, file, token, {
+    ...options,
+    playableUrl: sourceUrl,
+    onProgress: (ratio) => reporter?.stageProgress(ratio),
+  }).catch((error) => {
+    releasePlayableMediaUrl(sourceUrl);
+    throw error;
+  });
+
   const session: ClipperSession = {
     sourceFile: file,
     sourceUrl,
-    sourceDuration: synced.duration,
-    mediaFileId: synced.mediaFileId,
+    sourceDuration: mediaFile.duration,
+    mediaFileId: mediaFile.id,
     rangeTrimmedFile: null,
     rangeTrimmedVideoUrl: null,
     rangeWords: [],
@@ -61,5 +66,5 @@ export async function runIngestStage(
     faceRenderCache: null,
   };
 
-  return { session, mediaFileId: synced.mediaFileId, duration: synced.duration };
+  return { session, mediaFile };
 }

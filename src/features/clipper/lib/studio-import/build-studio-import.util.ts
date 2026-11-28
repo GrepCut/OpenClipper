@@ -33,6 +33,7 @@ import {
   type ClipperStudioImport,
 } from "./clipper-studio-import.types";
 import { sampleStudioFrameTrack } from "./sample-studio-frame-track.util";
+import { rebaseStudioFrameTrack } from "./simplify-studio-frame-track.util";
 
 export const DEFAULT_STUDIO_IMPORT_MANIFEST_NAME = CLIPPER_STUDIO_IMPORT_MANIFEST_FILE;
 
@@ -76,6 +77,7 @@ export function buildClipperStudioImport(
     source: input.sourceSize,
     output: dims,
     analysis: input.frameContext?.smartCropAnalysis ?? null,
+    skipAutoReframing: input.frameContext?.skipAutoReframing,
     disabledCollageRegionIds: input.frameContext?.disabledCollageRegionIds ?? [],
     segments,
   });
@@ -246,12 +248,7 @@ export function rebaseManifestForStudioClip(
       startSec: shift(segment.startSec),
       endSec: Math.min(cut.durationSec, shift(segment.endSec)),
     })),
-    frameTrack: manifest.frameTrack
-      .filter((sample) => {
-        const t = sample.t - cut.offsetSec;
-        return t >= 0 && t <= cut.durationSec;
-      })
-      .map((sample) => ({ ...sample, t: sample.t - cut.offsetSec })),
+    frameTrack: rebaseStudioFrameTrack(manifest.frameTrack, cut.offsetSec, cut.durationSec),
   };
 }
 

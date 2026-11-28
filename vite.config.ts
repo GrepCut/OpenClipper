@@ -114,6 +114,9 @@ export default defineConfig(({ mode, command }) => {
     define: {
       __OPEN_CLIPPER_MODELS_CDN_BASE__: JSON.stringify(modelsCdnBase),
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(packageJson.version),
+      // scripts/run-tauri.mjs strips every VITE_* variable from the build
+      // environment, so the developer replay dump flag uses its own name.
+      "import.meta.env.VITE_CLIPPER_REPLAY_DUMP": JSON.stringify(process.env.OPEN_CLIPPER_REPLAY_DUMP === "1" ? "1" : ""),
     },
     publicDir: omitModelsFromTauriBuild ? false : undefined,
     optimizeDeps: {

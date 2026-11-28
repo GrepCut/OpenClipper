@@ -6,8 +6,15 @@ use crate::video::smart_crop::vision_logic::{
     self, AutoFlipFaceDetection, PoseSubject, SubjectDetection,
 };
 
-pub(crate) fn stable_content_rect(observations: &[(u32, u32)], frame_height: u32) -> ContentRect {
-    if observations.is_empty() || frame_height == 0 {
+/// Active picture after removing static borders: solid letterbox bars seen in
+/// most samples (`observations`) and burned-in graphic bands (`static_bands`,
+/// top and bottom depth from `ffmpeg::static_band`). Both are in sample pixels.
+pub(crate) fn stable_content_rect(
+    observations: &[(u32, u32)],
+    static_bands: (u32, u32),
+    frame_height: u32,
+) -> ContentRect {
+    if (observations.is_empty() && static_bands == (0, 0)) || frame_height == 0 {
         return ContentRect {
             x: 0.0,
             y: 0.0,
@@ -20,7 +27,7 @@ pub(crate) fn stable_content_rect(observations: &[(u32, u32)], frame_height: u32
             .iter()
             .filter(|value| if top { value.0 > 0 } else { value.1 > 0 })
             .count();
-        if present * 10 < observations.len() * 9 {
+        if observations.is_empty() || present * 10 < observations.len() * 9 {
             return 0;
         }
         let mut values: Vec<u32> = observations
@@ -30,8 +37,16 @@ pub(crate) fn stable_content_rect(observations: &[(u32, u32)], frame_height: u32
         values.sort_unstable();
         values[values.len() / 2]
     };
-    let top = stable(true).min(frame_height.saturating_sub(1));
-    let bottom = stable(false).min(frame_height.saturating_sub(top + 1));
+    if static_bands != (0, 0) {
+        log::info!(
+            "Static graphic band removed from content: top={} px, bottom={} px of {} px",
+            static_bands.0,
+            static_bands.1,
+            frame_height
+        );
+    }
+    let top = stable(true).max(static_bands.0).min(frame_height.saturating_sub(1));
+    let bottom = stable(false).max(static_bands.1).min(frame_height.saturating_sub(top + 1));
     ContentRect {
         x: 0.0,
         y: top as f32 / frame_height as f32,

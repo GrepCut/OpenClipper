@@ -69,6 +69,22 @@ Upload the contents of `r2_mirror/` directly to the R2 bucket root (for example 
 Default public base URL: `https://updates.openclipper.grepcut.com`
 
 After upload, activate the release in the GrepCut admin panel under **Open Clipper Updates** with the platform URL and signature from `latest.json`.
+## Microsoft Store MSIX
+
+Use an x64 Windows build machine with a Windows SDK that includes `MakeAppx.exe`.
+Build the current version with `npm run release:msix`. To prepare and build a new
+Store release in one command, pass a higher app version:
+
+```powershell
+npm run release:msix -- --version 26.11.7
+```
+
+The command prints the path to `packaging/msix/out/OpenClipper_<version>.0_x64.msix`.
+Upload it under **Packages** in the same Partner Center product for each release.
+Microsoft Store signs and distributes the package. The Tauri updater is hidden and
+disabled when Open Clipper runs with a Windows package identity. The NSIS release
+uses the existing updater.
+
 ## Sentry source maps
 
 Packaged builds upload hidden source maps to `01starling/javascript-react-d0` when

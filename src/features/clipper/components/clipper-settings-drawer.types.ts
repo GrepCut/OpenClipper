@@ -1,4 +1,4 @@
-export const CLIPPER_SETTINGS_DRAWER_PANELS = ["captions", "branding"] as const;
+export const CLIPPER_SETTINGS_DRAWER_PANELS = ["captions", "overlays"] as const;
 
 export type ClipperSettingsDrawerPanel = (typeof CLIPPER_SETTINGS_DRAWER_PANELS)[number];
 

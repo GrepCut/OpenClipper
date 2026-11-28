@@ -3,6 +3,7 @@ import { isTauri } from "./platform.util";
 
 export interface NativeJobErrorPayload {
   code?: string;
+  phase?: string;
   message: string;
   fatal?: boolean;
 }
@@ -83,12 +84,14 @@ export function ensureTauriFrontendSession(): Promise<void> {
 
 export class TauriNativeJobError extends Error {
   readonly code?: string;
+  readonly phase?: string;
   readonly fatal?: boolean;
 
   constructor(payload: NativeJobErrorPayload) {
     super(payload.message);
     this.name = "TauriNativeJobError";
     this.code = payload.code;
+    this.phase = payload.phase;
     this.fatal = payload.fatal;
   }
 }
@@ -165,6 +168,8 @@ export async function runTauriNativeJob<TProgress, TResult>(options: {
       ...options.args,
       sessionId,
       jobId: options.jobId,
+    }).then(() => {
+      if (options.signal?.aborted) cancel();
     }).catch((error) => {
       settle(() => reject(error));
     });

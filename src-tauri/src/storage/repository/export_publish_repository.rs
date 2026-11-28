@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
-    sea_query::OnConflict, ColumnTrait, DatabaseConnection, EntityTrait,
+    sea_query::OnConflict, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
@@ -178,7 +178,7 @@ impl ExportPublishRepository {
     }
 
     pub async fn delete_by_export_ids(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         export_ids: &[String],
     ) -> DbResult<u64> {
         if export_ids.is_empty() {

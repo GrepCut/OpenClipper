@@ -20,6 +20,7 @@ pub fn analyze(
     resource_dir: &Path,
     cancelled: Arc<AtomicBool>,
     tracking_enabled: bool,
+    detect_speaker: bool,
     vision_ablation: VisionAblationConfig,
     mut progress: impl FnMut(NativeVisionProgress) -> Result<(), NativeVisionError>,
 ) -> Result<NativeVisionSummary, NativeVisionError> {
@@ -67,7 +68,7 @@ pub fn analyze(
             setup,
             decode_stats.sample_count,
             total_duration,
-            cancelled,
+            cancelled.clone(),
             &mut progress,
         )?;
         diagnostics::append(
@@ -101,7 +102,36 @@ pub fn analyze(
                 merged.pose_device,
             ),
         );
-        build_summary(
+        let speaker = if tracking_enabled && detect_speaker {
+            let models_dir = super::super::vision::resource_paths(resource_dir).models;
+            let report = super::speaker::analyze(
+                &file_path,
+                start_time,
+                &models_dir,
+                &merged.subject_samples,
+                &cancelled,
+                &mut progress,
+            )?;
+            diagnostics::append(
+                "speaker",
+                &format!(
+                    "speaker complete scored={} windows={} skipped={} analyzed_s={:.2} elapsed_ms={} decode_ms={} features_ms={} inference_ms={} disabled={:?}",
+                    report.samples.len(),
+                    report.windows,
+                    report.skipped_blocks,
+                    report.analyzed_seconds,
+                    report.elapsed_ms,
+                    report.decode_ms,
+                    report.features_ms,
+                    report.inference_ms,
+                    report.disabled_reason,
+                ),
+            );
+            Some(report)
+        } else {
+            None
+        };
+        let mut summary = build_summary(
             &session,
             decode_stats,
             drain_duration_ms,
@@ -112,7 +142,9 @@ pub fn analyze(
             tracking_enabled,
             analysis_started.elapsed().as_millis() as u64,
             &mut progress,
-        )
+        )?;
+        summary.active_speaker = speaker;
+        Ok(summary)
     })();
     match &result {
         Ok(summary) => diagnostics::finish(&format!(
@@ -165,6 +197,7 @@ mod windows_pipeline_soak_tests {
             resource_dir,
             Arc::new(AtomicBool::new(false)),
             true,
+            false,
             VisionAblationConfig::default(),
             |update| {
                 faces.extend(update.face_samples.into_iter().flatten());
@@ -213,6 +246,7 @@ mod windows_pipeline_soak_tests {
             resource_dir,
             cancelled,
             true,
+            false,
             VisionAblationConfig::default(),
             |_| Ok(()),
         )

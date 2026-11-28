@@ -1,10 +1,11 @@
-import { Box, HStack, Input, Text, Textarea, VStack } from "@chakra-ui/react";
+import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import type { SocialPrivacyStatus } from "../../../services/social-auth.service";
 import type { ClipperFormatResult } from "../shared/state.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import { PRIVACY_OPTIONS } from "./clipper-social-publish-dialog.constants";
 import { ClipperSocialPublishTwoColumn } from "./clipper-social-publish-preview.component";
 import { ToggleOptionButton } from "./clipper-social-publish-toggle.component";
+import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/themed-input.component";
 
 interface ClipperSocialPublishYoutubeFormProps {
   result: ClipperFormatResult | null;
@@ -51,7 +52,7 @@ export function ClipperSocialPublishYoutubeForm({
           <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
             Title
           </Text>
-          <Input
+          <ThemedInput
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             borderRadius="xl"
@@ -66,7 +67,7 @@ export function ClipperSocialPublishYoutubeForm({
           <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
             Description
           </Text>
-          <Textarea
+          <ThemedTextarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             flex={1}

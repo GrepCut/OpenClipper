@@ -4,6 +4,7 @@ import {
 } from "../../../shared/persistence/local-database.util";
 import type { ClipperClipBounds } from "../engine/types/segmentation.types";
 import type { ClipSourceMode } from "../shared/state.util";
+import { withClipperProjectWrite } from "./project-write-lifecycle.util";
 
 export interface ClipperClipSegmentPayload {
   orderIndex: number;
@@ -38,11 +39,8 @@ export async function saveClipperClips(
   mode: ClipSourceMode,
   clips: ClipperClipPayload[],
 ): Promise<ClipperClipPayload[]> {
-  return localRecordPut(
-    "clipper-clips",
-    clipKey(projectId, mode),
-    projectId,
-    clips,
+  return withClipperProjectWrite(projectId, undefined, () =>
+    localRecordPut("clipper-clips", clipKey(projectId, mode), projectId, clips),
   );
 }
 
@@ -58,10 +56,7 @@ export async function saveDisabledCollageRegions(
   projectId: string,
   disabledRegionIds: string[],
 ): Promise<string[]> {
-  return localRecordPut(
-    "clipper-collage-regions",
-    projectId,
-    projectId,
-    disabledRegionIds,
+  return withClipperProjectWrite(projectId, undefined, () =>
+    localRecordPut("clipper-collage-regions", projectId, projectId, disabledRegionIds),
   );
 }

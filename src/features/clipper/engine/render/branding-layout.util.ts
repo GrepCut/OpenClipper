@@ -5,6 +5,10 @@ const BRANDING_TEXT_SIZE_AT_DEFAULT_LOGO = 0.032;
 /** 1080p short side — logo/text pixels are defined here, not from the current canvas. */
 const BRANDING_PIXEL_REF = 1080;
 
+export function brandingMargin(outputWidth: number, outputHeight: number): number {
+  return Math.max(8, Math.min(outputWidth, outputHeight) * 0.045);
+}
+
 export function resolveBrandingBox(
   offsetX: number,
   offsetY: number,

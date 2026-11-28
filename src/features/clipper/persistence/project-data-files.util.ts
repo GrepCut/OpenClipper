@@ -53,6 +53,20 @@ export async function writeClipperFaceActionBenchmark(projectId: string, content
   clipperLog("face-action benchmark written", { projectId, filePath });
 }
 
+/** Developer-only: the exact `buildAutoFlipTrack` input, replayed by `scripts/replay-autoflip.ts`. */
+export const CLIPPER_AUTOFLIP_INPUT_FILE = "autoflip_input.json";
+
+export async function writeClipperAutoFlipInput(projectId: string, input: unknown): Promise<void> {
+  if (!isTauri()) return;
+  await ensureClipperProjectDataDir(projectId);
+  await invoke("write_clipper_project_data_file", {
+    projectId,
+    fileName: CLIPPER_AUTOFLIP_INPUT_FILE,
+    contents: JSON.stringify(input),
+  });
+  clipperLog("autoflip replay input written", { projectId, fileName: CLIPPER_AUTOFLIP_INPUT_FILE });
+}
+
 export async function writeClipperSmartCropAnalysis(projectId: string, blob: ClipperFrameAnalysis): Promise<void> {
   if (!isTauri()) return;
   await ensureClipperProjectDataDir(projectId);
@@ -99,6 +113,7 @@ export async function removeClipperProjectDataDir(projectId: string): Promise<vo
   if (!isTauri()) return;
   await invoke("remove_clipper_project_data_dir", { projectId });
 }
+
 
 export async function writeClipperFaceDetections(
   projectId: string,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HStack, Input, Text, VStack } from "@chakra-ui/react";
+import { HStack, Text, VStack } from "@chakra-ui/react";
 import type {
   CloudTranscriptionProvider,
   TranscriptionApiKeyPublicView,
@@ -7,6 +7,7 @@ import type {
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { openExternalUrl } from "../../../shared/utils/open-external-url.util";
 import { useTheme } from "../../../theme";
+import { ThemedInput } from "../../../shared/components/ui/themed-input.component";
 
 const KEY_URLS: Record<CloudTranscriptionProvider, string> = {
   groq: "https://console.groq.com/keys",
@@ -122,7 +123,7 @@ export function ClipperFirstRunApiKey({
         <ExternalKeyLink provider="openrouter">Get an OpenRouter key</ExternalKeyLink>
       </HStack>
       <HStack gap={2} align="stretch">
-        <Input
+        <ThemedInput
           type="password"
           value={apiKeyInput}
           onChange={(event) => setApiKeyInput(event.target.value)}

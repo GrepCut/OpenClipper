@@ -8,8 +8,10 @@ import {
 
 type RenderSignatureSession = Pick<
   ClipperSession,
-  "disabledCollageRegionIds" | "smartCropAnalysis"
+  "disabledCollageRegionIds" | "smartCropAnalysis" | "skipAutoReframing"
 >;
+
+const PARTS_OVERLAY_CAPTION_LAYOUT_VERSION = 1;
 
 /**
  * cyrb53 — 53-bit non-cryptographic hash. A collision would make "skip already exported"
@@ -53,6 +55,11 @@ export function computeClipRenderSignature(
         : clip.captionGroups,
       collageRegionCacheKey(session.disabledCollageRegionIds ?? []),
       layoutRegionsCacheKey(session.smartCropAnalysis),
+      ...(session.skipAutoReframing ? ["letterbox"] : []),
+      ...(settings.partsOverlay.enabled ? [settings.partsOverlay, clip.index] : []),
+      ...(settings.partsOverlay.enabled && settings.captions.enabled
+        ? [PARTS_OVERLAY_CAPTION_LAYOUT_VERSION]
+        : []),
     ]),
   );
 }

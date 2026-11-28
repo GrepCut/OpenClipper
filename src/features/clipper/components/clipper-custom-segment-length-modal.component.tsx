@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Box, HStack, Input, Slider, Text, VStack } from "@chakra-ui/react";
+import { Box, HStack, Slider, Text, VStack } from "@chakra-ui/react";
 import {
   AUTO_PARTS_SEGMENT_LENGTH_MAX_SEC,
   AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC,
@@ -11,6 +11,7 @@ import {
   StyledModal,
   StyledModalFooter,
 } from "../../../shared/components/styled-modal.component";
+import { ThemedInput } from "../../../shared/components/ui/themed-input.component";
 
 interface ClipperCustomSegmentLengthModalProps {
   isOpen: boolean;
@@ -72,7 +73,7 @@ export const ClipperCustomSegmentLengthModal: React.FC<
         >
           <VStack align="stretch" gap={4}>
             <HStack justify="center" align="baseline" gap={2}>
-              <Input
+              <ThemedInput
                 type="number"
                 inputMode="numeric"
                 min={AUTO_PARTS_SEGMENT_LENGTH_MIN_SEC}

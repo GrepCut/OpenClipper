@@ -38,6 +38,7 @@ export interface PrefillFaceSampleCacheOptions {
   nativeSource?: { filePath: string; startTime: number; endTime: number };
   /** When false, WinML still runs but face samples are not written into the cache (subjects-only resume). */
   ingestFaces?: boolean;
+  detectActiveSpeaker?: boolean;
   /** Benchmark-only detector recovery ablations. Production leaves all flags false. */
   visionAblation?: VisionAblationConfig;
 }
@@ -116,6 +117,18 @@ export interface NativeVisionCommandSummary {
   modelVersion: string;
   trackerVersion?: "bytetrack-v1" | "bytetrack-v2";
   metrics: NativeVisionMetrics;
+  activeSpeaker?: {
+    samples: Array<{ index: number; scores: NonNullable<SubjectDetectionSample["activeSpeakerScores"]> }>;
+    elapsedMs: number;
+    decodeMs: number;
+    featuresMs: number;
+    inferenceMs: number;
+    analyzedSeconds: number;
+    windows: number;
+    skippedBlocks: number;
+    peakWorkingSetMib: number;
+    disabledReason?: string;
+  };
 }
 
 export interface NativeVisionAnalysisSummary extends NativeVisionCommandSummary {

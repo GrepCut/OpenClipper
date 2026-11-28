@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  Field,
-  Input,
-  Textarea,
-  VStack,
-} from "@chakra-ui/react";
+import { Field, VStack } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { appToast } from "../../../shared/utils/toast.service";
 import {
@@ -16,6 +11,7 @@ import { useTheme } from "../../../theme";
 import { SpecificTitle } from "../../../shared/fonts/specific-title.font";
 import { useAuth } from "../../../shared/hooks/use-auth.hook";
 import { createClipperProject } from "../persistence/bootstrap.util";
+import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/themed-input.component";
 
 interface CreateClipperProjectModalProps {
   isOpen: boolean;
@@ -108,7 +104,7 @@ export function CreateClipperProjectModal({
           <Field.Label color={theme.text.primary}>
             <SpecificTitle fontSize="sm">Project name</SpecificTitle>
           </Field.Label>
-          <Input
+          <ThemedInput
             placeholder="e.g. Podcast episode 12"
             value={name}
             onChange={(e) => {
@@ -127,7 +123,7 @@ export function CreateClipperProjectModal({
           <Field.Label color={theme.text.primary}>
             <SpecificTitle fontSize="sm">Description (optional)</SpecificTitle>
           </Field.Label>
-          <Textarea
+          <ThemedTextarea
             placeholder="Notes about this clip session"
             value={description}
             onChange={(e) => setDescription(e.target.value)}

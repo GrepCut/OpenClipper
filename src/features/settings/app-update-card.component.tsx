@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { useAppUpdateStore } from "../../stores/use-app-update.store";
 import { useTheme } from "../../theme";
-import { isTauri } from "../../shared/utils/platform.util";
 import { SecondaryMainTitle } from "../../shared/fonts/secondary-main-title.font";
 import { SpecificTitle } from "../../shared/fonts/specific-title.font";
 import { MainButton } from "../../shared/components/buttons/main-button.component";
@@ -49,6 +48,7 @@ export function AppUpdateCard() {
   const {
     appName,
     currentVersion,
+    appUpdaterEnabled,
     availableUpdate,
     status,
     error,
@@ -67,7 +67,7 @@ export function AppUpdateCard() {
     return Math.max(0, Math.min(1, downloadedBytes / contentLength));
   }, [contentLength, downloadedBytes]);
 
-  if (!isTauri()) {
+  if (!appUpdaterEnabled) {
     return null;
   }
 

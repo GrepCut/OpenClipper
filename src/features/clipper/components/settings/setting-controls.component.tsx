@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Button, HStack, Slider, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, chakra, HStack, Slider, Text, VStack } from "@chakra-ui/react";
 import { ChevronDown } from "lucide-react";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
 import { clipperTheme } from "../../shared/theme.util";
@@ -90,6 +90,54 @@ interface SegmentedOption<T extends string> {
   label: string;
 }
 
+export function SettingSegmentedControl<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly SegmentedOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const { theme } = useClipperUi();
+
+  return (
+    <VStack align="stretch" gap={3}>
+      <Text as="h3" fontSize="md" fontWeight="semibold" color={theme.text.primary}>
+        {label}
+      </Text>
+      <HStack gap={2} role="group" aria-label={label}>
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <chakra.button
+              key={option.value}
+              type="button"
+              aria-pressed={active}
+              flex="1"
+              py={2}
+              borderRadius="2xl"
+              border="1px solid"
+              borderColor={active ? clipperTheme.settingSelectedBorder : theme.border.primary}
+              bg={active ? theme.brand.toggleActiveBg : theme.background.tertiary}
+              color={active ? clipperTheme.accentLight : theme.text.onBrandMuted}
+              fontSize="sm"
+              fontWeight={active ? "semibold" : "medium"}
+              cursor="pointer"
+              focusVisibleRing="outside"
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+            </chakra.button>
+          );
+        })}
+      </HStack>
+    </VStack>
+  );
+}
+
 interface SegmentedControlProps<T extends string> {
   options: SegmentedOption<T>[];
   value: T;
@@ -112,6 +160,8 @@ export function SegmentedControl<T extends string>({
         return (
           <Button
             key={opt.value}
+            type="button"
+            aria-pressed={active}
             size="sm"
             variant={active ? "solid" : "outline"}
             bg={active ? clipperTheme.accent : "transparent"}

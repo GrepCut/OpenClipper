@@ -3,6 +3,8 @@ import type {
   NormalizedBox,
 } from "../../../shared/smart-crop.util";
 import { splitPanelsPreserveSubjects, splitViewportsAreDistinct } from "./viewport-geometry.util";
+import { samePanelPeople } from "./panel-continuity.util";
+import { isStabilizedSplit, stabilizeSplitRuns } from "./split-panel-stabilizer.util";
 
 const DEFAULT_SPIKE_THRESHOLD = 0.04;
 // A lower cutoff removes detector jitter while leaving deliberate reframing
@@ -11,6 +13,11 @@ const DEFAULT_SPIKE_THRESHOLD = 0.04;
 // low-pass. The reverse pass avoids introducing the visible follow lag that a
 // single EMA would cause.
 const DEFAULT_LAMBDA_EMA = 4.0;
+
+/** Shot cuts and speaker-turn cuts are both hard edits: never smooth across them. */
+function hardBoundary(sample: ClipperLayoutSample): boolean {
+  return sample.cut === true || sample.speakerCut === true;
+}
 
 function boxDistance(a: NormalizedBox, b: NormalizedBox): number {
   const cxA = a.x + a.width / 2;
@@ -35,16 +42,12 @@ export interface TrajectorySmoothingOptions {
   lambdaEma?: number;
 }
 
-function panelOwnerKey(sample: ClipperLayoutSample): string {
-  return sample.mode === "split"
-    ? sample.panelSubjects?.map((subject) => subject.id).join("|") ?? "unknown"
-    : "single";
-}
-
+/** Adjacent samples continue one camera move: same layout, same people in the same panels. */
 function sameLayoutIdentity(a: ClipperLayoutSample, b: ClipperLayoutSample): boolean {
   return a.mode === b.mode
     && a.viewports.length === b.viewports.length
-    && panelOwnerKey(a) === panelOwnerKey(b);
+    && samePanelPeople(a, b)
+    && isStabilizedSplit(a) === isStabilizedSplit(b);
 }
 
 function validSplit(sample: ClipperLayoutSample, viewports: NormalizedBox[]): boolean {
@@ -70,9 +73,11 @@ export function smoothLayoutTrackSamples(
   const spikeThreshold = options?.spikeThreshold ?? DEFAULT_SPIKE_THRESHOLD;
   const lambdaEma = options?.lambdaEma ?? DEFAULT_LAMBDA_EMA;
 
-  const cleaned: ClipperLayoutSample[] = samples.map((s) => ({
+  // Split stretches first get one panel size and the smoothest path inside
+  // the person's corridor; the filters below then leave those samples alone.
+  // `stabilizeSplitRuns` already returns fresh viewport boxes.
+  const cleaned: ClipperLayoutSample[] = stabilizeSplitRuns(samples).map((s) => ({
     ...s,
-    viewports: s.viewports.map((v) => ({ ...v })),
     candidateViewports: s.candidateViewports?.map((v) => ({ ...v })),
     baselineViewports: s.baselineViewports?.map((v) => ({ ...v })),
   }));
@@ -85,7 +90,7 @@ export function smoothLayoutTrackSamples(
     const curr = cleaned[i]!;
     const next = cleaned[i + 1]!;
 
-    if (curr.cut || next.cut) continue;
+    if (hardBoundary(curr) || hardBoundary(next) || isStabilizedSplit(curr)) continue;
     if (!sameLayoutIdentity(prev, curr) || !sameLayoutIdentity(curr, next)) continue;
 
     const interpolatedViewports: NormalizedBox[] = [];
@@ -123,7 +128,7 @@ export function smoothLayoutTrackSamples(
     const s2 = cleaned[i + 1]!;
     const s3 = cleaned[i + 2]!;
 
-    if (s1.cut || s2.cut || s3.cut) continue;
+    if (hardBoundary(s1) || hardBoundary(s2) || hardBoundary(s3) || isStabilizedSplit(s1) || isStabilizedSplit(s2)) continue;
     if (!sameLayoutIdentity(s0, s1) || !sameLayoutIdentity(s1, s2) || !sameLayoutIdentity(s2, s3)) continue;
 
     let isSpike2 = false;
@@ -173,9 +178,13 @@ export function smoothLayoutTrackSamples(
     let segmentEnd = segmentStart + 1;
     while (
       segmentEnd < cleaned.length
-      && !cleaned[segmentEnd]!.cut
-      && sameLayoutIdentity(cleaned[segmentEnd]!, cleaned[segmentStart]!)
+      && !hardBoundary(cleaned[segmentEnd]!)
+      && sameLayoutIdentity(cleaned[segmentEnd]!, cleaned[segmentEnd - 1]!)
     ) segmentEnd++;
+    if (isStabilizedSplit(cleaned[segmentStart]!)) {
+      segmentStart = segmentEnd;
+      continue;
+    }
 
     // Forward pass: attenuate detector noise while following intended motion.
     for (let index = segmentStart + 1; index < segmentEnd; index++) {

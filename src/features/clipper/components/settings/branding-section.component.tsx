@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from "react";
-import { Box, HStack, Text, VStack } from "@chakra-ui/react";
+import { HStack, Text, VStack } from "@chakra-ui/react";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { OutlinedActionButton } from "../../../../shared/components/buttons/outlined-action-button.component";
@@ -14,9 +14,8 @@ import {
   type ClipperBrandingKind,
   type ClipperBrandingSettings,
 } from "../../settings/branding-settings.util";
-import { clipperTheme } from "../../shared/theme.util";
 import { useClipperUi } from "../../shared/use-clipper-ui.hook";
-import { SettingSlider } from "./setting-controls.component";
+import { SettingSegmentedControl, SettingSlider } from "./setting-controls.component";
 
 interface BrandingSectionProps {
   branding: ClipperBrandingSettings;
@@ -28,6 +27,7 @@ const KIND_LABEL: Record<ClipperBrandingKind, string> = {
   text: "Text",
   off: "Off",
 };
+const BRANDING_OPTIONS = CLIPPER_BRANDING_KINDS.map((value) => ({ value, label: KIND_LABEL[value] }));
 
 const CHATGPT_URL = "https://chatgpt.com";
 const BACKGROUND_REMOVER_URL = "https://www.remove.bg";
@@ -97,44 +97,6 @@ function revokeBlobUrl(path: string | null): void {
   if (path?.startsWith("blob:")) URL.revokeObjectURL(path);
 }
 
-function KindToggle({
-  kind,
-  onChange,
-}: {
-  kind: ClipperBrandingKind;
-  onChange: (kind: ClipperBrandingKind) => void;
-}) {
-  const { theme } = useClipperUi();
-
-  return (
-    <HStack gap={2} role="group" aria-label="Branding type">
-      {CLIPPER_BRANDING_KINDS.map((option) => {
-        const active = kind === option;
-        return (
-          <Box
-            key={option}
-            as="button"
-            aria-pressed={active}
-            flex="1"
-            py={2}
-            borderRadius="2xl"
-            border="1px solid"
-            borderColor={active ? clipperTheme.settingSelectedBorder : theme.border.primary}
-            bg={active ? theme.brand.toggleActiveBg : theme.background.tertiary}
-            color={active ? clipperTheme.accentLight : theme.text.onBrandMuted}
-            fontSize="sm"
-            fontWeight={active ? "semibold" : "medium"}
-            cursor="pointer"
-            onClick={() => onChange(option)}
-          >
-            {KIND_LABEL[option]}
-          </Box>
-        );
-      })}
-    </HStack>
-  );
-}
-
 export const BrandingSection: React.FC<BrandingSectionProps> = ({
   branding,
   onChange,
@@ -170,16 +132,14 @@ export const BrandingSection: React.FC<BrandingSectionProps> = ({
 
   return (
     <VStack align="stretch" gap={5}>
-      <VStack align="stretch" gap={2}>
-        <SectionLabel>Type</SectionLabel>
-        <KindToggle kind={kind} onChange={(next) => onChange({ kind: next })} />
-      </VStack>
+      <SettingSegmentedControl
+        label="Branding"
+        options={BRANDING_OPTIONS}
+        value={kind}
+        onChange={(next) => onChange({ kind: next })}
+      />
 
-      {kind === "off" ? (
-        <Text fontSize="sm" color={theme.text.muted} lineHeight="1.5">
-          Branding is turned off. Exported clips will not include a logo or text overlay.
-        </Text>
-      ) : kind === "logo" ? (
+      {kind === "logo" ? (
         <VStack align="stretch" gap={2}>
           <SectionLabel>Logo</SectionLabel>
           <HStack gap={2} align="stretch">
@@ -215,7 +175,7 @@ export const BrandingSection: React.FC<BrandingSectionProps> = ({
             <HintLink href={BACKGROUND_REMOVER_URL}>online background remover</HintLink>.
           </Text>
         </VStack>
-      ) : (
+      ) : kind === "text" ? (
         <VStack align="stretch" gap={2}>
           <SectionLabel>Text</SectionLabel>
           <ThemedInput
@@ -225,7 +185,7 @@ export const BrandingSection: React.FC<BrandingSectionProps> = ({
             onChange={(event) => onChange({ text: event.target.value })}
           />
         </VStack>
-      )}
+      ) : null}
 
       {kind !== "off" ? (
         <>

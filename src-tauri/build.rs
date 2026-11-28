@@ -1,6 +1,21 @@
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
+fn verify_youtube_solver() {
+    const ASSETS: [(&str, &str); 2] = [
+        ("yt.solver.core.min.js", "18da6ce0758b416e7ae645084f4f8801f9f9d59d6c477c05eaa0ff94ebd8cc00"),
+        ("yt.solver.lib.min.js", "c55987fe697e5b9ee18830163f7af85327e9bb5c3e674b969d38c8d205eaa577"),
+    ];
+    for (name, expected) in ASSETS {
+        let path = Path::new("vendor/yt-dlp-ejs").join(name);
+        println!("cargo:rerun-if-changed={}", path.display());
+        let bytes = fs::read(&path).unwrap_or_else(|error| {
+            panic!("Cannot read YouTube solver {}: {error}", path.display())
+        });
+        assert_eq!(format!("{:x}", Sha256::digest(bytes)), expected, "{name}: solver SHA-256 mismatch");
+    }
+}
+
 fn verify_clipper_vision_models() {
     let root = Path::new("resources/models/clipper-vision");
     let manifest_path = root.join("manifest.json");
@@ -167,6 +182,7 @@ fn sync_ort_directml_dll() {
 
 fn main() {
     verify_clipper_vision_models();
+    verify_youtube_solver();
     if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
         println!("cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'");

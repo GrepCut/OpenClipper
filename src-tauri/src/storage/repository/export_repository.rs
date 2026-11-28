@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
+    sea_query::OnConflict, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
@@ -203,7 +203,7 @@ impl ExportRepository {
     }
 
     pub async fn list_by_project(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         project_id: &str,
     ) -> DbResult<Vec<ClipperExportRecord>> {
         let rows = Entity::find()
@@ -318,7 +318,7 @@ impl ExportRepository {
     }
 
     pub async fn delete_by_ids(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         export_ids: &[String],
     ) -> DbResult<u64> {
         if export_ids.is_empty() {

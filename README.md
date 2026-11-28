@@ -25,7 +25,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat" alt="License: MIT" /></a>
 </p>
 
-Free, open-source Windows desktop app for turning long videos into short, platform-ready clips. Local or cloud transcription (Whisper, Parakeet), scene-aware autoreframe, styled captions, and batch export to TikTok, YouTube, Instagram, and more.
+Open Clipper is a free, open-source Windows desktop app for turning long videos from YouTube or local files into short, platform-ready clips. Transcribe with local Whisper or Parakeet or with a cloud provider, reframe around subjects and scene cuts, style captions, and export clips in batches. Publish directly to TikTok and YouTube, or export files for Instagram, Facebook, X, and other platforms.
 
 > [!TIP]
 > **Just want to use the app? Download the Windows installer.**
@@ -36,21 +36,39 @@ Free, open-source Windows desktop app for turning long videos into short, platfo
 
 ## Features
 
-### From upload to transcript in one flow
+### Start with a YouTube link or a local file
 
-Import your video, then transcribe with local **Whisper Large v3 Turbo** or **Parakeet**, or use cloud speech recognition with your **OpenRouter** or **Groq** API key. **MDX vocals isolation** runs locally before fresh transcription by default to help reduce music-related transcription errors. It applies to all audio, including audio sent to cloud providers.
+Choose **Import from YouTube**, paste a link to a video or Short, confirm permission, and click **Download video**. Click **Continue** after the download, then select the range you want to clip. You can also start with a local file.
+
+### Local and cloud transcription
+
+| Where it runs | Available models |
+| --- | --- |
+| On your PC | Parakeet TDT 0.6B v3, Whisper Large v3 Turbo |
+| Groq | Whisper Large v3, Whisper Large v3 Turbo |
+| OpenRouter | Whisper Large v3 Turbo |
+
+Cloud transcription uses your own Groq or OpenRouter API key. By default, MDX isolates vocals on your PC before a fresh transcription to help reduce errors caused by background music. This runs for local transcription and on the audio prepared for upload to cloud providers.
 
 [processing.webm](https://github.com/user-attachments/assets/1c0a85bc-8891-4638-89ec-622f351b18a5)
 
-### Autoreframe engine
+### Automatic or manual clips
 
-Face and subject detectors share one video decoding pipeline and use Windows GPU acceleration where available. The engine uses scene cuts and subject tracks to plan a camera path for each format. It can use split view when several subjects need to stay visible, depending on the format and layout rules. Preview **9:16**, **4:5**, **1:1**, and **16:9** from one source.
+**Auto-parts** splits the selected range into consecutive clips. Choose a target length of 15, 30, 45, or 60 seconds, or set a custom length from 5 to 180 seconds. The app aligns cut points to video keyframes when available, so clip durations can vary around the target. Turn on the optional overlay to number clips with labels like `Part 1` and `Part 2`.
+
+Use **Manual** to pick ranges yourself or **MCP** to let an external agent select clips from the transcript. See [MCP setup](#mcp).
+
+### Autoreframe or keep the full frame
+
+Preview **9:16**, **4:5**, **1:1**, and **16:9** from one source. Face and object detectors share a video decoding pipeline and use Windows GPU acceleration where available. The engine uses scene cuts and subject tracks to plan a camera path for each format. It can keep people in a shared crop or split portrait and square clips into two or three panels so multiple subjects stay visible.
+
+Turn on **Skip auto reframing** when selecting the range to keep the full frame, with black bars where needed. This keeps the edges of tutorials, screen recordings, and gameplay visible. See [how the reframe engine works](#reframe-engine).
 
 [reframe.webm](https://github.com/user-attachments/assets/137f5c0e-7eeb-4649-a700-66d7340786f2)
 
-### Styled subtitles from your transcript
+### Edit the transcript and style captions
 
-Choose from **20 caption presets**, including karaoke, kinetic, podcast, and gaming styles. Position and size them to match your brand.
+In the clip preview, click a word to jump to it, double-click it to correct it, or drag to select several words and edit them together or hide them from the captions. Choose from **20 caption presets**, including karaoke, kinetic, podcast, and gaming styles. Adjust the size and position to match your video or brand.
 
 [subtitles.webm](https://github.com/user-attachments/assets/32372ec2-1a9e-46f8-a18a-162c72cd144c)
 
@@ -193,64 +211,79 @@ Bundle identifier: `com.openclipper.app`
 
 ## Reframe engine
 
-The reframe engine creates a smart crop for each target format, such as 9:16. It adapts Google [AutoFlip](https://github.com/google/mediapipe/tree/master/mediapipe/examples/desktop/autoflip) to detect scene cuts, identify important subjects, and plan a camera path that follows them.
+The reframe engine adapts Google's AutoFlip to find shot boundaries, identify important subjects, and plan a camera path for each output format. [Google AutoFlip](https://github.com/google/mediapipe/tree/master/mediapipe/examples/desktop/autoflip)
 
-Analyzer version: `autoflip-v43-snap-layout-on-cut`. Vision bundle: `clipper-vision-v7-yolox-s-yunet-multiscale`.
+The vision bundle is `clipper-vision-v7-yolox-s-yunet-multiscale`. The analyzer version is `autoflip-v47-stable-split-panels` for analysis without speaker detection and `autoflip-v46-light-asd-conversation-layout` when speaker detection is enabled. The range selection workflow enables speaker detection with autoreframing. [Analyzer version constants](src/features/clipper/engine/autoflip/config/config.constants.ts)
 
 ### Two-tier pipeline
 
-**Native (Windows):** FFmpeg decode and WinML/DirectML inference in [src-tauri/src/video/smart_crop/](src-tauri/src/video/smart_crop/), started via `start_clipper_winml_analysis`:
+**Native pipeline (Windows).** The `start_clipper_winml_analysis` Tauri command starts FFmpeg decoding and vision inference. The face and object detectors share the decoded video stream. The native pipeline uses WinML and ONNX Runtime with DirectML acceleration where available.
 
-- Shot boundaries on every decoded frame (histogram + frame-diff)
-- YuNet face and YOLOX object detection at **5 FPS** (every 200 ms), with MoveNet pose detection as a conditional fallback
-- **ByteTrack v2** on three streams (person / face / pose); trackers reset on scene cuts
-- Motion measured across a grid on every detection sample to help locate important regions (no extra model)
+- Shot detection checks every decoded frame using histogram correlation, frame differences, and an adaptive rule that compares sudden changes with recent motion. Border and static-band detection identify the active picture area so framing can exclude bars embedded in the source.
+- YuNet face and YOLOX object detectors sample the video at **5 FPS** (every 200 ms). MoveNet runs as a conditional pose fallback. Grid-based motion measurements add context at the same sampling cadence using the decoded frames.
+- ByteTrack v2 maintains separate person, face, and pose tracks within a shot. Trackers reset at shot cuts. Light-ASD scores which tracked faces are speaking by combining face crops and audio where multiple faces are present.
 
-**TypeScript graph:** [src/features/clipper/engine/autoflip/](src/features/clipper/engine/autoflip) (`buildAutoFlipTrack`):
-
-- Match person, face, and pose tracks; remember subjects and rank their importance over time
-- Plan a camera path for each format and scene using a polynomial or kinematic solver
-- Choose crops and layouts, then store compact `layoutTracks` for preview and export
+**TypeScript graph.** `buildAutoFlipTrack` combines person, face, and pose tracks, ranks subjects using observations over time, and plans a baseline camera path for each shot and output format. The layout planner evaluates candidate crops and panel layouts against that path. The app compacts the chosen viewports into `layoutTracks` for preview and export.
 
 ```mermaid
 flowchart LR
-  decode[FFmpegDecode] --> cuts[SceneCuts]
-  cuts --> winml[WinMLDetectTrack_5fps]
-  winml --> identity[SalienceAndIdentity]
-  identity --> camera[AutoFlipCameraPath]
-  camera --> layout[VisibilityAndLayout]
-  layout --> render[CropExport]
+  subgraph native["Native Windows pipeline"]
+    decode["FFmpeg decode"] --> cuts["Shot cuts and active picture"]
+    decode --> detections["Face, object, and pose detection at 5 FPS"]
+    decode --> motion["Grid motion samples"]
+    detections --> tracks["ByteTrack subject tracks"]
+    cuts --> tracks
+    tracks --> speaker["Light-ASD speaker scores"]
+    audio["Source audio"] --> speaker
+  end
+  subgraph autoflip["TypeScript AutoFlip graph"]
+    identity["Identity fusion and subject ranking"] --> camera["Per-format camera path"]
+    camera --> layout["Visibility checks and layout selection"]
+    layout --> compact["Compact layout tracks"]
+  end
+  tracks --> identity
+  motion --> identity
+  cuts --> camera
+  speaker --> identity
+  compact --> output["Preview and export"]
 ```
 
 ### Models
 
-Vision model files ship in [src-tauri/resources/models/clipper-vision/](src-tauri/resources/models/clipper-vision/). They are bundled with the desktop app rather than downloaded from the model CDN.
+The desktop installer includes the vision models in `src-tauri/resources/models/clipper-vision/`. The manifest records model variants, input shapes, and hashes for build-time verification. Downloadable speech and vocals models use a separate CDN. [Vision model manifest](src-tauri/resources/models/clipper-vision/manifest.json)
 
-| Model             | Role                                                  |
-| ----------------- | ----------------------------------------------------- |
-| YOLOX-S           | Person/object boxes; tiled recovery on long edge      |
-| YuNet multiscale  | Face boxes + 5 keypoints; 384/960/1536 views in one fused fp16 graph on ONNX Runtime DirectML; tiled recovery |
-| MoveNet MultiPose | Pose fallback; injects person boxes when YOLOX misses |
+| Model | Role |
+| ----- | ---- |
+| YOLOX-S | Detects people and objects. Uses tiled recovery on wide or tall frames to recover small or missed person detections. |
+| YuNet multiscale | Detects face boxes and five facial keypoints. The fused FP16 graph combines 384, 960, and 1536 pixel views in ONNX Runtime with DirectML where available. Separate graphs handle tiled recovery. |
+| MoveNet MultiPose Lightning | Supplies pose keypoints and can add person boxes when YOLOX misses a subject. |
+| Light-ASD | Scores speaking activity for tracked faces from face crops and audio. |
 
-ByteTrack v2 is the tracking algorithm, not a downloaded model. It assigns a `trackId` within each person, face, or pose stream and resets on scene cuts. Motion measured across a grid also helps identify important regions without an extra model.
+ByteTrack v2 assigns and updates trajectories from detections. The motion grid derives its measurements directly from image changes. Both run alongside the models in the native pipeline.
 
 ### Identity and composition
 
-- `trackId`: ByteTrack trajectory on native detections
-- `canonicalId`: scene-local fusion of person + face + pose (Hungarian assignment)
-- `projectIdentityId`: clip-wide entity after full-clip observation (IoU association)
+| Identifier | Scope |
+| ---------- | ----- |
+| `trackId` | Native ByteTrack trajectory within a person, face, or pose stream. |
+| `canonicalId` | Shot-local identity that combines person, face, and pose evidence using Hungarian assignment. |
+| `projectIdentityId` | Entity tracked across the analyzed range, associated by local IDs or recent box overlap (intersection over union). |
 
-The engine remembers a YOLOX person detection only when a face or pose supports it. This helps filter out graphics and mannequins. That memory helps rank subjects across the clip without storing biometric embeddings.
+An unambiguous face or pose match confirms a YOLOX person detection for project memory. This reduces false matches from graphics or mannequins. Identity matching relies on track IDs and geometry, and the memory ranks subjects using observations across the range. Local framing can still use a sustained person track with weaker evidence, which helps in action footage.
+
+When speaker detection runs, the graph maps face-level Light-ASD scores to canonical identities. It uses the scores to infer speaker turns across the analyzed footage and folds brief utterances into the surrounding turn. The conversation planner uses the resulting turns, participant visibility, and face movement to identify stretches suited to a stable conversation layout.
 
 ### Camera path
 
-Scenes come from native `sceneCuts`; long scenes are divided into smaller parts. Steady motion uses a polynomial path solver, while tracking motion uses a kinematic solver. Both are adapted from AutoFlip. The crop moves to keep important subjects visible. Its minimum zoom scale is `0.65`. Scenes shorter than 8 seconds keep the base crop size; the threshold is 1 second when the source and target aspect ratios already match. Tracks are stored at 5 samples per second, and the renderer fills in the motion between samples.
+The graph starts with the native `sceneCuts` and subdivides long scenes for planning. The polynomial solver handles steady framing and the kinematic solver handles tracking motion. Both are adapted from AutoFlip. The production baseline shifts a crop window of fixed size for each target aspect ratio. It samples the path at up to 5 FPS, and the renderer interpolates between samples within each shot.
 
 ### Visibility and layout
 
-Per-format layout modes: `single-crop`, `split` (2-3 panels), or `contain` (letterbox padding). Split layouts apply only to portrait/square targets; 16:9 never splits.
+The layout planner evaluates whether a shifted or wider crop can keep important subjects visible, whether to focus on the main subject, or whether to use a stable split. It compares candidates with the baseline `aspectTracks` using subject coverage and layout scores. The layout modes are `single-crop`, `split` with two or three panels for portrait and square outputs, and `contain` to fit the full frame with padding. Use **Skip auto reframing** to select the full-frame path. Landscape **16:9** uses a single viewport.
 
-The engine tries shifted or wider crops, a crop focused on the main subject, and stable split layouts. It compares the resulting plan with the existing `aspectTracks` baseline before choosing a layout. Preview and export read compact `layoutTracks` keyed by aspect ID (`9-16`, `16-9`, `1-1`, `4-5`). The full analysis keeps diagnostics and layout comparison scores.
+Across a continuous split, the planner holds each panel at a fixed size and smooths its movement within the active picture. For a detected conversation, the planner uses a shared crop when everyone fits or keeps a separate crop for each participant and puts the active speaker in the top panel. A speaker change in a split is rendered as a cut.
+
+The full analysis retains candidate layouts, scores, and decision reasons. The app stores compact `layoutTracks` by aspect ID (`9-16`, `16-9`, `1-1`, `4-5`), with the selected viewports and cut markers shared by preview and export.
 
 ### Code map
 

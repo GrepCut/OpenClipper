@@ -6,6 +6,7 @@ import type {
   ImportanceRegionSample,
   NormalizedBox,
 } from "../../shared/smart-crop.util";
+import type { ConversationSpan } from "../autoflip/layout/conversation-layout.util";
 
 export interface ArbiterParams {
   /** Divisor mapping proposal-score improvement to decisionConfidence. */
@@ -145,4 +146,8 @@ export interface BuildLayoutTracksInput {
   semanticFramingParams?: SemanticFramingParams;
   /** Run 9 visibility-first rescue ladder. Omit to reproduce Run 8 exactly. */
   visibilityControllerParams?: VisibilityControllerParams;
+  /** Offline conversation stretches; each gets one fixed, speaker-ordered layout. */
+  conversationSpans?: ConversationSpan[];
+  /** Source-space active picture (letterbox removed); conversation crops stay inside it. */
+  contentRect?: NormalizedBox;
 }

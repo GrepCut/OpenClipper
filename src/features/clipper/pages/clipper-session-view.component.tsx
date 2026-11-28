@@ -7,7 +7,8 @@ import { ClipperRenderQueueSetup } from "../components/clipper-render-queue-setu
 import { ClipperProcessing } from "../components/clipper-processing.component";
 import { ClipperProjectLoadingPanel } from "../components/clipper-project-loading-panel.component";
 import { ClipperTrimSelect } from "../components/clipper-trim-select.component";
-import { ClipperUpload } from "../components/clipper-upload.component";
+import { ClipperSourcePicker } from "../components/clipper-source-picker.component";
+import type { YouTubeImportProgress } from "../persistence/youtube-import.util";
 import { OutlinedActionButton } from "../../../shared/components/buttons/outlined-action-button.component";
 import { ClipperSessionPreviewPanel } from "../components/session/clipper-session-preview-panel.component";
 import { useClipperSessionView } from "../hooks/use-clipper-session-view.hook";
@@ -17,6 +18,9 @@ import type { ClipperSessionViewProps } from "../shared/clipper-session-view.typ
 export type { ClipperSessionViewProps } from "../shared/clipper-session-view.types";
 
 export function ClipperSessionView({ project, token, loaded }: ClipperSessionViewProps) {
+  const [sourceMode, setSourceMode] = React.useState<"file" | "youtube">("file");
+  const [importProgress, setImportProgress] = React.useState<YouTubeImportProgress | null>(null);
+  const youtubeOpen = sourceMode === "youtube";
   const { theme, errorPanel } = useClipperUi();
   const session = useClipperSessionView({ project, token, loaded });
   const {
@@ -27,9 +31,11 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
     refreshExportHistory,
     reset,
     sourceUrl,
+    skipAutoReframing,
     rangeLocked,
     retryResume,
     handleFile,
+    handleYouTubeFile,
     handleOpenExportsFolder,
     step,
     visibility,
@@ -46,9 +52,17 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
   return (
     <ClipperLayout
       step={visibility.showRestoreLoader ? undefined : step}
-      backLink={visibility.layoutBackLink}
+      backLink={youtubeOpen
+        ? { label: "Back to upload", onClick: () => setSourceMode("file"), disabled: importProgress !== null }
+        : visibility.layoutBackLink}
     >
-      {visibility.showUpload && <ClipperUpload onFile={handleFile} fill />}
+      {visibility.showUpload && (
+        <ClipperSourcePicker
+          projectId={project.id} onFile={handleFile} onYouTubeFile={handleYouTubeFile} fill
+          mode={sourceMode} onModeChange={setSourceMode}
+          progress={importProgress} setProgress={setImportProgress}
+        />
+      )}
 
       {state.stage === "trimming" && sourceUrl && !rangeLocked && (
         <ClipperTrimSelect
@@ -56,10 +70,9 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
           sourceDuration={state.sourceDuration ?? 60}
           initialStartSec={state.clipStart > 0 ? state.clipStart : undefined}
           initialEndSec={state.clipEnd ?? state.sourceDuration ?? undefined}
+          initialSkipAutoReframing={skipAutoReframing}
           sourceFileName={state.sourceFileName}
-          onConfirm={(start, end) => {
-            void confirmRange(start, end);
-          }}
+          onConfirm={confirmRange}
           onCancel={reset}
         />
       )}
@@ -169,7 +182,11 @@ export function ClipperSessionView({ project, token, loaded }: ClipperSessionVie
               </OutlinedActionButton>
             </Box>
           )}
-          <ClipperUpload onFile={handleFile} />
+          <ClipperSourcePicker
+            projectId={project.id} onFile={handleFile} onYouTubeFile={handleYouTubeFile}
+            mode={sourceMode} onModeChange={setSourceMode}
+            progress={importProgress} setProgress={setImportProgress}
+          />
         </Box>
       )}
     </ClipperLayout>

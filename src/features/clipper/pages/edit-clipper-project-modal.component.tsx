@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Field, Input, Textarea, VStack } from "@chakra-ui/react";
+import { Field, VStack } from "@chakra-ui/react";
 import { type Project, projectsService } from "../../../services/projects.service";
 import { appToast } from "../../../shared/utils/toast.service";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../../../shared/components/styled-modal.component";
 import { useTheme } from "../../../theme";
 import { SpecificTitle } from "../../../shared/fonts/specific-title.font";
+import { ThemedInput, ThemedTextarea } from "../../../shared/components/ui/themed-input.component";
 
 interface EditClipperProjectModalProps {
   isOpen: boolean;
@@ -97,7 +98,7 @@ export function EditClipperProjectModal({
           <Field.Label color={theme.text.muted}>
             <SpecificTitle fontSize="sm">Project Name</SpecificTitle>
           </Field.Label>
-          <Input
+          <ThemedInput
             value={formData.name}
             onChange={(e) => handleInputChange("name", e.target.value)}
             placeholder="Enter project name"
@@ -109,7 +110,7 @@ export function EditClipperProjectModal({
           <Field.Label color={theme.text.muted}>
             <SpecificTitle fontSize="sm">Description</SpecificTitle>
           </Field.Label>
-          <Textarea
+          <ThemedTextarea
             value={formData.description}
             onChange={(e) => handleInputChange("description", e.target.value)}
             placeholder="Enter project description (optional)"

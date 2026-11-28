@@ -38,6 +38,7 @@ export function buildFrameContext(
 
   return {
     ...sessionFrameContextBase(session, settings),
+    partNumber: clip.index + 1,
     captionGroups: cached.groups,
     segments: clip.segments,
   };
@@ -46,9 +47,10 @@ export function buildFrameContext(
 function sessionFrameContextBase(
   session: ClipperSession,
   settings: ClipperSettings,
-): Omit<ClipperFrameContext, "captionGroups" | "segments"> {
+): Omit<ClipperFrameContext, "captionGroups" | "segments" | "partNumber"> {
   return {
     settings,
+    skipAutoReframing: session.skipAutoReframing,
     faceCache: session.faceCache,
     faceRender: resolveFaceRender(session),
     smartCropAnalysis: session.smartCropAnalysis,

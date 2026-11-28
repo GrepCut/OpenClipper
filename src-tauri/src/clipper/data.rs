@@ -24,6 +24,11 @@ pub(crate) fn clipper_projects_root(app: &AppHandle) -> Result<PathBuf, String> 
 }
 
 pub(crate) fn clipper_project_root(app: &AppHandle, project_id: &str) -> Result<PathBuf, String> {
+    if project_id.is_empty() || project_id.len() > 160
+        || !project_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("Invalid project id".into());
+    }
     Ok(clipper_projects_root(app)?.join(project_id))
 }
 

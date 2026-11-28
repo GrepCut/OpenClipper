@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Box, Input, Text, VStack } from "@chakra-ui/react";
+import { Box, Text, VStack } from "@chakra-ui/react";
 import type { TikTokCreatorInfo, TikTokPrivacyLevel } from "../../../services/social-auth.service";
 import { ThemedCheckbox } from "../../../shared/components/ui/themed-checkbox.component";
 import { ThemedSelect } from "../../../shared/components/ui/themed-select.component";
@@ -16,6 +16,7 @@ import {
 } from "../shared/clipper-tiktok-publish.util";
 import { ClipperSocialPublishTwoColumn } from "./clipper-social-publish-preview.component";
 import { ClipperSocialPublishTikTokCommercial } from "./clipper-social-publish-tiktok-commercial.component";
+import { ThemedInput } from "../../../shared/components/ui/themed-input.component";
 
 interface ClipperSocialPublishTikTokFormProps {
   result: ClipperFormatResult | null;
@@ -117,7 +118,7 @@ export function ClipperSocialPublishTikTokForm({
             <Text fontSize="sm" mb={1.5} color={theme.text.distinct}>
               Title
             </Text>
-            <Input
+            <ThemedInput
               value={title}
               onChange={(e) => setTitle(e.target.value.slice(0, TIKTOK_TITLE_MAX_LENGTH))}
               maxLength={TIKTOK_TITLE_MAX_LENGTH}

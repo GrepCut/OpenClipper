@@ -9,14 +9,13 @@ import {
 } from "./settings-autosave.util";
 import { discardRenderQueueSave, pauseRenderQueueSave, resumeRenderQueueSave } from "./render-queue-autosave.util";
 import {
-  markClipperProjectDeleted, pauseClipperProjectRenders, resumeClipperProjectRenders,
+  markClipperProjectDeleted, pauseClipperProjectWrites, resumeClipperProjectWrites,
 } from "./project-write-lifecycle.util";
 
 export async function deleteClipperProject(projectId: string): Promise<void> {
-  const renders = pauseClipperProjectRenders(projectId);
+  await pauseClipperProjectWrites(projectId);
   try {
     await Promise.all([
-      renders,
       pauseClipperProjectMetadataSave(projectId),
       pauseClipperProjectSettingsSave(projectId),
       pauseRenderQueueSave(projectId),
@@ -32,7 +31,7 @@ export async function deleteClipperProject(projectId: string): Promise<void> {
     ]);
     discardPendingClipperExports(projectId);
   } catch (error) {
-    resumeClipperProjectRenders(projectId);
+    resumeClipperProjectWrites(projectId);
     resumeClipperProjectMetadataSave(projectId);
     resumeClipperProjectSettingsSave(projectId);
     resumeRenderQueueSave(projectId);

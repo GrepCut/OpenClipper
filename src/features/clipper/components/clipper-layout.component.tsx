@@ -61,7 +61,7 @@ export const ClipperLayout: React.FC<ClipperLayoutProps> = ({
   };
 
   const backLinkElement = backLink ? (
-    <BackLink label={backLink.label} onClick={backLink.onClick} />
+    <BackLink {...backLink} />
   ) : (
     <BackLink label={backLabel} to={backTo} />
   );

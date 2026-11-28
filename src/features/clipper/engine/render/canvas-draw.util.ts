@@ -1,6 +1,4 @@
-import {
-  drawPhraseAnimatedCaption,
-} from '../../lib/captions/animated-caption-render.util';
+import { drawPhraseAnimatedCaption, type CaptionBounds } from "../../lib/captions/animated-caption-render.util";
 import { resolveCaptionPreset } from "../../lib/captions/caption-presets.util";
 import type { CaptionGroup } from "../../lib/media/transcription-export.util";
 import { drawPrimaryPlusTwoFrame, drawVerticalSplitFrame } from "../../lib/media/video-draw.util";
@@ -137,9 +135,10 @@ export function drawClipperCaptions(
   output: FrameEffectSize,
   t: number,
   render: ClipperFrameContext,
-): void {
+  measureBounds = false,
+): CaptionBounds | null {
   const { captions } = render.settings;
-  if (!captions.enabled) return;
+  if (!captions.enabled) return null;
 
   const captionTime = render.segments?.length
     ? sourceTimeToLocalTime(render.segments, t)
@@ -151,13 +150,13 @@ export function drawClipperCaptions(
     bottom: 0.78,
   }[captions.position];
   const fontSizeScale = {
-    "extra-small": 0.55,
+    "extra-small": 0.5,
     small: 0.8,
     medium: 1,
     large: 1.24,
   }[captions.size];
 
-  drawPhraseAnimatedCaption(
+  return drawPhraseAnimatedCaption(
     ctx,
     render.captionGroups,
     captionTime,
@@ -170,5 +169,6 @@ export function drawClipperCaptions(
       fontSizeRatio: preset.fontSizeRatio * fontSizeScale,
       wordsPerGroup: captions.wordsPerGroup,
     },
+    measureBounds,
   );
 }

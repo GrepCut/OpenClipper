@@ -24,6 +24,12 @@ export function getNativeFilePath(file: File): string | null {
   return path ?? null;
 }
 
+/** Whether `path` lies under `directory`, ignoring case and slash style as Windows does. */
+export function isPathInside(path: string, directory: string): boolean {
+  const normalize = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return normalize(path).startsWith(`${normalize(directory)}/`);
+}
+
 /** Whether `file` carries a native path (desktop picker / restored segment). */
 export function isNativeBacked(file: File): boolean {
   return getNativeFilePath(file) != null;

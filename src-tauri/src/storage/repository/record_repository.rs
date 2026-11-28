@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sea_orm::{sea_query::OnConflict, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{sea_query::OnConflict, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
 
 use crate::infra::error::DbResult;
@@ -9,7 +9,7 @@ pub struct RecordRepository;
 
 impl RecordRepository {
     pub async fn get(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         namespace: String,
         key: String,
     ) -> DbResult<Option<Value>> {
@@ -23,7 +23,7 @@ impl RecordRepository {
     }
 
     pub async fn put(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         namespace: String,
         key: String,
         project_id: Option<String>,
@@ -50,7 +50,7 @@ impl RecordRepository {
     }
 
     pub async fn delete(
-        database: &DatabaseConnection,
+        database: &impl ConnectionTrait,
         namespace: String,
         key: String,
     ) -> DbResult<()> {

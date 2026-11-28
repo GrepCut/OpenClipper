@@ -15,6 +15,11 @@ import {
   mergeClipperBrandingSettings,
   type ClipperBrandingSettings,
 } from "./branding-settings.util";
+import {
+  DEFAULT_CLIPPER_PARTS_OVERLAY_SETTINGS,
+  mergeClipperPartsOverlaySettings,
+  type ClipperPartsOverlaySettings,
+} from "./parts-overlay-settings.util";
 
 export type ClipperQualityPreset = "draft" | "standard" | "high";
 export type ClipperResolutionCap = "source" | "1080p" | "720p";
@@ -86,6 +91,7 @@ export interface ClipperPublishSettings {
 export interface ClipperSettings {
   captions: ClipperCaptionSettings;
   branding: ClipperBrandingSettings;
+  partsOverlay: ClipperPartsOverlaySettings;
   formats: ClipperFormatSettings;
   audio: ClipperAudioSettings;
   transcription: ClipperTranscriptionSettings;
@@ -114,6 +120,7 @@ export const DEFAULT_CLIPPER_SETTINGS: ClipperSettings = {
     wordsPerGroup: 4,
   },
   branding: DEFAULT_CLIPPER_BRANDING_SETTINGS,
+  partsOverlay: DEFAULT_CLIPPER_PARTS_OVERLAY_SETTINGS,
   formats: {
     enabledFormatIds: ["vertical-short", "vertical-reels", "instagram-portrait"],
     quality: "standard",
@@ -226,6 +233,7 @@ export function mergeClipperSettings(
           : base.publish.fillMetadataAgentPrompt,
     },
     branding: mergeClipperBrandingSettings(base.branding, partial.branding),
+    partsOverlay: mergeClipperPartsOverlaySettings(base.partsOverlay, partial.partsOverlay),
     lastDurationPresetSec: partial.lastDurationPresetSec ?? base.lastDurationPresetSec,
   };
 }

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, VStack } from "@chakra-ui/react";
-import { Stamp, Type, type LucideIcon } from "lucide-react";
+import { Layers, Type, type LucideIcon } from "lucide-react";
 import { clipperTheme } from "../shared/theme.util";
 import { useClipperUi } from "../shared/use-clipper-ui.hook";
 import {
@@ -14,7 +14,7 @@ const PANEL_META: Record<
   { label: string; Icon: LucideIcon }
 > = {
   captions: { label: "Captions", Icon: Type },
-  branding: { label: "Branding", Icon: Stamp },
+  overlays: { label: "Overlays", Icon: Layers },
 };
 
 interface SettingsToggleButtonProps {
